@@ -1,0 +1,36 @@
+# Dockerfile para Backend Admin (Flask)
+FROM python:3.11-slim
+
+# Variables de entorno
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=production
+
+# Instalar dependencias del sistema
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Crear directorio de trabajo
+WORKDIR /app
+
+# Copiar requirements
+COPY requirements.txt .
+
+# Instalar dependencias Python
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar código del backend admin
+COPY clip_admin_backend/ ./
+
+# Crear directorio para uploads
+RUN mkdir -p uploads
+
+# Exponer puerto
+EXPOSE 5000
+
+# Comando de inicio
+CMD ["python", "app.py"]

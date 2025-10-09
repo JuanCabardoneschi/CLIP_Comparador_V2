@@ -1,0 +1,54 @@
+# Web Frameworks
+Flask==3.0.0
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.5
+FastAPI==0.104.1
+uvicorn[standard]==0.24.0
+
+# Database
+SQLAlchemy==2.0.23
+alembic==1.12.1
+psycopg2-binary==2.9.9
+asyncpg==0.29.0
+
+# Database Tools & Management
+Flask-Admin==1.6.1
+sqlite-utils==3.35
+sqlalchemy-utils==0.41.1
+
+# Redis
+redis==5.0.1
+
+# Authentication & Security
+Flask-Login==0.6.3
+Flask-JWT-Extended==4.6.0
+PyJWT==2.8.0
+bcrypt==4.1.2
+passlib[bcrypt]==1.7.4
+
+# AI & ML
+torch==2.1.1+cpu --index-url https://download.pytorch.org/whl/cpu
+clip-by-openai==1.0
+Pillow==10.1.0
+numpy==1.25.2
+sentence-transformers==2.2.2
+
+# Image Processing & Storage
+# cloudinary==1.36.0  # Removido - ahora usamos almacenamiento local
+python-multipart==0.0.6
+
+# API & Web
+pydantic==2.5.0
+requests==2.31.0
+python-dotenv==1.0.0
+
+# Development & Validation
+pytest==7.4.3
+black==23.11.0
+isort==5.12.0
+flake8==6.1.0
+
+# Utils
+python-slugify==8.0.1
+validators==0.22.0
+googletrans==4.0.0rc1

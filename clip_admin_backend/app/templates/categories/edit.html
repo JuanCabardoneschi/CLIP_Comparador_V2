@@ -1,0 +1,333 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Editar Categoría{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-0">Editar Categoría</h1>
+        <p class="text-muted">
+            Modificar categoría para:
+            <strong class="text-primary">
+                <i class="bi bi-building me-1"></i>
+                {{ current_user.client.name if current_user.client else 'Cliente no asignado' }}
+            </strong>
+        </p>
+    </div>
+    <div>
+        <a href="{{ url_for('categories.view', category_id=category.id) }}" class="btn btn-outline-secondary me-2">
+            <i class="bi bi-arrow-left me-2"></i>
+            Volver a Categoría
+        </a>
+        <a href="{{ url_for('categories.index') }}" class="btn btn-outline-primary">
+            <i class="bi bi-list me-2"></i>
+            Todas las Categorías
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Información de la Categoría</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="editCategoryForm">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label for="name" class="form-label">
+                                    Nombre de la Categoría <span class="text-danger">*</span>
+                                </label>
+                                <input type="text"
+                                       class="form-control"
+                                       id="name"
+                                       name="name"
+                                       value="{{ category.name }}"
+                                       required
+                                       placeholder="Ej: Camisetas, Pantalones, Zapatos..."
+                                       maxlength="100">
+                                <div class="form-text">Nombre descriptivo para la categoría (máximo 100 caracteres)</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="name_en" class="form-label">
+                                    <i class="bi bi-translate me-1"></i>
+                                    Nombre en Inglés (para CLIP) <span class="text-danger">*</span>
+                                </label>
+                                <input type="text"
+                                       class="form-control"
+                                       id="name_en"
+                                       name="name_en"
+                                       value="{{ category.name_en }}"
+                                       required
+                                       placeholder="English name for CLIP processing..."
+                                       maxlength="100">
+                                <div class="form-text">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    Nombre en inglés para el procesamiento de CLIP
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="alternative_terms" class="form-label">
+                                    <i class="bi bi-tags me-1"></i>
+                                    Términos Alternativos
+                                </label>
+                                <input type="text"
+                                       class="form-control"
+                                       id="alternative_terms"
+                                       name="alternative_terms"
+                                       value="{{ category.alternative_terms or '' }}"
+                                       placeholder="Ej: shirt, t-shirt, blouse, top (separados por coma)"
+                                       maxlength="200">
+                                <div class="form-text">
+                                    Sinónimos y variaciones en inglés para mejorar la precisión de CLIP (separados por comas)
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="color" class="form-label">Color Identificativo</label>
+                                <div class="d-flex align-items-center">
+                                    <input type="color"
+                                           class="form-control form-control-color me-2"
+                                           id="color"
+                                           name="color"
+                                           value="{{ category.color }}"
+                                           style="width: 50px; height: 38px;">
+                                    <input type="text"
+                                           class="form-control"
+                                           id="colorHex"
+                                           value="{{ category.color }}"
+                                           placeholder="#007bff"
+                                           pattern="^#[0-9A-Fa-f]{6}$">
+                                </div>
+                                <div class="form-text">Color para identificar visualmente la categoría</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Descripción</label>
+                        <textarea class="form-control"
+                                  id="description"
+                                  name="description"
+                                  rows="3"
+                                  placeholder="Descripción opcional de la categoría..."
+                                  maxlength="500">{{ category.description or '' }}</textarea>
+                        <div class="form-text">
+                            Descripción opcional para proporcionar más detalles sobre la categoría (máximo 500 caracteres)
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   id="is_active"
+                                   name="is_active"
+                                   {% if category.is_active %}checked{% endif %}>
+                            <label class="form-check-label" for="is_active">
+                                <strong>Categoría activa</strong>
+                            </label>
+                            <div class="form-text">
+                                Las categorías activas aparecen disponibles para asignar a productos
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('categories.view', category_id=category.id) }}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle me-2"></i>
+                            Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle me-2"></i>
+                            Actualizar Categoría
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <!-- Vista previa -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="bi bi-eye me-2"></i>
+                    Vista Previa
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="category-color me-3"
+                         id="previewColor"
+                         style="width: 24px; height: 24px; border-radius: 4px; background-color: {{ category.color }};"></div>
+                    <div>
+                        <h6 class="mb-0" id="previewName">{{ category.name }}</h6>
+                        <small class="text-muted" id="previewDescription">{{ category.description or 'Descripción de la categoría' }}</small>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <span class="badge {% if category.is_active %}bg-success{% else %}bg-secondary{% endif %}" id="previewStatus">
+                        <i class="bi bi-{% if category.is_active %}check-circle{% else %}pause-circle{% endif %} me-1"></i>
+                        {% if category.is_active %}Activa{% else %}Inactiva{% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Información adicional -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Información
+                </h6>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2">
+                        <i class="bi bi-calendar text-primary me-2"></i>
+                        Creada: {{ category.created_at.strftime('%d/%m/%Y') }}
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-clock text-primary me-2"></i>
+                        Modificada: {{ category.updated_at.strftime('%d/%m/%Y') }}
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-hash text-primary me-2"></i>
+                        ID: {{ category.id[:8] }}...
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Sincronizar selector de color con input de texto
+document.getElementById('color').addEventListener('input', function() {
+    document.getElementById('colorHex').value = this.value;
+    updatePreview();
+});
+
+document.getElementById('colorHex').addEventListener('input', function() {
+    const color = this.value;
+    if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
+        document.getElementById('color').value = color;
+        updatePreview();
+    }
+});
+
+// Función de traducción automática (solo para el nombre principal)
+let translationTimeout;
+function autoTranslate() {
+    const spanishName = document.getElementById('name').value.trim();
+    const englishField = document.getElementById('name_en');
+
+    if (!spanishName) {
+        return;
+    }
+
+    // Solo traducir si el campo está vacío o cambió significativamente
+    if (englishField.value.trim() && spanishName === englishField.dataset.lastSpanish) {
+        return;
+    }
+
+    clearTimeout(translationTimeout);
+    translationTimeout = setTimeout(() => {
+        englishField.placeholder = 'Traduciendo...';
+        englishField.disabled = true;
+
+        fetch('/api/translate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                text: spanishName,
+                target_language: 'en'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                englishField.value = data.translated_text;
+                englishField.dataset.lastSpanish = spanishName;
+                englishField.placeholder = 'Puedes editar la traducción automática...';
+            } else {
+                englishField.placeholder = 'Error en traducción - ingresa manualmente';
+            }
+            englishField.disabled = false;
+        })
+        .catch(error => {
+            englishField.placeholder = 'Error en traducción - ingresa manualmente';
+            englishField.disabled = false;
+        });
+
+    }, 1000);
+}
+
+// Agregar event listeners
+document.getElementById('name').addEventListener('input', autoTranslate);
+document.getElementById('name').addEventListener('input', updatePreview);
+document.getElementById('description').addEventListener('input', updatePreview);
+document.getElementById('is_active').addEventListener('change', updatePreview);
+
+function updatePreview() {
+    const name = document.getElementById('name').value || '{{ category.name }}';
+    const description = document.getElementById('description').value || 'Descripción de la categoría';
+    const color = document.getElementById('color').value;
+    const isActive = document.getElementById('is_active').checked;
+
+    document.getElementById('previewName').textContent = name;
+    document.getElementById('previewDescription').textContent = description;
+    document.getElementById('previewColor').style.backgroundColor = color;
+
+    const statusBadge = document.getElementById('previewStatus');
+    if (isActive) {
+        statusBadge.className = 'badge bg-success';
+        statusBadge.innerHTML = '<i class="bi bi-check-circle me-1"></i>Activa';
+    } else {
+        statusBadge.className = 'badge bg-secondary';
+        statusBadge.innerHTML = '<i class="bi bi-pause-circle me-1"></i>Inactiva';
+    }
+}
+
+// Validación del formulario
+document.getElementById('editCategoryForm').addEventListener('submit', function(e) {
+    const name = document.getElementById('name').value.trim();
+    const nameEn = document.getElementById('name_en').value.trim();
+    const colorHex = document.getElementById('colorHex').value;
+
+    if (!name) {
+        e.preventDefault();
+        alert('El nombre de la categoría es obligatorio');
+        document.getElementById('name').focus();
+        return;
+    }
+
+    if (!nameEn) {
+        e.preventDefault();
+        alert('El nombre en inglés es obligatorio');
+        document.getElementById('name_en').focus();
+        return;
+    }
+
+    if (!/^#[0-9A-Fa-f]{6}$/.test(colorHex)) {
+        e.preventDefault();
+        alert('El color debe tener un formato válido (ej: #007bff)');
+        document.getElementById('colorHex').focus();
+        return;
+    }
+});
+</script>
+{% endblock %}

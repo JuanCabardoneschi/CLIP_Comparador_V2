@@ -1,0 +1,647 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ product.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.product-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+}
+
+.product-info-card {
+    background-color: #fff;
+    border-radius: 10px;
+    padding: 25px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.image-gallery {
+    background-color: #fff;
+    border-radius: 10px;
+    padding: 25px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.primary-image-container {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.primary-image {
+    max-width: 100%;
+    max-height: 400px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+.image-placeholder {
+    width: 100%;
+    height: 300px;
+    background-color: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    color: #6c757d;
+}
+
+.thumbnail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.thumbnail {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.thumbnail:hover {
+    transform: scale(1.05);
+}
+
+.thumbnail.active {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+}
+
+.thumbnail.primary {
+    border-color: #198754;
+    box-shadow: 0 0 0 2px rgba(25, 135, 84, 0.25);
+}
+
+.thumbnail img {
+    width: 100%;
+    height: 80px;
+    object-fit: cover;
+}
+
+.thumbnail-controls {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.thumbnail:hover .thumbnail-controls {
+    opacity: 1;
+}
+
+.thumbnail-controls button {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: none;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.primary-badge {
+    position: absolute;
+    bottom: 2px;
+    left: 2px;
+    background: rgba(25, 135, 84, 0.9);
+    color: white;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 8px;
+    font-weight: bold;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.info-item:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    font-weight: 600;
+    color: #555;
+}
+
+.info-value {
+    color: #333;
+}
+
+.status-badge {
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.upload-section {
+    margin-top: 20px;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    border: 2px dashed #dee2e6;
+}
+
+.processing-indicator {
+    text-align: center;
+    padding: 20px;
+    background-color: #fff3cd;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.tag-item {
+    display: inline-block;
+    background-color: #e9ecef;
+    color: #495057;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    margin: 2px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header del producto -->
+    <div class="product-header">
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <h2><i class="bi bi-box-seam"></i> {{ product.name }}</h2>
+                <p class="mb-2">
+                    <i class="bi bi-tag"></i>
+                    {{ product.category.name if product.category else 'Sin categoría' }}
+                </p>
+                {% if product.sku %}
+                    <p class="mb-0"><small>SKU: {{ product.sku }}</small></p>
+                {% endif %}
+            </div>
+            <div class="text-end">
+                {% if product.is_active %}
+                    <span class="badge bg-success status-badge">Activo</span>
+                {% else %}
+                    <span class="badge bg-secondary status-badge">Inactivo</span>
+                {% endif %}
+
+                {% if images|length == 0 %}
+                    <span class="badge bg-warning status-badge ms-2">Sin imágenes</span>
+                {% elif not any_processed %}
+                    <span class="badge bg-info status-badge ms-2">Procesando</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Información del producto -->
+        <div class="col-lg-4">
+            <div class="product-info-card">
+                <h5 class="mb-3">
+                    <i class="bi bi-info-circle"></i> Información del Producto
+                </h5>
+
+                <div class="info-item">
+                    <span class="info-label">Nombre:</span>
+                    <span class="info-value">{{ product.name }}</span>
+                </div>
+
+                <div class="info-item">
+                    <span class="info-label">Categoría:</span>
+                    <span class="info-value">
+                        {% if product.category %}
+                            {{ product.category.name }}
+                            {% if product.category.name_en %}
+                                <small class="text-muted">({{ product.category.name_en }})</small>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-muted">Sin categoría</span>
+                        {% endif %}
+                    </span>
+                </div>
+
+                {% if product.description %}
+                <div class="info-item">
+                    <span class="info-label">Descripción:</span>
+                </div>
+                <div class="mt-2 mb-3">
+                    <p class="text-muted">{{ product.description }}</p>
+                </div>
+                {% endif %}
+
+                {% if product.price %}
+                <div class="info-item">
+                    <span class="info-label">Precio:</span>
+                    <span class="info-value text-success fw-bold">${{ "%.2f"|format(product.price) }}</span>
+                </div>
+                {% endif %}
+
+                <div class="info-item">
+                    <span class="info-label">Stock:</span>
+                    <span class="info-value">{{ product.stock or 0 }}</span>
+                </div>
+
+                <div class="info-item">
+                    <span class="info-label">Imágenes:</span>
+                    <span class="info-value">{{ images|length }}</span>
+                </div>
+
+                {% if product.tag_list %}
+                <div class="info-item">
+                    <span class="info-label">Tags:</span>
+                </div>
+                <div class="mt-2">
+                    {% for tag in product.tag_list %}
+                        <span class="tag-item">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <div class="info-item">
+                    <span class="info-label">Creado:</span>
+                    <span class="info-value">{{ product.created_at.strftime('%d/%m/%Y %H:%M') if product.created_at else '-' }}</span>
+                </div>
+
+                {% if product.updated_at and product.updated_at != product.created_at %}
+                <div class="info-item">
+                    <span class="info-label">Actualizado:</span>
+                    <span class="info-value">{{ product.updated_at.strftime('%d/%m/%Y %H:%M') }}</span>
+                </div>
+                {% endif %}
+
+                <!-- Botones de acción -->
+                <div class="mt-4">
+                    <a href="{{ url_for('products.edit', product_id=product.id) }}"
+                       class="btn btn-primary w-100 mb-2">
+                        <i class="bi bi-pencil"></i> Editar Producto
+                    </a>
+                    <button class="btn btn-outline-danger w-100"
+                            onclick="confirmDelete('{{ product.id }}', '{{ product.name }}')">
+                        <i class="bi bi-trash"></i> Eliminar Producto
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Galería de imágenes -->
+        <div class="col-lg-8">
+            <div class="image-gallery">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5>
+                        <i class="bi bi-images"></i> Galería de Imágenes ({{ images|length }})
+                    </h5>
+                    <button class="btn btn-outline-primary btn-sm" onclick="showAddImagesModal()">
+                        <i class="bi bi-plus-circle"></i> Agregar Imágenes
+                    </button>
+                </div>
+
+                {% if images %}
+                    <!-- Imagen principal -->
+                    <div class="primary-image-container">
+                        {% set primary_img = images|selectattr('is_primary', 'equalto', true)|first or images[0] %}
+                        <img id="primaryImage"
+                             src="{{ primary_img.display_url }}"
+                             alt="{{ product.name }}"
+                             class="primary-image">
+
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                {{ primary_img.original_filename or primary_img.filename }}
+                                {% if primary_img.file_size %}
+                                    - {{ (primary_img.file_size / 1024)|round(1) }} KB
+                                {% endif %}
+                            </small>
+                        </div>
+                    </div>
+
+                    <!-- Miniaturas -->
+                    {% if images|length > 1 %}
+                    <div class="thumbnail-grid">
+                        {% for image in images %}
+                        <div class="thumbnail {% if image.is_primary %}primary{% endif %} {% if loop.index0 == 0 %}active{% endif %}"
+                             data-image-url="{{ image.display_url }}"
+                             data-filename="{{ image.original_filename or image.filename }}"
+                             data-filesize="{{ image.file_size or 0 }}">>
+                            <img src="{{ image.thumbnail_url }}"
+                                 alt="Imagen {{ loop.index }}">
+
+                            <div class="thumbnail-controls">
+                                {% if not image.is_primary %}
+                                    <button type="button"
+                                            class="btn btn-success"
+                                            onclick="event.stopPropagation(); setPrimaryImage('{{ image.id }}')"
+                                            title="Establecer como principal">
+                                        <i class="bi bi-star"></i>
+                                    </button>
+                                {% endif %}
+                                <button type="button"
+                                        class="btn btn-danger"
+                                        onclick="event.stopPropagation(); confirmDeleteImage('{{ image.id }}', '{{ image.original_filename or image.filename }}')"
+                                        title="Eliminar imagen">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </div>
+
+                            {% if image.is_primary %}
+                                <div class="primary-badge">Principal</div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Indicador de procesamiento -->
+                    {% set pending_count = images|selectattr('upload_status', 'equalto', 'pending')|list|length %}
+                    {% if pending_count > 0 %}
+                    <div class="processing-indicator">
+                        <i class="bi bi-hourglass-split text-warning"></i>
+                        <strong>{{ pending_count }} imagen(es) pendiente(s) de procesamiento</strong>
+                        <p class="mb-2">Los embeddings se están generando en segundo plano.</p>
+                        <button class="btn btn-sm btn-warning" onclick="generateEmbeddings()">
+                            <i class="bi bi-cpu"></i> Procesar Ahora
+                        </button>
+                    </div>
+                    {% endif %}
+
+                {% else %}
+                    <!-- Sin imágenes -->
+                    <div class="image-placeholder">
+                        <i class="bi bi-image" style="font-size: 3rem;"></i>
+                        <h5 class="mt-3">No hay imágenes</h5>
+                        <p class="text-muted">Agrega imágenes para visualizar el producto</p>
+                        <button class="btn btn-primary" onclick="showAddImagesModal()">
+                            <i class="bi bi-plus-circle"></i> Agregar Primera Imagen
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para agregar imágenes -->
+<div class="modal fade" id="addImagesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Agregar Imágenes</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addImagesForm" enctype="multipart/form-data">
+                    <div class="upload-section">
+                        <div class="text-center">
+                            <i class="bi bi-cloud-upload text-primary" style="font-size: 2rem;"></i>
+                            <h6 class="mt-2">Selecciona las imágenes a agregar</h6>
+                            <input type="file"
+                                   id="newImages"
+                                   name="images"
+                                   multiple
+                                   accept="image/*"
+                                   class="form-control mt-3">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="uploadNewImages()">
+                    <i class="bi bi-upload"></i> Subir Imágenes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modales de confirmación -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirmar eliminación</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro de que deseas eliminar el producto <strong id="productName"></strong>?</p>
+                <p class="text-danger small">Esta acción también eliminará todas las imágenes asociadas y no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="deleteForm" method="POST" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">Eliminar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="deleteImageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirmar eliminación de imagen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro de que deseas eliminar la imagen <strong id="imageName"></strong>?</p>
+                <p class="text-danger small">Esta acción no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteImage">Eliminar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Event listeners para thumbnails
+document.addEventListener('DOMContentLoaded', function() {
+    // Crear la instancia del modal una sola vez
+    addImagesModal = new bootstrap.Modal(document.getElementById('addImagesModal'));
+
+    const thumbnails = document.querySelectorAll('.thumbnail');
+    thumbnails.forEach(thumbnail => {
+        thumbnail.addEventListener('click', function() {
+            const imageUrl = this.dataset.imageUrl;
+            const filename = this.dataset.filename;
+            const filesize = parseInt(this.dataset.filesize);
+
+            changeMainImage(imageUrl, filename, filesize, this);
+        });
+    });
+});
+
+function changeMainImage(src, filename, fileSize, thumbnail) {
+    // Cambiar imagen principal
+    document.getElementById('primaryImage').src = src;
+
+    // Actualizar información
+    let infoText = filename;
+    if (fileSize > 0) {
+        infoText += ` - ${(fileSize / 1024).toFixed(1)} KB`;
+    }
+
+    // Remover clase active de todas las miniaturas
+    document.querySelectorAll('.thumbnail').forEach(t => t.classList.remove('active'));
+
+    // Agregar clase active a la seleccionada
+    thumbnail.classList.add('active');
+}
+
+function setPrimaryImage(imageId) {
+    fetch(`/products/{{ product.id }}/images/${imageId}/set-primary`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al establecer imagen principal');
+    });
+}
+
+// Inicializar el modal una sola vez cuando se carga la página
+let addImagesModal = null;
+
+function showAddImagesModal() {
+    // Simplemente mostrar el modal ya inicializado
+    if (addImagesModal) {
+        addImagesModal.show();
+    }
+}
+
+function uploadNewImages() {
+    const formData = new FormData();
+    const files = document.getElementById('newImages').files;
+
+    if (files.length === 0) {
+        alert('Selecciona al menos una imagen');
+        return;
+    }
+
+    for (let file of files) {
+        formData.append('images', file);
+    }
+
+    fetch(`/products/{{ product.id }}/images/add`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Cerrar el modal antes de recargar
+            if (addImagesModal) {
+                addImagesModal.hide();
+            }
+            // Limpiar el input de archivos
+            document.getElementById('newImages').value = '';
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al subir imágenes');
+    });
+}
+
+function confirmDelete(productId, productName) {
+    document.getElementById('productName').textContent = productName;
+    document.getElementById('deleteForm').action = `/products/${productId}/delete`;
+
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    modal.show();
+}
+
+function confirmDeleteImage(imageId, imageName) {
+    document.getElementById('imageName').textContent = imageName;
+
+    document.getElementById('confirmDeleteImage').onclick = function() {
+        deleteImage(imageId);
+    };
+
+    const modal = new bootstrap.Modal(document.getElementById('deleteImageModal'));
+    modal.show();
+}
+
+function deleteImage(imageId) {
+    fetch(`/products/{{ product.id }}/images/${imageId}/delete`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al eliminar imagen');
+    });
+}
+
+function generateEmbeddings() {
+    fetch('/products/api/generate-embeddings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al generar embeddings');
+    });
+}
+</script>
+{% endblock %}

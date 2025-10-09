@@ -1,0 +1,256 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Dashboard - CLIP Comparador V2{% endblock %}
+
+{% block page_title %}Dashboard{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item active">Dashboard</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+{% if role == 'super_admin' %}
+<!-- SUPER ADMIN DASHBOARD -->
+<div class="row mb-4">
+    <div class="col-12 mb-3">
+        <div class="alert alert-info border-0">
+            <i class="bi bi-shield-check me-2"></i>
+            <strong>Panel de Administración del Sistema</strong> - Vista global de todos los clientes
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Cards for Super Admin -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                            Clientes Totales
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.total_clients }}
+                        </div>
+                    </div>
+                    <div class="text-primary">
+                        <i class="bi bi-building fs-2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                            Usuarios del Sistema
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.total_users }}
+                        </div>
+                    </div>
+                    <div class="text-info">
+                        <i class="bi bi-people fs-2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            Imágenes Totales
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.total_images }}
+                        </div>
+                    </div>
+                    <div class="text-success">
+                        <i class="bi bi-images fs-2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                            Embeddings Procesados
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.total_processed_images }}/{{ stats.total_images }}
+                        </div>
+                        <div class="text-xs text-muted">
+                            {{ stats.processing_percentage }}% completado
+                        </div>
+                    </div>
+                    <div class="text-warning">
+                        <i class="bi bi-cpu fs-2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% elif role == 'store_admin' %}
+<!-- STORE ADMIN DASHBOARD -->
+<div class="row mb-4">
+    <div class="col-12 mb-3">
+        <div class="alert alert-success border-0">
+            <i class="bi bi-shop me-2"></i>
+            <strong>Mi Tienda: {{ client_name }}</strong> - Panel de administración de mi catálogo
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Cards for Store Admin -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                            Mis Productos
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.my_total_products }}
+                        </div>
+                        <div class="text-xs text-muted">En mi catálogo</div>
+                    </div>
+                    <div class="text-success">
+                        <i class="bi bi-box-seam fs-2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                            Mis Imágenes
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.my_total_images }}
+                        </div>
+                        <div class="text-xs text-muted">Total cargadas</div>
+                    </div>
+                    <div class="text-info">
+                        <i class="bi bi-images fs-2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                            Mis Embeddings
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.my_processed_images }}/{{ stats.my_total_images }}
+                        </div>
+                        <div class="text-xs text-muted">
+                            {{ stats.processing_percentage }}% procesado
+                        </div>
+                    </div>
+                    <div class="text-primary">
+                        <i class="bi bi-cpu fs-2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="flex-grow-1">
+                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                            Búsquedas Hoy
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-gray-800">
+                            {{ stats.my_searches_today }}
+                        </div>
+                        <div class="text-xs text-muted">En mi tienda</div>
+                    </div>
+                    <div class="text-warning">
+                        <i class="bi bi-search fs-2"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions for Store Admin -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-light">
+                <h6 class="mb-0">
+                    <i class="bi bi-lightning me-2"></i>
+                    Acciones Rápidas
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <a href="{{ url_for('products.index') }}" class="btn btn-outline-primary btn-sm w-100 mb-2">
+                            <i class="bi bi-plus-circle me-1"></i>
+                            Gestionar Productos
+                        </a>
+                    </div>
+                    <div class="col-md-3">
+                        <a href="{{ url_for('embeddings.index') }}" class="btn btn-outline-success btn-sm w-100 mb-2">
+                            <i class="bi bi-cpu me-1"></i>
+                            Procesar Embeddings
+                        </a>
+                    </div>
+                    <div class="col-md-3">
+                        <a href="{{ url_for('categories.index') }}" class="btn btn-outline-info btn-sm w-100 mb-2">
+                            <i class="bi bi-tags me-1"></i>
+                            Mis Categorías
+                        </a>
+                    </div>
+                    <div class="col-md-3">
+                        <a href="#" onclick="alert('Analytics en desarrollo')" class="btn btn-outline-warning btn-sm w-100 mb-2">
+                            <i class="bi bi-graph-up me-1"></i>
+                            Ver Analytics
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

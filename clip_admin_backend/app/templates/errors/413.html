@@ -1,0 +1,105 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Archivo Demasiado Grande{% endblock %}
+
+{% block extra_css %}
+<style>
+.error-container {
+    text-align: center;
+    padding: 50px 20px;
+    min-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.error-icon {
+    font-size: 6rem;
+    color: #dc3545;
+    margin-bottom: 20px;
+}
+
+.error-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 15px;
+}
+
+.error-description {
+    font-size: 1.1rem;
+    color: #666;
+    margin-bottom: 30px;
+    max-width: 600px;
+}
+
+.file-limits {
+    background-color: #f8f9fa;
+    border-left: 4px solid #007bff;
+    padding: 20px;
+    margin: 20px 0;
+    border-radius: 4px;
+    text-align: left;
+}
+
+.btn-group {
+    gap: 15px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <i class="bi bi-exclamation-triangle-fill error-icon"></i>
+
+    <h1 class="error-title">413 - Archivo Demasiado Grande</h1>
+
+    <p class="error-description">
+        Los archivos que intentaste subir exceden el tamaño máximo permitido.
+        Por favor, verifica el tamaño de tus imágenes antes de subirlas.
+    </p>
+
+    <div class="file-limits">
+        <h5><i class="bi bi-info-circle"></i> Límites de Archivos</h5>
+        <ul class="mb-0">
+            <li><strong>Tamaño máximo por imagen:</strong> 50 MB</li>
+            <li><strong>Formatos permitidos:</strong> JPG, PNG, GIF, WEBP, BMP, TIFF</li>
+            <li><strong>Sugerencia:</strong> Comprime las imágenes si son muy grandes</li>
+        </ul>
+    </div>
+
+    <div class="btn-group d-flex justify-content-center">
+        <button onclick="history.back()" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Volver
+        </button>
+        <a href="{{ url_for('products.index') }}" class="btn btn-primary">
+            <i class="bi bi-box-seam"></i> Ver Productos
+        </a>
+        <a href="{{ url_for('products.create') }}" class="btn btn-outline-primary">
+            <i class="bi bi-plus-circle"></i> Intentar de Nuevo
+        </a>
+    </div>
+
+    <div class="mt-4">
+        <small class="text-muted">
+            <i class="bi bi-lightbulb"></i>
+            <strong>Consejo:</strong> Puedes usar herramientas online para comprimir imágenes
+            manteniendo buena calidad antes de subirlas.
+        </small>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-redirigir después de 30 segundos si el usuario no hace nada
+    setTimeout(function() {
+        if (confirm('¿Quieres volver a la página anterior automáticamente?')) {
+            history.back();
+        }
+    }, 30000);
+});
+</script>
+{% endblock %}

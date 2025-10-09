@@ -1,0 +1,218 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Nuevo Cliente - CLIP Comparador V2{% endblock %}
+
+{% block page_title %}Crear Nuevo Cliente{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('clients.index') }}">Clientes</a></li>
+        <li class="breadcrumb-item active">Nuevo Cliente</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block page_actions %}
+<a href="{{ url_for('clients.index') }}" class="btn btn-secondary">
+    <i class="bi bi-arrow-left me-2"></i>
+    Volver a Clientes
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-plus-circle me-2"></i>
+                    Información del Cliente
+                </h6>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="clientForm">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="name" class="form-label">
+                                <i class="bi bi-building me-1"></i>
+                                Nombre de la Empresa <span class="text-danger">*</span>
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   id="name"
+                                   name="name"
+                                   required
+                                   placeholder="Ej: Mi Empresa SRL">
+                            <div class="form-text">Nombre oficial de la empresa o cliente</div>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="email" class="form-label">
+                                <i class="bi bi-envelope me-1"></i>
+                                Email de Contacto <span class="text-danger">*</span>
+                            </label>
+                            <input type="email"
+                                   class="form-control"
+                                   id="email"
+                                   name="email"
+                                   required
+                                   placeholder="contacto@empresa.com">
+                            <div class="form-text">Email principal para comunicaciones</div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="industry" class="form-label">
+                                <i class="bi bi-briefcase me-1"></i>
+                                Industria/Rubro
+                            </label>
+                            <select class="form-select" id="industry" name="industry">
+                                <option value="general">General</option>
+                                <option value="textil">Textil y Uniformes</option>
+                                <option value="medical">Médico y Salud</option>
+                                <option value="fashion">Moda y Accesorios</option>
+                                <option value="sports">Deportes y Fitness</option>
+                                <option value="hospitality">Hospitalidad y Turismo</option>
+                                <option value="automotive">Automotriz</option>
+                                <option value="construction">Construcción</option>
+                                <option value="technology">Tecnología</option>
+                                <option value="food">Alimentos y Bebidas</option>
+                                <option value="retail">Retail y Comercio</option>
+                                <option value="education">Educación</option>
+                            </select>
+                            <div class="form-text">La industria ayuda a optimizar las traducciones automáticas</div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <!-- Espacio reservado para futuros campos -->
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">
+                            <i class="bi bi-card-text me-1"></i>
+                            Descripción
+                        </label>
+                        <textarea class="form-control"
+                                  id="description"
+                                  name="description"
+                                  rows="3"
+                                  placeholder="Descripción opcional del cliente y su negocio..."></textarea>
+                        <div class="form-text">Información adicional sobre el cliente (opcional)</div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <button type="button" class="btn btn-outline-secondary" onclick="history.back()">
+                            <i class="bi bi-x-circle me-2"></i>
+                            Cancelar
+                        </button>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle me-2"></i>
+                            Crear Cliente
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Información de ayuda -->
+        <div class="card bg-light border-0">
+            <div class="card-header bg-transparent">
+                <h6 class="m-0 text-primary">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Información
+                </h6>
+            </div>
+            <div class="card-body">
+                <h6 class="text-success">
+                    <i class="bi bi-check-circle me-1"></i>
+                    ¿Qué incluye un cliente?
+                </h6>
+                <ul class="text-sm text-muted mb-3">
+                    <li>Panel de gestión dedicado</li>
+                    <li>API keys personalizadas</li>
+                    <li>Catálogo de productos propio</li>
+                    <li>Analytics independientes</li>
+                    <li>Búsqueda visual CLIP</li>
+                </ul>
+
+                <h6 class="text-info">
+                    <i class="bi bi-lightbulb me-1"></i>
+                    Después de crear el cliente:
+                </h6>
+                <ul class="text-sm text-muted">
+                    <li>Se generará automáticamente un slug único</li>
+                    <li>Podrás crear API keys</li>
+                    <li>Podrás añadir categorías y productos</li>
+                    <li>Tendrás acceso a métricas detalladas</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Preview del slug -->
+        <div class="card mt-3 border-0 bg-warning bg-opacity-10">
+            <div class="card-body">
+                <h6 class="text-warning">
+                    <i class="bi bi-link-45deg me-1"></i>
+                    Vista Previa del Slug
+                </h6>
+                <div class="bg-white p-2 rounded border">
+                    <code id="slugPreview" class="text-muted">nombre-empresa</code>
+                </div>
+                <small class="text-muted">
+                    El slug se generará automáticamente basado en el nombre
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Generar preview del slug
+document.getElementById('name').addEventListener('input', function(e) {
+    const name = e.target.value;
+    const slug = name
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remover acentos
+        .replace(/[^a-z0-9]+/g, '-')     // Reemplazar espacios y caracteres especiales con guiones
+        .replace(/^-+|-+$/g, '');       // Remover guiones al inicio y final
+
+    document.getElementById('slugPreview').textContent = slug || 'nombre-empresa';
+});
+
+// Validación del formulario
+document.getElementById('clientForm').addEventListener('submit', function(e) {
+    const name = document.getElementById('name').value.trim();
+    const email = document.getElementById('email').value.trim();
+
+    if (!name || !email) {
+        e.preventDefault();
+        alert('Por favor completa todos los campos obligatorios');
+        return false;
+    }
+
+    // Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        e.preventDefault();
+        alert('Por favor ingresa un email válido');
+        return false;
+    }
+
+    return true;
+});
+
+// Focus automático en el primer campo
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('name').focus();
+});
+</script>
+{% endblock %}

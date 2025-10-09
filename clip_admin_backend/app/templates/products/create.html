@@ -1,0 +1,499 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Crear Producto{% endblock %}
+
+{% block extra_css %}
+<style>
+.image-upload-area {
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 40px;
+    text-align: center;
+    background-color: #f8f9fa;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.image-upload-area:hover,
+.image-upload-area.dragover {
+    border-color: #0d6efd;
+    background-color: #e7f3ff;
+}
+
+.image-preview-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.image-preview {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #f8f9fa;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.image-preview.primary {
+    border-color: #198754;
+    box-shadow: 0 0 0 2px rgba(25, 135, 84, 0.25);
+}
+
+.image-preview img {
+    width: 100%;
+    height: 120px;
+    object-fit: cover;
+}
+
+.image-controls {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    display: flex;
+    gap: 5px;
+}
+
+.image-controls button {
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.primary-indicator {
+    position: absolute;
+    bottom: 5px;
+    left: 5px;
+    background: rgba(25, 135, 84, 0.9);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.file-info {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+}
+
+.form-section {
+    background-color: #fff;
+    border-radius: 10px;
+    padding: 25px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.section-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.drag-instructions {
+    color: #6c757d;
+    margin-top: 10px;
+}
+
+.upload-stats {
+    background-color: #e3f2fd;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 15px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="bi bi-plus-circle"></i> Crear Producto</h2>
+            <p class="text-muted mb-0">Crear producto desde colección de imágenes</p>
+        </div>
+        <a href="{{ url_for('products.index') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Volver
+        </a>
+    </div>
+
+    <form method="POST" enctype="multipart/form-data" id="productForm">
+        <div class="row">
+            <!-- Información del producto -->
+            <div class="col-lg-6">
+                <div class="form-section">
+                    <h5 class="section-title">
+                        <i class="bi bi-info-circle"></i> Información del Producto
+                    </h5>
+
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Nombre del Producto *</label>
+                        <input type="text"
+                               class="form-control"
+                               id="name"
+                               name="name"
+                               required
+                               placeholder="Ej: Camisa de algodón azul">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="category_id" class="form-label">Categoría *</label>
+                        <select class="form-select" id="category_id" name="category_id" required>
+                            <option value="">Seleccionar categoría...</option>
+                            {% for category in categories %}
+                                <option value="{{ category.id }}">
+                                    {{ category.name }}
+                                    {% if category.name_en %} ({{ category.name_en }}){% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Descripción</label>
+                        <textarea class="form-control"
+                                  id="description"
+                                  name="description"
+                                  rows="3"
+                                  placeholder="Descripción detallada del producto..."></textarea>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="sku" class="form-label">SKU / Código</label>
+                                <input type="text"
+                                       class="form-control"
+                                       id="sku"
+                                       name="sku"
+                                       placeholder="Ej: CAM-001">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="price" class="form-label">Precio</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number"
+                                           class="form-control"
+                                           id="price"
+                                           name="price"
+                                           step="0.01"
+                                           min="0"
+                                           placeholder="0.00">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="stock" class="form-label">Stock</label>
+                                <input type="number"
+                                       class="form-control"
+                                       id="stock"
+                                       name="stock"
+                                       min="0"
+                                       value="0"
+                                       placeholder="0">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="tags" class="form-label">Tags</label>
+                                <input type="text"
+                                       class="form-control"
+                                       id="tags"
+                                       name="tags"
+                                       placeholder="algodón, azul, casual"
+                                       title="Separar con comas">
+                                <div class="form-text">Separar múltiples tags con comas</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Subida de imágenes -->
+            <div class="col-lg-6">
+                <div class="form-section">
+                    <h5 class="section-title">
+                        <i class="bi bi-images"></i> Imágenes del Producto
+                    </h5>
+
+                    <!-- Área de subida -->
+                    <div class="image-upload-area" onclick="document.getElementById('images').click()">
+                        <i class="bi bi-cloud-upload text-primary" style="font-size: 3rem;"></i>
+                        <h5 class="mt-3">Arrastra y suelta tus imágenes aquí</h5>
+                        <p class="text-muted">o haz clic para seleccionar archivos</p>
+                        <div class="drag-instructions">
+                            <small>Formatos: JPG, PNG, GIF, WEBP, BMP, TIFF | Máximo: 50MB por imagen</small>
+                        </div>
+                    </div>
+
+                    <input type="file"
+                           id="images"
+                           name="images"
+                           multiple
+                           accept="image/*"
+                           style="display: none;">
+
+                    <!-- Vista previa de imágenes -->
+                    <div id="imagePreviewContainer" class="image-preview-container" style="display: none;"></div>
+
+                    <!-- Estadísticas de subida -->
+                    <div id="uploadStats" class="upload-stats" style="display: none;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-images"></i> <span id="imageCount">0</span> imagen(es) seleccionada(s)</span>
+                            <span><i class="bi bi-hdd"></i> <span id="totalSize">0 KB</span></span>
+                        </div>
+                    </div>
+
+                    <input type="hidden" id="primary_image" name="primary_image" value="0">
+                </div>
+            </div>
+        </div>
+
+        <!-- Botones de acción -->
+        <div class="form-section">
+            <div class="d-flex justify-content-between">
+                <a href="{{ url_for('products.index') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-circle"></i> Cancelar
+                </a>
+                <button type="submit" class="btn btn-primary" id="submitBtn">
+                    <i class="bi bi-check-circle"></i> Crear Producto
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let selectedFiles = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadArea = document.querySelector('.image-upload-area');
+    const fileInput = document.getElementById('images');
+    const previewContainer = document.getElementById('imagePreviewContainer');
+    const uploadStats = document.getElementById('uploadStats');
+    const submitBtn = document.getElementById('submitBtn');
+
+    // Eventos para drag and drop
+    uploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
+
+    uploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+    });
+
+    uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+
+        const files = Array.from(e.dataTransfer.files);
+        const imageFiles = files.filter(file => file.type.startsWith('image/'));
+
+        if (imageFiles.length > 0) {
+            addFiles(imageFiles);
+        }
+    });
+
+    // Evento para selección de archivos
+    fileInput.addEventListener('change', function(e) {
+        const files = Array.from(e.target.files);
+        if (files.length > 0) {
+            addFiles(files);
+        }
+    });
+
+    function addFiles(files) {
+        const maxFileSize = 50 * 1024 * 1024; // 50MB
+        const validFiles = [];
+        const errors = [];
+
+        files.forEach(file => {
+            if (file.size > maxFileSize) {
+                errors.push(`${file.name} es demasiado grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Máximo: 50MB`);
+            } else if (!file.type.startsWith('image/')) {
+                errors.push(`${file.name} no es una imagen válida`);
+            } else {
+                validFiles.push(file);
+            }
+        });
+
+        if (errors.length > 0) {
+            alert('Errores en algunos archivos:\n' + errors.join('\n'));
+        }
+
+        if (validFiles.length > 0) {
+            selectedFiles = [...selectedFiles, ...validFiles];
+            updatePreview();
+            updateStats();
+            updateFileInput();
+        }
+    }
+
+    function removeFile(index) {
+        selectedFiles.splice(index, 1);
+        updatePreview();
+        updateStats();
+        updateFileInput();
+    }
+
+    function setPrimaryImage(index) {
+        document.getElementById('primary_image').value = index;
+        updatePreview();
+    }
+
+    function updatePreview() {
+        if (selectedFiles.length === 0) {
+            previewContainer.style.display = 'none';
+            return;
+        }
+
+        previewContainer.style.display = 'grid';
+        previewContainer.innerHTML = '';
+
+        const primaryIndex = parseInt(document.getElementById('primary_image').value) || 0;
+
+        selectedFiles.forEach((file, index) => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const previewDiv = document.createElement('div');
+                previewDiv.className = `image-preview ${index === primaryIndex ? 'primary' : ''}`;
+
+                previewDiv.innerHTML = `
+                    <img src="${e.target.result}" alt="Preview ${index + 1}">
+                    <div class="image-controls">
+                        <button type="button"
+                                class="btn btn-sm btn-success"
+                                onclick="setPrimaryImage(${index})"
+                                title="Establecer como principal">
+                            <i class="bi bi-star"></i>
+                        </button>
+                        <button type="button"
+                                class="btn btn-sm btn-danger"
+                                onclick="removeFile(${index})"
+                                title="Eliminar">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
+                    ${index === primaryIndex ? '<div class="primary-indicator">Principal</div>' : ''}
+                    <div class="file-info">${formatFileSize(file.size)}</div>
+                `;
+
+                previewContainer.appendChild(previewDiv);
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    function updateStats() {
+        if (selectedFiles.length === 0) {
+            uploadStats.style.display = 'none';
+            return;
+        }
+
+        uploadStats.style.display = 'block';
+
+        const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+
+        document.getElementById('imageCount').textContent = selectedFiles.length;
+        document.getElementById('totalSize').textContent = formatFileSize(totalSize);
+    }
+
+    function updateFileInput() {
+        // Crear nuevo DataTransfer para actualizar el input
+        const dt = new DataTransfer();
+        selectedFiles.forEach(file => dt.items.add(file));
+        fileInput.files = dt.files;
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Hacer funciones globales para los event handlers inline
+    window.removeFile = removeFile;
+    window.setPrimaryImage = setPrimaryImage;
+
+    // Validación del formulario
+    document.getElementById('productForm').addEventListener('submit', function(e) {
+        const name = document.getElementById('name').value.trim();
+        const categoryId = document.getElementById('category_id').value;
+
+        if (!name) {
+            e.preventDefault();
+            alert('El nombre del producto es obligatorio');
+            return;
+        }
+
+        if (!categoryId) {
+            e.preventDefault();
+            alert('Debe seleccionar una categoría');
+            return;
+        }
+
+        // Verificar que no hay archivos demasiado grandes
+        const maxFileSize = 50 * 1024 * 1024; // 50MB
+        const largeFiles = selectedFiles.filter(file => file.size > maxFileSize);
+
+        if (largeFiles.length > 0) {
+            e.preventDefault();
+            alert('Algunos archivos son demasiado grandes (máximo 50MB):\n' +
+                  largeFiles.map(f => `${f.name}: ${(f.size / 1024 / 1024).toFixed(1)}MB`).join('\n'));
+            return;
+        }
+
+        // Cambiar texto del botón durante el envío
+        submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Creando producto...';
+        submitBtn.disabled = true;
+
+        // Mostrar mensaje de espera para archivos grandes
+        const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+        if (totalSize > 10 * 1024 * 1024) { // Más de 10MB total
+            const progressDiv = document.createElement('div');
+            progressDiv.className = 'alert alert-info mt-3';
+            progressDiv.innerHTML = `
+                <i class="bi bi-hourglass-split"></i>
+                Subiendo archivos grandes (${formatFileSize(totalSize)})...
+                Por favor espera, esto puede tomar varios minutos.
+            `;
+            submitBtn.parentNode.appendChild(progressDiv);
+        }
+    });
+
+    // Auto-resize del textarea
+    document.getElementById('description').addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+    });
+});
+</script>
+{% endblock %}

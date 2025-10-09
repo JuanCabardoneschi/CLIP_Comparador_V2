@@ -1,0 +1,363 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ client.name }} - CLIP Comparador V2{% endblock %}
+
+{% block page_title %}{{ client.name }}{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('clients.index') }}">Clientes</a></li>
+        <li class="breadcrumb-item active">{{ client.name }}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group" role="group">
+    <a href="{{ url_for('clients.edit', client_id=client.id) }}" class="btn btn-outline-primary">
+        <i class="bi bi-pencil me-2"></i>
+        Editar
+    </a>
+    <button type="button" class="btn btn-outline-danger" onclick="confirmDelete()">
+        <i class="bi bi-trash me-2"></i>
+        Eliminar
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Información del Cliente -->
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Información del Cliente
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <div class="avatar-lg bg-primary rounded-circle mx-auto d-flex align-items-center justify-content-center mb-2">
+                        <i class="bi bi-building text-white fs-1"></i>
+                    </div>
+                    <h5 class="mb-1">{{ client.name }}</h5>
+                    <p class="text-muted">{{ client.email }}</p>
+                </div>
+
+                {% if client.description %}
+                <div class="mb-3">
+                    <label class="form-label text-muted">Descripción</label>
+                    <p class="text-dark">{{ client.description }}</p>
+                </div>
+                {% endif %}
+
+                <div class="row text-center">
+                    <div class="col-6 mb-2">
+                        <div class="bg-light rounded p-2">
+                            <div class="h5 mb-0 text-primary">{{ api_keys|length }}</div>
+                            <small class="text-muted">API Keys</small>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-2">
+                        <div class="bg-light rounded p-2">
+                            <div class="h5 mb-0 text-success">{{ users|length }}</div>
+                            <small class="text-muted">Usuarios</small>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="text-muted">Registrado</small>
+                    <span class="badge bg-info">{{ client.created_at.strftime('%d/%m/%Y') }}</span>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <small class="text-muted">Estado</small>
+                    <span class="badge bg-success">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Activo
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Keys -->
+    <div class="col-lg-8 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-key me-2"></i>
+                    API Keys ({{ api_keys|length }})
+                </h6>
+                <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#newApiKeyModal">
+                    <i class="bi bi-plus-circle me-1"></i>
+                    Nueva API Key
+                </button>
+            </div>
+            <div class="card-body p-0">
+                {% if api_keys %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Nombre</th>
+                                <th>API Key</th>
+                                <th>Estado</th>
+                                <th>Creada</th>
+                                <th width="100">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for api_key in api_keys %}
+                            <tr>
+                                <td>
+                                    <div class="fw-medium">{{ api_key.name }}</div>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <code class="bg-light p-1 rounded me-2">{{ api_key.key_hash[:20] }}...</code>
+                                        <button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard('{{ api_key.key_hash }}')">
+                                            <i class="bi bi-clipboard"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if api_key.is_active %}
+                                    <span class="badge bg-success">
+                                        <i class="bi bi-check-circle me-1"></i>
+                                        Activa
+                                    </span>
+                                    {% else %}
+                                    <span class="badge bg-danger">
+                                        <i class="bi bi-x-circle me-1"></i>
+                                        Inactiva
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="text-muted">{{ api_key.created_at.strftime('%d/%m/%Y') }}</span>
+                                </td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('clients.toggle_api_key', client_id=client.id, key_id=api_key.id) }}" class="d-inline">
+                                        <button type="submit" class="btn btn-sm btn-outline-{{ 'warning' if api_key.is_active else 'success' }}">
+                                            <i class="bi bi-{{ 'pause' if api_key.is_active else 'play' }}"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="bi bi-key text-muted mb-2" style="font-size: 2rem;"></i>
+                    <p class="text-muted">No hay API keys configuradas</p>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newApiKeyModal">
+                        <i class="bi bi-plus-circle me-1"></i>
+                        Crear Primera API Key
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Usuarios Asociados -->
+{% if users %}
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-people me-2"></i>
+                    Usuarios Asociados ({{ users|length }})
+                </h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Usuario</th>
+                                <th>Email</th>
+                                <th>Rol</th>
+                                <th>Último Acceso</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="avatar-sm bg-secondary rounded-circle me-2 d-flex align-items-center justify-content-center">
+                                            <i class="bi bi-person text-white"></i>
+                                        </div>
+                                        <div class="fw-medium">{{ user.name }}</div>
+                                    </div>
+                                </td>
+                                <td>{{ user.email }}</td>
+                                <td>
+                                    <span class="badge bg-primary">{{ user.role }}</span>
+                                </td>
+                                <td>
+                                    {% if user.last_login %}
+                                    <span class="text-muted">{{ user.last_login.strftime('%d/%m/%Y %H:%M') }}</span>
+                                    {% else %}
+                                    <span class="text-muted">Nunca</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-success">
+                                        <i class="bi bi-check-circle me-1"></i>
+                                        Activo
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Modal para nueva API Key -->
+<div class="modal fade" id="newApiKeyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('clients.create_api_key', client_id=client.id) }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-key me-2"></i>
+                        Nueva API Key
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="keyName" class="form-label">Nombre de la API Key</label>
+                        <input type="text" class="form-control" id="keyName" name="name" required placeholder="Ej: API Key Producción">
+                        <div class="form-text">Nombre descriptivo para identificar esta API key</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-plus-circle me-2"></i>
+                        Crear API Key
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmación de eliminación -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle text-danger me-2"></i>
+                    Confirmar Eliminación
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro de que deseas eliminar el cliente <strong>{{ client.name }}</strong>?</p>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Esta acción eliminará permanentemente:
+                    <ul class="mb-0 mt-2">
+                        <li>Todas las API keys ({{ api_keys|length }})</li>
+                        <li>Todos los usuarios asociados ({{ users|length }})</li>
+                        <li>Todas las categorías y productos</li>
+                        <li>Todas las imágenes y embeddings</li>
+                    </ul>
+                </div>
+                <form id="deleteForm" method="POST" action="{{ url_for('clients.delete', client_id=client.id) }}">
+                    <input type="hidden" name="confirm" value="DELETE">
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" onclick="submitDelete()">
+                    <i class="bi bi-trash me-2"></i>
+                    Eliminar Cliente
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Copiar API Key al portapapeles
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(function() {
+        // Mostrar notificación
+        const toast = document.createElement('div');
+        toast.className = 'toast align-items-center text-white bg-success border-0';
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">
+                    <i class="bi bi-check-circle me-2"></i>
+                    API Key copiada al portapapeles
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        `;
+
+        document.body.appendChild(toast);
+        const bsToast = new bootstrap.Toast(toast);
+        bsToast.show();
+
+        setTimeout(() => {
+            toast.remove();
+        }, 3000);
+    });
+}
+
+// Confirmación de eliminación
+function confirmDelete() {
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    modal.show();
+}
+
+function submitDelete() {
+    document.getElementById('deleteForm').submit();
+}
+</script>
+
+<style>
+.avatar-lg {
+    width: 80px;
+    height: 80px;
+}
+
+.avatar-sm {
+    width: 32px;
+    height: 32px;
+}
+
+.toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1056;
+}
+</style>
+{% endblock %}

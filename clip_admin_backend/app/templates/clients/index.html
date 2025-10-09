@@ -1,0 +1,254 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Clientes - CLIP Comparador V2{% endblock %}
+
+{% block page_title %}Gestión de Clientes{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item active">Clientes</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block page_actions %}
+<a href="{{ url_for('clients.create') }}" class="btn btn-primary">
+    <i class="bi bi-plus-circle me-2"></i>
+    Nuevo Cliente
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm">
+    <div class="card-header bg-white py-3">
+        <div class="row align-items-center">
+            <div class="col">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-building me-2"></i>
+                    Lista de Clientes
+                </h6>
+            </div>
+            <div class="col-auto">
+                <div class="input-group">
+                    <input type="text" class="form-control" placeholder="Buscar clientes..." id="searchClients">
+                    <button class="btn btn-outline-secondary" type="button">
+                        <i class="bi bi-search"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card-body p-0">
+        {% if clients %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Email</th>
+                        <th>Estado</th>
+                        <th>API Keys</th>
+                        <th>Productos</th>
+                        <th>Fecha Registro</th>
+                        <th width="120">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for client in clients %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="avatar-sm bg-primary rounded-circle me-3 d-flex align-items-center justify-content-center">
+                                    <i class="bi bi-building text-white"></i>
+                                </div>
+                                <div>
+                                    <div class="fw-medium">{{ client.name }}</div>
+                                    {% if client.description %}
+                                    <small class="text-muted">{{ client.description[:50] }}{% if client.description|length > 50 %}...{% endif %}</small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="text-muted">{{ client.email }}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-success">
+                                <i class="bi bi-check-circle me-1"></i>
+                                Activo
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">0 keys</span>
+                            <small class="text-muted d-block">(No implementado)</small>
+                        </td>
+                        <td>
+                            {% set total_products = [] %}
+                            {% for category in client.categories %}
+                                {% set _ = total_products.extend(category.products.all()) %}
+                            {% endfor %}
+                            <span class="text-muted">{{ total_products|length }} productos</span>
+                        </td>
+                        <td>
+                            <span class="text-muted">{{ client.created_at.strftime('%d/%m/%Y') }}</span>
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <a href="{{ url_for('clients.view', client_id=client.id) }}"
+                                   class="btn btn-sm btn-outline-primary"
+                                   title="Ver detalles">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <a href="{{ url_for('clients.edit', client_id=client.id) }}"
+                                   class="btn btn-sm btn-outline-secondary"
+                                   title="Editar">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <button class="btn btn-sm btn-outline-danger"
+                                        onclick="confirmDelete('{{ client.id }}', '{{ client.name }}')"
+                                        title="Eliminar">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <div class="mb-3">
+                <i class="bi bi-building text-muted" style="font-size: 3rem;"></i>
+            </div>
+            <h5 class="text-muted">No hay clientes registrados</h5>
+            <p class="text-muted">Comienza creando tu primer cliente</p>
+            <a href="{{ url_for('clients.create') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle me-2"></i>
+                Crear Cliente
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Estadísticas rápidas -->
+{% if clients %}
+<div class="row mt-4">
+    <div class="col-md-3">
+        <div class="card border-0 bg-primary text-white">
+            <div class="card-body text-center">
+                <i class="bi bi-building fs-1 mb-2"></i>
+                <h4>{{ clients|length }}</h4>
+                <small>Clientes Totales</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 bg-success text-white">
+            <div class="card-body text-center">
+                <i class="bi bi-key fs-1 mb-2"></i>
+                <h4>0</h4>
+                <small>API Keys</small>
+                <div class="text-muted small mt-1">(No implementado)</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 bg-info text-white">
+            <div class="card-body text-center">
+                <i class="bi bi-tags fs-1 mb-2"></i>
+                <h4>
+                    {% set total_categories = 0 %}
+                    {% for client in clients %}
+                        {% set total_categories = total_categories + client.categories|length %}
+                    {% endfor %}
+                    {{ total_categories }}
+                </h4>
+                <small>Categorías</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 bg-warning text-white">
+            <div class="card-body text-center">
+                <i class="bi bi-box fs-1 mb-2"></i>
+                <h4>
+                    {% set total_products = 0 %}
+                    {% for client in clients %}
+                        {% for category in client.categories %}
+                            {% set total_products = total_products + category.products.count() %}
+                        {% endfor %}
+                    {% endfor %}
+                    {{ total_products }}
+                </h4>
+                <small>Productos</small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Modal de confirmación de eliminación -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle text-danger me-2"></i>
+                    Confirmar Eliminación
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro de que deseas eliminar el cliente <strong id="clientName"></strong>?</p>
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Esta acción no se puede deshacer. Se eliminarán todos los datos asociados.
+                </div>
+                <form id="deleteForm" method="POST">
+                    <input type="hidden" name="confirm" value="DELETE">
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" onclick="submitDelete()">
+                    <i class="bi bi-trash me-2"></i>
+                    Eliminar Cliente
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Search functionality
+document.getElementById('searchClients').addEventListener('input', function(e) {
+    const query = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('tbody tr');
+
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(query) ? '' : 'none';
+    });
+});
+
+// Delete confirmation
+function confirmDelete(clientId, clientName) {
+    document.getElementById('clientName').textContent = clientName;
+    document.getElementById('deleteForm').action = `/clients/${clientId}/delete`;
+
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    modal.show();
+}
+
+function submitDelete() {
+    document.getElementById('deleteForm').submit();
+}
+</script>
+{% endblock %}

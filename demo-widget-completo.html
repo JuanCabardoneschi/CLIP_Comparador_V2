@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLIP Widget - Demo Completo y Funcional</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #333;
+            margin: 0 0 10px 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        .header .subtitle {
+            color: #666;
+            font-size: 1.2em;
+            margin-bottom: 20px;
+        }
+        .status-badge {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        .api-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            border-left: 4px solid #007bff;
+        }
+        .api-section h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .api-key-display {
+            background: #2d3748;
+            color: #68d391;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            word-break: break-all;
+            margin: 10px 0;
+            position: relative;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .copy-btn:hover {
+            background: #0056b3;
+        }
+        .demo-section {
+            background: #fff;
+            border: 2px dashed #007bff;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .demo-title {
+            color: #007bff;
+            margin: 0 0 20px 0;
+            font-size: 1.4em;
+        }
+        .instructions {
+            background: #e8f4fd;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .instructions h4 {
+            margin: 0 0 15px 0;
+            color: #0056b3;
+        }
+        .instructions ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin-bottom: 8px;
+            color: #333;
+        }
+        .embed-code {
+            background: #2d3748;
+            color: #68d391;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            white-space: pre;
+            margin-top: 20px;
+            position: relative;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            border-left: 4px solid #28a745;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #28a745;
+            margin: 0;
+        }
+        .stat-label {
+            color: #666;
+            margin: 5px 0 0 0;
+            font-size: 0.9em;
+        }
+        .footer-note {
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔍 CLIP Visual Search</h1>
+            <p class="subtitle">Demo Completo y Funcional</p>
+            <span class="status-badge">✅ Servidor Activo - Puerto 5000</span>
+        </div>
+
+        <!-- Estadísticas del Sistema -->
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalProducts">53</div>
+                <div class="stat-label">Productos en Catálogo</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="processedImages">51</div>
+                <div class="stat-label">Imágenes Procesadas</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">CLIP ViT-B/16</div>
+                <div class="stat-label">Modelo de IA</div>
+            </div>
+        </div>
+
+        <!-- Configuración API -->
+        <div class="api-section">
+            <h3>🔑 Configuración de API</h3>
+            <p><strong>Cliente:</strong> Demo Fashion Store</p>
+            <p><strong>API Key (Header X-API-Key):</strong></p>
+            <div class="api-key-display">
+                clip_57be07ce9443446c97bb29c9
+                <button class="copy-btn" onclick="copyApiKey()">Copiar</button>
+            </div>
+            <small style="color: #666;">
+                💡 Esta API Key está preconfigurada en el demo. En producción, cada cliente obtiene su propia clave.
+            </small>
+        </div>
+
+        <!-- Instrucciones -->
+        <div class="instructions">
+            <h4>📋 Cómo probar el widget:</h4>
+            <ol>
+                <li>Arrastra una imagen al área de búsqueda o haz clic para seleccionar</li>
+                <li>El widget procesará la imagen con inteligencia artificial CLIP</li>
+                <li>Verás productos similares del catálogo "Demo Fashion Store"</li>
+                <li>Los resultados muestran porcentaje de similitud y detalles del producto</li>
+            </ol>
+        </div>
+
+        <!-- Widget Demo -->
+        <div class="demo-section">
+            <h3 class="demo-title">🎯 Widget en Funcionamiento</h3>
+            <div id="clip-search-widget"></div>
+        </div>
+
+        <!-- Código para Embeber -->
+        <div class="api-section">
+            <h3>📋 Código para Embeber en tu Sitio Web</h3>
+            <p>Copia este código en tu página HTML:</p>
+            <div class="embed-code">&lt;!-- CLIP Visual Search Widget --&gt;
+&lt;div id="clip-search-widget"&gt;&lt;/div&gt;
+&lt;script&gt;
+window.CLIPConfig = {
+    apiKey: 'clip_57be07ce9443446c97bb29c9',
+    serverUrl: 'http://localhost:5000',
+    containerId: 'clip-search-widget',
+    maxResults: 5,
+    threshold: 0.7,
+    showSimilarity: true,
+    buttonText: 'Buscar Productos Similares'
+};
+&lt;/script&gt;
+&lt;script src="http://localhost:5000/static/js/clip-widget.min.js"&gt;&lt;/script&gt;<button class="copy-btn" onclick="copyEmbedCode()">Copiar Código</button></div>
+        </div>
+
+        <div class="footer-note">
+            <p>🚀 <strong>CLIP Comparador V2</strong> - Sistema de búsqueda visual con inteligencia artificial</p>
+            <p>Servidor: http://localhost:5000 | API Endpoint: /api/search</p>
+        </div>
+    </div>
+
+    <script>
+        // Configuración del widget con API Key real
+        window.CLIPConfig = {
+            apiKey: 'clip_57be07ce9443446c97bb29c9',
+            serverUrl: 'http://localhost:5000',
+            containerId: 'clip-search-widget',
+            maxResults: 5,
+            threshold: 0.7,
+            showSimilarity: true,
+            buttonText: 'Buscar Productos Similares',
+            placeholder: 'Arrastra una imagen aquí para buscar productos similares en el catálogo Demo Fashion Store'
+        };
+
+        // Función para copiar API Key
+        function copyApiKey() {
+            const apiKey = 'clip_57be07ce9443446c97bb29c9';
+            navigator.clipboard.writeText(apiKey).then(function() {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Copiado';
+                btn.style.background = '#28a745';
+                setTimeout(function() {
+                    btn.textContent = originalText;
+                    btn.style.background = '#007bff';
+                }, 2000);
+            });
+        }
+
+        // Función para copiar código de embebido
+        function copyEmbedCode() {
+            const code = '<!-- CLIP Visual Search Widget -->\n<div id="clip-search-widget"></div>\n<script>\nwindow.CLIPConfig = {\n    apiKey: \'clip_57be07ce9443446c97bb29c9\',\n    serverUrl: \'http://localhost:5000\',\n    containerId: \'clip-search-widget\',\n    maxResults: 5,\n    threshold: 0.7,\n    showSimilarity: true,\n    buttonText: \'Buscar Productos Similares\'\n};\n</script>\n<script src="http://localhost:5000/static/js/clip-widget.min.js"></script>';
+
+            navigator.clipboard.writeText(code).then(function() {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Copiado';
+                btn.style.background = '#28a745';
+                setTimeout(function() {
+                    btn.textContent = originalText;
+                    btn.style.background = '#007bff';
+                }, 2000);
+            });
+        }
+
+        // Verificar estado del servidor
+        fetch('http://localhost:5000/api/stats/dashboard')
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                if (data.totals) {
+                    document.getElementById('totalProducts').textContent = data.totals.products || 53;
+                    document.getElementById('processedImages').textContent = data.totals.images || 51;
+                }
+            })
+            .catch(function(error) {
+                console.log('Usando datos predeterminados');
+            });
+    </script>
+
+    <!-- Cargar el widget -->
+    <script src="http://localhost:5000/static/js/clip-widget.min.js"></script>
+</body>
+</html>

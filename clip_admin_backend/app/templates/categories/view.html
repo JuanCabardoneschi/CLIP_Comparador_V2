@@ -1,0 +1,291 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ category.name }} - CLIP Comparador V2{% endblock %}
+
+{% block page_title %}{{ category.name }}{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('categories.index') }}">Categorías</a></li>
+        <li class="breadcrumb-item active">{{ category.name }}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block page_actions %}
+<a href="{{ url_for('categories.index') }}" class="btn btn-secondary">
+    <i class="bi bi-arrow-left me-2"></i>
+    Volver a Categorías
+</a>
+<a href="#" class="btn btn-primary disabled">
+    <i class="bi bi-pencil me-2"></i>
+    Editar
+    <small class="d-block">Próximamente</small>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Información Principal -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="bi bi-tag me-2"></i>
+                        Información de la Categoría
+                    </h6>
+                    <div class="d-flex align-items-center">
+                        <div class="me-3" style="width: 20px; height: 20px; background-color: {{ category.color }}; border-radius: 50%;"></div>
+                        {% if category.is_active %}
+                            <span class="badge bg-success">
+                                <i class="bi bi-check-circle me-1"></i>Activa
+                            </span>
+                        {% else %}
+                            <span class="badge bg-secondary">
+                                <i class="bi bi-pause-circle me-1"></i>Inactiva
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2">Nombre (Español)</h6>
+                        <p class="mb-3">{{ category.name }}</p>
+
+                        <h6 class="text-muted mb-2">Nombre (Inglés - CLIP)</h6>
+                        <p class="mb-3">
+                            <code>{{ category.name_en }}</code>
+                        </p>
+
+                        {% if category.alternative_terms %}
+                        <h6 class="text-muted mb-2">Términos Alternativos</h6>
+                        <p class="mb-3">
+                            {% for term in category.alternative_terms.split(',') %}
+                                <span class="badge bg-light text-dark me-1">{{ term.strip() }}</span>
+                            {% endfor %}
+                        </p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2">Descripción</h6>
+                        <p class="mb-3">{{ category.description or 'Sin descripción' }}</p>
+
+                        <h6 class="text-muted mb-2">Color Identificativo</h6>
+                        <div class="d-flex align-items-center mb-3">
+                            <div style="width: 30px; height: 30px; background-color: {{ category.color }}; border: 1px solid #ddd; border-radius: 4px;" class="me-2"></div>
+                            <code>{{ category.color }}</code>
+                        </div>
+
+                        <h6 class="text-muted mb-2">Fechas</h6>
+                        <small class="text-muted">
+                            <strong>Creada:</strong> {{ category.created_at.strftime('%d/%m/%Y %H:%M') if category.created_at }}<br>
+                            <strong>Actualizada:</strong> {{ category.updated_at.strftime('%d/%m/%Y %H:%M') if category.updated_at }}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuración CLIP -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light py-3">
+                <h6 class="m-0 font-weight-bold text-success">
+                    <i class="bi bi-eye me-2"></i>
+                    Configuración de Búsqueda Visual (CLIP)
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2">Prompt CLIP Generado</h6>
+                        <div class="bg-light p-3 rounded mb-3">
+                            <code>{{ category.clip_prompt or 'No generado' }}</code>
+                        </div>
+
+                        <h6 class="text-muted mb-2">Características Visuales</h6>
+                        <p class="mb-3">{{ category.visual_features or 'No especificadas' }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-2">Umbral de Confianza</h6>
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="progress flex-grow-1 me-3" style="height: 25px;">
+                                <div class="progress-bar bg-primary"
+                                     role="progressbar"
+                                     style="width: {{ (category.confidence_threshold * 100) | round }}%"
+                                     aria-valuenow="{{ (category.confidence_threshold * 100) | round }}"
+                                     aria-valuemin="0"
+                                     aria-valuemax="100">
+                                    {{ (category.confidence_threshold * 100) | round }}%
+                                </div>
+                            </div>
+                            <span class="badge bg-primary">{{ category.confidence_threshold }}</span>
+                        </div>
+
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Nivel mínimo de similaridad para considerar una coincidencia válida
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Productos de esta Categoría -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="bi bi-box me-2"></i>
+                        Productos de esta Categoría
+                    </h6>
+                    <span class="badge bg-info">{{ products|length }} productos</span>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if products|length > 0 %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Estado</th>
+                                    <th>Imágenes</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for product in products %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="me-3">
+                                                <div class="bg-light rounded d-flex justify-content-center align-items-center"
+                                                     style="width: 40px; height: 40px;">
+                                                    <i class="bi bi-image text-muted"></i>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <h6 class="mb-0">{{ product.name if product.name else 'Producto sin nombre' }}</h6>
+                                                <small class="text-muted">{{ product.description[:50] if product.description else 'Sin descripción' }}...</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        {% if product.is_active %}
+                                            <span class="badge bg-success">Activo</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Inactivo</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">0</span>
+                                    </td>
+                                    <td>
+                                        <a href="#" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-box display-1 text-muted"></i>
+                        <h5 class="text-muted mt-3">No hay productos en esta categoría</h5>
+                        <p class="text-muted">Comienza agregando productos a esta categoría para organizar tu catálogo.</p>
+                        <a href="#" class="btn btn-primary disabled">
+                            <i class="bi bi-plus-circle me-2"></i>
+                            Agregar Primer Producto
+                            <small class="d-block text-muted">Disponible próximamente</small>
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Estadísticas Rápidas -->
+        <div class="card bg-gradient-primary text-white shadow mb-4">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-white-50 text-uppercase mb-1">
+                            Productos
+                        </div>
+                        <div class="h5 mb-0 font-weight-bold text-white">{{ products|length }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-box display-4 text-white-25"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Acciones Rápidas -->
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-lightning me-2"></i>
+                    Acciones Rápidas
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    <a href="#" class="list-group-item list-group-item-action disabled">
+                        <i class="bi bi-pencil me-2"></i>
+                        Editar Categoría
+                        <small class="text-muted">Próximamente</small>
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action disabled">
+                        <i class="bi bi-plus-circle me-2"></i>
+                        Agregar Producto
+                        <small class="text-muted">Próximamente</small>
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action">
+                        <i class="bi bi-upload me-2"></i>
+                        Subir Imágenes
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action">
+                        <i class="bi bi-search me-2"></i>
+                        Probar Búsqueda CLIP
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Información CLIP -->
+        <div class="card bg-light border-0 mt-4">
+            <div class="card-header bg-transparent">
+                <h6 class="m-0 text-primary">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Acerca de CLIP
+                </h6>
+            </div>
+            <div class="card-body">
+                <p class="text-sm text-muted">
+                    CLIP (Contrastive Language-Image Pre-training) permite buscar productos usando
+                    descripciones en lenguaje natural o imágenes similares.
+                </p>
+                <h6 class="text-success">
+                    <i class="bi bi-check-circle me-1"></i>
+                    Optimizaciones:
+                </h6>
+                <ul class="text-sm text-muted">
+                    <li>Traducción automática al inglés</li>
+                    <li>Términos alternativos para mayor precisión</li>
+                    <li>Características visuales específicas</li>
+                    <li>Umbral de confianza ajustable</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

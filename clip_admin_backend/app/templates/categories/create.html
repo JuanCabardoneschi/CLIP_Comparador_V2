@@ -1,0 +1,453 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Nueva Categoría{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-0">Nueva Categoría</h1>
+        <p class="text-muted">
+            Crea una nueva categoría para:
+            <strong class="text-primary">
+                <i class="bi bi-building me-1"></i>
+                {{ current_user.client.name if current_user.client else 'Cliente no asignado' }}
+            </strong>
+        </p>
+    </div>
+    <a href="{{ url_for('categories.index') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-2"></i>
+        Volver a Categorías
+    </a>
+</div>
+
+<!-- Información del cliente -->
+<div class="alert alert-primary mb-4">
+    <div class="d-flex align-items-center">
+        <div class="me-3">
+            <i class="bi bi-building fs-4"></i>
+        </div>
+        <div>
+            <div class="fw-medium">Cliente: {{ current_user.client.name if current_user.client else 'No asignado' }}</div>
+            <div class="small">
+                Esta categoría será creada exclusivamente para este cliente y solo será visible en su catálogo.
+                {% if current_user.client %}
+                <br><span class="text-muted">ID del cliente: {{ current_user.client.id[:8] }}...</span>
+                {% endif %}
+            </div>
+        </div>
+        {% if current_user.client %}
+        <div class="ms-auto">
+            <span class="badge bg-success">
+                <i class="bi bi-check-circle me-1"></i>
+                Cliente Asignado
+            </span>
+        </div>
+        {% else %}
+        <div class="ms-auto">
+            <span class="badge bg-warning">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                Sin Cliente
+            </span>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Información de la Categoría</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="categoryForm">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label for="name" class="form-label">
+                                    Nombre de la Categoría <span class="text-danger">*</span>
+                                </label>
+                                <input type="text"
+                                       class="form-control"
+                                       id="name"
+                                       name="name"
+                                       required
+                                       placeholder="Ej: Camisetas, Pantalones, Zapatos..."
+                                       maxlength="100">
+                                <div class="form-text">Nombre descriptivo para la categoría (máximo 100 caracteres)</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="name_en" class="form-label">
+                                    <i class="bi bi-translate me-1"></i>
+                                    Nombre en Inglés (para CLIP) <span class="text-danger">*</span>
+                                </label>
+                                <input type="text"
+                                       class="form-control"
+                                       id="name_en"
+                                       name="name_en"
+                                       required
+                                       placeholder="Se completará automáticamente con la traducción..."
+                                       maxlength="100">
+                                <div class="form-text">
+                                    <i class="bi bi-info-circle me-1"></i>
+                                    Se traduce automáticamente, pero puedes editarlo para mayor precisión
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="alternative_terms" class="form-label">
+                                    <i class="bi bi-tags me-1"></i>
+                                    Términos Alternativos
+                                </label>
+                                <input type="text"
+                                       class="form-control"
+                                       id="alternative_terms"
+                                       name="alternative_terms"
+                                       placeholder="Ej: shirt, t-shirt, blouse, top (separados por coma)"
+                                       maxlength="200">
+                                <div class="form-text">
+                                    Sinónimos y variaciones en inglés para mejorar la precisión de CLIP (separados por comas)
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="color" class="form-label">Color Identificativo</label>
+                                <div class="d-flex align-items-center">
+                                    <input type="color"
+                                           class="form-control form-control-color me-2"
+                                           id="color"
+                                           name="color"
+                                           value="#007bff"
+                                           style="width: 50px; height: 38px;">
+                                    <input type="text"
+                                           class="form-control"
+                                           id="colorHex"
+                                           value="#007bff"
+                                           placeholder="#007bff"
+                                           pattern="^#[0-9A-Fa-f]{6}$">
+                                </div>
+                                <div class="form-text">Color para identificar visualmente la categoría</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Descripción</label>
+                        <textarea class="form-control"
+                                  id="description"
+                                  name="description"
+                                  rows="3"
+                                  placeholder="Descripción opcional de la categoría..."
+                                  maxlength="500"></textarea>
+                        <div class="form-text">
+                            Descripción opcional para proporcionar más detalles sobre la categoría (máximo 500 caracteres)
+                        </div>
+                    </div>
+
+                    <!-- Configuración CLIP -->
+                    <div class="card mb-3">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0">
+                                <i class="bi bi-eye me-2"></i>
+                                Configuración de Búsqueda Visual (CLIP)
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info small mb-3">
+                                <i class="bi bi-globe me-2"></i>
+                                <strong>Optimización CLIP:</strong>
+                                <ul class="mb-1">
+                                    <li><strong>Traducción automática:</strong> Se traduce el español al inglés usando el contexto de la industria</li>
+                                    <li><strong>Términos alternativos:</strong> Agrega sinónimos para mejorar las búsquedas</li>
+                                    <li><strong>Características visuales:</strong> Especifica elementos que CLIP debe identificar</li>
+                                </ul>
+                                <small class="text-muted">Ej: "delantal" → "apron" + términos: "kitchen apron, chef apron"</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="visual_features" class="form-label">
+                                    Características Visuales <span class="text-muted">(Opcional)</span>
+                                </label>
+                                <input type="text"
+                                       class="form-control"
+                                       id="visual_features"
+                                       name="visual_features"
+                                       placeholder="Ej: collar, mangas, botones, tejido..."
+                                       maxlength="200">
+                                <div class="form-text">
+                                    Especifica qué elementos visuales debe buscar CLIP en las imágenes de esta categoría
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="confidence_threshold" class="form-label">
+                                    Umbral de Confianza
+                                </label>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <input type="range"
+                                               class="form-range"
+                                               id="confidence_threshold"
+                                               name="confidence_threshold"
+                                               min="0.5"
+                                               max="1.0"
+                                               step="0.05"
+                                               value="0.75"
+                                               oninput="document.getElementById('thresholdValue').textContent = this.value">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <span class="badge bg-primary">
+                                            <span id="thresholdValue">0.75</span>
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="form-text">
+                                    Nivel mínimo de similaridad para considerar una coincidencia válida (0.5 = permisivo, 1.0 = estricto)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input"
+                                   type="checkbox"
+                                   id="is_active"
+                                   name="is_active"
+                                   checked>
+                            <label class="form-check-label" for="is_active">
+                                <strong>Categoría activa</strong>
+                            </label>
+                            <div class="form-text">
+                                Las categorías activas aparecen disponibles para asignar a productos
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('categories.index') }}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle me-2"></i>
+                            Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle me-2"></i>
+                            Crear Categoría
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <!-- Vista previa -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="bi bi-eye me-2"></i>
+                    Vista Previa
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-3" id="preview">
+                    <div class="color-indicator me-3"
+                         id="previewColor"
+                         style="width: 30px; height: 30px; border-radius: 50%; background-color: #007bff;"></div>
+                    <div>
+                        <div class="fw-medium" id="previewName">Nombre de la categoría</div>
+                        <div class="text-muted small" id="previewDescription">Descripción de la categoría</div>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <span class="badge bg-success" id="previewStatus">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Activa
+                    </span>
+                </div>
+                <div class="text-muted small">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Así se verá la categoría en el listado
+                </div>
+            </div>
+        </div>
+
+        <!-- Consejos -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="bi bi-lightbulb me-2"></i>
+                    Consejos
+                </h6>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2">
+                        <i class="bi bi-check text-success me-2"></i>
+                        Usa nombres descriptivos y claros
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-check text-success me-2"></i>
+                        Elige colores distintivos para cada categoría
+                    </li>
+                    <li class="mb-2">
+                        <i class="bi bi-check text-success me-2"></i>
+                        Agrupa productos similares en la misma categoría
+                    </li>
+                    <li class="mb-0">
+                        <i class="bi bi-check text-success me-2"></i>
+                        Puedes desactivar categorías temporalmente
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+console.log('🚀 Script de categorías cargado');
+
+// Función de traducción automática
+let translationTimeout;
+function autoTranslate() {
+    const spanishName = document.getElementById('name').value.trim();
+    const englishField = document.getElementById('name_en');
+
+    if (!spanishName) {
+        englishField.value = '';
+        englishField.placeholder = 'Se completará automáticamente con la traducción...';
+        return;
+    }
+
+    // Debounce para evitar demasiadas llamadas
+    clearTimeout(translationTimeout);
+    translationTimeout = setTimeout(() => {
+        // Mostrar indicador de carga
+        englishField.placeholder = 'Traduciendo...';
+        englishField.disabled = true;
+
+        // Hacer llamada AJAX al backend para traducir
+        fetch('/api/translate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                text: spanishName,
+                target_language: 'en'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                englishField.value = data.translated_text;
+                englishField.placeholder = 'Puedes editar la traducción automática...';
+            } else {
+                englishField.placeholder = 'Error en traducción - ingresa manualmente';
+                console.error('Error en traducción:', data.error);
+            }
+            englishField.disabled = false;
+        })
+        .catch(error => {
+            console.error('Error en traducción:', error);
+            englishField.placeholder = 'Error en traducción - ingresa manualmente';
+            englishField.disabled = false;
+        });
+
+    }, 1000);
+}
+
+// Sincronizar selector de color con input de texto
+document.getElementById('color').addEventListener('input', function() {
+    document.getElementById('colorHex').value = this.value;
+    updatePreview();
+});
+
+document.getElementById('colorHex').addEventListener('input', function() {
+    const color = this.value;
+    if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
+        document.getElementById('color').value = color;
+        updatePreview();
+    }
+});
+
+// Inicializar cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', function() {
+    // Agregar event listeners para traducción automática
+    const nameField = document.getElementById('name');
+    const nameEnField = document.getElementById('name_en');
+
+    if (nameField) {
+        nameField.addEventListener('input', autoTranslate);
+        nameField.addEventListener('blur', autoTranslate);
+        nameField.addEventListener('input', updatePreview);
+    }
+
+    // Otros event listeners
+    const descField = document.getElementById('description');
+    const activeField = document.getElementById('is_active');
+
+    if (descField) descField.addEventListener('input', updatePreview);
+    if (activeField) activeField.addEventListener('change', updatePreview);
+});
+
+// También agregar event listeners de forma tradicional como backup
+// Agregar event listeners para traducción automática
+if (document.getElementById('name')) {
+    document.getElementById('name').addEventListener('input', autoTranslate);
+    document.getElementById('name').addEventListener('blur', autoTranslate);
+}
+
+// Actualizar vista previa en tiempo real
+if (document.getElementById('name')) document.getElementById('name').addEventListener('input', updatePreview);
+if (document.getElementById('description')) document.getElementById('description').addEventListener('input', updatePreview);
+if (document.getElementById('is_active')) document.getElementById('is_active').addEventListener('change', updatePreview);
+
+function updatePreview() {
+    const name = document.getElementById('name').value || 'Nombre de la categoría';
+    const description = document.getElementById('description').value || 'Descripción de la categoría';
+    const color = document.getElementById('color').value;
+    const isActive = document.getElementById('is_active').checked;
+
+    document.getElementById('previewName').textContent = name;
+    document.getElementById('previewDescription').textContent = description;
+    document.getElementById('previewColor').style.backgroundColor = color;
+
+    const statusBadge = document.getElementById('previewStatus');
+    if (isActive) {
+        statusBadge.className = 'badge bg-success';
+        statusBadge.innerHTML = '<i class="bi bi-check-circle me-1"></i>Activa';
+    } else {
+        statusBadge.className = 'badge bg-secondary';
+        statusBadge.innerHTML = '<i class="bi bi-pause-circle me-1"></i>Inactiva';
+    }
+}
+
+// Validación del formulario
+document.getElementById('categoryForm').addEventListener('submit', function(e) {
+    const name = document.getElementById('name').value.trim();
+    const colorHex = document.getElementById('colorHex').value;
+
+    if (!name) {
+        e.preventDefault();
+        alert('El nombre de la categoría es obligatorio');
+        document.getElementById('name').focus();
+        return;
+    }
+
+    if (!/^#[0-9A-Fa-f]{6}$/.test(colorHex)) {
+        e.preventDefault();
+        alert('El color debe tener un formato válido (ej: #007bff)');
+        document.getElementById('colorHex').focus();
+        return;
+    }
+});
+
+// Inicializar vista previa
+updatePreview();
+</script>
+{% endblock %}

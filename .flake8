@@ -1,0 +1,47 @@
+[flake8]
+# Desactivar Flake8 para el proyecto CLIP Comparador V2
+# Se enfoca en funcionalidad, no en reglas de estilo estrictas
+
+ignore =
+    # Imports no utilizados (necesarios para SQLAlchemy)
+    F401,
+    # Imports a nivel de módulo no al inicio
+    E402,
+    # Línea demasiado larga
+    E501,
+    # Espacios en blanco al final
+    W291,
+    # Línea vacía al final del archivo
+    W292,
+    # Múltiples imports en una línea
+    E401,
+    # Espacio antes de ':'
+    E203,
+    # Línea vacía después de decorador
+    E302,
+    # Demasiadas líneas vacías
+    E303,
+    # Línea en blanco al final del archivo
+    W391,
+    # Indentación
+    E111, E114, E117,
+    # Espacios alrededor de operadores
+    E225, E226, E227, E228,
+    # Comparaciones
+    E711, E712, E713, E714,
+    # Nomenclatura
+    N801, N802, N803, N806, N812, N815, N816
+
+max-line-length = 120
+max-complexity = 15
+
+# Excluir directorios
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    .pytest_cache,
+    migrations,
+    node_modules,
+    .env

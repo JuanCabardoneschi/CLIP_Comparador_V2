@@ -1,0 +1,317 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Productos{% endblock %}
+
+{% block extra_css %}
+<style>
+.product-card {
+    transition: transform 0.2s;
+    height: 100%;
+}
+
+.product-card:hover {
+    transform: translateY(-2px);
+}
+
+.product-image {
+    height: 200px;
+    object-fit: cover;
+    background-color: #f8f9fa;
+}
+
+.product-placeholder {
+    height: 200px;
+    background-color: #e9ecef;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #6c757d;
+}
+
+.badge-status {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+
+.search-bar {
+    margin-bottom: 20px;
+}
+
+.filter-bar {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.stats-cards {
+    margin-bottom: 20px;
+}
+
+.stat-card {
+    text-align: center;
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 10px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="bi bi-box-seam"></i> Productos</h2>
+            <p class="text-muted mb-0">Gestión de productos del catálogo</p>
+        </div>
+        <a href="{{ url_for('products.create') }}" class="btn btn-primary">
+            <i class="bi bi-plus-circle"></i> Nuevo Producto
+        </a>
+    </div>
+
+    <!-- Estadísticas rápidas -->
+    <div class="row stats-cards">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h3>{{ total_products or products.total }}</h3>
+                <p class="mb-0">Total de Productos</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h3>{{ total_categories or categories|length }}</h3>
+                <p class="mb-0">Categorías</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h3>{{ total_images or (products.items | sum(attribute='image_count')) }}</h3>
+                <p class="mb-0">Total Imágenes</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <h3>0</h3>
+                <p class="mb-0">Pendientes</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros y búsqueda -->
+    <div class="filter-bar">
+        <form method="GET" class="row g-3">
+            <div class="col-md-4">
+                <label for="search" class="form-label">Buscar productos</label>
+                <input type="text"
+                       class="form-control"
+                       id="search"
+                       name="search"
+                       value="{{ search }}"
+                       placeholder="Nombre, descripción, SKU o tags...">
+            </div>
+            <div class="col-md-3">
+                <label for="category_id" class="form-label">Categoría</label>
+                <select class="form-select" id="category_id" name="category_id">
+                    <option value="">Todas las categorías</option>
+                    {% for category in categories %}
+                        <option value="{{ category.id }}"
+                                {% if current_category == category.id %}selected{% endif %}>
+                            {{ category.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">&nbsp;</label>
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-outline-primary">
+                        <i class="bi bi-search"></i>
+                    </button>
+                    <a href="{{ url_for('products.index') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-x-circle"></i>
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Lista de productos -->
+    {% if products.items %}
+        <div class="row">
+            {% for product in products.items %}
+            <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                <div class="card product-card h-100">
+                    <div class="position-relative">
+                        {% if product.primary_image %}
+                            <img src="{{ product.primary_image.thumbnail_url }}"
+                                 class="card-img-top product-image"
+                                 alt="{{ product.name }}">
+                        {% else %}
+                            <div class="product-placeholder">
+                                <i class="bi bi-image text-muted" style="font-size: 3rem;"></i>
+                            </div>
+                        {% endif %}
+
+                        {% if not product.is_active %}
+                            <span class="badge bg-secondary badge-status">Inactivo</span>
+                        {% elif product.image_count == 0 %}
+                            <span class="badge bg-warning badge-status">Sin imágenes</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="card-body d-flex flex-column">
+                        <h6 class="card-title">{{ product.name }}</h6>
+
+                        <p class="text-muted small mb-2">
+                            <i class="bi bi-tag"></i> {{ product.category.name if product.category else 'Sin categoría' }}
+                        </p>
+
+                        {% if product.description %}
+                            <p class="card-text small text-muted">
+                                {{ product.description[:80] }}{% if product.description|length > 80 %}...{% endif %}
+                            </p>
+                        {% endif %}
+
+                        <div class="mt-auto">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                {% if product.price %}
+                                    <span class="fw-bold text-success">${{ "%.2f"|format(product.price) }}</span>
+                                {% else %}
+                                    <span class="text-muted">Sin precio</span>
+                                {% endif %}
+
+                                <small class="text-muted">
+                                    <i class="bi bi-images"></i> {{ product.image_count }}
+                                </small>
+                            </div>
+
+                            {% if product.sku %}
+                                <small class="text-muted d-block mb-2">SKU: {{ product.sku }}</small>
+                            {% endif %}
+
+                            <div class="btn-group w-100">
+                                <a href="{{ url_for('products.view', product_id=product.id) }}"
+                                   class="btn btn-outline-primary btn-sm">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <a href="{{ url_for('products.edit', product_id=product.id) }}"
+                                   class="btn btn-outline-secondary btn-sm">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <button class="btn btn-outline-danger btn-sm"
+                                        onclick="confirmDelete('{{ product.id }}', '{{ product.name }}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Paginación -->
+        {% if products.pages > 1 %}
+        <nav aria-label="Paginación de productos">
+            <ul class="pagination justify-content-center">
+                {% if products.has_prev %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('products.index', page=products.prev_num, search=search, category_id=current_category) }}">
+                            Anterior
+                        </a>
+                    </li>
+                {% endif %}
+
+                {% for page_num in products.iter_pages() %}
+                    {% if page_num %}
+                        {% if page_num != products.page %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('products.index', page=page_num, search=search, category_id=current_category) }}">
+                                    {{ page_num }}
+                                </a>
+                            </li>
+                        {% else %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ page_num }}</span>
+                            </li>
+                        {% endif %}
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">…</span>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if products.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('products.index', page=products.next_num, search=search, category_id=current_category) }}">
+                            Siguiente
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+
+    {% else %}
+        <!-- Sin productos -->
+        <div class="text-center py-5">
+            <i class="bi bi-box-seam text-muted" style="font-size: 4rem;"></i>
+            <h4 class="text-muted mt-3">No hay productos</h4>
+            {% if search or current_category %}
+                <p class="text-muted">No se encontraron productos con los filtros aplicados.</p>
+                <a href="{{ url_for('products.index') }}" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left"></i> Ver todos los productos
+                </a>
+            {% else %}
+                <p class="text-muted">Comienza creando tu primer producto.</p>
+                <a href="{{ url_for('products.create') }}" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> Crear Primer Producto
+                </a>
+            {% endif %}
+        </div>
+    {% endif %}
+</div>
+
+<!-- Modal de confirmación para eliminar -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirmar eliminación</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro de que deseas eliminar el producto <strong id="productName"></strong>?</p>
+                <p class="text-danger small">Esta acción también eliminará todas las imágenes asociadas y no se puede deshacer.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="deleteForm" method="POST" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">Eliminar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function confirmDelete(productId, productName) {
+    document.getElementById('productName').textContent = productName;
+    document.getElementById('deleteForm').action = `/products/${productId}/delete`;
+
+    const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    modal.show();
+}
+
+// Auto-submit del formulario de búsqueda cuando cambie la categoría
+document.getElementById('category_id').addEventListener('change', function() {
+    this.form.submit();
+});
+</script>
+{% endblock %}

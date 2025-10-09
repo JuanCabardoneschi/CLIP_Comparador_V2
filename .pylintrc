@@ -1,0 +1,15 @@
+[MASTER]
+# Desactivar Pylint para el proyecto
+disable=all
+
+# O si quieres mantenerlo pero más relajado:
+# disable=
+#     missing-docstring,
+#     line-too-long,
+#     too-few-public-methods,
+#     too-many-arguments,
+#     import-error,
+#     no-member,
+#     unused-import,
+#     wrong-import-position,
+#     wrong-import-order
