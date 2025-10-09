@@ -487,16 +487,13 @@ def process_pending():
                     client = Client.query.get(current_user.client_id)
                     client_folder_name = client.name.replace(' ', '_').lower()
 
-                    # Buscar archivo en ambas ubicaciones posibles
+                    # Usar la ubicación correcta de las imágenes
                     base_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-                    image_path_1 = os.path.join(base_path, 'static', 'uploads', 'clients', client_folder_name, image.filename)
-                    image_path_2 = os.path.join(base_path, 'app', 'static', 'uploads', 'clients', client_folder_name, image.filename)
+                    image_path = os.path.join(base_path, 'static', 'uploads', 'clients', client_folder_name, image.filename)
 
-                    image_path = None
-                    if os.path.exists(image_path_1):
-                        image_path = image_path_1
-                    elif os.path.exists(image_path_2):
-                        image_path = image_path_2
+                    if not os.path.exists(image_path):
+                        print(f"❌ Imagen no encontrada: {image_path}")
+                        continue
 
                     if not image_path:
                         raise FileNotFoundError(f"Imagen no encontrada: {image.filename}")

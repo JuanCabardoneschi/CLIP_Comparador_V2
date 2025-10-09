@@ -538,6 +538,210 @@ def calculate_similarity(embedding1, embedding2):
     return float(similarity)
 
 
+def _validate_visual_search_request():
+    """Valida los parámetros de la búsqueda visual"""
+    # Verificar API Key
+    client, error = verify_api_key()
+    if error:
+        return None, jsonify({
+            "error": "unauthorized",
+            "message": error
+        }), 401
+
+    # Verificar imagen
+    if 'image' not in request.files:
+        return None, jsonify({
+            "error": "bad_request",
+            "message": "Imagen requerida en form-data 'image'"
+        }), 400
+
+    image_file = request.files['image']
+    if image_file.filename == '':
+        return None, jsonify({
+            "error": "bad_request",
+            "message": "No se seleccionó archivo"
+        }), 400
+
+    return client, image_file, None
+
+
+def _process_image_data(image_file):
+    """Procesa y valida los datos de la imagen"""
+    # Parámetros
+    limit = min(int(request.form.get('limit', 3)), 10)
+    threshold = float(request.form.get('threshold', 0.1))
+
+    # Leer imagen
+    image_data = image_file.read()
+
+    # Validar tamaño (15MB máximo)
+    if len(image_data) > 15 * 1024 * 1024:
+        return None, None, None, jsonify({
+            "error": "file_too_large",
+            "message": "Imagen muy grande. Máximo 15MB"
+        }), 400
+
+    return image_data, limit, threshold, None, None
+
+
+def _generate_query_embedding(image_data):
+    """Genera el embedding de la imagen de consulta"""
+    print(f"📷 DEBUG: Procesando imagen de {len(image_data)} bytes")
+    query_embedding, error = process_image_for_search(image_data)
+    if error:
+        print(f"❌ DEBUG: Error en procesamiento: {error}")
+        return None, jsonify({
+            "error": "processing_failed",
+            "message": error
+        }), 500
+
+    if query_embedding is None:
+        print("❌ DEBUG: query_embedding es None")
+        return None, jsonify({
+            "error": "processing_failed",
+            "message": "No se pudo generar embedding de la imagen"
+        }), 500
+
+    print(f"🧠 DEBUG: Embedding generado - dimensiones: {len(query_embedding)}")
+    print(f"🧠 DEBUG: Primeros 5 valores: {query_embedding[:5]}")
+
+    return query_embedding, None, None
+
+
+def _find_similar_products(client, query_embedding, threshold):
+    """Encuentra productos similares y agrupa por mejor coincidencia"""
+    # Buscar imágenes similares en la base de datos
+    images = Image.query.filter_by(
+        client_id=client.id,
+        is_processed=True
+    ).filter(Image.clip_embedding.isnot(None)).all()
+
+    print(f"🔍 DEBUG: Encontradas {len(images)} imágenes para comparar")
+
+    # Calcular similitudes y agrupar por producto
+    product_best_match = {}  # Dict para almacenar la mejor imagen de cada producto
+
+    for img in images:
+        try:
+            similarity = calculate_similarity(query_embedding, img.clip_embedding)
+            print(f"🔍 DEBUG: Similitud con {img.product.name[:30]}: {similarity:.4f}")
+
+            if similarity >= threshold:
+                product_id = img.product.id
+
+                # Si es la primera imagen de este producto, o si tiene mayor similitud que la anterior
+                if product_id not in product_best_match or similarity > product_best_match[product_id]['similarity']:
+                    product_best_match[product_id] = {
+                        'image': img,
+                        'similarity': similarity,
+                        'product': img.product
+                    }
+                    print(f"✅ DEBUG: Mejor imagen para {img.product.name}: {similarity:.4f}")
+
+        except Exception as e:
+            print(f"❌ Error calculando similitud para imagen {img.id}: {e}")
+            continue
+
+    print(f"🎯 DEBUG: Productos únicos encontrados: {len(product_best_match)}")
+    return product_best_match
+
+
+def _apply_category_filter(product_best_match, limit):
+    """Aplica filtrado inteligente por categoría si es necesario"""
+    # Filtrado inteligente por categoría (solo si hay suficientes productos)
+    if len(product_best_match) <= limit * 2:  # Solo filtrar si hay muchos productos
+        print(f"🎯 DEBUG: Pocos productos encontrados ({len(product_best_match)}), no se aplica filtro de categoría")
+        return product_best_match
+
+    # Obtener las categorías de los productos con mayor similitud
+    sorted_products = sorted(product_best_match.items(), key=lambda x: x[1]['similarity'], reverse=True)
+
+    # Tomar las top similitudes para determinar la categoría dominante
+    top_count = min(3, len(sorted_products))
+    top_categories = {}
+
+    for product_id, match_data in sorted_products[:top_count]:
+        category_name = match_data['product'].category.name
+        if category_name not in top_categories:
+            top_categories[category_name] = []
+        top_categories[category_name].append(match_data['similarity'])
+
+    # Determinar la categoría más relevante basada en similitud promedio
+    best_category = None
+    best_avg_similarity = 0
+
+    for category, similarities in top_categories.items():
+        avg_similarity = sum(similarities) / len(similarities)
+        print(f"📂 DEBUG: Categoría '{category}': {len(similarities)} productos, similitud promedio: {avg_similarity:.4f}")
+
+        if avg_similarity > best_avg_similarity:
+            best_avg_similarity = avg_similarity
+            best_category = category
+
+    # Solo aplicar filtro si la categoría dominante es muy clara (>60% similitud promedio)
+    if not (best_category and best_avg_similarity > 0.6):
+        print(f"🎯 DEBUG: No se aplicó filtro de categoría (similitud promedio: {best_avg_similarity:.4f})")
+        return product_best_match
+
+    print(f"🎯 DEBUG: Categoría dominante detectada: '{best_category}' (similitud promedio: {best_avg_similarity:.4f})")
+
+    # Filtrar solo productos de la categoría dominante
+    filtered_matches = {}
+    for product_id, match_data in product_best_match.items():
+        product_category = match_data['product'].category.name
+
+        # Incluir productos de la categoría dominante
+        if product_category == best_category:
+            filtered_matches[product_id] = match_data
+            print(f"✅ DEBUG: Incluido por categoría exacta: {match_data['product'].name} ({product_category})")
+        else:
+            print(f"❌ DEBUG: Excluido por categoría: {match_data['product'].name} ({product_category} != {best_category})")
+
+    # Solo usar el filtro si queda al menos el mínimo de productos
+    if len(filtered_matches) >= limit:
+        print(f"🎯 DEBUG: Productos después del filtro de categoría: {len(filtered_matches)}")
+        return filtered_matches
+    else:
+        print("⚠️ DEBUG: El filtro de categoría eliminó demasiados productos, manteniendo los originales")
+        return product_best_match
+
+
+def _build_search_results(product_best_match, limit):
+    """Construye la lista final de resultados"""
+    results = []
+    for product_id, best_match in product_best_match.items():
+        img = best_match['image']
+        product = best_match['product']
+        similarity = best_match['similarity']
+
+        # Usar ImageManager para convertir a base64
+        try:
+            image_url = image_manager.get_image_base64(img)  # Auto-detecta client_slug
+        except Exception as e:
+            print(f"❌ Error procesando imagen {img.filename}: {e}")
+            image_url = None
+
+        result = {
+            "product_id": product.id,
+            "name": product.name,
+            "description": product.description or "Sin descripción",
+            "image_url": image_url,
+            "similarity": round(similarity, 4),
+            "price": float(product.price) if product.price else None,
+            "sku": product.sku,
+            "stock": product.stock if hasattr(product, 'stock') and product.stock is not None else 0,
+            "category": product.category.name if product.category else "Sin categoría"
+        }
+        results.append(result)
+        print(f"📦 DEBUG: Producto final añadido: {product.name} (similitud: {similarity:.4f})")
+
+    print(f"🎯 DEBUG: Total productos únicos procesados: {len(results)}")
+
+    # Ordenar por similitud y limitar resultados
+    results.sort(key=lambda x: x['similarity'], reverse=True)
+    return results[:limit]
+
+
 @bp.route("/search", methods=["POST", "OPTIONS"])
 def visual_search():
     """
@@ -558,192 +762,35 @@ def visual_search():
         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
         return response
+
     start_time = time.time()
 
     try:
-        # Verificar API Key
-        client, error = verify_api_key()
-        if error:
-            return jsonify({
-                "error": "unauthorized",
-                "message": error
-            }), 401
+        # Validar request
+        client, image_file, error_response = _validate_visual_search_request()
+        if error_response:
+            return error_response
 
-        # Verificar imagen
-        if 'image' not in request.files:
-            return jsonify({
-                "error": "bad_request",
-                "message": "Imagen requerida en form-data 'image'"
-            }), 400
+        # Procesar datos de imagen
+        image_data, limit, threshold, error_response, status_code = _process_image_data(image_file)
+        if error_response:
+            return error_response, status_code
 
-        image_file = request.files['image']
-        if image_file.filename == '':
-            return jsonify({
-                "error": "bad_request",
-                "message": "No se seleccionó archivo"
-            }), 400
+        # Generar embedding
+        query_embedding, error_response, status_code = _generate_query_embedding(image_data)
+        if error_response:
+            return error_response, status_code
 
-        # Parámetros
-        limit = min(int(request.form.get('limit', 3)), 10)
-        threshold = float(request.form.get('threshold', 0.1))
+        # Encontrar productos similares
+        product_best_match = _find_similar_products(client, query_embedding, threshold)
 
-        # Leer imagen
-        image_data = image_file.read()
-
-        # Validar tamaño (15MB máximo)
-        if len(image_data) > 15 * 1024 * 1024:
-            return jsonify({
-                "error": "file_too_large",
-                "message": "Imagen muy grande. Máximo 15MB"
-            }), 400
-
-        # Procesar imagen
-        print(f"📷 DEBUG: Procesando imagen de {len(image_data)} bytes")
-        query_embedding, error = process_image_for_search(image_data)
-        if error:
-            print(f"❌ DEBUG: Error en procesamiento: {error}")
-            return jsonify({
-                "error": "processing_failed",
-                "message": error
-            }), 500
-
-        if query_embedding is None:
-            print(f"❌ DEBUG: query_embedding es None")
-            return jsonify({
-                "error": "processing_failed",
-                "message": "No se pudo generar embedding de la imagen"
-            }), 500
-
-        print(f"🧠 DEBUG: Embedding generado - dimensiones: {len(query_embedding)}")
-        print(f"🧠 DEBUG: Primeros 5 valores: {query_embedding[:5]}")
-
-        # Buscar imágenes similares en la base de datos
-        images = Image.query.filter_by(
-            client_id=client.id,
-            is_processed=True
-        ).filter(Image.clip_embedding.isnot(None)).all()
-
-        print(f"🔍 DEBUG: Encontradas {len(images)} imágenes para comparar")
-
-        # Calcular similitudes y agrupar por producto
-        product_best_match = {}  # Dict para almacenar la mejor imagen de cada producto
-
-        for img in images:
-            try:
-                similarity = calculate_similarity(query_embedding, img.clip_embedding)
-                print(f"🔍 DEBUG: Similitud con {img.product.name[:30]}: {similarity:.4f}")
-
-                if similarity >= threshold:
-                    product_id = img.product.id
-
-                    # Si es la primera imagen de este producto, o si tiene mayor similitud que la anterior
-                    if product_id not in product_best_match or similarity > product_best_match[product_id]['similarity']:
-                        product_best_match[product_id] = {
-                            'image': img,
-                            'similarity': similarity,
-                            'product': img.product
-                        }
-                        print(f"✅ DEBUG: Mejor imagen para {img.product.name}: {similarity:.4f}")
-
-            except Exception as e:
-                print(f"❌ Error calculando similitud para imagen {img.id}: {e}")
-                continue
-
-        print(f"🎯 DEBUG: Productos únicos encontrados: {len(product_best_match)}")
-
-        # Filtrado inteligente por categoría (solo si hay suficientes productos)
-        if len(product_best_match) > limit * 2:  # Solo filtrar si hay muchos productos
-            # Obtener las categorías de los productos con mayor similitud
-            sorted_products = sorted(product_best_match.items(), key=lambda x: x[1]['similarity'], reverse=True)
-
-            # Tomar las top similitudes para determinar la categoría dominante
-            top_count = min(3, len(sorted_products))
-            top_categories = {}
-
-            for product_id, match_data in sorted_products[:top_count]:
-                category_name = match_data['product'].category.name
-                if category_name not in top_categories:
-                    top_categories[category_name] = []
-                top_categories[category_name].append(match_data['similarity'])
-
-            # Determinar la categoría más relevante basada en similitud promedio
-            best_category = None
-            best_avg_similarity = 0
-
-            for category, similarities in top_categories.items():
-                avg_similarity = sum(similarities) / len(similarities)
-                print(f"📂 DEBUG: Categoría '{category}': {len(similarities)} productos, similitud promedio: {avg_similarity:.4f}")
-
-                if avg_similarity > best_avg_similarity:
-                    best_avg_similarity = avg_similarity
-                    best_category = category
-
-            # Solo aplicar filtro si la categoría dominante es muy clara (>60% similitud promedio)
-            if best_category and best_avg_similarity > 0.6:
-                print(f"🎯 DEBUG: Categoría dominante detectada: '{best_category}' (similitud promedio: {best_avg_similarity:.4f})")
-
-                # Filtrar solo productos de la categoría dominante
-                filtered_matches = {}
-                for product_id, match_data in product_best_match.items():
-                    product_category = match_data['product'].category.name
-
-                    # Incluir productos de la categoría dominante
-                    if product_category == best_category:
-                        filtered_matches[product_id] = match_data
-                        print(f"✅ DEBUG: Incluido por categoría exacta: {match_data['product'].name} ({product_category})")
-                    # También incluir categorías que podrían ser relacionadas (para futuras mejoras)
-                    # elif are_categories_related(best_category, product_category):
-                    #     filtered_matches[product_id] = match_data
-                    #     print(f"✅ DEBUG: Incluido por categoría relacionada: {match_data['product'].name} ({product_category})")
-                    else:
-                        print(f"❌ DEBUG: Excluido por categoría: {match_data['product'].name} ({product_category} != {best_category})")
-
-                # Solo usar el filtro si queda al menos el mínimo de productos
-                if len(filtered_matches) >= limit:
-                    product_best_match = filtered_matches
-                    print(f"🎯 DEBUG: Productos después del filtro de categoría: {len(product_best_match)}")
-                else:
-                    print("⚠️ DEBUG: El filtro de categoría eliminó demasiados productos, manteniendo los originales")
-            else:
-                print(f"🎯 DEBUG: No se aplicó filtro de categoría (similitud promedio: {best_avg_similarity:.4f})")
-        else:
-            print(f"🎯 DEBUG: Pocos productos encontrados ({len(product_best_match)}), no se aplica filtro de categoría")
+        # Aplicar filtro de categoría si es necesario
+        product_best_match = _apply_category_filter(product_best_match, limit)
 
         print(f"🎯 DEBUG: Productos únicos finales: {len(product_best_match)}")
 
-        # Convertir a lista y procesar imágenes
-        results = []
-        for product_id, best_match in product_best_match.items():
-            img = best_match['image']
-            product = best_match['product']
-            similarity = best_match['similarity']
-
-            # Usar ImageManager para convertir a base64
-            try:
-                image_url = image_manager.get_image_base64(img)  # Auto-detecta client_slug
-            except Exception as e:
-                print(f"❌ Error procesando imagen {img.filename}: {e}")
-                image_url = None
-
-            result = {
-                "product_id": product.id,
-                "name": product.name,
-                "description": product.description or "Sin descripción",
-                "image_url": image_url,
-                "similarity": round(similarity, 4),
-                "price": float(product.price) if product.price else None,
-                "sku": product.sku,
-                "stock": product.stock if hasattr(product, 'stock') and product.stock is not None else 0,
-                "category": product.category.name if product.category else "Sin categoría"
-            }
-            results.append(result)
-            print(f"📦 DEBUG: Producto final añadido: {product.name} (similitud: {similarity:.4f})")
-
-        print(f"🎯 DEBUG: Total productos únicos procesados: {len(results)}")
-
-        # Ordenar por similitud y limitar resultados
-        results.sort(key=lambda x: x['similarity'], reverse=True)
-        results = results[:limit]
+        # Construir resultados finales
+        results = _build_search_results(product_best_match, limit)
 
         processing_time = time.time() - start_time
 

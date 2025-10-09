@@ -90,6 +90,100 @@ def index():
                            total_images=total_images)
 
 
+def _validate_product_data(name, category_id, categories):
+    """Valida los datos del producto"""
+    if not name:
+        flash("El nombre del producto es obligatorio", "error")
+        return False, render_template("products/create.html", categories=categories)
+
+    if not category_id:
+        flash("Debe seleccionar una categoría", "error")
+        return False, render_template("products/create.html", categories=categories)
+
+    # Verificar que la categoría pertenece al cliente
+    category = Category.query.filter_by(
+        id=category_id,
+        client_id=current_user.client_id
+    ).first()
+
+    if not category:
+        flash("Categoría no válida", "error")
+        return False, render_template("products/create.html", categories=categories)
+
+    return True, category
+
+
+def _create_product_instance(name, description, category_id, sku, price, stock, tags):
+    """Crea una instancia del producto"""
+    return Product(
+        client_id=current_user.client_id,
+        category_id=category_id,
+        name=name,
+        description=description,
+        sku=sku if sku else None,
+        price=float(price) if price else None,
+        stock=stock,
+        tags=tags if tags else None
+    )
+
+
+def _process_uploaded_images(product, uploaded_files, primary_image_index):
+    """Procesa las imágenes subidas para el producto"""
+    images_processed = 0
+    errors = []
+
+    if not uploaded_files or not uploaded_files[0].filename:
+        return images_processed, errors, "No se subieron imágenes válidas"
+
+    for index, file in enumerate(uploaded_files):
+        if file and allowed_file(file.filename):
+            # Validar tamaño del archivo
+            if not validate_file_size(file):
+                errors.append(f"Archivo {file.filename} es demasiado grande (máximo 50MB)")
+                continue
+
+            try:
+                # ✅ USAR IMAGEMANAGER - Lógica centralizada
+                client = Client.query.get(current_user.client_id)
+                image = image_manager.upload_image(
+                    file=file,
+                    product_id=product.id,
+                    client_id=current_user.client_id,
+                    client_slug=client.slug,  # Dinámico desde BD
+                    is_primary=(index == primary_image_index)
+                )
+
+                if image:
+                    images_processed += 1
+                else:
+                    errors.append(f"No se pudo procesar {file.filename}")
+
+            except ValueError as ve:
+                errors.append(f"{file.filename}: {str(ve)}")
+            except Exception as e:
+                errors.append(f"Error procesando {file.filename}: {str(e)}")
+
+    return images_processed, errors, None
+
+
+def _generate_success_message(images_processed, errors):
+    """Genera mensaje de éxito basado en resultados del procesamiento"""
+    if images_processed == 0 and errors:
+        flash("No se procesaron imágenes. Errores: " + "; ".join(errors), "error")
+        return False
+    elif images_processed == 0:
+        flash("Producto creado sin imágenes", "warning")
+        return True
+    else:
+        message = f"Producto creado con {images_processed} imagen(es)."
+        if errors:
+            message += f" Errores en {len(errors)} archivo(s): " + "; ".join(errors[:3])
+            if len(errors) > 3:
+                message += "..."
+        flash(message, "success" if not errors else "warning")
+        return True
+
+
 @bp.route("/create", methods=["GET", "POST"])
 @login_required
 def create():
@@ -98,7 +192,7 @@ def create():
 
     if request.method == "POST":
         try:
-            # Datos del producto
+            # Obtener datos del formulario
             name = request.form.get("name", "").strip()
             description = request.form.get("description", "").strip()
             category_id = request.form.get("category_id")
@@ -107,90 +201,28 @@ def create():
             stock = request.form.get("stock", 0, type=int)
             tags = request.form.get("tags", "").strip()
 
-            # Validaciones
-            if not name:
-                flash("El nombre del producto es obligatorio", "error")
-                return render_template("products/create.html", categories=categories)
-
-            if not category_id:
-                flash("Debe seleccionar una categoría", "error")
-                return render_template("products/create.html", categories=categories)
-
-            # Verificar que la categoría pertenece al cliente
-            category = Category.query.filter_by(
-                id=category_id,
-                client_id=current_user.client_id
-            ).first()
-
-            if not category:
-                flash("Categoría no válida", "error")
-                return render_template("products/create.html", categories=categories)
+            # Validar datos del producto
+            is_valid, result = _validate_product_data(name, category_id, categories)
+            if not is_valid:
+                return result
 
             # Crear producto
-            product = Product(
-                client_id=current_user.client_id,
-                category_id=category_id,
-                name=name,
-                description=description,
-                sku=sku if sku else None,
-                price=float(price) if price else None,
-                stock=stock,
-                tags=tags if tags else None
-            )
-
+            product = _create_product_instance(name, description, category_id, sku, price, stock, tags)
             db.session.add(product)
             db.session.flush()  # Para obtener el ID del producto
 
-            # Procesar imágenes subidas
+            # Procesar imágenes
             uploaded_files = request.files.getlist("images")
             primary_image_index = request.form.get("primary_image", 0, type=int)
 
-            if uploaded_files and uploaded_files[0].filename:
-                images_processed = 0
-                errors = []
+            images_processed, errors, error_msg = _process_uploaded_images(product, uploaded_files, primary_image_index)
 
-                for index, file in enumerate(uploaded_files):
-                    if file and allowed_file(file.filename):
-                        # Validar tamaño del archivo
-                        if not validate_file_size(file):
-                            errors.append(f"Archivo {file.filename} es demasiado grande (máximo 50MB)")
-                            continue
-
-                        try:
-                            # ✅ USAR IMAGEMANAGER - Lógica centralizada
-                            client = Client.query.get(current_user.client_id)
-                            image = image_manager.upload_image(
-                                file=file,
-                                product_id=product.id,
-                                client_id=current_user.client_id,
-                                client_slug=client.slug,  # Dinámico desde BD
-                                is_primary=(index == primary_image_index)
-                            )
-
-                            if image:
-                                images_processed += 1
-                            else:
-                                errors.append(f"No se pudo procesar {file.filename}")
-
-                        except ValueError as ve:
-                            errors.append(f"{file.filename}: {str(ve)}")
-                        except Exception as e:
-                            errors.append(f"Error procesando {file.filename}: {str(e)}")
-
-                # Mostrar resultados
-                if images_processed == 0 and errors:
-                    flash("No se procesaron imágenes. Errores: " + "; ".join(errors), "error")
-                elif images_processed == 0:
-                    flash("No se subieron imágenes válidas", "warning")
-                else:
-                    message = f"Producto creado con {images_processed} imagen(es)."
-                    if errors:
-                        message += f" Errores en {len(errors)} archivo(s): " + "; ".join(errors[:3])
-                        if len(errors) > 3:
-                            message += "..."
-                    flash(message, "success" if not errors else "warning")
-            else:
-                flash("Producto creado sin imágenes", "warning")
+            if error_msg:
+                flash(error_msg, "warning")
+            elif not _generate_success_message(images_processed, errors):
+                # Si hay errores críticos, hacer rollback
+                db.session.rollback()
+                return render_template("products/create.html", categories=categories)
 
             db.session.commit()
 
@@ -223,8 +255,8 @@ def view(product_id):
     ).all()
 
     return render_template("products/view.html",
-                         product=product,
-                         images=images)
+                           product=product,
+                           images=images)
 
 
 @bp.route("/<product_id>/edit", methods=["GET", "POST"])
@@ -405,7 +437,8 @@ def set_primary_image(product_id, image_id):
 @login_required
 def delete_image(product_id, image_id):
     """Eliminar una imagen del producto y su archivo físico"""
-    product = Product.query.filter_by(
+    # Verificar que el producto pertenece al cliente del usuario actual
+    Product.query.filter_by(
         id=product_id,
         client_id=current_user.client_id
     ).first_or_404()

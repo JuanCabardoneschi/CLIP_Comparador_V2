@@ -32,7 +32,6 @@ def create():
     if request.method == "POST":
         name = request.form.get("name")
         email = request.form.get("email")
-        description = request.form.get("description", "")
         industry = request.form.get("industry", "general")
 
         if not name or not email:
@@ -45,12 +44,12 @@ def create():
             flash("Ya existe un cliente con ese email", "error")
             return render_template("clients/create.html")
 
-        # Crear cliente
-        client = Client(name=name, email=email, description=description, industry=industry)
+        # Crear cliente (la API Key se genera automáticamente)
+        client = Client(name=name, email=email, industry=industry)
         db.session.add(client)
         db.session.commit()
 
-        flash(f"Cliente '{name}' creado exitosamente", "success")
+        flash(f"Cliente '{name}' creado exitosamente. API Key generada: {client.api_key}", "success")
         return redirect(url_for("clients.view", client_id=client.id))
 
     return render_template("clients/create.html")
@@ -66,9 +65,9 @@ def view(client_id):
     users = User.query.filter_by(client_id=client_id).all()
 
     return render_template("clients/view.html",
-                         client=client,
-                         api_keys=api_keys,
-                         users=users)
+                           client=client,
+                           api_keys=api_keys,
+                           users=users)
 
 
 @bp.route("/<client_id>/edit", methods=["GET", "POST"])
@@ -167,3 +166,22 @@ def api_search():
         "email": client.email,
         "created_at": client.created_at.isoformat()
     } for client in clients])
+
+
+@bp.route("/<client_id>/regenerate-api-key", methods=["POST"])
+@login_required
+def regenerate_api_key(client_id):
+    """Regenerar API Key de un cliente - Solo Super Admin"""
+    client = Client.query.get_or_404(client_id)
+
+    try:
+        old_key, new_key = client.regenerate_api_key()
+        db.session.commit()
+
+        flash(f"API Key regenerada exitosamente. Nueva API Key: {new_key}", "success")
+        return redirect(url_for("clients.view", client_id=client.id))
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error al regenerar API Key: {str(e)}", "error")
+        return redirect(url_for("clients.view", client_id=client.id))

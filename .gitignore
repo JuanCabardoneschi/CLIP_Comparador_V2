@@ -71,7 +71,6 @@ pids/
 
 # Uploads and user content
 clip_admin_backend/static/uploads/
-clip_admin_backend/app/static/uploads/
 
 # Temporary files
 *.tmp
@@ -105,3 +104,13 @@ docs/_build/
 
 # Node modules (if any)
 node_modules/
+
+# Exclude V1 system and temporary files
+../CLIP_Comparador/
+../clip_comparador_v2.db
+analyze_*.py
+verify_*.py
+demonstrate_*.py
+embedding_optimizer.py
+explain_*.py
+verificar_*.py

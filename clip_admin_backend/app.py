@@ -34,7 +34,7 @@ def create_app(config_name=None):
 
     # Configurar paths absolutos para templates y static
     template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app', 'templates'))
-    static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app', 'static'))  # Usar app/static
+    static_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app', 'static'))  # Usar app/static para CSS/JS
 
     app = Flask(__name__,
                 template_folder=template_dir,
@@ -66,7 +66,7 @@ def create_app(config_name=None):
 
     # Configuración para archivos grandes (imágenes hasta 50MB)
     app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB max
-    app.config["UPLOAD_FOLDER"] = os.path.join(current_dir, 'app', 'static', 'uploads')
+    app.config["UPLOAD_FOLDER"] = os.path.join(current_dir, 'static', 'uploads')  # Usar static/ en lugar de app/static
     app.config["MAX_FILE_SIZE"] = 50 * 1024 * 1024  # 50MB por archivo
     app.config["ALLOWED_EXTENSIONS"] = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff'}
 
@@ -79,7 +79,7 @@ def create_app(config_name=None):
     app.config["SESSION_COOKIE_NAME"] = "clip_session"  # Nombre específico
     app.config["SESSION_REFRESH_EACH_REQUEST"] = True  # Renovar sesión en cada request
 
-    print(f"⚙️ Configuración de sesiones:")
+    print("⚙️ Configuración de sesiones:")
     print(f"   SESSION_COOKIE_SECURE: {app.config.get('SESSION_COOKIE_SECURE')}")
     print(f"   SESSION_COOKIE_HTTPONLY: {app.config.get('SESSION_COOKIE_HTTPONLY')}")
     print(f"   SESSION_COOKIE_SAMESITE: {app.config.get('SESSION_COOKIE_SAMESITE')}")
@@ -129,7 +129,7 @@ def create_app(config_name=None):
         try:
             from app.models.user import User
 
-            print(f"👤 USER_LOADER: Importaciones exitosas")
+            print("👤 USER_LOADER: Importaciones exitosas")
 
             # Usar directamente el string, no convertir a UUID object
             # SQLite almacena UUIDs como strings
@@ -137,7 +137,7 @@ def create_app(config_name=None):
 
             # Usar query.filter_by con el string directamente
             user = User.query.filter_by(id=user_id).first()
-            print(f"👤 USER_LOADER: Query ejecutado con string")
+            print("👤 USER_LOADER: Query ejecutado con string")
 
             if user:
                 print(f"👤 USER_LOADER: ✅ Usuario encontrado - Email: {user.email}, Active: {user.active}")
@@ -217,6 +217,14 @@ def create_app(config_name=None):
         """Manejar archivos demasiado grandes"""
         flash("Los archivos subidos son demasiado grandes. El tamaño máximo permitido es 50MB por archivo.", "error")
         return render_template("errors/413.html"), 413
+
+    # Ruta adicional para servir archivos de uploads
+    @app.route('/static/uploads/<path:filename>')
+    def uploaded_file(filename):
+        """Servir archivos desde el directorio de uploads"""
+        from flask import send_from_directory
+        uploads_dir = os.path.join(current_dir, 'static', 'uploads')
+        return send_from_directory(uploads_dir, filename)
 
     return app
 

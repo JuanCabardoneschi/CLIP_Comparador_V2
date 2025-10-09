@@ -7,7 +7,6 @@ from flask import Blueprint, render_template, request, jsonify
 from flask_login import login_required, current_user
 from app import db
 from app.models.client import Client
-# APIKey temporalmente deshabilitado
 from app.models.product import Product
 from app.models.image import Image
 from app.models.search_log import SearchLog
@@ -28,7 +27,7 @@ def index():
         "total_products": Product.query.count(),
         "total_images": Image.query.count(),
         "total_searches": SearchLog.query.count(),
-        "active_api_keys": APIKey.query.filter_by(is_active=True).count()
+        "active_api_keys": Client.query.filter(Client.api_key.isnot(None), Client.is_active == True).count()
     }
 
     return render_template("analytics/index.html", stats=stats)
@@ -52,13 +51,13 @@ def clients():
         Client.name,
         Client.id,
         func.count(SearchLog.id).label("search_count")
-    ).join(APIKey).join(SearchLog).group_by(
+    ).join(SearchLog).group_by(
         Client.id, Client.name
     ).order_by(desc("search_count")).limit(10).all()
 
     return render_template("analytics/clients.html",
-                         top_clients=top_clients,
-                         client_searches=client_searches)
+                           top_clients=top_clients,
+                           client_searches=client_searches)
 
 
 @bp.route("/searches")
@@ -97,9 +96,9 @@ def searches():
     ).all()
 
     return render_template("analytics/searches.html",
-                         daily_searches=daily_searches,
-                         top_queries=top_queries,
-                         search_types=search_types)
+                           daily_searches=daily_searches,
+                           top_queries=top_queries,
+                           search_types=search_types)
 
 
 @bp.route("/performance")
@@ -122,19 +121,15 @@ def performance():
 
     # Estadísticas de embeddings
     embedding_stats = {
-        "total_embeddings": ImageEmbedding.query.count(),
-        "images_without_embeddings": db.session.query(ProductImage).outerjoin(
-            ImageEmbedding
-        ).filter(ImageEmbedding.id.is_(None)).count(),
-        "avg_confidence": db.session.query(
-            func.avg(ImageEmbedding.confidence_score)
-        ).scalar() or 0
+        "total_embeddings": Image.query.filter(Image.clip_embedding.isnot(None)).count(),
+        "images_without_embeddings": Image.query.filter(Image.clip_embedding.is_(None)).count(),
+        "avg_confidence": 1.0  # Placeholder ya que no tenemos campo confidence_score
     }
 
     return render_template("analytics/performance.html",
-                         avg_response_time=avg_response_time,
-                         response_times=response_times,
-                         embedding_stats=embedding_stats)
+                           avg_response_time=avg_response_time,
+                           response_times=response_times,
+                           embedding_stats=embedding_stats)
 
 
 @bp.route("/client/<client_id>")
@@ -149,13 +144,11 @@ def client_detail(client_id):
         "products": db.session.query(Product).join(Category).filter(
             Category.client_id == client_id
         ).count(),
-        "images": db.session.query(ProductImage).join(Product).join(Category).filter(
+        "images": db.session.query(Image).join(Product).join(Category).filter(
             Category.client_id == client_id
         ).count(),
-        "api_keys": APIKey.query.filter_by(client_id=client_id).count(),
-        "active_keys": APIKey.query.filter_by(
-            client_id=client_id, is_active=True
-        ).count()
+        "api_keys": 1 if client.api_key else 0,  # En este sistema cada cliente tiene máximo 1 API key
+        "active_keys": 1 if client.api_key and client.is_active else 0
     }
 
     # Búsquedas del cliente (últimos 30 días)
@@ -165,8 +158,8 @@ def client_detail(client_id):
     client_searches = db.session.query(
         func.date(SearchLog.created_at).label("date"),
         func.count(SearchLog.id).label("count")
-    ).join(APIKey).filter(
-        APIKey.client_id == client_id,
+    ).filter(
+        SearchLog.client_id == client_id,
         SearchLog.created_at >= start_date
     ).group_by(
         func.date(SearchLog.created_at)
@@ -183,10 +176,10 @@ def client_detail(client_id):
     ).order_by(desc("product_count")).all()
 
     return render_template("analytics/client_detail.html",
-                         client=client,
-                         client_stats=client_stats,
-                         client_searches=client_searches,
-                         popular_categories=popular_categories)
+                           client=client,
+                           client_stats=client_stats,
+                           client_searches=client_searches,
+                           popular_categories=popular_categories)
 
 
 @bp.route("/api/stats/overview")
@@ -196,11 +189,11 @@ def api_stats_overview():
     return jsonify({
         "clients": Client.query.count(),
         "products": Product.query.count(),
-        "images": ProductImage.query.count(),
+        "images": Image.query.count(),
         "searches_today": SearchLog.query.filter(
             func.date(SearchLog.created_at) == datetime.now().date()
         ).count(),
-        "active_api_keys": APIKey.query.filter_by(is_active=True).count()
+        "active_api_keys": Client.query.filter(Client.api_key.isnot(None), Client.is_active == True).count()
     })
 
 
@@ -239,11 +232,11 @@ def api_client_stats(client_id):
         "products": db.session.query(Product).join(Category).filter(
             Category.client_id == client_id
         ).count(),
-        "images": db.session.query(ProductImage).join(Product).join(Category).filter(
+        "images": db.session.query(Image).join(Product).join(Category).filter(
             Category.client_id == client_id
         ).count(),
-        "searches_last_30_days": db.session.query(SearchLog).join(APIKey).filter(
-            APIKey.client_id == client_id,
+        "searches_last_30_days": db.session.query(SearchLog).filter(
+            SearchLog.client_id == client_id,
             SearchLog.created_at >= datetime.now() - timedelta(days=30)
         ).count()
     })

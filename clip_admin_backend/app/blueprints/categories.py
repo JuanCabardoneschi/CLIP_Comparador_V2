@@ -122,8 +122,8 @@ def view(category_id):
     products = []  # Lista vacía por ahora
 
     return render_template("categories/view.html",
-                         category=category,
-                         products=products)
+                           category=category,
+                           products=products)
 
 
 @bp.route("/<category_id>/edit", methods=["GET", "POST"])
@@ -138,7 +138,7 @@ def edit(category_id):
         return redirect(url_for("categories.index"))
 
     if request.method == "POST":
-        print(f"🏷️ CATEGORIES EDIT: Método POST")
+        print("🏷️ CATEGORIES EDIT: Método POST")
         print(f"🏷️ CATEGORIES EDIT: Usuario autenticado: {current_user.is_authenticated}")
         print(f"🏷️ CATEGORIES EDIT: Usuario email: {current_user.email}")
         print(f"🏷️ CATEGORIES EDIT: Category ID: {category_id}")

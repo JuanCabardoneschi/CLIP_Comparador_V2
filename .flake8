@@ -2,6 +2,21 @@
 # Desactivar Flake8 para el proyecto CLIP Comparador V2
 # Se enfoca en funcionalidad, no en reglas de estilo estrictas
 
+# Excluir directorios y archivos específicos
+exclude =
+    ../CLIP_Comparador,
+    ../clip_comparador_v2.db,
+    analyze_*.py,
+    verify_*.py,
+    demonstrate_*.py,
+    embedding_optimizer.py,
+    explain_*.py,
+    verificar_*.py,
+    venv,
+    __pycache__,
+    .git,
+    migrations/versions
+
 ignore =
     # Imports no utilizados (necesarios para SQLAlchemy)
     F401,

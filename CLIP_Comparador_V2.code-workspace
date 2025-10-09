@@ -1,0 +1,46 @@
+{
+    "folders": [
+        {
+            "name": "CLIP Comparador V2",
+            "path": "."
+        }
+    ],
+    "settings": {
+        "files.exclude": {
+            "../CLIP_Comparador/**": true,
+            "../clip_comparador_v2.db": true,
+            "**/analyze_*.py": true,
+            "**/verify_*.py": true,
+            "**/demonstrate_*.py": true,
+            "**/embedding_optimizer.py": true,
+            "**/explain_*.py": true,
+            "**/verificar_*.py": true
+        },
+        "search.exclude": {
+            "../CLIP_Comparador/**": true,
+            "../clip_comparador_v2.db": true
+        },
+        "python.analysis.exclude": [
+            "../CLIP_Comparador/**",
+            "**/analyze_*.py",
+            "**/verify_*.py",
+            "**/demonstrate_*.py",
+            "**/embedding_optimizer.py",
+            "**/explain_*.py",
+            "**/verificar_*.py"
+        ],
+        "powershell.scriptAnalysis.enable": false,
+        "powershell.codeFormatting.enable": false,
+        "[powershell]": {
+            "editor.formatOnSave": false,
+            "files.trimTrailingWhitespace": false
+        }
+    },
+    "extensions": {
+        "recommendations": [
+            "ms-python.python",
+            "ms-python.flake8",
+            "ms-python.pylint"
+        ]
+    }
+}

@@ -40,10 +40,10 @@ def login():
 
         if user:
             print(f"🔐 LOGIN: Usuario encontrado - ID: {user.id}, Active: {user.active}")
-            print(f"🔐 LOGIN: Verificando contraseña...")
+            print("🔐 LOGIN: Verificando contraseña...")
 
             if user.check_password(password):
-                print(f"🔐 LOGIN: Contraseña correcta, intentando login_user...")
+                print("🔐 LOGIN: Contraseña correcta, intentando login_user...")
                 print(f"🔐 LOGIN: user.is_active: {user.is_active}")
                 print(f"🔐 LOGIN: user.is_authenticated: {user.is_authenticated}")
                 print(f"🔐 LOGIN: user.get_id(): {user.get_id()}")

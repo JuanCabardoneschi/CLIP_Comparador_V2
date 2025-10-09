@@ -273,7 +273,20 @@ window.CLIPConfig = {
 
         // Función para copiar código de embebido
         function copyEmbedCode() {
-            const code = '<!-- CLIP Visual Search Widget -->\n<div id="clip-search-widget"></div>\n<script>\nwindow.CLIPConfig = {\n    apiKey: \'clip_57be07ce9443446c97bb29c9\',\n    serverUrl: \'http://localhost:5000\',\n    containerId: \'clip-search-widget\',\n    maxResults: 5,\n    threshold: 0.7,\n    showSimilarity: true,\n    buttonText: \'Buscar Productos Similares\'\n};\n</script>\n<script src="http://localhost:5000/static/js/clip-widget.min.js"></script>';
+            const code = `<!-- CLIP Visual Search Widget -->
+<div id="clip-search-widget"></div>
+<script>
+window.CLIPConfig = {
+    apiKey: 'clip_57be07ce9443446c97bb29c9',
+    serverUrl: 'http://localhost:5000',
+    containerId: 'clip-search-widget',
+    maxResults: 5,
+    threshold: 0.7,
+    showSimilarity: true,
+    buttonText: 'Buscar Productos Similares'
+};
+</script>
+<script src="http://localhost:5000/static/js/clip-widget.min.js"></script>`;
 
             navigator.clipboard.writeText(code).then(function() {
                 const btn = event.target;
