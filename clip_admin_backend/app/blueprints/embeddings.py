@@ -5,6 +5,8 @@ Administración y generación de embeddings para búsqueda visual
 
 import os
 import json
+import requests
+from io import BytesIO
 from datetime import datetime
 from PIL import Image as PILImage
 import torch
@@ -19,7 +21,20 @@ from app.models.product import Product
 from app.models.client import Client
 from app.utils.permissions import requires_role, requires_client_scope, filter_by_client_scope
 
-bp = Blueprint("embeddings", __name__)
+bp = Blueprint('embeddings', __name__)
+
+def load_image_from_source(source):
+    """Cargar imagen desde URL de Cloudinary"""
+    try:
+        print(f"🌐 Descargando imagen desde Cloudinary: {source[:80]}...")
+        response = requests.get(source, timeout=30)
+        response.raise_for_status()
+        image = PILImage.open(BytesIO(response.content)).convert('RGB')
+        print(f"✅ Imagen descargada exitosamente desde Cloudinary")
+        return image
+    except Exception as e:
+        print(f"❌ Error cargando imagen desde Cloudinary {source}: {e}")
+        raise
 
 # Variables globales para el modelo CLIP
 _clip_model = None
@@ -121,11 +136,11 @@ def get_image_context(image_obj):
         print(f"⚠️ Error obteniendo contexto: {e}")
         return {'enable_optimization': False}
 
-def generate_optimized_embedding(image_path, model, processor, context_info):
+def generate_optimized_embedding(image_path_or_url, model, processor, context_info):
     """Generar embedding optimizado usando múltiples técnicas"""
 
-    # Cargar imagen
-    image = PILImage.open(image_path).convert('RGB')
+    # Cargar imagen (local o URL)
+    image = load_image_from_source(image_path_or_url)
 
     embeddings_list = []
     prompts_used = []
@@ -165,11 +180,11 @@ def generate_optimized_embedding(image_path, model, processor, context_info):
 
     return final_embedding, metadata
 
-def generate_simple_embedding(image_path, model, processor):
+def generate_simple_embedding(image_path_or_url, model, processor):
     """Generar embedding simple (fallback)"""
 
-    # Cargar y procesar imagen
-    image = PILImage.open(image_path).convert('RGB')
+    # Cargar y procesar imagen (local o URL)
+    image = load_image_from_source(image_path_or_url)
 
     # Procesar imagen con manejo de errores
     try:
@@ -483,23 +498,19 @@ def process_pending():
                 try:
                     print(f"🔄 Procesando {image.filename}...")
 
-                    # Construir ruta completa de la imagen
-                    client = Client.query.get(current_user.client_id)
-                    client_folder_name = client.name.replace(' ', '_').lower()
-
-                    # Usar la ubicación correcta de las imágenes
-                    base_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-                    image_path = os.path.join(base_path, 'static', 'uploads', 'clients', client_folder_name, image.filename)
-
-                    if not os.path.exists(image_path):
-                        print(f"❌ Imagen no encontrada: {image_path}")
+                    # SOLO usar Cloudinary - no hay fallback local
+                    if not image.cloudinary_url:
+                        print(f"❌ Error: {image.filename} no tiene URL de Cloudinary")
+                        image.upload_status = 'error'
+                        image.error_message = "No hay URL de Cloudinary disponible"
+                        processed_count += 1
                         continue
 
-                    if not image_path:
-                        raise FileNotFoundError(f"Imagen no encontrada: {image.filename}")
+                    image_source = image.cloudinary_url
+                    print(f"🌐 Procesando desde Cloudinary: {image_source}")
 
                     # Generar embedding optimizado con CLIP
-                    embedding, metadata = generate_clip_embedding(image_path, image)
+                    embedding, metadata = generate_clip_embedding(image_source, image)
 
                     if embedding is None:
                         raise Exception("Error generando embedding")
@@ -622,7 +633,7 @@ def reset_all():
         for image in all_images:
             image.is_processed = False
             image.clip_embedding = None
-            image.upload_status = 'completed'
+            image.upload_status = 'pending'  # 🔥 CAMBIO: Marcar como pendiente para reprocesar
             image.error_message = None
             reset_count += 1
 

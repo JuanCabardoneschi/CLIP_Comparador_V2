@@ -10,6 +10,23 @@ from dataclasses import dataclass
 from .clip_engine import CLIPEngine
 
 
+def get_image_display_url(cloudinary_url, filename, client_slug="demo_fashion_store"):
+    """
+    Replica la lógica de la clase Image para generar URLs de display
+    Prioriza Cloudinary sobre rutas locales
+    """
+    # Si tiene URL de Cloudinary, usarla (preferido)
+    if cloudinary_url:
+        return cloudinary_url
+
+    # Fallback a URL local si no tiene Cloudinary
+    if filename:
+        return f"/static/uploads/clients/{client_slug}/{filename}"
+
+    # Placeholder si no hay nada
+    return '/static/images/placeholder.svg'
+
+
 @dataclass
 class SearchResult:
     """Resultado de búsqueda"""
@@ -130,6 +147,7 @@ class SearchEngine:
                     i.id as image_id,
                     i.embedding,
                     i.filename,
+                    i.cloudinary_url,
                     p.id as product_id,
                     p.name,
                     p.description,
@@ -150,6 +168,12 @@ class SearchEngine:
             results = []
 
             for row in rows:
+                # DEBUG: Imprimir datos de la fila
+                print(f"🔍 DEBUG - Row data:")
+                print(f"  filename: {row['filename']}")
+                print(f"  cloudinary_url: {row['cloudinary_url']}")
+                print(f"  product name: {row['name']}")
+
                 # Deserializar embedding almacenado
                 stored_embedding = np.array(eval(row['embedding']))
 
@@ -161,12 +185,15 @@ class SearchEngine:
 
                 # Filtrar por umbral
                 if similarity >= similarity_threshold:
+                    # Usar la función helper que replica la lógica de la clase Image
+                    image_url = get_image_display_url(row['cloudinary_url'], row['filename'])
+
                     result = SearchResult(
                         product_id=row['product_id'],
                         client_id=row['client_id'],
                         name=row['name'],
                         description=row['description'] or '',
-                        image_url=f"/static/uploads/clients/demo_fashion_store/{row['filename']}",
+                        image_url=image_url,
                         similarity=float(similarity),
                         price=float(row['price']) if row['price'] else None,
                         sku=row['sku']

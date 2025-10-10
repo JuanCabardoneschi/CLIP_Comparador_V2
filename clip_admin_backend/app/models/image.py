@@ -15,6 +15,7 @@ class Image(db.Model):
     original_filename = db.Column(db.String(255))
     cloudinary_url = db.Column(db.String(500))  # URL completa de Cloudinary
     cloudinary_public_id = db.Column(db.String(255))  # ID público de Cloudinary
+    base64_data = db.Column(db.Text)  # Imagen en base64 para API (generado una sola vez)
     width = db.Column(db.Integer)
     height = db.Column(db.Integer)
     file_size = db.Column(db.Integer)  # Tamaño en bytes
@@ -57,26 +58,26 @@ class Image(db.Model):
 
     @property
     def thumbnail_url(self):
-        """Genera URL de thumbnail usando ImageManager"""
-        if self.filename:
-            from app.services.image_manager import image_manager
-            return image_manager.get_image_url(self, self.client_slug)
+        """Genera URL de thumbnail - SOLO Cloudinary"""
+        # SOLO usar Cloudinary - no hay fallback local
+        if self.cloudinary_url:
+            return self.cloudinary_url
         return '/static/images/placeholder.svg'
 
     @property
     def medium_url(self):
-        """Genera URL de imagen mediana usando ImageManager"""
-        if self.filename:
-            from app.services.image_manager import image_manager
-            return image_manager.get_image_url(self, self.client_slug)
+        """Genera URL de imagen mediana - SOLO Cloudinary"""
+        # SOLO usar Cloudinary - no hay fallback local
+        if self.cloudinary_url:
+            return self.cloudinary_url
         return '/static/images/placeholder.svg'
 
     @property
     def display_url(self):
-        """URL principal para mostrar la imagen usando ImageManager"""
-        if self.filename:
-            from app.services.image_manager import image_manager
-            return image_manager.get_image_url(self, self.client_slug)
+        """URL principal para mostrar la imagen - SOLO Cloudinary"""
+        # SOLO usar Cloudinary - no hay fallback local
+        if self.cloudinary_url:
+            return self.cloudinary_url
         return '/static/images/placeholder.svg'
 
     @property

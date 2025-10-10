@@ -714,7 +714,7 @@ def _build_search_results(product_best_match, limit):
         product = best_match['product']
         similarity = best_match['similarity']
 
-        # Usar ImageManager para convertir a base64
+        # Usar ImageManager para convertir a base64 desde Cloudinary
         try:
             image_url = image_manager.get_image_base64(img)  # Auto-detecta client_slug
         except Exception as e:

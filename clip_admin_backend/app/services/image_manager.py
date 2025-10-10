@@ -139,20 +139,71 @@ class ImageManager:
             # Obtener directorio de subida
             upload_dir = self._get_upload_directory(client_slug)
 
-            # Guardar archivo
+            # Guardar archivo temporalmente
             file_path = os.path.join(upload_dir, unique_filename)
             file.save(file_path)
 
             # Obtener dimensiones
             width, height = self._get_image_dimensions(file_path)
 
-            # Crear registro en base de datos
+            # 🌐 SUBIR A CLOUDINARY Y GENERAR BASE64
+            cloudinary_url = None
+            cloudinary_public_id = None
+            base64_data = None
+            
+            try:
+                import cloudinary
+                import cloudinary.uploader
+                
+                # Configurar Cloudinary si no está configurado
+                if not cloudinary.config().cloud_name:
+                    cloudinary.config(
+                        cloud_name=current_app.config.get('CLOUDINARY_CLOUD_NAME', 'dgtsan81n'),
+                        api_key=current_app.config.get('CLOUDINARY_API_KEY'),
+                        api_secret=current_app.config.get('CLOUDINARY_API_SECRET')
+                    )
+                
+                # Generar public_id único para Cloudinary
+                public_id = f"{client_slug}/products/{product_id}/{unique_filename.split('.')[0]}"
+                
+                # Subir a Cloudinary directamente
+                cloudinary_result = cloudinary.uploader.upload(
+                    file_path,
+                    public_id=public_id,
+                    folder=f"{client_slug}/products",
+                    resource_type="image",
+                    overwrite=True
+                )
+                
+                if cloudinary_result:
+                    cloudinary_url = cloudinary_result.get('secure_url')
+                    cloudinary_public_id = cloudinary_result.get('public_id')
+                    
+                    # Generar base64 desde archivo local
+                    import base64
+                    with open(file_path, "rb") as img_file:
+                        img_data = img_file.read()
+                        img_base64 = base64.b64encode(img_data).decode('utf-8')
+                        mime_type = file.mimetype or "image/jpeg"
+                        base64_data = f"data:{mime_type};base64,{img_base64}"
+                        
+                    print(f"✅ Imagen subida a Cloudinary: {cloudinary_url}")
+                else:
+                    print("⚠️ Error subiendo a Cloudinary, manteniendo archivo local")
+                    
+            except Exception as e:
+                print(f"⚠️ Error en Cloudinary: {e}, manteniendo archivo local")
+
+            # Crear registro en base de datos con datos de Cloudinary
             from app import db
             image = Image(
                 product_id=product_id,
                 client_id=client_id,
                 filename=unique_filename,
                 original_filename=file.filename,
+                cloudinary_url=cloudinary_url,
+                cloudinary_public_id=cloudinary_public_id,
+                base64_data=base64_data,
                 file_size=file_size,
                 width=width,
                 height=height,
@@ -161,6 +212,14 @@ class ImageManager:
                 display_order=display_order,
                 is_primary=is_primary
             )
+
+            # 🗑️ LIMPIAR ARCHIVO LOCAL (ya está en Cloudinary)
+            if cloudinary_url and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    print(f"🗑️ Archivo local eliminado: {file_path}")
+                except Exception as e:
+                    print(f"⚠️ No se pudo eliminar archivo local: {e}")
 
             db.session.add(image)
             return image
@@ -208,19 +267,19 @@ class ImageManager:
 
     def get_image_url(self, image: Image, client_slug: str = None) -> str:
         """
-        Obtiene la URL pública de una imagen
+        Obtiene la URL pública de una imagen - SOLO Cloudinary
 
         Args:
             image: Objeto Image
             client_slug: Slug del cliente (auto-detectado si no se proporciona)
 
         Returns:
-            URL de la imagen
+            URL de la imagen (Cloudinary o placeholder)
         """
-        if client_slug is None:
-            client_slug = self._get_client_slug(image)
-
-        return f"{self._get_relative_path(client_slug)}{image.filename}"
+        # SOLO usar Cloudinary - no hay fallback local
+        if image.cloudinary_url:
+            return image.cloudinary_url
+        return '/static/images/placeholder.svg'
 
     def get_image_path(self, image: Image, client_slug: str = None) -> str:
         """
@@ -260,21 +319,44 @@ class ImageManager:
 
     def get_image_base64(self, image: Image, client_slug: str = None) -> Optional[str]:
         """
-        Convierte una imagen a base64 para el API
+        Obtiene imagen en base64 - OPTIMIZADO: lee directamente de BD
 
         Args:
             image: Objeto Image
-            client_slug: Slug del cliente (auto-detectado si no se proporciona)
+            client_slug: Slug del cliente (no necesario, mantenido por compatibilidad)
 
         Returns:
             String base64 de la imagen o None si no existe
         """
-        if client_slug is None:
-            client_slug = self._get_client_slug(image)
-
         try:
-            file_path = self.get_image_path(image, client_slug)
+            # 🚀 PRIORIDAD 1: Leer base64 directamente desde BD (súper rápido)
+            if image.base64_data:
+                return image.base64_data
 
+            # 🌐 FALLBACK: Si no hay base64 en BD, generar desde Cloudinary
+            if image.cloudinary_url:
+                import requests
+                response = requests.get(image.cloudinary_url, timeout=30)
+                response.raise_for_status()
+
+                img_data = response.content
+                img_base64 = base64.b64encode(img_data).decode('utf-8')
+
+                # Determinar el tipo MIME
+                mime_type = image.mime_type or "image/jpeg"
+                base64_data = f"data:{mime_type};base64,{img_base64}"
+
+                # Guardar en BD para futuras consultas
+                image.base64_data = base64_data
+                db.session.commit()
+
+                return base64_data
+
+            # 📁 ÚLTIMO FALLBACK: Archivo local (obsoleto pero por compatibilidad)
+            if client_slug is None:
+                client_slug = self._get_client_slug(image)
+
+            file_path = self.get_image_path(image, client_slug)
             if not os.path.exists(file_path):
                 return None
 

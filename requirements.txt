@@ -34,7 +34,7 @@ numpy==1.25.2
 sentence-transformers==2.2.2
 
 # Image Processing & Storage
-# cloudinary==1.36.0  # Removido - ahora usamos almacenamiento local
+cloudinary==1.36.0  # Cloudinary para almacenamiento en la nube
 python-multipart==0.0.6
 
 # API & Web
