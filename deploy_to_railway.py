@@ -27,10 +27,10 @@ def check_railway_cli():
 def install_railway_cli():
     """Instalar Railway CLI"""
     print("📦 Instalando Railway CLI...")
-    
+
     try:
         # Para Windows con npm
-        result = subprocess.run(['npm', 'install', '-g', '@railway/cli'], 
+        result = subprocess.run(['npm', 'install', '-g', '@railway/cli'],
                               capture_output=True, text=True)
         if result.returncode == 0:
             print("✅ Railway CLI instalado exitosamente")
@@ -45,7 +45,7 @@ def install_railway_cli():
 def railway_login():
     """Login a Railway"""
     print("🔐 Iniciando sesión en Railway...")
-    
+
     try:
         result = subprocess.run(['railway', 'login'], check=True)
         print("✅ Login exitoso en Railway")
@@ -57,14 +57,14 @@ def railway_login():
 def create_railway_project():
     """Crear proyecto en Railway"""
     print("🚀 Creando proyecto en Railway...")
-    
+
     project_name = "clip-comparador-v2"
-    
+
     try:
         # Crear proyecto
-        result = subprocess.run(['railway', 'new', project_name], 
+        result = subprocess.run(['railway', 'new', project_name],
                               capture_output=True, text=True, input='y\n')
-        
+
         if result.returncode == 0:
             print(f"✅ Proyecto '{project_name}' creado")
             return True
@@ -72,7 +72,7 @@ def create_railway_project():
             print(f"⚠️ Proyecto puede ya existir: {result.stderr}")
             # Intentar conectar a proyecto existente
             return link_existing_project()
-            
+
     except Exception as e:
         print(f"❌ Error creando proyecto: {e}")
         return False
@@ -80,7 +80,7 @@ def create_railway_project():
 def link_existing_project():
     """Conectar a proyecto existente"""
     print("🔗 Conectando a proyecto existente...")
-    
+
     try:
         result = subprocess.run(['railway', 'link'], check=True)
         print("✅ Conectado a proyecto Railway")
@@ -92,9 +92,9 @@ def link_existing_project():
 def add_postgresql():
     """Agregar PostgreSQL al proyecto"""
     print("🐘 Agregando PostgreSQL...")
-    
+
     try:
-        result = subprocess.run(['railway', 'add', 'postgresql'], 
+        result = subprocess.run(['railway', 'add', 'postgresql'],
                               capture_output=True, text=True)
         if result.returncode == 0:
             print("✅ PostgreSQL agregado al proyecto")
@@ -109,9 +109,9 @@ def add_postgresql():
 def add_redis():
     """Agregar Redis al proyecto (opcional)"""
     print("📦 Agregando Redis...")
-    
+
     try:
-        result = subprocess.run(['railway', 'add', 'redis'], 
+        result = subprocess.run(['railway', 'add', 'redis'],
                               capture_output=True, text=True)
         if result.returncode == 0:
             print("✅ Redis agregado al proyecto")
@@ -126,7 +126,7 @@ def add_redis():
 def set_environment_variables(config):
     """Configurar variables de entorno"""
     print("⚙️ Configurando variables de entorno...")
-    
+
     variables = {
         'FLASK_ENV': 'production',
         'FLASK_DEBUG': 'False',
@@ -138,10 +138,10 @@ def set_environment_variables(config):
         'CLIP_MODEL_NAME': 'ViT-B/16',
         'LOG_LEVEL': 'INFO'
     }
-    
+
     for key, value in variables.items():
         try:
-            result = subprocess.run(['railway', 'variables', 'set', f'{key}={value}'], 
+            result = subprocess.run(['railway', 'variables', 'set', f'{key}={value}'],
                                   capture_output=True, text=True)
             if result.returncode == 0:
                 print(f"   ✅ {key} configurada")
@@ -152,7 +152,7 @@ def set_environment_variables(config):
 
 def create_railway_toml():
     """Crear archivo railway.toml para configuración"""
-    
+
     toml_content = """[build]
 builder = "NIXPACKS"
 
@@ -175,12 +175,12 @@ FLASK_DEBUG = "False"
 
     with open('railway.toml', 'w') as f:
         f.write(toml_content)
-    
+
     print("✅ railway.toml creado")
 
 def create_dockerfiles():
     """Crear Dockerfiles optimizados para Railway"""
-    
+
     # Dockerfile para backend admin
     admin_dockerfile = """FROM python:3.10-slim
 
@@ -217,49 +217,49 @@ CMD ["python", "app.py"]
     os.makedirs('clip_admin_backend', exist_ok=True)
     with open('clip_admin_backend/Dockerfile', 'w') as f:
         f.write(admin_dockerfile)
-    
+
     print("✅ Dockerfile para admin backend creado")
 
 def create_procfile():
     """Crear Procfile para Railway"""
-    
+
     procfile_content = """web: cd clip_admin_backend && python app.py
 """
 
     with open('Procfile', 'w') as f:
         f.write(procfile_content)
-    
+
     print("✅ Procfile creado")
 
 def run_database_migration():
     """Ejecutar migración de base de datos"""
     print("🗄️ Ejecutando migración de base de datos...")
-    
+
     try:
         # Obtener URL de PostgreSQL de Railway
-        result = subprocess.run(['railway', 'variables'], 
+        result = subprocess.run(['railway', 'variables'],
                               capture_output=True, text=True)
-        
+
         if 'DATABASE_URL' in result.stdout:
             print("✅ PostgreSQL disponible")
-            
+
             # Ejecutar script de estructura
             structure_file = None
             import_file = None
-            
+
             for file in os.listdir('.'):
                 if file.endswith('_postgresql_structure.sql'):
                     structure_file = file
                 if file.endswith('_import_to_postgresql.py'):
                     import_file = file
-            
+
             if structure_file and import_file:
                 print(f"📊 Ejecutando migración con {structure_file}")
-                
+
                 # Ejecutar importación de datos
-                result = subprocess.run(['python', import_file], 
+                result = subprocess.run(['python', import_file],
                                       capture_output=True, text=True)
-                
+
                 if result.returncode == 0:
                     print("✅ Migración de datos completada")
                     return True
@@ -272,7 +272,7 @@ def run_database_migration():
         else:
             print("❌ DATABASE_URL no disponible")
             return False
-            
+
     except Exception as e:
         print(f"❌ Error en migración: {e}")
         return False
@@ -280,26 +280,26 @@ def run_database_migration():
 def deploy_to_railway():
     """Deploy a Railway"""
     print("🚀 Iniciando deployment a Railway...")
-    
+
     try:
-        result = subprocess.run(['railway', 'deploy'], 
+        result = subprocess.run(['railway', 'deploy'],
                               capture_output=True, text=True)
-        
+
         if result.returncode == 0:
             print("✅ Deployment exitoso!")
-            
+
             # Obtener URL del deployment
-            url_result = subprocess.run(['railway', 'domain'], 
+            url_result = subprocess.run(['railway', 'domain'],
                                       capture_output=True, text=True)
-            
+
             if url_result.returncode == 0:
                 print(f"🌐 URL de la aplicación: {url_result.stdout.strip()}")
-            
+
             return True
         else:
             print(f"❌ Error en deployment: {result.stderr}")
             return False
-            
+
     except Exception as e:
         print(f"❌ Error en deployment: {e}")
         return False
@@ -309,31 +309,31 @@ def main():
     print("🚂 DEPLOYMENT AUTOMÁTICO A RAILWAY")
     print("CLIP Comparador V2 - Sistema Completo")
     print("=" * 50)
-    
+
     # Verificar Railway CLI
     if not check_railway_cli():
         if not install_railway_cli():
             print("❌ No se pudo instalar Railway CLI")
             return False
-    
+
     # Solicitar configuración
     print("\n📋 CONFIGURACIÓN NECESARIA:")
     config = {}
-    
+
     config['secret_key'] = input("Secret Key para Flask (deja vacío para generar): ").strip()
     if not config['secret_key']:
         import secrets
         config['secret_key'] = secrets.token_urlsafe(32)
         print(f"🔑 Secret Key generada: {config['secret_key']}")
-    
+
     config['cloudinary_cloud_name'] = input("Cloudinary Cloud Name: ").strip()
     config['cloudinary_api_key'] = input("Cloudinary API Key: ").strip()
     config['cloudinary_api_secret'] = input("Cloudinary API Secret: ").strip()
-    
+
     if not all(config.values()):
         print("❌ Faltan datos de configuración")
         return False
-    
+
     # Proceso de deployment
     steps = [
         ("🔐 Login a Railway", railway_login),
@@ -347,7 +347,7 @@ def main():
         ("🗄️ Migrar base de datos", run_database_migration),
         ("🚀 Deploy aplicación", deploy_to_railway)
     ]
-    
+
     for description, step_func in steps:
         print(f"\n{description}...")
         try:
@@ -357,11 +357,11 @@ def main():
         except Exception as e:
             print(f"❌ Error en {description}: {e}")
             return False
-    
+
     print("\n🎉 ¡DEPLOYMENT COMPLETADO EXITOSAMENTE!")
     print("🌐 Tu aplicación está ahora disponible en Railway")
     print("📊 Verifica el deployment en: https://railway.app/dashboard")
-    
+
     return True
 
 if __name__ == "__main__":
