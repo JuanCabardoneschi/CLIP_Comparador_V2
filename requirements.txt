@@ -28,7 +28,7 @@ passlib[bcrypt]==1.7.4
 
 # AI & ML - Railway compatible
 torch==2.1.1
-clip-by-openai==1.0
+clip-by-openai==1.1
 Pillow==10.1.0
 numpy==1.25.2
 sentence-transformers==2.2.2
@@ -48,7 +48,7 @@ black==23.11.0
 isort==5.12.0
 flake8==6.1.0
 
-# Utils
+# Utils - Railway compatible
 python-slugify==8.0.1
 validators==0.22.0
 googletrans==4.0.0rc1
