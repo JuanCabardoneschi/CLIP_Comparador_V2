@@ -1,0 +1,66 @@
+{% extends "layouts/base.html" %}
+{% set page_title = "Error del Servidor" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="text-center">
+                <!-- Error Icon -->
+                <div class="mb-4">
+                    <i class="fas fa-server text-danger" style="font-size: 5rem;"></i>
+                </div>
+
+                <!-- Error Message -->
+                <h1 class="display-4 text-danger">500</h1>
+                <h2 class="mb-3">Error Interno del Servidor</h2>
+                <p class="lead text-muted mb-4">
+                    Lo sentimos, algo salió mal en nuestros servidores.
+                    Nuestro equipo técnico ha sido notificado y está trabajando para resolver el problema.
+                </p>
+
+                <!-- Actions -->
+                <div class="d-flex flex-column flex-sm-row gap-3 justify-content-center">
+                    <a href="{{ url_for('dashboard.index') }}" class="btn btn-primary">
+                        <i class="fas fa-home me-2"></i>
+                        Ir al Dashboard
+                    </a>
+                    <button onclick="window.history.back()" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>
+                        Volver Atrás
+                    </button>
+                    <button onclick="window.location.reload()" class="btn btn-outline-info">
+                        <i class="fas fa-refresh me-2"></i>
+                        Reintentar
+                    </button>
+                </div>
+
+                <!-- Additional Info -->
+                <div class="mt-5 pt-4 border-top">
+                    <small class="text-muted">
+                        Si el problema persiste, contacta al administrador del sistema:<br>
+                        <a href="mailto:admin@clipcomparador.com" class="text-decoration-none">
+                            admin@clipcomparador.com
+                        </a>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Auto refresh after 30 seconds -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto refresh after 30 seconds
+    setTimeout(function() {
+        const refreshBtn = document.querySelector('button[onclick="window.location.reload()"]');
+        if (refreshBtn) {
+            refreshBtn.innerHTML = '<i class="fas fa-refresh me-2"></i>Recargando...';
+            refreshBtn.disabled = true;
+            window.location.reload();
+        }
+    }, 30000);
+});
+</script>
+{% endblock %}
