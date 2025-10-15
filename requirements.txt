@@ -26,8 +26,8 @@ PyJWT==2.8.0
 bcrypt==4.1.2
 passlib[bcrypt]==1.7.4
 
-# AI & ML
-torch==2.1.1+cpu --index-url https://download.pytorch.org/whl/cpu
+# AI & ML - Railway compatible
+torch==2.1.1
 clip-by-openai==1.0
 Pillow==10.1.0
 numpy==1.25.2
