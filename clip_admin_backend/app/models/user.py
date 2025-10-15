@@ -13,7 +13,7 @@ class User(UserMixin, db.Model):
     client_id = db.Column(db.String(36), db.ForeignKey("clients.id"))
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
-    full_name = db.Column(db.String(255), nullable=True)
+    full_name = db.Column(db.String(255), nullable=True)  # ✅ Restaurado - ahora existe en BD
     role = db.Column(db.String(50), default="STORE_ADMIN")  # SUPER_ADMIN | STORE_ADMIN
     active = db.Column(db.Boolean, default=True, name='is_active')  # Mapeo a columna is_active de BD
     last_login = db.Column(db.DateTime, nullable=True)
