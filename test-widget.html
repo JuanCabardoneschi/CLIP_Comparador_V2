@@ -119,8 +119,28 @@
 
         <div id="preview" class="preview" style="display: none; text-align: center;">
             <img id="previewImg" alt="Vista previa">
-            <br>
-            <button class="btn" id="searchBtn">Buscar Productos Similares</button>
+
+            <div style="margin: 20px 0; text-align: left; max-width: 350px; margin-left: auto; margin-right: auto;">
+                <label for="limitSelect" style="display: block; margin-bottom: 5px; font-weight: bold;">📈 Número de resultados:</label>
+                <select id="limitSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 15px;">
+                    <option value="3" selected>3 productos</option>
+                    <option value="5">5 productos</option>
+                    <option value="8">8 productos</option>
+                    <option value="10">10 productos</option>
+                    <option value="15">15 productos</option>
+                </select>
+
+                <label for="thresholdSelect" style="display: block; margin-bottom: 5px; font-weight: bold;">🎯 Umbral de similitud:</label>
+                <select id="thresholdSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="0.0">0.0 - Todos los resultados</option>
+                    <option value="0.1" selected>0.1 - Similitud baja</option>
+                    <option value="0.3">0.3 - Similitud media</option>
+                    <option value="0.5">0.5 - Similitud alta</option>
+                    <option value="0.7">0.7 - Similitud muy alta</option>
+                </select>
+            </div>
+
+            <button class="btn" id="searchBtn">🚀 Buscar Productos Similares</button>
         </div>
 
         <div id="loading" style="display: none; text-align: center; color: #007bff;">
@@ -282,11 +302,16 @@
             log('Iniciando búsqueda visual...');
 
             try {
+                // Obtener valores de los selectores
+                const limit = document.getElementById('limitSelect').value;
+                const threshold = document.getElementById('thresholdSelect').value;
+
                 const formData = new FormData();
                 formData.append('image', selectedFile);
-                formData.append('limit', '3');
-                formData.append('threshold', '0.3');
+                formData.append('limit', limit);
+                formData.append('threshold', threshold);
 
+                log(`Parámetros seleccionados: limit=${limit}, threshold=${threshold}`);
                 log('FormData preparado, enviando request...');
 
                 const response = await fetch(`${SERVER_URL}/api/search`, {

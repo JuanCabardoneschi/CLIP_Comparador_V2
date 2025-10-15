@@ -150,11 +150,11 @@ class ImageManager:
             cloudinary_url = None
             cloudinary_public_id = None
             base64_data = None
-            
+
             try:
                 import cloudinary
                 import cloudinary.uploader
-                
+
                 # Configurar Cloudinary si no está configurado
                 if not cloudinary.config().cloud_name:
                     cloudinary.config(
@@ -162,10 +162,10 @@ class ImageManager:
                         api_key=current_app.config.get('CLOUDINARY_API_KEY'),
                         api_secret=current_app.config.get('CLOUDINARY_API_SECRET')
                     )
-                
+
                 # Generar public_id único para Cloudinary
                 public_id = f"{client_slug}/products/{product_id}/{unique_filename.split('.')[0]}"
-                
+
                 # Subir a Cloudinary directamente
                 cloudinary_result = cloudinary.uploader.upload(
                     file_path,
@@ -174,11 +174,11 @@ class ImageManager:
                     resource_type="image",
                     overwrite=True
                 )
-                
+
                 if cloudinary_result:
                     cloudinary_url = cloudinary_result.get('secure_url')
                     cloudinary_public_id = cloudinary_result.get('public_id')
-                    
+
                     # Generar base64 desde archivo local
                     import base64
                     with open(file_path, "rb") as img_file:
@@ -186,11 +186,11 @@ class ImageManager:
                         img_base64 = base64.b64encode(img_data).decode('utf-8')
                         mime_type = file.mimetype or "image/jpeg"
                         base64_data = f"data:{mime_type};base64,{img_base64}"
-                        
+
                     print(f"✅ Imagen subida a Cloudinary: {cloudinary_url}")
                 else:
                     print("⚠️ Error subiendo a Cloudinary, manteniendo archivo local")
-                    
+
             except Exception as e:
                 print(f"⚠️ Error en Cloudinary: {e}, manteniendo archivo local")
 
