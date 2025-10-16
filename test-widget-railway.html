@@ -298,7 +298,12 @@
                 if (data.success) {
                     displayResults(data.results, searchTime, data.query_info);
                 } else {
-                    showError(data.error || 'Error desconocido en la búsqueda');
+                    // Manejo específico para error de categoría no detectada
+                    if (data.error === 'category_not_detected') {
+                        showCategoryNotDetectedError(data, searchTime);
+                    } else {
+                        showError(data.message || data.error || 'Error desconocido en la búsqueda');
+                    }
                 }
 
             } catch (error) {
@@ -342,7 +347,21 @@
                 return;
             }
 
+            // Información de categoría detectada
+            let categoryInfo = '';
+            if (queryInfo && queryInfo.detected_category) {
+                categoryInfo = `
+                    <div class="category-detected" style="background: #e8f5e8; border: 1px solid #4caf50; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 10px 0; color: #2e7d32;">🎯 Categoría Detectada</h4>
+                        <p style="margin: 0;"><strong>Categoría:</strong> ${queryInfo.detected_category}</p>
+                        <p style="margin: 5px 0 0 0;"><strong>Confianza:</strong> ${(queryInfo.confidence * 100).toFixed(1)}%</p>
+                        <p style="margin: 5px 0 0 0; font-size: 0.9em; color: #666;">✅ Búsqueda filtrada automáticamente por esta categoría</p>
+                    </div>
+                `;
+            }
+
             let html = `
+                ${categoryInfo}
                 <div class="success">
                     <h3>✅ Búsqueda completada</h3>
                     <p><strong>Tiempo:</strong> ${searchTime}s | <strong>Resultados:</strong> ${results.length} productos</p>
@@ -354,12 +373,13 @@
                 const similarity = (result.similarity * 100).toFixed(1);
                 html += `
                     <div class="result-item">
-                        <img src="${result.image_url}" alt="${result.name}" class="result-image" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2Y4ZjlmYSIvPjx0ZXh0IHg9IjUwIiB5PSI1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNmM3NTdkIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+SW1hZ2VuPC90ZXh0Pjwvc3ZnPg=='">${result.image_url}
+                        <img src="${result.image_url}" alt="${result.name}" class="result-image" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2Y4ZjlmYSIvPjx0ZXh0IHg9IjUwIiB5PSI1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNmM3NTdkIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+SW1hZ2VuPC90ZXh0Pjwvc3ZnPg=='" />
                         <div class="result-info">
                             <h3>${result.name}</h3>
-                            <p><strong>Categoría:</strong> ${result.category_name || 'Sin categoría'}</p>
+                            <p><strong>Categoría:</strong> ${result.category || 'Sin categoría'}</p>
                             <p><strong>Descripción:</strong> ${result.description || 'Sin descripción'}</p>
                             <p><strong>SKU:</strong> ${result.sku || 'N/A'} | <strong>Precio:</strong> ${result.price ? '$' + result.price : 'No disponible'}</p>
+                            <p><strong>Stock:</strong> ${result.stock || 0} unidades</p>
                             <span class="similarity-score">${similarity}% similar</span>
                         </div>
                     </div>
@@ -374,6 +394,38 @@
                 <div class="error">
                     <h3>❌ Error</h3>
                     <p>${message}</p>
+                </div>
+            `;
+        }
+
+        function showCategoryNotDetectedError(data, searchTime) {
+            const categoriesList = data.available_categories ? 
+                data.available_categories.map(cat => `<li>${cat}</li>`).join('') : '';
+            
+            document.getElementById('results').innerHTML = `
+                <div class="error" style="background: #fff3cd; border-color: #ffeaa7; color: #856404;">
+                    <h3>🤔 Categoría No Reconocida</h3>
+                    <p><strong>${data.message}</strong></p>
+                    <p>${data.details}</p>
+                    <p><strong>Tiempo de procesamiento:</strong> ${searchTime}s</p>
+                    
+                    ${categoriesList ? `
+                        <div style="margin-top: 15px;">
+                            <strong>Categorías disponibles para ${data.client_name || 'este cliente'}:</strong>
+                            <ul style="margin: 10px 0; padding-left: 20px;">
+                                ${categoriesList}
+                            </ul>
+                        </div>
+                    ` : ''}
+                    
+                    <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                        <strong>💡 Sugerencias:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>Prueba con una imagen más clara de la categoría deseada</li>
+                            <li>Asegúrate de que el producto esté bien centrado en la imagen</li>
+                            <li>Intenta con una imagen de fondo neutro</li>
+                        </ul>
+                    </div>
                 </div>
             `;
         }

@@ -620,11 +620,19 @@ def _find_similar_products(client, query_embedding, threshold):
 
     # Calcular similitudes y agrupar por producto
     product_best_match = {}  # Dict para almacenar la mejor imagen de cada producto
+    category_similarities = {}  # Para determinar categoría más probable
 
     for img in images:
         try:
             similarity = calculate_similarity(query_embedding, img.clip_embedding)
-            print(f"🔍 DEBUG: Similitud con {img.product.name[:30]}: {similarity:.4f}")
+            category_name = img.product.category.name if img.product.category else "Sin categoría"
+            
+            print(f"🔍 DEBUG: Similitud con {img.product.name[:30]} ({category_name}): {similarity:.4f}")
+
+            # Recopilar estadísticas por categoría
+            if category_name not in category_similarities:
+                category_similarities[category_name] = []
+            category_similarities[category_name].append(similarity)
 
             if similarity >= threshold:
                 product_id = img.product.id
@@ -634,7 +642,8 @@ def _find_similar_products(client, query_embedding, threshold):
                     product_best_match[product_id] = {
                         'image': img,
                         'similarity': similarity,
-                        'product': img.product
+                        'product': img.product,
+                        'category': category_name
                     }
                     print(f"✅ DEBUG: Mejor imagen para {img.product.name}: {similarity:.4f}")
 
@@ -642,7 +651,95 @@ def _find_similar_products(client, query_embedding, threshold):
             print(f"❌ Error calculando similitud para imagen {img.id}: {e}")
             continue
 
+    # Determinar categoría más probable basada en mayor similitud promedio
+    print(f"\n📊 DEBUG: Análisis por categorías:")
+    best_category = None
+    best_avg_similarity = 0
+    
+    for category, similarities in category_similarities.items():
+        avg_sim = sum(similarities) / len(similarities)
+        max_sim = max(similarities)
+        count = len(similarities)
+        print(f"   📂 {category}: {count} productos, promedio: {avg_sim:.4f}, máximo: {max_sim:.4f}")
+        
+        if max_sim > best_avg_similarity:  # Usar máximo en lugar de promedio para detectar categoría objetivo
+            best_avg_similarity = max_sim
+            best_category = category
+
+    print(f"🎯 DEBUG: Categoría más probable: '{best_category}' (similitud máxima: {best_avg_similarity:.4f})")
+    
+    # Aplicar boost de categoría: aumentar similitud para productos de la categoría más probable
+    if best_category and best_category != "Sin categoría":
+        for product_id in product_best_match:
+            match_data = product_best_match[product_id]
+            if match_data['category'] == best_category:
+                # Boost del 15% para productos de la misma categoría
+                original_similarity = match_data['similarity']
+                boosted_similarity = min(1.0, original_similarity * 1.15)
+                match_data['similarity'] = boosted_similarity
+                match_data['category_boost'] = True
+                print(f"🚀 DEBUG: Boost aplicado a {match_data['product'].name}: {original_similarity:.4f} → {boosted_similarity:.4f}")
+            else:
+                match_data['category_boost'] = False
+
     print(f"🎯 DEBUG: Productos únicos encontrados: {len(product_best_match)}")
+    return product_best_match
+
+
+def _find_similar_products_in_category(client, query_embedding, threshold, category_id):
+    """
+    Encuentra productos similares SOLO dentro de una categoría específica
+    
+    Args:
+        client: Cliente autenticado
+        query_embedding: Embedding de la imagen query
+        threshold: Umbral mínimo de similitud
+        category_id: ID de la categoría en la que buscar
+    
+    Returns:
+        dict: Diccionario con los mejores matches por producto
+    """
+    # Buscar imágenes SOLO de la categoría específica
+    images = (Image.query
+              .join(Product)
+              .filter(
+                  Image.client_id == client.id,
+                  Image.is_processed == True,
+                  Image.clip_embedding.isnot(None),
+                  Product.category_id == category_id
+              ).all())
+
+    print(f"🔍 DEBUG: Encontradas {len(images)} imágenes en la categoría específica")
+
+    # Calcular similitudes y agrupar por producto
+    product_best_match = {}  # Dict para almacenar la mejor imagen de cada producto
+
+    for img in images:
+        try:
+            similarity = calculate_similarity(query_embedding, img.clip_embedding)
+            category_name = img.product.category.name if img.product.category else "Sin categoría"
+            
+            print(f"🔍 DEBUG: Similitud con {img.product.name[:30]} ({category_name}): {similarity:.4f}")
+
+            if similarity >= threshold:
+                product_id = img.product.id
+
+                # Si es la primera imagen de este producto, o si tiene mayor similitud que la anterior
+                if product_id not in product_best_match or similarity > product_best_match[product_id]['similarity']:
+                    product_best_match[product_id] = {
+                        'image': img,
+                        'similarity': similarity,
+                        'product': img.product,
+                        'category': category_name,
+                        'category_filtered': True  # Indicador de que se filtró por categoría
+                    }
+                    print(f"✅ DEBUG: Mejor imagen para {img.product.name}: {similarity:.4f}")
+
+        except Exception as e:
+            print(f"❌ Error calculando similitud para imagen {img.id}: {e}")
+            continue
+
+    print(f"🎯 DEBUG: Total productos únicos encontrados en categoría: {len(product_best_match)}")
     return product_best_match
 
 
@@ -713,6 +810,7 @@ def _build_search_results(product_best_match, limit):
         img = best_match['image']
         product = best_match['product']
         similarity = best_match['similarity']
+        category_boost = best_match.get('category_boost', False)
 
         # Usar base64_data directamente del modelo Image
         try:
@@ -736,10 +834,13 @@ def _build_search_results(product_best_match, limit):
             "price": float(product.price) if product.price else None,
             "sku": product.sku,
             "stock": product.stock if hasattr(product, 'stock') and product.stock is not None else 0,
-            "category": product.category.name if product.category else "Sin categoría"
+            "category": product.category.name if product.category else "Sin categoría",
+            "category_boost": category_boost
         }
         results.append(result)
-        print(f"📦 DEBUG: Producto final añadido: {product.name} (similitud: {similarity:.4f})")
+        
+        boost_indicator = "🚀" if category_boost else ""
+        print(f"📦 DEBUG: Producto final añadido: {product.name} (similitud: {similarity:.4f}) {boost_indicator}")
 
     print(f"🎯 DEBUG: Total productos únicos procesados: {len(results)}")
 
@@ -748,10 +849,112 @@ def _build_search_results(product_best_match, limit):
     return results[:limit]
 
 
+def detect_image_category(image_data, client_id, confidence_threshold=0.3):
+    """
+    Detecta la categoría de una imagen usando CLIP y los prompts de categorías del cliente
+    
+    Args:
+        image_data: Datos binarios de la imagen
+        client_id: ID del cliente para obtener sus categorías
+        confidence_threshold: Umbral mínimo de confianza para detección
+    
+    Returns:
+        tuple: (categoria_detectada, confidence_score) o (None, 0) si no detecta
+    """
+    try:
+        print(f"🎯 DEBUG: Iniciando detección de categoría para cliente {client_id}")
+        
+        # 1. Obtener categorías activas del cliente
+        categories = Category.query.filter_by(
+            client_id=client_id, 
+            is_active=True
+        ).all()
+        
+        if not categories:
+            print(f"❌ DEBUG: No se encontraron categorías para cliente {client_id}")
+            return None, 0
+        
+        print(f"📋 DEBUG: Encontradas {len(categories)} categorías activas")
+        
+        # 2. Preparar imagen para CLIP
+        from PIL import Image as PILImage
+        import io
+        pil_image = PILImage.open(io.BytesIO(image_data))
+        print(f"🖼️ DEBUG: Imagen preparada: {pil_image.size}")
+        
+        # 3. Obtener modelo CLIP
+        from app.blueprints.embeddings import get_clip_model
+        model, processor = get_clip_model()
+        print("🤖 DEBUG: Modelo CLIP obtenido")
+        
+        # 4. Preparar prompts de categorías
+        category_prompts = []
+        category_objects = []
+        
+        for category in categories:
+            # Usar clip_prompt si existe, sino usar name_en, sino name
+            if category.clip_prompt:
+                prompt = f"a photo of {category.clip_prompt}"
+            elif category.name_en:
+                prompt = f"a photo of {category.name_en.lower()}"
+            else:
+                prompt = f"a photo of {category.name.lower()}"
+            
+            category_prompts.append(prompt)
+            category_objects.append(category)
+            print(f"📝 DEBUG: Prompt para {category.name}: {prompt}")
+        
+        # 5. Procesar imagen y textos con CLIP
+        with torch.no_grad():
+            # Procesar imagen
+            image_inputs = processor(
+                images=pil_image,
+                return_tensors="pt"
+            )
+            image_features = model.get_image_features(**image_inputs)
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+            
+            # Procesar textos
+            text_inputs = processor(
+                text=category_prompts,
+                return_tensors="pt",
+                padding=True,
+                truncation=True
+            )
+            text_features = model.get_text_features(**text_inputs)
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+            
+            # Calcular similitudes
+            similarities = (image_features @ text_features.T).squeeze(0)
+            
+            print(f"🔍 DEBUG: Similitudes calculadas: {similarities.tolist()}")
+        
+        # 6. Encontrar la mejor coincidencia
+        best_idx = similarities.argmax().item()
+        best_score = similarities[best_idx].item()
+        best_category = category_objects[best_idx]
+        
+        print(f"🎯 DEBUG: Mejor coincidencia: {best_category.name} ({best_score:.4f})")
+        
+        # 7. Verificar umbral de confianza
+        if best_score >= confidence_threshold:
+            print(f"✅ DEBUG: Categoría detectada con confianza suficiente")
+            return best_category, best_score
+        else:
+            print(f"❌ DEBUG: Confianza insuficiente ({best_score:.4f} < {confidence_threshold})")
+            return None, best_score
+            
+    except Exception as e:
+        print(f"❌ ERROR en detección de categoría: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, 0
+
+
 @bp.route("/search", methods=["POST", "OPTIONS"])
 def visual_search():
     """
-    Endpoint de búsqueda visual para el widget
+    Endpoint de búsqueda visual para el widget con detección automática de categoría
 
     Headers:
         X-API-Key: API Key del cliente
@@ -782,33 +985,75 @@ def visual_search():
         if error_response:
             return error_response, status_code
 
-        # Generar embedding
+        # ===== NUEVA FUNCIONALIDAD: DETECCIÓN DE CATEGORÍA =====
+        print(f"🎯 DEBUG: Iniciando detección de categoría...")
+        
+        detected_category, category_confidence = detect_image_category(
+            image_data, 
+            client.id, 
+            confidence_threshold=0.3
+        )
+        
+        if detected_category is None:
+            # No se pudo detectar una categoría válida
+            print(f"❌ DEBUG: No se detectó ninguna categoría válida")
+            return jsonify({
+                "success": False,
+                "error": "category_not_detected",
+                "message": f"La categoría detectada no se comercializa por {client.name}",
+                "details": f"CLIP no pudo identificar la imagen dentro de las categorías disponibles. Confidence máximo: {category_confidence:.3f}",
+                "available_categories": [cat.name for cat in Category.query.filter_by(client_id=client.id, is_active=True).all()],
+                "processing_time": round(time.time() - start_time, 3)
+            }), 400
+        
+        print(f"✅ DEBUG: Categoría detectada: {detected_category.name} (confianza: {category_confidence:.4f})")
+        
+        # ===== GENERAR EMBEDDING DE LA IMAGEN =====
         query_embedding, error_response, status_code = _generate_query_embedding(image_data)
         if error_response:
             return error_response, status_code
 
-        # Encontrar productos similares
-        product_best_match = _find_similar_products(client, query_embedding, threshold)
+        # ===== BUSCAR SOLO EN LA CATEGORÍA DETECTADA =====
+        print(f"🔍 DEBUG: Buscando similitudes SOLO en categoría: {detected_category.name}")
+        
+        # Modificar la búsqueda para filtrar por categoría detectada
+        product_best_match = _find_similar_products_in_category(
+            client, 
+            query_embedding, 
+            threshold, 
+            detected_category.id
+        )
 
-        # Aplicar filtro de categoría si es necesario
-        product_best_match = _apply_category_filter(product_best_match, limit)
+        print(f"🎯 DEBUG: Productos encontrados en categoría {detected_category.name}: {len(product_best_match)}")
 
-        print(f"🎯 DEBUG: Productos únicos finales: {len(product_best_match)}")
-
-        # Construir resultados finales
+        # Construir resultados finales (sin filtro adicional de categoría)
         results = _build_search_results(product_best_match, limit)
 
         processing_time = time.time() - start_time
 
-        # Respuesta
+        # Respuesta con información de categoría detectada
         response = {
             "success": True,
-            "query_type": "image",
+            "query_type": "image_with_category_detection",
+            "detected_category": {
+                "id": detected_category.id,
+                "name": detected_category.name,
+                "name_en": detected_category.name_en,
+                "confidence": round(category_confidence, 4)
+            },
+            "query_info": {
+                "method": "category_detection_with_clip",
+                "detected_category": detected_category.name,
+                "confidence": round(category_confidence, 4),
+                "threshold_used": threshold,
+                "category_filter": True
+            },
             "results": results,
             "total_results": len(results),
             "processing_time": round(processing_time, 3),
             "client_id": client.id,
             "client_name": client.name,
+            "search_method": "category_filtered",
             "timestamp": time.time()
         }
 
