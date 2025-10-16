@@ -852,6 +852,69 @@ def _build_search_results(product_best_match, limit):
     return results[:limit]
 
 
+def detect_general_object(image_data):
+    """
+    Detecta QUÉ es el objeto en la imagen usando CLIP con categorías generales
+    
+    Args:
+        image_data: Datos binarios de la imagen
+        
+    Returns:
+        tuple: (objeto_detectado, confidence_score)
+    """
+    try:
+        # Categorías generales para identificar objetos
+        general_categories = [
+            "car", "automobile", "vehicle",
+            "hat", "cap", "beanie", "gorra", 
+            "shoe", "boot", "sneaker", "zapato",
+            "shirt", "t-shirt", "clothing", "camisa",
+            "jacket", "coat", "chaqueta",
+            "food", "comida", "meal",
+            "animal", "pet", "dog", "cat",
+            "electronics", "phone", "computer",
+            "furniture", "chair", "table",
+            "building", "house", "architecture",
+            "person", "human", "people",
+            "nature", "tree", "flower", "landscape"
+        ]
+        
+        # Convertir a imagen PIL
+        from PIL import Image as PILImage
+        import io
+        pil_image = PILImage.open(io.BytesIO(image_data))
+        
+        # Obtener modelo CLIP
+        model, processor = get_clip_model()
+        
+        # Generar embedding de imagen
+        with torch.no_grad():
+            image_inputs = processor(images=pil_image, return_tensors="pt")
+            image_features = model.get_image_features(**image_inputs)
+            image_embedding = image_features / image_features.norm(dim=-1, keepdim=True)
+            
+            # Generar embeddings de texto para categorías generales
+            text_inputs = processor(text=general_categories, return_tensors="pt", padding=True)
+            text_features = model.get_text_features(**text_inputs)
+            text_embeddings = text_features / text_features.norm(dim=-1, keepdim=True)
+            
+            # Calcular similitudes
+            similarities = torch.cosine_similarity(image_embedding, text_embeddings, dim=1)
+            
+            # Encontrar la mejor coincidencia
+            best_idx = similarities.argmax().item()
+            best_score = similarities[best_idx].item()
+            detected_object = general_categories[best_idx]
+            
+            print(f"🔍 DETECCIÓN GENERAL: {detected_object} (confianza: {best_score:.3f})")
+            
+            return detected_object, best_score
+            
+    except Exception as e:
+        print(f"❌ Error en detección general: {e}")
+        return "unknown", 0.0
+
+
 def detect_image_category_with_centroids(image_data, client_id, confidence_threshold=0.2):
     """
     Detecta la categoría de una imagen usando centroides de embeddings reales
@@ -1099,13 +1162,42 @@ def visual_search():
         if error_response:
             return error_response, status_code
 
-        # ===== NUEVA FUNCIONALIDAD: DETECCIÓN DE CATEGORÍA POR CENTROIDES =====
-        print(f"🚀 RAILWAY LOG: INICIANDO DETECCIÓN DE CATEGORÍA")
+        # ===== PASO 1: DETECCIÓN GENERAL DEL OBJETO =====
+        print(f"🔍 RAILWAY LOG: IDENTIFICANDO QUÉ ES EL OBJETO...")
+        
+        detected_object, object_confidence = detect_general_object(image_data)
+        print(f"🎯 RAILWAY LOG: OBJETO DETECTADO = {detected_object} (confianza: {object_confidence:.3f})")
+        
+        # Mapeo de objetos detectados a si los comercializamos
+        commercial_keywords = [
+            "hat", "cap", "beanie", "gorra",
+            "shoe", "boot", "sneaker", "zapato", 
+            "shirt", "t-shirt", "clothing", "camisa",
+            "jacket", "coat", "chaqueta"
+        ]
+        
+        # Verificar si el objeto detectado es comercializable
+        is_commercial = detected_object in commercial_keywords
+        
+        if not is_commercial and object_confidence > 0.6:
+            # El objeto está claramente identificado pero no lo comercializamos
+            print(f"❌ RAILWAY LOG: OBJETO NO COMERCIAL - {detected_object}")
+            return jsonify({
+                "success": False,
+                "error": "non_commercial_object",
+                "message": f"Esta imagen contiene un {detected_object} que no comercializamos",
+                "details": f"Detectamos que es un '{detected_object}' con {object_confidence:.1%} de confianza, pero no vendemos este tipo de productos.",
+                "available_categories": [cat.name for cat in Category.query.filter_by(client_id=client.id, is_active=True).all()],
+                "processing_time": round(time.time() - start_time, 3)
+            }), 400
+
+        # ===== PASO 2: DETECCIÓN DE CATEGORÍA ESPECÍFICA =====
+        print(f"🚀 RAILWAY LOG: INICIANDO DETECCIÓN DE CATEGORÍA ESPECÍFICA")
 
         detected_category, category_confidence = detect_image_category_with_centroids(
             image_data,
             client.id,
-            confidence_threshold=0.2  # Umbral basado en similitud real con productos
+            confidence_threshold=0.7  # Umbral alto para evitar falsos positivos (70%+)
         )
 
         print(f"🎯 RAILWAY LOG: Resultado detección = {detected_category.name if detected_category else 'NULL'} (conf: {category_confidence:.3f})")
@@ -1115,9 +1207,9 @@ def visual_search():
             print(f"❌ RAILWAY LOG: CATEGORÍA NO DETECTADA - devolviendo error")
             return jsonify({
                 "success": False,
-                "error": "category_not_detected",
-                "message": f"La categoría detectada no se comercializa por {client.name}",
-                "details": f"CLIP no pudo identificar la imagen dentro de las categorías disponibles. Confidence máximo: {category_confidence:.3f}",
+                "error": "category_not_detected", 
+                "message": f"Esta imagen no corresponde a productos que comercializa {client.name}",
+                "details": f"La imagen no pudo identificarse dentro de nuestras categorías disponibles (confianza máxima: {category_confidence:.1%}). Por favor, intenta con una imagen de un producto de nuestro catálogo.",
                 "available_categories": [cat.name for cat in Category.query.filter_by(client_id=client.id, is_active=True).all()],
                 "processing_time": round(time.time() - start_time, 3)
             }), 400
