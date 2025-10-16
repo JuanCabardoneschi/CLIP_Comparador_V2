@@ -160,7 +160,7 @@
                             </td>
                             <td>
                                 <div class="fw-medium">{{ category.name }}</div>
-                                <small class="text-muted">ID: {{ category.id[:8] }}...</small>
+                                <small class="text-muted">ID: {{ category.id|string|slice(':8') }}...</small>
                             </td>
                             <td>
                                 <div class="text-truncate" style="max-width: 300px;" title="{{ category.description or 'Sin descripción' }}">

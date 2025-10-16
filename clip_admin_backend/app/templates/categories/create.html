@@ -31,7 +31,7 @@
             <div class="small">
                 Esta categoría será creada exclusivamente para este cliente y solo será visible en su catálogo.
                 {% if current_user.client %}
-                <br><span class="text-muted">ID del cliente: {{ current_user.client.id[:8] }}...</span>
+                <br><span class="text-muted">ID del cliente: {{ current_user.client.id|string|slice(':8') }}...</span>
                 {% endif %}
             </div>
         </div>

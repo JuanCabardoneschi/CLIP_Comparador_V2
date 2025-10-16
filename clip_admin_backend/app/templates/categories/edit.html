@@ -201,7 +201,7 @@
                     </li>
                     <li class="mb-2">
                         <i class="bi bi-hash text-primary me-2"></i>
-                        ID: {{ category.id[:8] }}...
+                        ID: {{ category.id|string|slice(':8') }}...
                     </li>
                 </ul>
             </div>
