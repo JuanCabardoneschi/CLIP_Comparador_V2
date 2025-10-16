@@ -290,21 +290,27 @@
                 const searchTime = ((endTime - startTime) / 1000).toFixed(3);
 
                 if (!response.ok) {
-                    throw new Error(`Error ${response.status}: ${response.statusText}`);
+                    // Obtener detalles del error
+                    const errorText = await response.text();
+                    console.error('Error response:', errorText);
+                    
+                    try {
+                        const errorData = JSON.parse(errorText);
+                        console.error('Error data:', errorData);
+                        
+                        if (errorData.error === 'category_not_detected') {
+                            showCategoryNotDetectedError(errorData, searchTime);
+                            return;
+                        } else {
+                            throw new Error(`Error ${response.status}: ${errorData.message || errorData.error || response.statusText}`);
+                        }
+                    } catch (parseError) {
+                        throw new Error(`Error ${response.status}: ${errorText || response.statusText}`);
+                    }
                 }
 
                 const data = await response.json();
-
-                if (data.success) {
-                    displayResults(data.results, searchTime, data.query_info);
-                } else {
-                    // Manejo específico para error de categoría no detectada
-                    if (data.error === 'category_not_detected') {
-                        showCategoryNotDetectedError(data, searchTime);
-                    } else {
-                        showError(data.message || data.error || 'Error desconocido en la búsqueda');
-                    }
-                }
+                displayResults(data.results, searchTime, data.query_info);
 
             } catch (error) {
                 console.error('Error en búsqueda:', error);
@@ -402,16 +408,19 @@
             const categoriesList = data.available_categories ? 
                 data.available_categories.map(cat => `<li>${cat}</li>`).join('') : '';
             
+            const clientName = data.client_name || 'este cliente';
+            const processingTime = data.processing_time || searchTime;
+            
             document.getElementById('results').innerHTML = `
                 <div class="error" style="background: #fff3cd; border-color: #ffeaa7; color: #856404;">
                     <h3>🤔 Categoría No Reconocida</h3>
                     <p><strong>${data.message}</strong></p>
                     <p>${data.details}</p>
-                    <p><strong>Tiempo de procesamiento:</strong> ${searchTime}s</p>
+                    <p><strong>Tiempo de procesamiento:</strong> ${processingTime}s</p>
                     
                     ${categoriesList ? `
                         <div style="margin-top: 15px;">
-                            <strong>Categorías disponibles para ${data.client_name || 'este cliente'}:</strong>
+                            <strong>Categorías disponibles para ${clientName}:</strong>
                             <ul style="margin: 10px 0; padding-left: 20px;">
                                 ${categoriesList}
                             </ul>
@@ -424,6 +433,7 @@
                             <li>Prueba con una imagen más clara de la categoría deseada</li>
                             <li>Asegúrate de que el producto esté bien centrado en la imagen</li>
                             <li>Intenta con una imagen de fondo neutro</li>
+                            <li>El producto debe ser claramente visible y reconocible</li>
                         </ul>
                     </div>
                 </div>
