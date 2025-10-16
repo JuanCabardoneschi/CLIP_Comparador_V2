@@ -13,9 +13,11 @@ class Product(db.Model):
     category_id = db.Column(db.String(36), db.ForeignKey('categories.id'), nullable=False)
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
+    brand = db.Column(db.String(100))  # Marca del producto
     sku = db.Column(db.String(100))  # Código único del producto
     price = db.Column(db.Numeric(10, 2))
     stock = db.Column(db.Integer, default=0)
+    color = db.Column(db.String(50))  # Color del producto
     tags = db.Column(db.Text)  # Tags separados por comas para búsqueda
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
