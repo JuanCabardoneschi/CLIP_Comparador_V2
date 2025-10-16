@@ -21,8 +21,31 @@ from app.services.image_manager import image_manager
 from sqlalchemy import func, or_
 from googletrans import Translator
 
-# Cache global para centroides de categorías
+# Cache global para centroides de categorías (OPTIMIZADO)
 category_centroids_cache = {}
+
+def get_category_centroid_optimized(client_id, category_id):
+    """
+    Versión ULTRA-OPTIMIZADA: cache persistente + cálculo bajo demanda
+    """
+    cache_key = f"{client_id}_{category_id}"
+    
+    # 1. Verificar cache primero (súper rápido)
+    if cache_key in category_centroids_cache:
+        print(f"⚡ Cache HIT para categoría {category_id}")
+        return category_centroids_cache[cache_key]
+    
+    print(f"🔄 Cache MISS - Calculando centroide para categoría {category_id}")
+    
+    # 2. Calcular centroide solo si no existe en cache
+    centroid = calculate_category_centroid(client_id, category_id)
+    
+    # 3. Guardar en cache para futuras búsquedas
+    if centroid is not None:
+        category_centroids_cache[cache_key] = centroid
+        print(f"💾 Centroide cacheado para categoría {category_id}")
+    
+    return centroid
 
 bp = Blueprint("api", __name__)
 
@@ -1012,7 +1035,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         
         for category in categories:
             # Obtener centroide de la categoría (desde cache o calcularlo)
-            centroid = get_category_centroid(client_id, category.id)
+            centroid = get_category_centroid_optimized(client_id, category.id)
             
             if centroid is not None:
                 # Calcular similitud coseno
@@ -1108,45 +1131,26 @@ def detect_image_category_legacy(image_data, client_id, confidence_threshold=0.2
             
         print(f"🔍 DEBUG: Embedding de query generado: {query_embedding.shape}")
         
-        # 4. Calcular centroides por categoría y similitudes
+        # 4. Comparar con centroides CACHEADOS (súper rápido después de primera vez)
         category_similarities = []
         
         for category in categories:
-            # Obtener todas las imágenes con embeddings de esta categoría
-            category_embeddings = []
+            # Usar cache optimizado (solo calcula la primera vez)
+            centroid = get_category_centroid_optimized(client_id, category.id)
             
-            for product in category.products:
-                for image in product.images:
-                    if image.clip_embedding and image.is_processed:
-                        try:
-                            # Deserializar embedding
-                            import json
-                            embedding_data = json.loads(image.clip_embedding)
-                            embedding_array = np.array(embedding_data)
-                            category_embeddings.append(embedding_array)
-                        except Exception as e:
-                            print(f"⚠️ DEBUG: Error procesando embedding de imagen {image.id}: {e}")
-                            continue
-            
-            if not category_embeddings:
-                print(f"❌ DEBUG: Categoría {category.name} sin embeddings válidos")
+            if centroid is None:
+                print(f"❌ DEBUG: No se pudo obtener centroide para {category.name}")
                 continue
             
-            # Calcular centroide (promedio) de embeddings de la categoría
-            category_embeddings = np.array(category_embeddings)
-            centroid = np.mean(category_embeddings, axis=0)
-            centroid = centroid / np.linalg.norm(centroid)  # Normalizar
-            
-            # Calcular similitud coseno entre query y centroide
+            # Calcular similitud coseno (súper rápido)
             similarity = np.dot(query_embedding, centroid)
             
             category_similarities.append({
                 'category': category,
-                'similarity': float(similarity),
-                'num_images': len(category_embeddings)
+                'similarity': float(similarity)
             })
             
-            print(f"📊 DEBUG: {category.name}: {similarity:.4f} similitud ({len(category_embeddings)} imágenes)")
+            print(f"⚡ DEBUG: {category.name}: {similarity:.4f} similitud (cache)")
         
         if not category_similarities:
             print(f"❌ DEBUG: No se pudieron calcular similitudes")

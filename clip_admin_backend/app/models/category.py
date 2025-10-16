@@ -21,6 +21,8 @@ class Category(db.Model):
     clip_prompt = db.Column(db.Text)  # Prompt optimizado para CLIP en inglés
     visual_features = db.Column(db.Text)  # JSON con características visuales clave
     confidence_threshold = db.Column(db.Float, default=0.75)  # Umbral de confianza
+    centroid_embedding = db.Column(db.Text)  # Embedding centroide precalculado de la categoría
+    centroid_updated_at = db.Column(db.DateTime)  # Última actualización del centroide
 
     # Campos de interfaz
     color = db.Column(db.String(7), default='#007bff')  # Color hex para la UI
@@ -41,7 +43,72 @@ class Category(db.Model):
     def __repr__(self):
         return f'<Category {self.name}>'
 
-    def to_dict(self):
+    def update_centroid_embedding(self):
+        """
+        Recalcula y actualiza el centroide de embeddings para esta categoría
+        Se llama automáticamente cuando se procesan nuevas imágenes
+        """
+        import json
+        import numpy as np
+        from datetime import datetime
+        
+        try:
+            # Obtener todas las imágenes procesadas de esta categoría
+            category_embeddings = []
+            
+            for product in self.products:
+                for image in product.images:
+                    if image.clip_embedding and image.is_processed:
+                        try:
+                            embedding_data = json.loads(image.clip_embedding)
+                            embedding_array = np.array(embedding_data)
+                            # Normalizar embedding
+                            embedding_array = embedding_array / np.linalg.norm(embedding_array)
+                            category_embeddings.append(embedding_array)
+                        except Exception:
+                            continue
+            
+            if not category_embeddings:
+                self.centroid_embedding = None
+                self.centroid_updated_at = None
+                return False
+            
+            # Calcular centroide (promedio) y normalizar
+            category_embeddings = np.array(category_embeddings)
+            centroid = np.mean(category_embeddings, axis=0)
+            centroid = centroid / np.linalg.norm(centroid)
+            
+            # Guardar en BD como JSON
+            self.centroid_embedding = json.dumps(centroid.tolist())
+            self.centroid_updated_at = datetime.utcnow()
+            
+            print(f"🔄 Centroide actualizado para categoría {self.name}: {len(category_embeddings)} imágenes")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error actualizando centroide para {self.name}: {e}")
+            return False
+
+    def get_centroid_embedding(self):
+        """
+        Obtiene el centroide embedding, recalculándolo si es necesario
+        """
+        import json
+        import numpy as np
+        
+        if not self.centroid_embedding:
+            if self.update_centroid_embedding():
+                # Guardar cambios en BD
+                from .. import db
+                db.session.commit()
+        
+        if self.centroid_embedding:
+            try:
+                return np.array(json.loads(self.centroid_embedding))
+            except Exception:
+                return None
+        
+        return None
         """Convierte el objeto a diccionario para JSON"""
         return {
             'id': self.id,
