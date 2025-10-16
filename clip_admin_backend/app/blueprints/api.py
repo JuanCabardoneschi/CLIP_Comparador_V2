@@ -21,6 +21,9 @@ from app.services.image_manager import image_manager
 from sqlalchemy import func, or_
 from googletrans import Translator
 
+# Cache global para centroides de categorías
+category_centroids_cache = {}
+
 bp = Blueprint("api", __name__)
 
 # Habilitar CORS para este blueprint
@@ -849,6 +852,302 @@ def _build_search_results(product_best_match, limit):
     return results[:limit]
 
 
+def calculate_category_centroid(client_id, category_id):
+    """
+    Calcula el centroide (promedio) de embeddings para una categoría específica
+    
+    Args:
+        client_id: ID del cliente
+        category_id: ID de la categoría
+        
+    Returns:
+        numpy.array: Vector centroide de la categoría o None si no hay imágenes
+    """
+    try:
+        print(f"🧮 Calculando centroide para categoría {category_id}")
+        
+        # Obtener todas las imágenes de la categoría con embeddings
+        images = (Image.query
+                  .join(Product)
+                  .filter(
+                      Image.client_id == client_id,
+                      Image.is_processed == True,
+                      Image.clip_embedding.isnot(None),
+                      Product.category_id == category_id
+                  ).all())
+        
+        if not images:
+            print(f"❌ No hay imágenes con embeddings para categoría {category_id}")
+            return None
+        
+        print(f"📊 Encontradas {len(images)} imágenes para centroide")
+        
+        # Convertir embeddings a numpy arrays
+        embeddings = []
+        for img in images:
+            try:
+                # Deserializar embedding
+                if isinstance(img.clip_embedding, str):
+                    import json
+                    embedding = np.array(json.loads(img.clip_embedding))
+                else:
+                    embedding = np.array(img.clip_embedding)
+                embeddings.append(embedding)
+            except Exception as e:
+                print(f"⚠️ Error procesando embedding de imagen {img.id}: {e}")
+                continue
+        
+        if not embeddings:
+            print(f"❌ No se pudieron procesar embeddings para categoría {category_id}")
+            return None
+        
+        # Calcular centroide (promedio)
+        centroid = np.mean(embeddings, axis=0)
+        print(f"✅ Centroide calculado: shape {centroid.shape}")
+        
+        return centroid
+        
+    except Exception as e:
+        print(f"❌ Error calculando centroide para categoría {category_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+def get_category_centroid(client_id, category_id, force_recalculate=False):
+    """
+    Obtiene el centroide de una categoría desde cache o lo calcula
+    
+    Args:
+        client_id: ID del cliente
+        category_id: ID de la categoría
+        force_recalculate: Forzar recálculo aunque exista en cache
+        
+    Returns:
+        numpy.array: Vector centroide o None si no se puede calcular
+    """
+    cache_key = f"{client_id}_{category_id}"
+    
+    # Verificar cache
+    if not force_recalculate and cache_key in category_centroids_cache:
+        print(f"💾 Usando centroide desde cache para {cache_key}")
+        return category_centroids_cache[cache_key]
+    
+    # Calcular y cachear
+    centroid = calculate_category_centroid(client_id, category_id)
+    if centroid is not None:
+        category_centroids_cache[cache_key] = centroid
+        print(f"💾 Centroide cacheado para {cache_key}")
+    
+    return centroid
+
+
+def recalculate_category_centroid(client_id, category_id):
+    """
+    Recalcula el centroide de una categoría (para usar cuando se agrega nueva imagen)
+    
+    Args:
+        client_id: ID del cliente
+        category_id: ID de la categoría
+    """
+    print(f"🔄 Recalculando centroide para categoría {category_id}")
+    return get_category_centroid(client_id, category_id, force_recalculate=True)
+
+
+def detect_image_category_with_centroids(image_data, client_id, confidence_threshold=0.2):
+    """
+    Detecta la categoría de una imagen usando centroides de embeddings reales
+    
+    En lugar de prompts de texto, usa el promedio de embeddings de productos
+    existentes en cada categoría como "representante" de esa categoría.
+    
+    Args:
+        image_data: Datos binarios de la imagen
+        client_id: ID del cliente para obtener sus categorías
+        confidence_threshold: Umbral mínimo de confianza para detección
+    
+    Returns:
+        tuple: (categoria_detectada, confidence_score) o (None, 0) si no detecta
+    """
+    try:
+        print(f"🎯 DEBUG: Iniciando detección por centroides para cliente {client_id}")
+        
+        # 1. Obtener categorías activas del cliente
+        categories = Category.query.filter_by(
+            client_id=client_id, 
+            is_active=True
+        ).all()
+        
+        if not categories:
+            print(f"❌ DEBUG: No se encontraron categorías para cliente {client_id}")
+            return None, 0
+        
+        print(f"📋 DEBUG: Encontradas {len(categories)} categorías activas")
+        
+        # 2. Generar embedding de la imagen nueva
+        from PIL import Image as PILImage
+        import io
+        pil_image = PILImage.open(io.BytesIO(image_data))
+        print(f"🖼️ DEBUG: Imagen preparada: {pil_image.size}")
+        
+        # 3. Obtener modelo CLIP
+        from app.blueprints.embeddings import get_clip_model
+        model, processor = get_clip_model()
+        print("🤖 DEBUG: Modelo CLIP obtenido")
+        
+        # 4. Generar embedding de imagen nueva
+        with torch.no_grad():
+            image_inputs = processor(
+                images=pil_image,
+                return_tensors="pt"
+            )
+            image_features = model.get_image_features(**image_inputs)
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+            new_embedding = image_features.squeeze(0).numpy()
+        
+        print(f"🔍 DEBUG: Embedding generado: shape {new_embedding.shape}")
+        
+        # 5. Calcular similitudes contra centroides de cada categoría
+        category_similarities = []
+        
+        for category in categories:
+            # Obtener centroide de la categoría (desde cache o calcularlo)
+            centroid = get_category_centroid(client_id, category.id)
+            
+            if centroid is not None:
+                # Calcular similitud coseno
+                similarity = np.dot(new_embedding, centroid) / (np.linalg.norm(new_embedding) * np.linalg.norm(centroid))
+                category_similarities.append({
+                    'category': category,
+                    'similarity': float(similarity)
+                })
+                print(f"📊 DEBUG: {category.name}: similitud {similarity:.4f}")
+            else:
+                print(f"⚠️ DEBUG: No se pudo calcular centroide para {category.name}")
+        
+        if not category_similarities:
+            print(f"❌ DEBUG: No se pudieron calcular similitudes")
+            return None, 0
+        
+        # 6. Encontrar la mejor coincidencia
+        best_match = max(category_similarities, key=lambda x: x['similarity'])
+        best_category = best_match['category']
+        best_score = best_match['similarity']
+        
+        print(f"🎯 DEBUG: Mejor coincidencia: {best_category.name} ({best_score:.4f})")
+        
+        # 7. Verificar umbral de confianza
+        if best_score >= confidence_threshold:
+            print(f"✅ DEBUG: Categoría detectada con confianza suficiente")
+            return best_category, best_score
+        else:
+            print(f"❌ DEBUG: Confianza insuficiente ({best_score:.4f} < {confidence_threshold})")
+            return None, best_score
+            
+    except Exception as e:
+        print(f"❌ ERROR en detección por centroides: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, 0
+                             .joinedload(Product.images))
+                     .all())
+        
+        if not categories:
+            print(f"❌ DEBUG: No se encontraron categorías para cliente {client_id}")
+            return None, 0
+        
+        print(f"📋 DEBUG: Encontradas {len(categories)} categorías activas")
+        
+        # 2. Preparar imagen query para CLIP
+        from PIL import Image as PILImage
+        import io
+        pil_image = PILImage.open(io.BytesIO(image_data))
+        print(f"🖼️ DEBUG: Imagen preparada: {pil_image.size}")
+        
+        # 3. Obtener modelo CLIP y generar embedding de la imagen query
+        from app.blueprints.embeddings import get_clip_model
+        model, processor = get_clip_model()
+        print("🤖 DEBUG: Modelo CLIP obtenido")
+        
+        with torch.no_grad():
+            # Procesar imagen query
+            image_inputs = processor(
+                images=pil_image,
+                return_tensors="pt"
+            )
+            query_embedding = model.get_image_features(**image_inputs)
+            query_embedding = query_embedding / query_embedding.norm(dim=-1, keepdim=True)
+            query_embedding = query_embedding.squeeze(0).numpy()
+            
+        print(f"🔍 DEBUG: Embedding de query generado: {query_embedding.shape}")
+        
+        # 4. Calcular centroides por categoría y similitudes
+        category_similarities = []
+        
+        for category in categories:
+            # Obtener todas las imágenes con embeddings de esta categoría
+            category_embeddings = []
+            
+            for product in category.products:
+                for image in product.images:
+                    if image.clip_embedding and image.is_processed:
+                        try:
+                            # Deserializar embedding
+                            import json
+                            embedding_data = json.loads(image.clip_embedding)
+                            embedding_array = np.array(embedding_data)
+                            category_embeddings.append(embedding_array)
+                        except Exception as e:
+                            print(f"⚠️ DEBUG: Error procesando embedding de imagen {image.id}: {e}")
+                            continue
+            
+            if not category_embeddings:
+                print(f"❌ DEBUG: Categoría {category.name} sin embeddings válidos")
+                continue
+            
+            # Calcular centroide (promedio) de embeddings de la categoría
+            category_embeddings = np.array(category_embeddings)
+            centroid = np.mean(category_embeddings, axis=0)
+            centroid = centroid / np.linalg.norm(centroid)  # Normalizar
+            
+            # Calcular similitud coseno entre query y centroide
+            similarity = np.dot(query_embedding, centroid)
+            
+            category_similarities.append({
+                'category': category,
+                'similarity': float(similarity),
+                'num_images': len(category_embeddings)
+            })
+            
+            print(f"📊 DEBUG: {category.name}: {similarity:.4f} similitud ({len(category_embeddings)} imágenes)")
+        
+        if not category_similarities:
+            print(f"❌ DEBUG: No se pudieron calcular similitudes")
+            return None, 0
+        
+        # 5. Encontrar la mejor coincidencia
+        best_match = max(category_similarities, key=lambda x: x['similarity'])
+        best_category = best_match['category']
+        best_score = best_match['similarity']
+        
+        print(f"🎯 DEBUG: Mejor coincidencia: {best_category.name} ({best_score:.4f})")
+        print(f"📊 DEBUG: Basado en {best_match['num_images']} imágenes de referencia")
+        
+        # 6. Verificar umbral de confianza
+        if best_score >= confidence_threshold:
+            print(f"✅ DEBUG: Categoría detectada con confianza suficiente")
+            return best_category, best_score
+        else:
+            print(f"❌ DEBUG: Confianza insuficiente ({best_score:.4f} < {confidence_threshold})")
+            return None, best_score
+            
+    except Exception as e:
+        print(f"❌ ERROR en detección por centroides: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, 0
+
+
 def detect_image_category(image_data, client_id, confidence_threshold=0.2):
     """
     Detecta la categoría de una imagen usando CLIP y los prompts de categorías del cliente
@@ -985,13 +1284,13 @@ def visual_search():
         if error_response:
             return error_response, status_code
 
-        # ===== NUEVA FUNCIONALIDAD: DETECCIÓN DE CATEGORÍA =====
-        print(f"🎯 DEBUG: Iniciando detección de categoría...")
+        # ===== NUEVA FUNCIONALIDAD: DETECCIÓN DE CATEGORÍA POR CENTROIDES =====
+        print(f"🎯 DEBUG: Iniciando detección de categoría por centroides...")
 
-        detected_category, category_confidence = detect_image_category(
+        detected_category, category_confidence = detect_image_category_with_centroids(
             image_data, 
             client.id, 
-            confidence_threshold=0.2  # Reducido de 0.3 a 0.2 para mejor detección
+            confidence_threshold=0.2  # Umbral basado en similitud real con productos
         )        if detected_category is None:
             # No se pudo detectar una categoría válida
             print(f"❌ DEBUG: No se detectó ninguna categoría válida")
