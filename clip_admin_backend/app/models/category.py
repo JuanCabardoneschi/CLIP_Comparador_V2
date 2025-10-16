@@ -23,6 +23,7 @@ class Category(db.Model):
     confidence_threshold = db.Column(db.Float, default=0.75)  # Umbral de confianza
     centroid_embedding = db.Column(db.Text)  # Embedding centroide precalculado de la categoría
     centroid_updated_at = db.Column(db.DateTime)  # Última actualización del centroide
+    centroid_image_count = db.Column(db.Integer, default=0)  # Número de imágenes usadas en el centroide
 
     # Campos de interfaz
     color = db.Column(db.String(7), default='#007bff')  # Color hex para la UI
