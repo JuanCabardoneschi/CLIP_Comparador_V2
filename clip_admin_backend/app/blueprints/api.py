@@ -1049,8 +1049,35 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         import traceback
         traceback.print_exc()
         return None, 0
-                             .joinedload(Product.images))
-                     .all())
+
+
+def detect_image_category(image_data, client_id, confidence_threshold=0.2):
+    """
+    Función de detección por prompts (obsoleta, usa centroides como fallback)
+    """
+    try:
+        print(f"🎯 DEBUG: Usando método de centroides en lugar de prompts")
+        return detect_image_category_with_centroids(image_data, client_id, confidence_threshold)
+        
+    except Exception as e:
+        print(f"❌ ERROR en detección de categoría: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, 0
+
+
+def detect_image_category_legacy(image_data, client_id, confidence_threshold=0.2):
+    """
+    Detecta la categoría de una imagen usando CLIP y centroides de categorías del cliente
+    """
+    try:
+        print(f"🎯 DEBUG: Iniciando detección de categoría para cliente {client_id}")
+        
+        # 1. Obtener categorías activas del cliente
+        categories = Category.query.filter_by(
+            client_id=client_id,
+            is_active=True
+        ).all()
         
         if not categories:
             print(f"❌ DEBUG: No se encontraron categorías para cliente {client_id}")
@@ -1291,7 +1318,9 @@ def visual_search():
             image_data, 
             client.id, 
             confidence_threshold=0.2  # Umbral basado en similitud real con productos
-        )        if detected_category is None:
+        )
+        
+        if detected_category is None:
             # No se pudo detectar una categoría válida
             print(f"❌ DEBUG: No se detectó ninguna categoría válida")
             return jsonify({
