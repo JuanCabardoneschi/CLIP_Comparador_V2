@@ -293,11 +293,11 @@
                     // Obtener detalles del error
                     const errorText = await response.text();
                     console.error('Error response:', errorText);
-                    
+
                     try {
                         const errorData = JSON.parse(errorText);
                         console.error('Error data:', errorData);
-                        
+
                         if (errorData.error === 'category_not_detected') {
                             showCategoryNotDetectedError(errorData, searchTime);
                             return;
@@ -405,19 +405,19 @@
         }
 
         function showCategoryNotDetectedError(data, searchTime) {
-            const categoriesList = data.available_categories ? 
+            const categoriesList = data.available_categories ?
                 data.available_categories.map(cat => `<li>${cat}</li>`).join('') : '';
-            
+
             const clientName = data.client_name || 'este cliente';
             const processingTime = data.processing_time || searchTime;
-            
+
             document.getElementById('results').innerHTML = `
                 <div class="error" style="background: #fff3cd; border-color: #ffeaa7; color: #856404;">
                     <h3>🤔 Categoría No Reconocida</h3>
                     <p><strong>${data.message}</strong></p>
                     <p>${data.details}</p>
                     <p><strong>Tiempo de procesamiento:</strong> ${processingTime}s</p>
-                    
+
                     ${categoriesList ? `
                         <div style="margin-top: 15px;">
                             <strong>Categorías disponibles para ${clientName}:</strong>
@@ -426,7 +426,7 @@
                             </ul>
                         </div>
                     ` : ''}
-                    
+
                     <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
                         <strong>💡 Sugerencias:</strong>
                         <ul style="margin: 5px 0; padding-left: 20px;">
