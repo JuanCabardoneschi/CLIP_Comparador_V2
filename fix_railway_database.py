@@ -19,10 +19,10 @@ DATABASE_URL = "postgresql://postgres:xhinRHxDvcdHNqyQKDTUbDKRLhYNLDum@ballast.p
 
 async def check_and_fix_database():
     """Verifica y corrige la estructura completa de la base de datos"""
-    
+
     print("🔍 INICIANDO VERIFICACIÓN Y CORRECCIÓN DE BASE DE DATOS RAILWAY")
     print("=" * 70)
-    
+
     # Conectar a PostgreSQL
     try:
         conn = await asyncpg.connect(DATABASE_URL)
@@ -30,29 +30,29 @@ async def check_and_fix_database():
     except Exception as e:
         print(f"❌ Error conectando a PostgreSQL: {e}")
         return False
-    
+
     try:
         # 1. Habilitar extensión UUID
         print("\n📦 Habilitando extensión uuid-ossp...")
         await conn.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
         print("✅ Extensión uuid-ossp habilitada")
-        
+
         # 2. Verificar estructura de tabla users
         print("\n🔍 Verificando estructura tabla USERS...")
         users_columns = await conn.fetch("""
             SELECT column_name, data_type, is_nullable, column_default
-            FROM information_schema.columns 
-            WHERE table_name = 'users' 
+            FROM information_schema.columns
+            WHERE table_name = 'users'
             ORDER BY ordinal_position
         """)
-        
+
         print("Columnas existentes en users:")
         for col in users_columns:
             print(f"  - {col['column_name']:15} | {col['data_type']:12} | NULL: {col['is_nullable']}")
-        
+
         # 3. Verificar si falta full_name
         has_full_name = any(col['column_name'] == 'full_name' for col in users_columns)
-        
+
         if not has_full_name:
             print("\n⚠️  PROBLEMA DETECTADO: Columna 'full_name' no existe")
             print("🔧 Agregando columna full_name...")
@@ -60,21 +60,21 @@ async def check_and_fix_database():
             print("✅ Columna full_name agregada")
         else:
             print("✅ Columna full_name ya existe")
-        
+
         # 4. Recrear todas las tablas si es necesario
         print("\n🏗️  RECREANDO ESTRUCTURA COMPLETA...")
-        
+
         # Drop y recrear tablas en orden correcto
         await conn.execute("DROP TABLE IF EXISTS image_embeddings CASCADE")
-        await conn.execute("DROP TABLE IF EXISTS images CASCADE") 
+        await conn.execute("DROP TABLE IF EXISTS images CASCADE")
         await conn.execute("DROP TABLE IF EXISTS products CASCADE")
         await conn.execute("DROP TABLE IF EXISTS categories CASCADE")
         await conn.execute("DROP TABLE IF EXISTS api_keys CASCADE")
         await conn.execute("DROP TABLE IF EXISTS users CASCADE")
         await conn.execute("DROP TABLE IF EXISTS clients CASCADE")
-        
+
         print("🗑️  Tablas anteriores eliminadas")
-        
+
         # Crear tabla clients
         await conn.execute("""
             CREATE TABLE clients (
@@ -89,7 +89,7 @@ async def check_and_fix_database():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Crear tabla users
         await conn.execute("""
             CREATE TABLE users (
@@ -105,7 +105,7 @@ async def check_and_fix_database():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Crear tabla api_keys
         await conn.execute("""
             CREATE TABLE api_keys (
@@ -120,7 +120,7 @@ async def check_and_fix_database():
                 last_used TIMESTAMP
             )
         """)
-        
+
         # Crear tabla categories
         await conn.execute("""
             CREATE TABLE categories (
@@ -135,7 +135,7 @@ async def check_and_fix_database():
                 UNIQUE(client_id, slug)
             )
         """)
-        
+
         # Crear tabla products
         await conn.execute("""
             CREATE TABLE products (
@@ -152,7 +152,7 @@ async def check_and_fix_database():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Crear tabla images
         await conn.execute("""
             CREATE TABLE images (
@@ -171,7 +171,7 @@ async def check_and_fix_database():
                 uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Crear tabla image_embeddings
         await conn.execute("""
             CREATE TABLE image_embeddings (
@@ -183,21 +183,21 @@ async def check_and_fix_database():
                 UNIQUE(image_id)
             )
         """)
-        
+
         print("✅ Todas las tablas creadas exitosamente")
-        
+
         # 5. Insertar datos demo
         print("\n📊 INSERTANDO DATOS DEMO...")
-        
+
         # Cliente demo
         client_id = await conn.fetchval("""
             INSERT INTO clients (name, domain, status, plan, search_limit)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id
         """, "Tienda Demo", "demo.com", "active", "professional", 5000)
-        
+
         print(f"✅ Cliente demo creado: {client_id}")
-        
+
         # Usuario admin demo
         password_hash = hashlib.sha256("demo123".encode()).hexdigest()
         user_id = await conn.fetchval("""
@@ -205,18 +205,18 @@ async def check_and_fix_database():
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id
         """, "admin@demo.com", password_hash, "Admin Demo", "super_admin", client_id)
-        
+
         print(f"✅ Usuario admin creado: admin@demo.com (password: demo123)")
-        
+
         # API Key demo
         api_key = f"demo_api_key_{str(uuid.uuid4())[:8]}"
         await conn.execute("""
             INSERT INTO api_keys (client_id, key_name, api_key, rate_limit)
             VALUES ($1, $2, $3, $4)
         """, client_id, "Demo API Key", api_key, 1000)
-        
+
         print(f"✅ API Key creada: {api_key}")
-        
+
         # Categorías demo
         categories_data = [
             ("Moda", "Ropa y accesorios", "moda"),
@@ -224,7 +224,7 @@ async def check_and_fix_database():
             ("Hogar", "Artículos para el hogar", "hogar"),
             ("Deportes", "Artículos deportivos", "deportes")
         ]
-        
+
         category_ids = []
         for name, desc, slug in categories_data:
             cat_id = await conn.fetchval("""
@@ -234,14 +234,14 @@ async def check_and_fix_database():
             """, client_id, name, desc, slug)
             category_ids.append(cat_id)
             print(f"✅ Categoría creada: {name}")
-        
+
         # Productos demo
         products_data = [
             ("Camiseta Básica", "Camiseta de algodón básica", 19.99, "CAM001", "BasicWear"),
             ("Jeans Clásico", "Jeans de corte clásico", 49.99, "JEA001", "DenimCo"),
             ("Zapatillas Deportivas", "Zapatillas para correr", 89.99, "ZAP001", "SportMax")
         ]
-        
+
         for i, (name, desc, price, sku, brand) in enumerate(products_data):
             product_id = await conn.fetchval("""
                 INSERT INTO products (client_id, category_id, name, description, price, sku, brand)
@@ -249,41 +249,41 @@ async def check_and_fix_database():
                 RETURNING id
             """, client_id, category_ids[i % len(category_ids)], name, desc, price, sku, brand)
             print(f"✅ Producto creado: {name}")
-        
+
         # 6. Verificación final
         print("\n🔍 VERIFICACIÓN FINAL...")
-        
+
         # Contar registros
         clients_count = await conn.fetchval("SELECT COUNT(*) FROM clients")
         users_count = await conn.fetchval("SELECT COUNT(*) FROM users")
         categories_count = await conn.fetchval("SELECT COUNT(*) FROM categories")
         products_count = await conn.fetchval("SELECT COUNT(*) FROM products")
-        
+
         print(f"📊 Registros creados:")
         print(f"  - Clientes: {clients_count}")
         print(f"  - Usuarios: {users_count}")
         print(f"  - Categorías: {categories_count}")
         print(f"  - Productos: {products_count}")
-        
+
         # Verificar estructura users final
         print("\n🔍 Verificando estructura final tabla USERS:")
         final_users_columns = await conn.fetch("""
             SELECT column_name, data_type
-            FROM information_schema.columns 
-            WHERE table_name = 'users' 
+            FROM information_schema.columns
+            WHERE table_name = 'users'
             ORDER BY ordinal_position
         """)
-        
+
         for col in final_users_columns:
             print(f"  ✅ {col['column_name']:15} | {col['data_type']}")
-        
+
         print("\n🎉 BASE DE DATOS RAILWAY COMPLETAMENTE CONFIGURADA")
         print("📧 Usuario demo: admin@demo.com")
         print("🔑 Contraseña: demo123")
         print(f"🔗 API Key: {api_key}")
-        
+
         return True
-        
+
     except Exception as e:
         print(f"❌ Error durante la configuración: {e}")
         return False
