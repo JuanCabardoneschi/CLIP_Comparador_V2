@@ -47,28 +47,28 @@ class Category(db.Model):
         """
         Recalcula y actualiza el centroide de embeddings para esta categoría
         Versión OPTIMIZADA que se ejecuta automáticamente cuando se procesan nuevas imágenes
-        
+
         Args:
             force_recalculate (bool): Forzar recálculo aunque ya exista centroide
-            
+
         Returns:
             bool: True si se calculó exitosamente, False si no
         """
         import json
         import numpy as np
         from datetime import datetime
-        
+
         try:
             # Si ya existe centroide y no se fuerza recálculo, mantener existente
             if self.centroid_embedding and not force_recalculate:
                 print(f"⚡ Centroide ya existe para {self.name}, usando existente")
                 return True
-            
+
             print(f"🔄 Calculando centroide para categoría {self.name}...")
-            
+
             # Obtener todas las imágenes procesadas de esta categoría
             category_embeddings = []
-            
+
             for product in self.products:
                 for image in product.images:
                     if image.clip_embedding and image.is_processed:
@@ -81,27 +81,27 @@ class Category(db.Model):
                         except Exception as e:
                             print(f"⚠️ Error procesando embedding de imagen {image.id}: {e}")
                             continue
-            
+
             if not category_embeddings:
                 print(f"❌ No hay embeddings válidos para {self.name}")
                 self.centroid_embedding = None
                 self.centroid_updated_at = None
                 self.centroid_image_count = 0
                 return False
-            
+
             # Calcular centroide (promedio) y normalizar
             category_embeddings = np.array(category_embeddings)
             centroid = np.mean(category_embeddings, axis=0)
             centroid = centroid / np.linalg.norm(centroid)  # Normalizar centroide final
-            
+
             # Guardar en BD como JSON
             self.centroid_embedding = json.dumps(centroid.tolist())
             self.centroid_updated_at = datetime.utcnow()
             self.centroid_image_count = len(category_embeddings)
-            
+
             print(f"✅ Centroide actualizado para {self.name}: {len(category_embeddings)} imágenes")
             return True
-            
+
         except Exception as e:
             print(f"❌ Error actualizando centroide para {self.name}: {e}")
             import traceback
@@ -111,16 +111,16 @@ class Category(db.Model):
     def get_centroid_embedding(self, auto_calculate=True):
         """
         Obtiene el centroide embedding desde BD (súper rápido)
-        
+
         Args:
             auto_calculate (bool): Si calcular automáticamente si no existe
-            
+
         Returns:
             np.array: Centroide embedding o None si no existe
         """
         import json
         import numpy as np
-        
+
         # Si ya existe centroide en BD, devolverlo (súper rápido)
         if self.centroid_embedding:
             try:
@@ -133,7 +133,7 @@ class Category(db.Model):
                 self.centroid_embedding = None
                 self.centroid_updated_at = None
                 self.centroid_image_count = 0
-        
+
         # Si no existe y auto_calculate está habilitado, calcularlo
         if auto_calculate:
             print(f"🔄 Centroide no existe para {self.name}, calculando...")
@@ -146,67 +146,67 @@ class Category(db.Model):
                 except Exception as e:
                     print(f"⚠️ Error guardando centroide en BD: {e}")
                     db.session.rollback()
-                
+
                 # Retornar centroide recién calculado
                 if self.centroid_embedding:
                     return np.array(json.loads(self.centroid_embedding))
-        
+
         print(f"❌ No se pudo obtener centroide para {self.name}")
         return None
 
     def needs_centroid_update(self):
         """
         Determina si el centroide necesita ser recalculado
-        
+
         Returns:
             bool: True si necesita actualización
         """
         if not self.centroid_embedding:
             return True
-        
+
         # Contar imágenes actuales con embeddings
         current_image_count = 0
         for product in self.products:
             for image in product.images:
                 if image.clip_embedding and image.is_processed:
                     current_image_count += 1
-        
+
         # Si el número de imágenes cambió, necesita actualización
         if current_image_count != self.centroid_image_count:
             print(f"🔄 {self.name}: {current_image_count} imágenes actuales vs {self.centroid_image_count} en centroide")
             return True
-        
+
         return False
 
     @classmethod
     def recalculate_all_centroids(cls, client_id=None, force=False):
         """
         Recalcula centroides para todas las categorías
-        
+
         Args:
             client_id (str): Solo recalcular para un cliente específico
             force (bool): Forzar recálculo aunque ya existan
-            
+
         Returns:
             dict: Estadísticas del proceso
         """
         from .. import db
-        
+
         query = cls.query.filter_by(is_active=True)
         if client_id:
             query = query.filter_by(client_id=client_id)
-        
+
         categories = query.all()
-        
+
         stats = {
             'total': len(categories),
             'updated': 0,
             'skipped': 0,
             'errors': 0
         }
-        
+
         print(f"🔄 Recalculando centroides para {len(categories)} categorías...")
-        
+
         for category in categories:
             try:
                 if force or category.needs_centroid_update():
@@ -219,11 +219,11 @@ class Category(db.Model):
                 else:
                     stats['skipped'] += 1
                     print(f"⏭️ {category.name}: No necesita actualización")
-                    
+
             except Exception as e:
                 stats['errors'] += 1
                 print(f"❌ Error procesando {category.name}: {e}")
-        
+
         # Commit todos los cambios
         try:
             db.session.commit()
@@ -231,7 +231,7 @@ class Category(db.Model):
         except Exception as e:
             print(f"❌ Error guardando en BD: {e}")
             db.session.rollback()
-        
+
         print(f"📊 Estadísticas finales: {stats}")
         return stats
         """Convierte el objeto a diccionario para JSON"""
