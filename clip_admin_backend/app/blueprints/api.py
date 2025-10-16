@@ -21,6 +21,9 @@ from app.services.image_manager import image_manager
 from sqlalchemy import func, or_
 from googletrans import Translator
 
+# 🚀 IMPORTAR CLIP AL INICIO PARA CACHE GLOBAL
+from app.blueprints.embeddings import get_clip_model
+
 bp = Blueprint("api", __name__)
 
 # Habilitar CORS para este blueprint
@@ -463,11 +466,6 @@ def verify_api_key():
     return client, None
 
 
-def get_clip_model():
-    """Obtener modelo CLIP (reutilizar del blueprint embeddings)"""
-    from app.blueprints.embeddings import get_clip_model as get_embeddings_clip
-    return get_embeddings_clip()
-
 
 def process_image_for_search(image_data):
     """Procesar imagen y generar embedding para búsqueda"""
@@ -484,7 +482,6 @@ def process_image_for_search(image_data):
         print(f"🔧 DEBUG: Imagen PIL creada: {pil_image.size}")
 
         # Obtener modelo CLIP directamente
-        from app.blueprints.embeddings import get_clip_model
         model, processor = get_clip_model()
         print("🔧 DEBUG: Modelo CLIP obtenido")
 
@@ -886,7 +883,6 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         print(f"🖼️ DEBUG: Imagen preparada: {pil_image.size}")
 
         # 3. Obtener modelo CLIP
-        from app.blueprints.embeddings import get_clip_model
         model, processor = get_clip_model()
         print("🤖 DEBUG: Modelo CLIP obtenido")
 
@@ -996,7 +992,6 @@ def detect_image_category(image_data, client_id, confidence_threshold=0.2):
         print(f"🖼️ DEBUG: Imagen preparada: {pil_image.size}")
 
         # 3. Obtener modelo CLIP
-        from app.blueprints.embeddings import get_clip_model
         model, processor = get_clip_model()
         print("🤖 DEBUG: Modelo CLIP obtenido")
 
