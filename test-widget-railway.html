@@ -280,6 +280,9 @@
 
                 const response = await fetch(`${SERVER_URL}/api/search`, {
                     method: 'POST',
+                    headers: {
+                        'X-API-Key': 'test-api-key-demo-fashion-store-2024'
+                    },
                     body: formData
                 });
 
