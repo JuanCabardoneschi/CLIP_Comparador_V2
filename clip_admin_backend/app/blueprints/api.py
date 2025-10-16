@@ -482,11 +482,14 @@ def process_image_for_search(image_data):
         print(f"🔧 DEBUG: Imagen PIL creada: {pil_image.size}")
 
         # Obtener modelo CLIP directamente
+        start_clip_time = time.time()
         model, processor = get_clip_model()
-        print("🔧 DEBUG: Modelo CLIP obtenido")
+        clip_load_time = time.time() - start_clip_time
+        print(f"� CLIP MODEL: Obtenido en {clip_load_time:.3f}s")
 
         # Generar embedding usando solo argumentos necesarios
         print("🔧 DEBUG: Llamando al procesador CLIP...")
+        start_process_time = time.time()
 
         # Llamada simplificada al procesador
         with torch.no_grad():
@@ -505,6 +508,9 @@ def process_image_for_search(image_data):
 
             # Convertir a lista de Python
             embedding_list = embedding.squeeze().cpu().numpy().tolist()
+            
+            process_time = time.time() - start_process_time
+            print(f"⚡ CLIP PROCESSING: Completado en {process_time:.3f}s")
 
         print(f"🔧 DEBUG: Embedding generado exitosamente: {len(embedding_list)} dimensiones")
         return embedding_list, None

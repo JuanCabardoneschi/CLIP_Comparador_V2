@@ -325,4 +325,13 @@ if __name__ == "__main__":
     print(f"🔧 Debug: {debug}")
     print(f"🗄️ Base de datos: {os.getenv('DATABASE_URL', 'No configurada')}")
 
+    # 🔥 PRE-CARGAR CLIP AL INICIO DEL SERVIDOR
+    print("⚡ Iniciando pre-carga de CLIP para optimización...")
+    try:
+        from app.blueprints.embeddings import get_clip_model
+        model, processor = get_clip_model()
+        print("🚀 CLIP pre-cargado exitosamente - LISTO PARA VELOCIDAD!")
+    except Exception as e:
+        print(f"⚠️ Error pre-cargando CLIP: {e}")
+
     app.run(host="0.0.0.0", port=port, debug=debug)
