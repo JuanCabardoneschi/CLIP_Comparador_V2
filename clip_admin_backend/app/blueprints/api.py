@@ -865,7 +865,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         tuple: (categoria_detectada, confidence_score) o (None, 0) si no detecta
     """
     try:
-        print(f"🎯 DEBUG: Iniciando detección por centroides para cliente {client_id}")
+        print(f"🚀 RAILWAY LOG: Iniciando detección centroides para cliente {client_id}")
 
         # 1. Obtener categorías activas del cliente
         categories = Category.query.filter_by(
@@ -874,10 +874,10 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         ).all()
 
         if not categories:
-            print(f"❌ DEBUG: No se encontraron categorías para cliente {client_id}")
+            print(f"❌ RAILWAY LOG: No categorías para cliente {client_id}")
             return None, 0
 
-        print(f"📋 DEBUG: Encontradas {len(categories)} categorías activas")
+        print(f"📋 RAILWAY LOG: {len(categories)} categorías encontradas")
 
         # 2. Generar embedding de la imagen nueva
         from PIL import Image as PILImage
@@ -908,6 +908,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         for category in categories:
             # 🚀 USAR CENTROIDE DE BD DIRECTAMENTE
             centroid = category.get_centroid_embedding(auto_calculate=False)
+            print(f"🔍 RAILWAY LOG: {category.name} - centroide {'OK' if centroid is not None else 'NULL'}")
 
             if centroid is not None:
                 # Calcular similitud coseno
@@ -916,12 +917,12 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
                     'category': category,
                     'similarity': float(similarity)
                 })
-                print(f"📊 DEBUG BD: {category.name}: similitud {similarity:.4f} (desde BD)")
+                print(f"📊 RAILWAY LOG: {category.name}: similitud {similarity:.4f}")
             else:
-                print(f"⚠️ DEBUG BD: Centroide no encontrado en BD para {category.name}")
+                print(f"⚠️ RAILWAY LOG: {category.name} SIN CENTROIDE en BD")
 
         if not category_similarities:
-            print(f"❌ DEBUG: No se pudieron calcular similitudes")
+            print(f"❌ RAILWAY LOG: NO HAY SIMILITUDES - sin centroides válidos")
             return None, 0
 
         # 6. Encontrar la mejor coincidencia
@@ -929,14 +930,14 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         best_category = best_match['category']
         best_score = best_match['similarity']
 
-        print(f"🎯 DEBUG: Mejor coincidencia: {best_category.name} ({best_score:.4f})")
+        print(f"🎯 RAILWAY LOG: MEJOR: {best_category.name} = {best_score:.4f}")
 
         # 7. Verificar umbral de confianza
         if best_score >= confidence_threshold:
-            print(f"✅ DEBUG: Categoría detectada con confianza suficiente")
+            print(f"✅ RAILWAY LOG: DETECTADO - {best_category.name} (conf: {best_score:.4f})")
             return best_category, best_score
         else:
-            print(f"❌ DEBUG: Confianza insuficiente ({best_score:.4f} < {confidence_threshold})")
+            print(f"❌ RAILWAY LOG: RECHAZADO - {best_score:.4f} < {confidence_threshold}")
             return None, best_score
 
     except Exception as e:
@@ -1098,7 +1099,7 @@ def visual_search():
             return error_response, status_code
 
         # ===== NUEVA FUNCIONALIDAD: DETECCIÓN DE CATEGORÍA POR CENTROIDES =====
-        print(f"🎯 DEBUG: Iniciando detección de categoría por centroides...")
+        print(f"🚀 RAILWAY LOG: INICIANDO DETECCIÓN DE CATEGORÍA")
 
         detected_category, category_confidence = detect_image_category_with_centroids(
             image_data,
@@ -1106,9 +1107,11 @@ def visual_search():
             confidence_threshold=0.2  # Umbral basado en similitud real con productos
         )
 
+        print(f"🎯 RAILWAY LOG: Resultado detección = {detected_category.name if detected_category else 'NULL'} (conf: {category_confidence:.3f})")
+
         if detected_category is None:
             # No se pudo detectar una categoría válida
-            print(f"❌ DEBUG: No se detectó ninguna categoría válida")
+            print(f"❌ RAILWAY LOG: CATEGORÍA NO DETECTADA - devolviendo error")
             return jsonify({
                 "success": False,
                 "error": "category_not_detected",
@@ -1118,15 +1121,16 @@ def visual_search():
                 "processing_time": round(time.time() - start_time, 3)
             }), 400
 
-        print(f"✅ DEBUG: Categoría detectada: {detected_category.name} (confianza: {category_confidence:.4f})")
+        print(f"✅ RAILWAY LOG: CATEGORÍA OK: {detected_category.name} - procediendo a búsqueda")
 
         # ===== GENERAR EMBEDDING DE LA IMAGEN =====
         query_embedding, error_response, status_code = _generate_query_embedding(image_data)
         if error_response:
+            print(f"❌ RAILWAY LOG: Error generando embedding")
             return error_response, status_code
 
         # ===== BUSCAR SOLO EN LA CATEGORÍA DETECTADA =====
-        print(f"🔍 DEBUG: Buscando similitudes SOLO en categoría: {detected_category.name}")
+        print(f"🔍 RAILWAY LOG: Buscando productos en {detected_category.name}")
 
         # Modificar la búsqueda para filtrar por categoría detectada
         product_best_match = _find_similar_products_in_category(
