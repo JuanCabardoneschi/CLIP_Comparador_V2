@@ -106,3 +106,7 @@ def filter_by_client_scope(query, model=None):
 
     # Aplicar filtro por client_id
     return query.filter_by(client_id=client_filter)
+
+
+# Alias para compatibilidad
+admin_required = requires_client_scope
