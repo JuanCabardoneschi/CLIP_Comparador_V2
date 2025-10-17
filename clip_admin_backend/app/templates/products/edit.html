@@ -111,6 +111,15 @@
     border-color: #0d6efd;
     box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
 }
+/* Masonry columns para atributos dinámicos: elimina huecos sin hardcodear */
+.attributes-grid {
+    column-count: 2;
+    column-gap: 1.5rem;
+}
+.attributes-grid .attr-item {
+    break-inside: avoid;
+    margin-bottom: 1rem;
+}
 </style>
 {% endblock %}
 
@@ -134,54 +143,39 @@
 
     <form method="POST" id="editProductForm">
         <div class="row">
-            <!-- Información del producto -->
             <div class="col-lg-6">
                 <div class="form-section">
                     <h5 class="section-title">
-                        <i class="bi bi-info-circle"></i> Información del Producto
+                        <i class="bi bi-info-circle"></i> Datos del Producto
                     </h5>
-
-                    <div class="mb-3">
-                        <label for="name" class="form-label">Nombre del Producto *</label>
-                        <input type="text"
-                               class="form-control"
-                               id="name"
-                               name="name"
-                               value="{{ product.name }}"
-                               required>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="category_id" class="form-label">Categoría *</label>
-                        <select class="form-select" id="category_id" name="category_id" required>
-                            <option value="">Seleccionar categoría...</option>
-                            {% for category in categories %}
-                                <option value="{{ category.id }}"
-                                        {% if category.id == product.category_id %}selected{% endif %}>
-                                    {{ category.name }}
-                                    {% if category.name_en %} ({{ category.name_en }}){% endif %}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="description" class="form-label">Descripción</label>
-                        <textarea class="form-control"
-                                  id="description"
-                                  name="description"
-                                  rows="4">{{ product.description or '' }}</textarea>
-                    </div>
-
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
+                                <label for="name" class="form-label">Nombre *</label>
+                                <input type="text" class="form-control" id="name" name="name" value="{{ product.name }}" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="category_id" class="form-label">Categoría *</label>
+                                <select class="form-select" id="category_id" name="category_id" required>
+                                    <option value="">Seleccionar categoría...</option>
+                                    {% for category in categories %}
+                                        <option value="{{ category.id }}" {% if category.id == product.category_id %}selected{% endif %}>{{ category.name }}{% if category.name_en %} ({{ category.name_en }}){% endif %}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="mb-3">
+                                <label for="description" class="form-label">Descripción</label>
+                                <textarea class="form-control" id="description" name="description" rows="3">{{ product.description or '' }}</textarea>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
                                 <label for="sku" class="form-label">SKU / Código</label>
-                                <input type="text"
-                                       class="form-control"
-                                       id="sku"
-                                       name="sku"
-                                       value="{{ product.sku or '' }}">
+                                <input type="text" class="form-control" id="sku" name="sku" value="{{ product.sku or '' }}">
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -189,60 +183,85 @@
                                 <label for="price" class="form-label">Precio</label>
                                 <div class="input-group">
                                     <span class="input-group-text">$</span>
-                                    <input type="number"
-                                           class="form-control"
-                                           id="price"
-                                           name="price"
-                                           step="0.01"
-                                           min="0"
-                                           value="{{ product.price or '' }}">
+                                    <input type="number" class="form-control" id="price" name="price" step="0.01" min="0" value="{{ product.price or '' }}">
                                 </div>
                             </div>
                         </div>
-                    </div>
-
-                    <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label for="stock" class="form-label">Stock</label>
-                                <input type="number"
-                                       class="form-control"
-                                       id="stock"
-                                       name="stock"
-                                       min="0"
-                                       value="{{ product.stock or 0 }}">
+                                <input type="number" class="form-control" id="stock" name="stock" min="0" value="{{ product.stock or 0 }}">
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label for="tags" class="form-label">Tags</label>
                                 <div class="tag-input">
-                                    <input type="text"
-                                           class="form-control"
-                                           id="tags"
-                                           name="tags"
-                                           value="{{ product.tags or '' }}"
-                                           placeholder="algodón, azul, casual">
+                                    <input type="text" class="form-control" id="tags" name="tags" value="{{ product.tags or '' }}" placeholder="algodón, azul, casual">
                                     <div id="tagSuggestions" class="tag-suggestions"></div>
                                 </div>
                                 <div class="form-text">Separar múltiples tags con comas</div>
                             </div>
                         </div>
-                    </div>
-
-                    <!-- Estado del producto -->
-                    <div class="mb-3">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input"
-                                   type="checkbox"
-                                   id="is_active"
-                                   name="is_active"
-                                   {% if product.is_active %}checked{% endif %}>
-                            <label class="form-check-label" for="is_active">
-                                Producto activo
-                            </label>
+                        {% if attribute_configs %}
+                            <div class="attributes-grid">
+                            {% for config in attribute_configs %}
+                                <div class="attr-item">
+                                    <div class="mb-3">
+                                        <label for="attr_{{ config.key }}" class="form-label">{{ config.label }}{% if config.required %}<span class="text-danger">*</span>{% endif %}</label>
+                                        {% if config.type == 'text' %}
+                                            <input type="text" class="form-control" id="attr_{{ config.key }}" name="attr_{{ config.key }}" value="{{ product.attributes.get(config.key, '') if product.attributes else '' }}" {% if config.required %}required{% endif %} placeholder="{{ config.label }}">
+                                        {% elif config.type == 'number' %}
+                                            <input type="number" class="form-control" id="attr_{{ config.key }}" name="attr_{{ config.key }}" step="any" value="{{ product.attributes.get(config.key, '') if product.attributes else '' }}" {% if config.required %}required{% endif %} placeholder="{{ config.label }}">
+                                        {% elif config.type == 'date' %}
+                                            <input type="date" class="form-control" id="attr_{{ config.key }}" name="attr_{{ config.key }}" value="{{ product.attributes.get(config.key, '') if product.attributes else '' }}" {% if config.required %}required{% endif %}>
+                                        {% elif config.type == 'list' %}
+                                            {% set is_multiple = config.options['multiple'] if config.options and 'multiple' in config.options else False %}
+                                            {% set values = config.options['values'] if config.options and 'values' in config.options else config.options %}
+                                            {# Coaccionar a lista si es multiple y el valor guardado es string legacy #}
+                                            {% if is_multiple %}
+                                                {% set raw_val = product.attributes.get(config.key) if product.attributes else [] %}
+                                                {% if raw_val is string %}
+                                                    {% set current_value = [raw_val] %}
+                                                {% else %}
+                                                    {% set current_value = raw_val or [] %}
+                                                {% endif %}
+                                            {% else %}
+                                                {% set current_value = product.attributes.get(config.key, '') if product.attributes else '' %}
+                                            {% endif %}
+                                            <select class="form-select" id="attr_{{ config.key }}" name="attr_{{ config.key }}{% if is_multiple %}[]{% endif %}" {% if is_multiple %}multiple{% endif %} {% if config.required %}required{% endif %}>
+                                                <option value="">Seleccionar...</option>
+                                                {% if values %}
+                                                    {% for option in values %}
+                                                        {% if is_multiple %}
+                                                            <option value="{{ option }}" {% if current_value and option in current_value %}selected{% endif %}>{{ option }}</option>
+                                                        {% else %}
+                                                            <option value="{{ option }}" {% if option == current_value %}selected{% endif %}>{{ option }}</option>
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                {% endif %}
+                                            </select>
+                                            {% if is_multiple %}
+                                                <div class="form-text">Puedes seleccionar varias opciones con Ctrl o Shift</div>
+                                            {% endif %}
+                                        {% elif config.type == 'url' %}
+                                            <input type="url" class="form-control" id="attr_{{ config.key }}" name="attr_{{ config.key }}" value="{{ product.attributes.get(config.key, '') if product.attributes else '' }}" {% if config.required %}required{% endif %} placeholder="https://...">
+                                            <div class="form-text">URL completa del producto</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <div class="form-check form-switch mt-4">
+                                    <input class="form-check-input" type="checkbox" id="is_active" name="is_active" {% if product.is_active %}checked{% endif %}>
+                                    <label class="form-check-label" for="is_active">Producto activo</label>
+                                </div>
+                                <div class="form-text">Los productos inactivos no aparecen en las búsquedas</div>
+                            </div>
                         </div>
-                        <div class="form-text">Los productos inactivos no aparecen en las búsquedas</div>
                     </div>
                 </div>
             </div>

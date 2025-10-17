@@ -117,6 +117,15 @@
     border-radius: 8px;
     margin-top: 15px;
 }
+/* Masonry columns para atributos dinámicos */
+.attributes-grid {
+    column-count: 2;
+    column-gap: 1.5rem;
+}
+.attributes-grid .attr-item {
+    break-inside: avoid;
+    margin-bottom: 1rem;
+}
 </style>
 {% endblock %}
 
@@ -228,6 +237,79 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Atributos dinámicos del cliente -->
+                    {% if attribute_configs %}
+                    <div class="mt-4">
+                        <h6 class="text-muted mb-3">
+                            <i class="bi bi-sliders"></i> Atributos Personalizados
+                        </h6>
+                        <div class="attributes-grid">
+                        {% for config in attribute_configs %}
+                        <div class="attr-item mb-3">
+                            <label for="attr_{{ config.key }}" class="form-label">
+                                {{ config.label }}
+                                {% if config.required %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+
+                            {% if config.type == 'text' %}
+                                <input type="text"
+                                       class="form-control"
+                                       id="attr_{{ config.key }}"
+                                       name="attr_{{ config.key }}"
+                                       {% if config.required %}required{% endif %}
+                                       placeholder="{{ config.label }}">
+
+                            {% elif config.type == 'number' %}
+                                <input type="number"
+                                       class="form-control"
+                                       id="attr_{{ config.key }}"
+                                       name="attr_{{ config.key }}"
+                                       step="any"
+                                       {% if config.required %}required{% endif %}
+                                       placeholder="{{ config.label }}">
+
+                            {% elif config.type == 'date' %}
+                                <input type="date"
+                                       class="form-control"
+                                       id="attr_{{ config.key }}"
+                                       name="attr_{{ config.key }}"
+                                       {% if config.required %}required{% endif %}>
+
+                            {% elif config.type == 'list' %}
+                                {% set is_multiple = config.options['multiple'] if config.options and 'multiple' in config.options else False %}
+                                {% set values = config.options['values'] if config.options and 'values' in config.options else config.options %}
+                                <select class="form-select"
+                                        id="attr_{{ config.key }}"
+                                        name="attr_{{ config.key }}{% if is_multiple %}[]{% endif %}"
+                                        {% if is_multiple %}multiple{% endif %}
+                                        {% if config.required %}required{% endif %}>
+                                    <option value="">Seleccionar...</option>
+                                    {% if values %}
+                                        {% for option in values %}
+                                            <option value="{{ option }}">{{ option }}</option>
+                                        {% endfor %}
+                                    {% endif %}
+                                </select>
+                                {% if is_multiple %}
+                                    <div class="form-text">Puedes seleccionar varias opciones con Ctrl o Shift</div>
+                                {% endif %}
+
+                            {% elif config.type == 'url' %}
+                                <input type="url"
+                                       class="form-control"
+                                       id="attr_{{ config.key }}"
+                                       name="attr_{{ config.key }}"
+                                       {% if config.required %}required{% endif %}
+                                       placeholder="https://...">
+                                <div class="form-text">URL completa del producto</div>
+
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
 

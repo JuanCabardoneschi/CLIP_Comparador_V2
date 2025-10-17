@@ -14,6 +14,7 @@ from app.models.product import Product
 from app.models.category import Category
 from app.models.image import Image
 from app.models.client import Client
+from app.models.product_attribute_config import ProductAttributeConfig
 from app.services.image_manager import image_manager
 from datetime import datetime
 
@@ -34,6 +35,91 @@ def validate_file_size(file):
 
     # Si no podemos obtener el tamaño del content_length,
     # lo verificaremos después de guardarlo temporalmente
+    return True
+
+
+def _get_client_attribute_config(client_id):
+    """Obtiene la configuración de atributos para un cliente"""
+    return ProductAttributeConfig.query.filter_by(
+        client_id=client_id
+    ).order_by(ProductAttributeConfig.field_order).all()
+
+
+def _process_dynamic_attributes(request_form, attribute_configs):
+    """Procesa los atributos dinámicos desde el formulario y los convierte a dict"""
+    attributes = {}
+
+    for config in attribute_configs:
+        field_base = f"attr_{config.key}"
+
+        # Detectar si es selección múltiple (solo aplica a type 'list')
+        is_multiple = False
+        if config.type == 'list' and config.options:
+            if isinstance(config.options, dict):
+                is_multiple = bool(config.options.get('multiple', False))
+
+        if config.type == 'list' and is_multiple:
+            # Para múltiples, el name en el template es attr_<key>[]
+            raw_list = request_form.getlist(f"{field_base}[]") or request_form.getlist(field_base)
+            values = [v.strip() for v in raw_list if v and v.strip()]
+
+            if config.required and not values:
+                raise ValueError(f"El campo '{config.label}' es obligatorio")
+
+            if values:
+                attributes[config.key] = values
+            # Si no hay valores y no es requerido, no guardamos la clave
+            continue
+
+        # Manejo single-value (text, number, date, url, list simple)
+        value = (request_form.get(field_base, None) or request_form.get(f"{field_base}[]", "")).strip()
+
+        # Validar requerido
+        if config.required and not value:
+            raise ValueError(f"El campo '{config.label}' es obligatorio")
+
+        # Procesar según tipo
+        if value:
+            if config.type == 'number':
+                try:
+                    attributes[config.key] = float(value)
+                except ValueError:
+                    raise ValueError(f"El campo '{config.label}' debe ser un número válido")
+            elif config.type == 'date':
+                # Validar formato de fecha
+                try:
+                    from datetime import datetime
+                    datetime.strptime(value, '%Y-%m-%d')
+                    attributes[config.key] = value
+                except ValueError:
+                    raise ValueError(f"El campo '{config.label}' debe tener formato de fecha válido (YYYY-MM-DD)")
+            else:
+                # text, list simple, url - guardar como string
+                attributes[config.key] = value
+
+    return attributes
+
+
+def _validate_attribute_options(attributes, attribute_configs):
+    """Valida que los valores de tipo 'list' estén en las opciones configuradas"""
+    for config in attribute_configs:
+        if config.type == 'list' and config.key in attributes:
+            value = attributes[config.key]
+            # Obtener lista de opciones permitidas
+            allowed = []
+            if config.options:
+                if isinstance(config.options, dict):
+                    allowed = config.options.get('values', []) or []
+                elif isinstance(config.options, list):
+                    allowed = config.options
+
+            if isinstance(value, list):
+                invalid = [v for v in value if v not in allowed]
+                if invalid:
+                    raise ValueError(f"Valor(es) no válidos para '{config.label}': {', '.join(invalid)}")
+            else:
+                if allowed and value not in allowed:
+                    raise ValueError(f"El valor '{value}' no es válido para '{config.label}'")
     return True
 
 
@@ -189,6 +275,7 @@ def _generate_success_message(images_processed, errors):
 def create():
     """Crear nuevo producto desde colección de imágenes"""
     categories = Category.query.filter_by(client_id=current_user.client_id).all()
+    attribute_configs = _get_client_attribute_config(current_user.client_id)
 
     if request.method == "POST":
         try:
@@ -201,6 +288,10 @@ def create():
             stock = request.form.get("stock", 0, type=int)
             tags = request.form.get("tags", "").strip()
 
+            # Procesar atributos dinámicos
+            dynamic_attributes = _process_dynamic_attributes(request.form, attribute_configs)
+            _validate_attribute_options(dynamic_attributes, attribute_configs)
+
             # Validar datos del producto
             is_valid, result = _validate_product_data(name, category_id, categories)
             if not is_valid:
@@ -208,6 +299,10 @@ def create():
 
             # Crear producto
             product = _create_product_instance(name, description, category_id, sku, price, stock, tags)
+
+            # Asignar atributos dinámicos
+            product.attributes = dynamic_attributes if dynamic_attributes else None
+
             db.session.add(product)
             db.session.flush()  # Para obtener el ID del producto
 
@@ -222,7 +317,9 @@ def create():
             elif not _generate_success_message(images_processed, errors):
                 # Si hay errores críticos, hacer rollback
                 db.session.rollback()
-                return render_template("products/create.html", categories=categories)
+                return render_template("products/create.html",
+                                     categories=categories,
+                                     attribute_configs=attribute_configs)
 
             db.session.commit()
 
@@ -231,12 +328,21 @@ def create():
 
             return redirect(url_for("products.view", product_id=product.id))
 
+        except ValueError as ve:
+            flash(str(ve), "error")
+            return render_template("products/create.html",
+                                 categories=categories,
+                                 attribute_configs=attribute_configs)
         except Exception as e:
             db.session.rollback()
             flash(f"Error al crear el producto: {str(e)}", "error")
-            return render_template("products/create.html", categories=categories)
+            return render_template("products/create.html",
+                                 categories=categories,
+                                 attribute_configs=attribute_configs)
 
-    return render_template("products/create.html", categories=categories)
+    return render_template("products/create.html",
+                         categories=categories,
+                         attribute_configs=attribute_configs)
 
 
 @bp.route("/<product_id>")
@@ -269,6 +375,7 @@ def edit(product_id):
     ).first_or_404()
 
     categories = Category.query.filter_by(client_id=current_user.client_id).all()
+    attribute_configs = _get_client_attribute_config(current_user.client_id)
 
     if request.method == "POST":
         try:
@@ -283,10 +390,18 @@ def edit(product_id):
             product.tags = request.form.get("tags", "").strip() or None
             product.updated_at = datetime.utcnow()
 
+            # Procesar atributos dinámicos
+            dynamic_attributes = _process_dynamic_attributes(request.form, attribute_configs)
+            _validate_attribute_options(dynamic_attributes, attribute_configs)
+            product.attributes = dynamic_attributes if dynamic_attributes else None
+
             # Validaciones
             if not product.name:
                 flash("El nombre del producto es obligatorio", "error")
-                return render_template("products/edit.html", product=product, categories=categories)
+                return render_template("products/edit.html",
+                                     product=product,
+                                     categories=categories,
+                                     attribute_configs=attribute_configs)
 
             # Verificar categoría
             if product.category_id:
@@ -296,17 +411,29 @@ def edit(product_id):
                 ).first()
                 if not category:
                     flash("Categoría no válida", "error")
-                    return render_template("products/edit.html", product=product, categories=categories)
+                    return render_template("products/edit.html",
+                                         product=product,
+                                         categories=categories,
+                                         attribute_configs=attribute_configs)
 
             db.session.commit()
             flash("Producto actualizado correctamente", "success")
             return redirect(url_for("products.view", product_id=product.id))
 
+        except ValueError as ve:
+            flash(str(ve), "error")
+            return render_template("products/edit.html",
+                                 product=product,
+                                 categories=categories,
+                                 attribute_configs=attribute_configs)
         except Exception as e:
             db.session.rollback()
             flash(f"Error al actualizar el producto: {str(e)}", "error")
 
-    return render_template("products/edit.html", product=product, categories=categories)
+    return render_template("products/edit.html",
+                         product=product,
+                         categories=categories,
+                         attribute_configs=attribute_configs)
 
 
 @bp.route("/<product_id>/delete", methods=["POST"])

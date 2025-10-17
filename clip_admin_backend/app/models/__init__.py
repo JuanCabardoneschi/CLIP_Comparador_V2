@@ -7,5 +7,6 @@ from .client import Client
 from .user import User
 from .category import Category
 from .product import Product
+from .product_attribute_config import ProductAttributeConfig
 from .image import Image
 from .search_log import SearchLog

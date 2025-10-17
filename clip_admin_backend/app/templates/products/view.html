@@ -248,6 +248,20 @@
                 </div>
                 {% endif %}
 
+                {% if product.brand %}
+                <div class="info-item">
+                    <span class="info-label">Marca:</span>
+                    <span class="info-value">{{ product.brand }}</span>
+                </div>
+                {% endif %}
+
+                {% if product.color %}
+                <div class="info-item">
+                    <span class="info-label">Color:</span>
+                    <span class="info-value">{{ product.color }}</span>
+                </div>
+                {% endif %}
+
                 {% if product.price %}
                 <div class="info-item">
                     <span class="info-label">Precio:</span>
@@ -261,22 +275,61 @@
                 </div>
 
                 <div class="info-item">
+                    <span class="info-label">Estado:</span>
+                    <span class="info-value">
+                        {% if product.is_active %}
+                            <span class="badge bg-success">Activo</span>
+                        {% else %}
+                            <span class="badge bg-secondary">Inactivo</span>
+                        {% endif %}
+                    </span>
+                </div>
+
+                <div class="info-item">
                     <span class="info-label">Imágenes:</span>
                     <span class="info-value">{{ images|length }}</span>
                 </div>
 
-                {% if product.tag_list %}
+                {% if product.tags %}
                 <div class="info-item">
                     <span class="info-label">Tags:</span>
                 </div>
-                <div class="mt-2">
+                <div class="mt-2 mb-3">
                     {% for tag in product.tag_list %}
                         <span class="tag-item">{{ tag }}</span>
                     {% endfor %}
                 </div>
                 {% endif %}
 
-                <div class="info-item">
+                <!-- Atributos personalizados -->
+                {% if product.attributes %}
+                <div class="info-item mt-3">
+                    <span class="info-label">
+                        <i class="bi bi-sliders"></i> Atributos Personalizados:
+                    </span>
+                </div>
+                {% for key, value in product.attributes.items() %}
+                    {% if key not in ['is_active', 'created_at', 'updated_at', 'tags'] %}
+                    <div class="info-item">
+                        <span class="info-label text-muted">{{ key }}:</span>
+                        <span class="info-value">
+                            {% if value is string and value.startswith('http') %}
+                                <a href="{{ value }}" target="_blank" class="text-primary">
+                                    <i class="bi bi-link-45deg"></i> Ver enlace
+                                </a>
+                            {% elif value is iterable and (value is not string) %}
+                                {{ value | join(', ') }}
+                            {% else %}
+                                {{ value }}
+                            {% endif %}
+                        </span>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+                {% endif %}
+
+                <!-- Información del sistema -->
+                <div class="info-item mt-3">
                     <span class="info-label">Creado:</span>
                     <span class="info-value">{{ product.created_at.strftime('%d/%m/%Y %H:%M') if product.created_at else '-' }}</span>
                 </div>

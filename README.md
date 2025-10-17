@@ -3,19 +3,15 @@
 ## 🎯 Descripción
 Sistema SaaS moderno de búsqueda visual inteligente con arquitectura dual optimizada para Railway Hobby Plan ($5/mes).
 
-## 🏗️ Arquitectura Dual
+## 🏗️ Arquitectura Unificada
 
-### Módulo 1: Backend Admin (Flask)
+### Backend Admin + Search API (Flask)
 - **Puerto:** 5000
-- **Función:** Gestión de clientes, productos, categorías e imágenes
-- **Stack:** Flask 3.x + PostgreSQL + Redis + Bootstrap 5 + Cloudinary
-- **URL:** admin.clip-comparador.railway.app
-
-### Módulo 2: Search API (FastAPI)
-- **Puerto:** 8000
-- **Función:** API de búsqueda visual con CLIP
-- **Stack:** FastAPI + CLIP (ViT-B/16) + PostgreSQL (readonly) + Redis
-- **URL:** api.clip-comparador.railway.app
+- **Función:** 
+  - Panel de Administración: Gestión de clientes, productos, categorías, imágenes y atributos dinámicos
+  - API de Búsqueda Visual: Endpoint `/api/search` con CLIP para búsqueda por similitud
+- **Stack:** Flask 3.x + PostgreSQL + Redis + Bootstrap 5 + Cloudinary + CLIP (ViT-B/16)
+- **URL:** clip-comparador.railway.app
 
 ## 📁 Estructura del Proyecto
 
@@ -61,12 +57,10 @@ docs/                       # Documentación
 - **Cache:** Redis para sesiones y cache
 
 ### Search API
-- **Framework:** FastAPI con async/await
 - **IA:** CLIP (ViT-B/16) optimizado para CPU
-- **Base de Datos:** PostgreSQL (acceso readonly)
-- **Autenticación:** API Keys con rate limiting
-- **Cache:** Redis para resultados y embeddings
-- **Vectores:** pgvector para búsqueda eficiente
+- **Autenticación:** API Keys con rate limiting en endpoints públicos
+- **Vectores:** pgvector para búsqueda eficiente por embeddings
+- **Atributos Dinámicos:** Sistema flexible de metadatos por producto
 
 ## 📦 Instalación y Configuración
 

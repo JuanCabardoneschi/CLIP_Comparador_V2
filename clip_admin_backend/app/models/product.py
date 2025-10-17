@@ -15,7 +15,7 @@ class Product(db.Model):
     description = db.Column(db.Text)
     brand = db.Column(db.String(100))  # Marca del producto
     sku = db.Column(db.String(100))  # Código único del producto
-    price = db.Column(db.Numeric(10, 2))
+    price = db.Column(db.Numeric(10, 2), nullable=True)
     stock = db.Column(db.Integer, default=0)
     color = db.Column(db.String(50))  # Color del producto
     tags = db.Column(db.Text)  # Tags separados por comas para búsqueda
@@ -23,6 +23,7 @@ class Product(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    attributes = db.Column(db.JSON, nullable=True)  # JSONB en Postgres
     # Relaciones
     client = db.relationship('Client', backref='products')
     images = db.relationship('Image', backref='product', lazy='dynamic', cascade='all, delete-orphan')

@@ -9,37 +9,32 @@
 - **Minimal changes**: Make the smallest change necessary to solve the problem
 
 ## Project Overview
-CLIP Comparador V2 is a SaaS visual search system with dual architecture:
+CLIP Comparador V2 is a SaaS visual search system with unified Flask architecture:
 
-### Module 1: Backend Admin (Flask)
+### Unified Backend + Search API (Flask)
 - **Location**: `clip_admin_backend/`
 - **Port**: 5000
-- **Function**: Client management, catalog administration, API key generation
-- **Stack**: Flask 3.x + PostgreSQL + Redis + Bootstrap 5 + Cloudinary
-
-### Module 2: Search API (FastAPI)
-- **Location**: `clip_search_api/`
-- **Port**: 8000
-- **Function**: Visual search endpoint with CLIP integration
-- **Stack**: FastAPI + CLIP (ViT-B/16) + PostgreSQL (readonly) + Redis cache
+- **Functions**: 
+  - Admin panel: Client management, catalog administration, dynamic product attributes
+  - Search API: `/api/search` endpoint with CLIP integration for visual similarity
+- **Stack**: Flask 3.x + PostgreSQL + Redis + Bootstrap 5 + Cloudinary + CLIP (ViT-B/16)
 
 ## Project Structure
 ```
 clip_comparador_v2/                  # V2 System Root
-├── clip_admin_backend/              # Flask Admin Module
+├── clip_admin_backend/              # Unified Flask Application
 │   ├── app/
 │   │   ├── models/                 # SQLAlchemy models
 │   │   ├── blueprints/             # Route handlers
+│   │   │   ├── api.py             # Search API endpoint (/api/search)
+│   │   │   ├── products.py        # Product CRUD with dynamic attributes
+│   │   │   └── ...                # Other admin modules
 │   │   ├── templates/              # Jinja2 templates
-│   │   └── static/                 # CSS, JS, assets
+│   │   ├── static/                 # CSS, JS, assets, widget
+│   │   ├── services/               # Cloudinary, Image Manager
+│   │   └── utils/                  # Helpers and utilities
+│   ├── migrations/                 # Alembic migrations
 │   └── app.py                      # Flask application
-├── clip_search_api/                # FastAPI Search Module
-│   ├── app/
-│   │   ├── core/                  # CLIP Engine + Search Engine
-│   │   ├── middleware/            # Auth + Rate Limiting
-│   │   ├── models/                # Pydantic models
-│   │   └── utils/                 # Database utilities
-│   └── main.py                    # FastAPI application
 ├── shared/                         # Common resources
 │   ├── database/                  # DB initialization scripts
 │   └── docker/                    # Dockerfiles
@@ -51,12 +46,13 @@ clip_comparador_v2/                  # V2 System Root
 ```
 
 ## Technology Stack
-- **Backend Admin**: Flask 3.x + PostgreSQL + Redis + Bootstrap 5
-- **Search API**: FastAPI + CLIP (ViT-B/16) + PostgreSQL (readonly) + Redis cache
+- **Backend**: Flask 3.x + PostgreSQL + Redis + Bootstrap 5
+- **ML/AI**: CLIP (ViT-B/16) for visual similarity search
 - **Storage**: Cloudinary for images
 - **Deployment**: Railway Hobby Plan ($5/month)
 - **Database**: PostgreSQL with pgvector extension (REQUIRED - no SQLite support)
 - **Cache**: Redis for sessions and embeddings
+- **Dynamic Attributes**: JSONB-based flexible product metadata system
 
 ## Development Setup
 ```bash
@@ -75,11 +71,9 @@ cp .env.local.example .env.local
 # Initialize database
 python setup_local_postgres.py
 
-# Run Backend Admin
+# Run Flask Application (Admin + API)
 cd clip_admin_backend && python app.py
-
-# Run Search API (separate terminal)
-cd clip_search_api && python main.py
+# Acceso: http://localhost:5000
 ```
 
 **Note**: PostgreSQL is REQUIRED. SQLite is not supported. See `docs/SETUP_POSTGRES_LOCAL.md` for detailed setup instructions.
@@ -94,7 +88,7 @@ cd clip_search_api && python main.py
 - Test both modules independently
 
 ## Railway Deployment
-- Two independent services sharing PostgreSQL + Redis
+- Single unified Flask service with PostgreSQL + Redis
 - Optimized for Railway Hobby Plan constraints
 - CPU-only CLIP processing (no GPU required)
 - Environment-based configuration
@@ -112,8 +106,8 @@ cd clip_search_api && python main.py
 - [x] Environment configuration template
 - [x] Flask backend admin application foundation
 - [x] Client and APIKey models implemented
-- [x] FastAPI search API structure
-- [x] CLIP engine and search engine cores
+- [x] Search API integrated in Flask (api.py blueprint)
+- [x] CLIP engine for visual similarity
 - [x] Authentication and rate limiting middleware
 - [x] Database initialization scripts
 - [x] Railway deployment configuration
@@ -127,7 +121,7 @@ cd clip_search_api && python main.py
 
 ## Key Features Implemented
 ✅ **Multi-tenant SaaS architecture**
-✅ **Dual service design (Admin + API)**
+✅ **Unified Flask service (Admin + Search API)**
 ✅ **Railway Hobby Plan optimization**
 ✅ **CLIP-based visual search**
 ✅ **API key authentication system**
@@ -135,7 +129,8 @@ cd clip_search_api && python main.py
 ✅ **Cloudinary image storage**
 ✅ **PostgreSQL with pgvector**
 ✅ **Redis caching layer**
-✅ **Docker containerization**
+✅ **Dynamic product attributes (JSONB)**
+✅ **Multi-select support for list attributes**
 
 ## Next Development Steps
 1. Complete remaining database models
@@ -150,6 +145,5 @@ The original V1 system is available in the parent workspace (`../CLIP_Comparador
 
 ## API Documentation
 - Backend Admin: http://localhost:5000
-- Search API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
-- API Schema: http://localhost:8000/redoc
+- Search API Endpoint: http://localhost:5000/api/search (POST)
+- Widget Test: test-widget-railway.html

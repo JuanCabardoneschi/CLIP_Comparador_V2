@@ -3,14 +3,11 @@ Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Flask-Migrate==4.0.5
 Flask-CORS==4.0.0
-FastAPI==0.104.1
-uvicorn[standard]==0.24.0
 
 # Database
 SQLAlchemy==2.0.23
 alembic==1.12.1
 psycopg2-binary==2.9.9
-asyncpg==0.29.0
 
 # Database Tools & Management
 Flask-Admin==1.6.1
