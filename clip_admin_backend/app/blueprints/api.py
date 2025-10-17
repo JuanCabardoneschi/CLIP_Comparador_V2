@@ -833,8 +833,11 @@ def _build_search_results(product_best_match, limit):
                         ),
                         {"client_id": client_id},
                     ).fetchall()
-                    if rows:
-                        exposed_keys_cache = {r[0] for r in rows}
+                    # IMPORTANTE: Siempre setear el cache (incluso si está vacío)
+                    # - Si hay filas: conjunto con las claves
+                    # - Si hay 0 filas: conjunto vacío (no exponer nada)
+                    # - Diferente de None que significa "tabla inexistente"
+                    exposed_keys_cache = {r[0] for r in rows}
             except Exception:
                 # Si no existe la tabla o falla, seguimos sin filtrar (compatible hacia atrás)
                 exposed_keys_cache = None
