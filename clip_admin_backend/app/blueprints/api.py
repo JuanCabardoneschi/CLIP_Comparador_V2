@@ -823,21 +823,35 @@ def _build_search_results(product_best_match, limit):
             try:
                 client_id = getattr(product, 'client_id', None)
                 if client_id:
-                    rows = db.session.execute(
+                    # Primero verificar si hay ALGUNA configuración para este cliente
+                    total_configs = db.session.execute(
                         text(
                             """
-                            SELECT key
+                            SELECT COUNT(*) as total
                             FROM product_attribute_config
-                            WHERE client_id = :client_id::uuid AND expose_in_search = true
+                            WHERE client_id = :client_id::uuid
                             """
                         ),
                         {"client_id": client_id},
-                    ).fetchall()
-                    # IMPORTANTE: Siempre setear el cache (incluso si está vacío)
-                    # - Si hay filas: conjunto con las claves
-                    # - Si hay 0 filas: conjunto vacío (no exponer nada)
-                    # - Diferente de None que significa "tabla inexistente"
-                    exposed_keys_cache = {r[0] for r in rows}
+                    ).fetchone()
+                    
+                    # Si no hay ninguna configuración, tratar como "sin config" (None)
+                    if total_configs and total_configs[0] == 0:
+                        exposed_keys_cache = None
+                    else:
+                        # Hay configuraciones, obtener las visibles
+                        rows = db.session.execute(
+                            text(
+                                """
+                                SELECT key
+                                FROM product_attribute_config
+                                WHERE client_id = :client_id::uuid AND expose_in_search = true
+                                """
+                            ),
+                            {"client_id": client_id},
+                        ).fetchall()
+                        # Crear conjunto (vacío si todas están ocultas, con elementos si hay visibles)
+                        exposed_keys_cache = {r[0] for r in rows}
             except Exception:
                 # Si no existe la tabla o falla, seguimos sin filtrar (compatible hacia atrás)
                 exposed_keys_cache = None
