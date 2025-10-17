@@ -55,7 +55,7 @@ clip_comparador_v2/                  # V2 System Root
 - **Search API**: FastAPI + CLIP (ViT-B/16) + PostgreSQL (readonly) + Redis cache
 - **Storage**: Cloudinary for images
 - **Deployment**: Railway Hobby Plan ($5/month)
-- **Database**: PostgreSQL with pgvector extension
+- **Database**: PostgreSQL with pgvector extension (REQUIRED - no SQLite support)
 - **Cache**: Redis for sessions and embeddings
 
 ## Development Setup
@@ -63,12 +63,17 @@ clip_comparador_v2/                  # V2 System Root
 # Install dependencies
 pip install -r requirements.txt
 
+# Setup PostgreSQL local (REQUIRED)
+# 1. Install PostgreSQL: https://www.postgresql.org/download/
+# 2. Run setup script:
+.\setup_postgres.ps1
+
 # Setup environment
-cp .env.example .env
-# Edit .env with your configuration
+cp .env.local.example .env.local
+# Edit .env.local with your PostgreSQL credentials
 
 # Initialize database
-python shared/database/init_db.py
+python setup_local_postgres.py
 
 # Run Backend Admin
 cd clip_admin_backend && python app.py
@@ -76,6 +81,8 @@ cd clip_admin_backend && python app.py
 # Run Search API (separate terminal)
 cd clip_search_api && python main.py
 ```
+
+**Note**: PostgreSQL is REQUIRED. SQLite is not supported. See `docs/SETUP_POSTGRES_LOCAL.md` for detailed setup instructions.
 
 ## Development Guidelines
 - Use absolute imports consistently

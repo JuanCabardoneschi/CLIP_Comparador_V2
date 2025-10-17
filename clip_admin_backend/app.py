@@ -61,12 +61,7 @@ def create_app(config_name=None):
     config = Config()
     app.config.from_object(config)
     
-    # Configurar ruta absoluta para SQLite (solo si es local)
-    if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:///"):
-        db_path = app.config["SQLALCHEMY_DATABASE_URI"][10:]
-        if not os.path.isabs(db_path):
-            db_path = os.path.join(parent_dir, db_path)
-            app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
+    # PostgreSQL es obligatorio - no se permiten otras bases de datos
     app.config["JWT_SECRET_KEY"] = os.getenv(
         "JWT_SECRET_KEY", "jwt-secret-key"
     )

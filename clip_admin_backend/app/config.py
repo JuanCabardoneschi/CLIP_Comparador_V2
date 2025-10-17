@@ -46,12 +46,30 @@ def get_database_url():
     
     Returns:
         str: URL de conexión a la base de datos
+    
+    Raises:
+        ValueError: Si DATABASE_URL no está configurada
     """
     db_url = os.environ.get('DATABASE_URL')
     
     if not db_url:
-        # Fallback para desarrollo local con SQLite
-        return 'sqlite:///clip_comparador_v2.db'
+        raise ValueError(
+            "DATABASE_URL no está configurada.\n"
+            "Para desarrollo local:\n"
+            "  1. Instala PostgreSQL: https://www.postgresql.org/download/\n"
+            "  2. Crea la base de datos: psql -U postgres -c 'CREATE DATABASE clip_comparador_v2;'\n"
+            "  3. Configura .env.local con:\n"
+            "     DATABASE_URL=postgresql://postgres:tu_password@localhost:5432/clip_comparador_v2\n"
+            "  4. Ejecuta: python setup_local_postgres.py\n"
+        )
+    
+    # Validar que sea PostgreSQL
+    if not (db_url.startswith('postgresql://') or db_url.startswith('postgres://')):
+        raise ValueError(
+            f"DATABASE_URL debe ser PostgreSQL, no {db_url.split('://')[0] if '://' in db_url else 'desconocido'}.\n"
+            "SQLite no es soportado en este proyecto.\n"
+            "Usa: postgresql://usuario:password@host:5432/database"
+        )
     
     # Railway usa postgres:// pero SQLAlchemy necesita postgresql://
     if db_url.startswith('postgres://'):
@@ -132,10 +150,14 @@ class Config:
         self.DEBUG = get_debug_mode()
         self.TESTING = False
         
-        # Base de datos
+        # Base de datos (PostgreSQL obligatorio)
         self.SQLALCHEMY_DATABASE_URI = get_database_url()
         self.SQLALCHEMY_TRACK_MODIFICATIONS = False
         self.SQLALCHEMY_ECHO = not is_production()  # SQL logging solo en dev
+        self.SQLALCHEMY_ENGINE_OPTIONS = {
+            'pool_pre_ping': True,  # Verificar conexiones antes de usarlas
+            'pool_recycle': 300,    # Reciclar conexiones cada 5 minutos
+        }
         
         # Seguridad
         self.SECRET_KEY = get_secret_key()
@@ -164,12 +186,28 @@ def print_environment_info():
     print(f"🚀 CLIP Comparador V2 - {get_environment_name()}")
     print("="*60)
     print(f"📍 Environment: {os.environ.get('FLASK_ENV', 'development')}")
-    print(f"🗄️  Database: {get_database_url()[:50]}...")
+    
+    try:
+        db_url = get_database_url()
+        # Ocultar password en el log
+        if '@' in db_url:
+            parts = db_url.split('@')
+            user_part = parts[0].split('://')[-1].split(':')[0]
+            host_part = '@'.join(parts[1:])
+            db_display = f"postgresql://{user_part}:****@{host_part}"
+        else:
+            db_display = db_url
+        print(f"🗄️  Database: {db_display[:60]}...")
+    except ValueError as e:
+        print(f"❌ Database: ERROR - {str(e).split(chr(10))[0]}")
+    
     print(f"🔐 Redis: {'Configured' if get_redis_url() else 'Not configured (using memory cache)'}")
     print(f"🐛 Debug Mode: {get_debug_mode()}")
     print(f"📝 Log Level: {get_log_level()}")
     
     if is_production():
         print(f"☁️  Railway Environment: {os.environ.get('RAILWAY_ENVIRONMENT', 'N/A')}")
+    else:
+        print(f"💻 Local Development: PostgreSQL required")
     
     print("="*60 + "\n")
