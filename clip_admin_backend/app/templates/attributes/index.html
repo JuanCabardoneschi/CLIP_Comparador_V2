@@ -1,0 +1,172 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Atributos de Productos{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="mb-0">Atributos de Productos</h2>
+                    <p class="text-muted">Configura los campos dinámicos para tus productos</p>
+                </div>
+                <a href="{{ url_for('attributes.create') }}" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> Nuevo Atributo
+                </a>
+            </div>
+
+            {% if attributes %}
+            <div class="card shadow-sm">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="5%">Orden</th>
+                                    <th width="15%">Nombre Interno</th>
+                                    <th width="20%">Etiqueta</th>
+                                    <th width="12%">Tipo</th>
+                                    <th width="10%">Obligatorio</th>
+                                    <th width="13%">En Búsqueda</th>
+                                    <th width="10%">Multi-select</th>
+                                    <th width="15%" class="text-end">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for attr in attributes %}
+                                <tr>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ attr.field_order }}</span>
+                                    </td>
+                                    <td>
+                                        <code>{{ attr.key }}</code>
+                                    </td>
+                                    <td>
+                                        <strong>{{ attr.label }}</strong>
+                                    </td>
+                                    <td>
+                                        {% if attr.type == 'text' %}
+                                            <span class="badge bg-primary">Texto</span>
+                                        {% elif attr.type == 'number' %}
+                                            <span class="badge bg-info">Número</span>
+                                        {% elif attr.type == 'date' %}
+                                            <span class="badge bg-warning">Fecha</span>
+                                        {% elif attr.type == 'list' %}
+                                            <span class="badge bg-success">Lista</span>
+                                        {% elif attr.type == 'url' %}
+                                            <span class="badge bg-secondary">URL</span>
+                                        {% else %}
+                                            <span class="badge bg-light text-dark">{{ attr.type }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if attr.required %}
+                                            <i class="bi bi-check-circle-fill text-success" title="Obligatorio"></i>
+                                        {% else %}
+                                            <i class="bi bi-dash-circle text-muted" title="Opcional"></i>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if attr.expose_in_search %}
+                                            <span class="badge bg-success">
+                                                <i class="bi bi-eye"></i> Visible
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">
+                                                <i class="bi bi-eye-slash"></i> Oculto
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if attr.type == 'list' and attr.options and attr.options.get('multiple') %}
+                                            <i class="bi bi-ui-checks text-primary" title="Multi-selección activada"></i>
+                                        {% elif attr.type == 'list' %}
+                                            <i class="bi bi-ui-radios text-muted" title="Selección simple"></i>
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <a href="{{ url_for('attributes.edit', id=attr.id) }}" 
+                                               class="btn btn-outline-primary" 
+                                               title="Editar">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <button type="button" 
+                                                    class="btn btn-outline-danger"
+                                                    title="Eliminar"
+                                                    onclick="confirmDelete({{ attr.id }}, '{{ attr.label }}')">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Paginación -->
+            {% if pagination.pages > 1 %}
+            <nav aria-label="Navegación de atributos" class="mt-4">
+                <ul class="pagination justify-content-center">
+                    <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('attributes.index', page=pagination.prev_num) if pagination.has_prev else '#' }}">
+                            Anterior
+                        </a>
+                    </li>
+                    
+                    {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                        {% if page_num %}
+                            <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                                <a class="page-link" href="{{ url_for('attributes.index', page=page_num) }}">{{ page_num }}</a>
+                            </li>
+                        {% else %}
+                            <li class="page-item disabled"><span class="page-link">...</span></li>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                        <a class="page-link" href="{{ url_for('attributes.index', page=pagination.next_num) if pagination.has_next else '#' }}">
+                            Siguiente
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            {% endif %}
+
+            {% else %}
+            <div class="card shadow-sm">
+                <div class="card-body text-center py-5">
+                    <i class="bi bi-sliders text-muted" style="font-size: 4rem;"></i>
+                    <h4 class="mt-3">No hay atributos configurados</h4>
+                    <p class="text-muted">Crea tu primer atributo dinámico para personalizar tus productos</p>
+                    <a href="{{ url_for('attributes.create') }}" class="btn btn-primary mt-2">
+                        <i class="bi bi-plus-circle"></i> Crear Primer Atributo
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmación para eliminar -->
+<form id="deleteForm" method="POST" style="display: none;">
+    <input type="hidden" name="_method" value="DELETE">
+</form>
+
+<script>
+function confirmDelete(id, label) {
+    if (confirm(`¿Estás seguro de eliminar el atributo "${label}"?\n\nEsta acción no se puede deshacer y los datos de este atributo en los productos existentes se perderán.`)) {
+        const form = document.getElementById('deleteForm');
+        form.action = `/attributes/${id}/delete`;
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

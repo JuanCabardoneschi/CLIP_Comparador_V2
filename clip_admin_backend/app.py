@@ -330,6 +330,14 @@ def register_blueprints(app):
     except ImportError as e:
         print(f"✗ Error importando embeddings blueprint: {e}")
 
+    # Blueprint de atributos de productos
+    try:
+        from app.blueprints.attributes import bp as attributes_bp
+        app.register_blueprint(attributes_bp, url_prefix="/attributes")
+        print("✓ Blueprint attributes registrado")
+    except ImportError as e:
+        print(f"✗ Error importando attributes blueprint: {e}")
+
 
 # Crear instancia de la aplicación
 app = create_app()

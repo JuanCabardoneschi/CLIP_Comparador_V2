@@ -7,7 +7,7 @@ Sistema SaaS moderno de búsqueda visual inteligente con arquitectura dual optim
 
 ### Backend Admin + Search API (Flask)
 - **Puerto:** 5000
-- **Función:** 
+- **Función:**
   - Panel de Administración: Gestión de clientes, productos, categorías, imágenes y atributos dinámicos
   - API de Búsqueda Visual: Endpoint `/api/search` con CLIP para búsqueda por similitud
 - **Stack:** Flask 3.x + PostgreSQL + Redis + Bootstrap 5 + Cloudinary + CLIP (ViT-B/16)

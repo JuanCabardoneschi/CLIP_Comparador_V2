@@ -14,6 +14,7 @@ class ProductAttributeConfig(db.Model):
     required = db.Column(db.Boolean, default=False)
     options = db.Column(db.JSON, nullable=True)  # solo para type='list', lista de opciones
     field_order = db.Column(db.Integer, default=0)  # para ordenar los campos en el formulario
+    expose_in_search = db.Column(db.Boolean, default=False)  # incluir en respuestas de búsqueda
 
     def __repr__(self):
         return f"<ProductAttributeConfig {self.key} ({self.type})>"

@@ -1,0 +1,191 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Nuevo Atributo{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-plus-circle"></i> Crear Nuevo Atributo
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('attributes.create') }}" id="attributeForm">
+                        <div class="row">
+                            <!-- Nombre Interno (Key) -->
+                            <div class="col-md-6 mb-3">
+                                <label for="key" class="form-label">
+                                    Nombre Interno <span class="text-danger">*</span>
+                                    <i class="bi bi-info-circle text-muted" 
+                                       title="Identificador único del atributo. Se convertirá a minúsculas y sin espacios."></i>
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="key" 
+                                       name="key" 
+                                       required
+                                       placeholder="ej: talla, material, color"
+                                       pattern="[a-z0-9_]+"
+                                       title="Solo letras minúsculas, números y guiones bajos">
+                                <small class="form-text text-muted">
+                                    Solo letras minúsculas, números y guiones bajos
+                                </small>
+                            </div>
+
+                            <!-- Etiqueta (Label) -->
+                            <div class="col-md-6 mb-3">
+                                <label for="label" class="form-label">
+                                    Etiqueta <span class="text-danger">*</span>
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="label" 
+                                       name="label" 
+                                       required
+                                       placeholder="ej: Talla, Material, Color">
+                                <small class="form-text text-muted">
+                                    Texto que se mostrará en los formularios
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <!-- Tipo -->
+                            <div class="col-md-4 mb-3">
+                                <label for="type" class="form-label">
+                                    Tipo de Campo <span class="text-danger">*</span>
+                                </label>
+                                <select class="form-select" 
+                                        id="type" 
+                                        name="type" 
+                                        required
+                                        onchange="toggleOptions()">
+                                    <option value="text">Texto</option>
+                                    <option value="number">Número</option>
+                                    <option value="date">Fecha</option>
+                                    <option value="list">Lista de Opciones</option>
+                                    <option value="url">URL</option>
+                                </select>
+                            </div>
+
+                            <!-- Orden -->
+                            <div class="col-md-4 mb-3">
+                                <label for="field_order" class="form-label">
+                                    Orden
+                                </label>
+                                <input type="number" 
+                                       class="form-control" 
+                                       id="field_order" 
+                                       name="field_order" 
+                                       value="0"
+                                       min="0">
+                                <small class="form-text text-muted">
+                                    Posición en el formulario
+                                </small>
+                            </div>
+
+                            <!-- Checkboxes -->
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label d-block">Opciones</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" 
+                                           type="checkbox" 
+                                           id="required" 
+                                           name="required">
+                                    <label class="form-check-label" for="required">
+                                        Obligatorio
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" 
+                                           type="checkbox" 
+                                           id="expose_in_search" 
+                                           name="expose_in_search">
+                                    <label class="form-check-label" for="expose_in_search">
+                                        Exponer en búsqueda
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Opciones de Lista (solo visible si type=list) -->
+                        <div id="listOptions" class="row" style="display: none;">
+                            <div class="col-12 mb-3">
+                                <label for="options" class="form-label">
+                                    Opciones <span class="text-danger">*</span>
+                                    <i class="bi bi-info-circle text-muted" 
+                                       title="Lista de valores separados por líneas o formato JSON"></i>
+                                </label>
+                                <textarea class="form-control font-monospace" 
+                                          id="options" 
+                                          name="options" 
+                                          rows="6"
+                                          placeholder='Una opción por línea, o formato JSON: ["Opción 1", "Opción 2", "Opción 3"]'></textarea>
+                                <small class="form-text text-muted">
+                                    Introduce una opción por línea o un array JSON
+                                </small>
+                            </div>
+
+                            <div class="col-12 mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" 
+                                           type="checkbox" 
+                                           id="is_multiple" 
+                                           name="is_multiple">
+                                    <label class="form-check-label" for="is_multiple">
+                                        <strong>Permitir selección múltiple</strong>
+                                        <br>
+                                        <small class="text-muted">
+                                            Si está marcado, se podrán seleccionar varias opciones a la vez
+                                        </small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{{ url_for('attributes.index') }}" class="btn btn-secondary">
+                                <i class="bi bi-arrow-left"></i> Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> Crear Atributo
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Auto-generar el key a partir del label
+document.getElementById('label').addEventListener('input', function() {
+    const keyInput = document.getElementById('key');
+    if (!keyInput.value || keyInput.value === this.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')) {
+        keyInput.value = this.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+    }
+});
+
+// Mostrar/ocultar opciones según el tipo
+function toggleOptions() {
+    const type = document.getElementById('type').value;
+    const listOptions = document.getElementById('listOptions');
+    const optionsField = document.getElementById('options');
+    
+    if (type === 'list') {
+        listOptions.style.display = 'block';
+        optionsField.required = true;
+    } else {
+        listOptions.style.display = 'none';
+        optionsField.required = false;
+    }
+}
+
+// Inicializar al cargar
+document.addEventListener('DOMContentLoaded', toggleOptions);
+</script>
+{% endblock %}

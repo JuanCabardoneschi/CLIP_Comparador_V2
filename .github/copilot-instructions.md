@@ -14,7 +14,7 @@ CLIP Comparador V2 is a SaaS visual search system with unified Flask architectur
 ### Unified Backend + Search API (Flask)
 - **Location**: `clip_admin_backend/`
 - **Port**: 5000
-- **Functions**: 
+- **Functions**:
   - Admin panel: Client management, catalog administration, dynamic product attributes
   - Search API: `/api/search` endpoint with CLIP integration for visual similarity
 - **Stack**: Flask 3.x + PostgreSQL + Redis + Bootstrap 5 + Cloudinary + CLIP (ViT-B/16)
