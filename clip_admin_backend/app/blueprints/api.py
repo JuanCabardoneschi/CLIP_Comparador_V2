@@ -18,7 +18,7 @@ from app.models.product import Product
 from app.models.image import Image
 from app.models.search_log import SearchLog
 from app.services.image_manager import image_manager
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from googletrans import Translator
 
 # 🚀 IMPORTAR CLIP AL INICIO PARA CACHE GLOBAL
@@ -809,11 +809,37 @@ def _apply_category_filter(product_best_match, limit):
 def _build_search_results(product_best_match, limit):
     """Construye la lista final de resultados"""
     results = []
+    # Intentar obtener configuración de atributos a exponer (si existe la tabla)
+    exposed_keys_cache = None  # cache por request
+    checked_config = False
     for product_id, best_match in product_best_match.items():
         img = best_match['image']
         product = best_match['product']
         similarity = best_match['similarity']
         category_boost = best_match.get('category_boost', False)
+
+        # La primera vez, intentamos cargar la config de atributos visibles por cliente
+        if not checked_config:
+            try:
+                client_id = getattr(product, 'client_id', None)
+                if client_id:
+                    rows = db.session.execute(
+                        text(
+                            """
+                            SELECT key
+                            FROM product_attribute_config
+                            WHERE client_id = :client_id::uuid AND expose_in_search = true
+                            """
+                        ),
+                        {"client_id": client_id},
+                    ).fetchall()
+                    if rows:
+                        exposed_keys_cache = {r[0] for r in rows}
+            except Exception:
+                # Si no existe la tabla o falla, seguimos sin filtrar (compatible hacia atrás)
+                exposed_keys_cache = None
+            finally:
+                checked_config = True
 
         # Usar base64_data directamente del modelo Image
         try:
@@ -828,6 +854,22 @@ def _build_search_results(product_best_match, limit):
             print(f"❌ Error obteniendo imagen {img.filename}: {e}")
             image_url = None
 
+        # Preparar atributos dinámicos del producto (JSONB)
+        product_attrs = {}
+        try:
+            if hasattr(product, 'attributes') and product.attributes:
+                if exposed_keys_cache is not None:
+                    # Filtrar solo los atributos configurados para exponerse
+                    product_attrs = {
+                        k: v for k, v in product.attributes.items() if k in exposed_keys_cache
+                    }
+                else:
+                    # Sin configuración, exponer todos los atributos (compatibilidad existente)
+                    product_attrs = dict(product.attributes)
+        except Exception as e:
+            print(f"⚠️ Error leyendo atributos de producto {product.id}: {e}")
+            product_attrs = {}
+
         result = {
             "product_id": product.id,
             "name": product.name,
@@ -838,7 +880,9 @@ def _build_search_results(product_best_match, limit):
             "sku": product.sku,
             "stock": product.stock if hasattr(product, 'stock') and product.stock is not None else 0,
             "category": product.category.name if product.category else "Sin categoría",
-            "category_boost": category_boost
+            "category_boost": category_boost,
+            # Atributos dinámicos (filtrados si hay configuración)
+            "attributes": product_attrs
         }
         results.append(result)
 

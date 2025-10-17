@@ -404,6 +404,18 @@
 
             results.forEach((result, index) => {
                 const similarity = (result.similarity * 100).toFixed(1);
+                // Construir bloque de atributos dinámicos si existen
+                let attributesHtml = '';
+                if (result.attributes && Object.keys(result.attributes).length > 0) {
+                    const items = Object.entries(result.attributes)
+                        .map(([k, v]) => `<li><strong>${k}:</strong> ${Array.isArray(v) ? v.join(', ') : (v ?? '')}</li>`) 
+                        .join('');
+                    attributesHtml = `
+                        <div style="margin-top:8px;">
+                            <p style="margin: 0 0 6px 0;"><strong>Atributos:</strong></p>
+                            <ul style="margin:0; padding-left:18px; color:#555; font-size: 13px;">${items}</ul>
+                        </div>`;
+                }
                 html += `
                     <div class="result-item">
                         <img src="${result.image_url}" alt="${result.name}" class="result-image" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2Y4ZjlmYSIvPjx0ZXh0IHg9IjUwIiB5PSI1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjNmM3NTdkIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+SW1hZ2VuPC90ZXh0Pjwvc3ZnPg=='" />
@@ -413,6 +425,7 @@
                             <p><strong>Descripción:</strong> ${result.description || 'Sin descripción'}</p>
                             <p><strong>SKU:</strong> ${result.sku || 'N/A'} | <strong>Precio:</strong> ${result.price ? '$' + result.price : 'No disponible'}</p>
                             <p><strong>Stock:</strong> ${result.stock || 0} unidades</p>
+                            ${attributesHtml}
                             <span class="similarity-score">${similarity}% similar</span>
                         </div>
                     </div>
