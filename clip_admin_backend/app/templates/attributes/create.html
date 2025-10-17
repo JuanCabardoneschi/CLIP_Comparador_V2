@@ -162,6 +162,11 @@
 </div>
 
 <script>
+// Auto-convertir el key a minúsculas en tiempo real
+document.getElementById('key').addEventListener('input', function() {
+    this.value = this.value.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+});
+
 // Auto-generar el key a partir del label
 document.getElementById('label').addEventListener('input', function() {
     const keyInput = document.getElementById('key');
