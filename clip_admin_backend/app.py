@@ -22,7 +22,13 @@ from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
 # Cargar variables de entorno
-load_dotenv()
+# Intentar cargar .env.local primero (desarrollo), luego .env (producción/fallback)
+if os.path.exists('.env.local'):
+    load_dotenv('.env.local')
+    print("📄 Cargando configuración desde .env.local (desarrollo)")
+else:
+    load_dotenv()
+    print("📄 Cargando configuración desde .env o variables de entorno")
 
 # Cliente Redis global
 redis_client = None
@@ -45,20 +51,22 @@ def create_app(config_name=None):
     print(f"📁 Static folder: {static_dir}")
     print(f"📁 Template folder exists: {os.path.exists(template_dir)}")
 
-    # Configuración
-    secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-key")
-    app.config["SECRET_KEY"] = secret_key
-    print(f"🔑 SECRET_KEY configurado: {secret_key[:10]}... (longitud: {len(secret_key)})")
-
-    # Configurar ruta absoluta para la base de datos
-    database_url = os.getenv("DATABASE_URL")
-    if database_url and database_url.startswith("sqlite:///") and not os.path.isabs(database_url[10:]):
-        # Convertir ruta relativa a absoluta desde la raíz del proyecto
-        db_path = os.path.join(parent_dir, database_url[10:])
-        database_url = f"sqlite:///{db_path}"
-
-    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    # Importar configuración de entorno
+    from app.config import Config, print_environment_info
+    
+    # Mostrar información del entorno
+    print_environment_info()
+    
+    # Cargar configuración
+    config = Config()
+    app.config.from_object(config)
+    
+    # Configurar ruta absoluta para SQLite (solo si es local)
+    if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:///"):
+        db_path = app.config["SQLALCHEMY_DATABASE_URI"][10:]
+        if not os.path.isabs(db_path):
+            db_path = os.path.join(parent_dir, db_path)
+            app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
     app.config["JWT_SECRET_KEY"] = os.getenv(
         "JWT_SECRET_KEY", "jwt-secret-key"
     )

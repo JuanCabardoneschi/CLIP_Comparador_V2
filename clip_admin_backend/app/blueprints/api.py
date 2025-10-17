@@ -1258,7 +1258,7 @@ def visual_search():
                 "method": "category_detection_with_clip",
                 "detected_category": detected_category.name,
                 "confidence": round(category_confidence, 4),
-                "threshold_used": threshold,
+                "threshold_used": product_similarity_threshold,
                 "category_filter": True
             },
             "results": results,
