@@ -156,10 +156,11 @@
                     <i class="bi bi-key me-2"></i>
                     API Keys ({{ api_keys|length }})
                 </h6>
-                <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#newApiKeyModal">
+                <!-- Botón deshabilitado - funcionalidad no disponible -->
+                <!-- <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#newApiKeyModal">
                     <i class="bi bi-plus-circle me-1"></i>
                     Nueva API Key
-                </button>
+                </button> -->
             </div>
             <div class="card-body p-0">
                 {% if api_keys %}
@@ -219,11 +220,8 @@
                 {% else %}
                 <div class="text-center py-4">
                     <i class="bi bi-key text-muted mb-2" style="font-size: 2rem;"></i>
-                    <p class="text-muted">No hay API keys configuradas</p>
-                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newApiKeyModal">
-                        <i class="bi bi-plus-circle me-1"></i>
-                        Crear Primera API Key
-                    </button>
+                    <p class="text-muted">Sistema de API Keys múltiples no implementado</p>
+                    <small class="text-muted d-block">Cada cliente tiene una API Key automática</small>
                 </div>
                 {% endif %}
             </div>
@@ -293,11 +291,12 @@
 </div>
 {% endif %}
 
-<!-- Modal para nueva API Key -->
+<!-- Modal para nueva API Key - DESHABILITADO (funcionalidad no disponible) -->
+<!-- 
 <div class="modal fade" id="newApiKeyModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" action="{{ url_for('clients.create_api_key', client_id=client.id) }}">
+            <form method="POST" action="#">
                 <div class="modal-header">
                     <h5 class="modal-title">
                         <i class="bi bi-key me-2"></i>
@@ -323,6 +322,7 @@
         </div>
     </div>
 </div>
+-->
 
 <!-- Modal de confirmación de eliminación -->
 <div class="modal fade" id="deleteModal" tabindex="-1">
