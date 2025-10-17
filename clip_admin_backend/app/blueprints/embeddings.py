@@ -4,6 +4,15 @@ Administración y generación de embeddings para búsqueda visual
 """
 
 import os
+import ssl
+
+# Configurar SSL para descargas de modelos ANTES de importar transformers
+# Usar certificados del sistema en lugar de PostgreSQL
+import certifi
+os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+os.environ['SSL_CERT_FILE'] = certifi.where()
+os.environ['CURL_CA_BUNDLE'] = certifi.where()
+
 import json
 import requests
 from io import BytesIO

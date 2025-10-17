@@ -8,7 +8,7 @@ from . import db
 class Client(db.Model):
     __tablename__ = "clients"
 
-    # Usar String en lugar de UUID para compatibilidad con SQLite
+    # UUID almacenado como String(36) para consistencia
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(255), nullable=False)
     slug = db.Column(db.String(100), unique=True, nullable=False)
@@ -18,11 +18,11 @@ class Client(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     api_key = db.Column(db.String(100), unique=True, nullable=False)  # API Key del cliente - OBLIGATORIO
     api_settings = db.Column(db.Text, default='{}')  # Columna que existe en la BD real
-    
+
     # 🎯 SENSIBILIDAD DE DETECCIÓN (valores 1-100)
     category_confidence_threshold = db.Column(db.Integer, default=70)  # Confianza mínima para detectar categoría (70%)
     product_similarity_threshold = db.Column(db.Integer, default=30)   # Similitud mínima para matching de productos (30%)
-    
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

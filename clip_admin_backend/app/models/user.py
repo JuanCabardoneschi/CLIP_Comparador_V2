@@ -8,7 +8,7 @@ from . import db
 class User(UserMixin, db.Model):
     __tablename__ = "users"
 
-    # Usar String en lugar de UUID para compatibilidad con SQLite
+    # UUID almacenado como String para compatibilidad con diferentes drivers
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     client_id = db.Column(db.String(36), db.ForeignKey("clients.id"))
     email = db.Column(db.String(255), unique=True, nullable=False)

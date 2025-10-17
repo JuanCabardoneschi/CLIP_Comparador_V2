@@ -21,16 +21,16 @@ from clip_admin_backend.app.models.user import User
 
 def init_database():
     """Inicializar base de datos con estructura y datos de ejemplo"""
-    
+
     app = create_app()
-    
+
     with app.app_context():
         print("🔄 Eliminando tablas existentes...")
         db.drop_all()
-        
+
         print("🔨 Creando estructura de tablas...")
         db.create_all()
-        
+
         print("👤 Creando usuario administrador...")
         admin = User(
             username='admin',
@@ -39,7 +39,7 @@ def init_database():
         )
         admin.set_password('admin123')  # Cambiar en producción
         db.session.add(admin)
-        
+
         print("🏢 Creando cliente de ejemplo...")
         demo_client = Client(
             name='Demo Fashion Store',
@@ -50,7 +50,7 @@ def init_database():
             product_similarity_threshold=30
         )
         db.session.add(demo_client)
-        
+
         # Crear usuario vinculado al cliente demo
         demo_user = User(
             username='demo',
@@ -60,10 +60,10 @@ def init_database():
         )
         demo_user.set_password('demo123')
         db.session.add(demo_user)
-        
+
         print("💾 Guardando cambios...")
         db.session.commit()
-        
+
         print("\n✅ Base de datos inicializada correctamente!")
         print("\n📋 Credenciales de acceso:")
         print("   Super Admin:")
@@ -74,16 +74,16 @@ def init_database():
         print("   - Password: demo123")
         print(f"\n🔑 API Key del cliente demo: {demo_client.api_key}")
         print(f"\n🆔 ID del cliente demo: {demo_client.id}")
-        
+
         return True
 
 if __name__ == '__main__':
     print("🚀 Inicializando base de datos PostgreSQL local...\n")
-    
+
     # Verificar que DATABASE_URL esté configurada
     db_url = os.environ.get('DATABASE_URL')
     print(f"📍 Database URL: {db_url}\n")
-    
+
     if not db_url or 'postgresql' not in db_url:
         print("⚠️  ADVERTENCIA: DATABASE_URL no apunta a PostgreSQL")
         print("    Configura la variable de entorno:")
@@ -92,7 +92,7 @@ if __name__ == '__main__':
         if response.lower() != 's':
             print("❌ Operación cancelada")
             sys.exit(1)
-    
+
     try:
         init_database()
     except Exception as e:

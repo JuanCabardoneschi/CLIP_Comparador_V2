@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CLIP Widget - Railway Production</title>
+    <title>CLIP Widget - Entornos</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -18,6 +18,23 @@
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+        }
+        .env-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .env-local { background: #e6f4ea; color: #137333; border: 1px solid #c8e6c9; }
+        .env-prod { background: #ede7f6; color: #5e35b1; border: 1px solid #d1c4e9; }
         .upload-area {
             border: 2px dashed #007bff;
             border-radius: 8px;
@@ -141,7 +158,10 @@
 </head>
 <body>
     <div class="container">
-        <h1>🔍 CLIP Widget - Railway Production</h1>
+        <div class="header">
+            <h1 style="margin: 0;">🔍 CLIP Widget</h1>
+            <div id="envBadge" class="env-badge env-prod">Prod</div>
+        </div>
         <div class="search-info">
             <strong>Sistema de Búsqueda Visual CLIP V2</strong><br>
             Servidor: <span id="serverUrl">Configurando...</span><br>
@@ -156,27 +176,10 @@
 
         <div class="controls">
             <div class="control-group">
-                <label for="limitSelect">Número de resultados:</label>
-                <select id="limitSelect">
-                    <option value="3">3 productos</option>
-                    <option value="5" selected>5 productos</option>
-                    <option value="8">8 productos</option>
-                    <option value="10">10 productos</option>
-                    <option value="15">15 productos</option>
-                </select>
-            </div>
-
-            <div class="control-group">
-                <label for="thresholdSelect">Umbral de similitud:</label>
-                <select id="thresholdSelect">
-                    <option value="0.0">0.0 (Todo)</option>
-                    <option value="0.1">0.1 (Muy bajo)</option>
-                    <option value="0.2">0.2 (Bajo)</option>
-                    <option value="0.3" selected>0.3 (Medio)</option>
-                    <option value="0.4">0.4 (Alto)</option>
-                    <option value="0.5">0.5 (Muy alto)</option>
-                    <option value="0.6">0.6 (Extremo)</option>
-                    <option value="0.7">0.7 (Perfecto)</option>
+                <label for="envSelect">Entorno:</label>
+                <select id="envSelect">
+                    <option value="prod" selected>Producción (Railway)</option>
+                    <option value="local">Desarrollo (localhost)</option>
                 </select>
             </div>
 
@@ -193,16 +196,45 @@
     </div>
 
     <script>
-        // CONFIGURACIÓN - URL de Railway
-        let SERVER_URL = 'https://clipcomparadorv2-production.up.railway.app';
+        // CONFIGURACIÓN DE ENTORNOS
+        const PROD_URL = 'https://clipcomparadorv2-production.up.railway.app';
+        const LOCAL_URL = 'http://127.0.0.1:5000';
+        let SERVER_URL = PROD_URL;
 
-        // Detectar si estamos en desarrollo local
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            SERVER_URL = 'http://127.0.0.1:5000';
-            document.getElementById('serverUrl').textContent = 'Desarrollo Local (localhost:5000)';
-        } else {
-            document.getElementById('serverUrl').innerHTML = '<span style="color: #28a745;">Railway Production</span>';
+        const envSelect = document.getElementById('envSelect');
+        const envBadge = document.getElementById('envBadge');
+
+        function setEnvUI(env) {
+            if (env === 'local') {
+                envBadge.textContent = 'Local';
+                envBadge.classList.remove('env-prod');
+                envBadge.classList.add('env-local');
+                document.getElementById('serverUrl').textContent = `${LOCAL_URL}`;
+            } else {
+                envBadge.textContent = 'Prod';
+                envBadge.classList.remove('env-local');
+                envBadge.classList.add('env-prod');
+                document.getElementById('serverUrl').textContent = `${PROD_URL}`;
+            }
         }
+
+        function applyEnvironment(env) {
+            SERVER_URL = env === 'local' ? LOCAL_URL : PROD_URL;
+            setEnvUI(env);
+            localStorage.setItem('clip_widget_env', env);
+        }
+
+        // Inicialización: usar preferencia guardada o auto-detección por hostname
+        const savedEnv = localStorage.getItem('clip_widget_env');
+        let initialEnv = savedEnv || ((window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'local' : 'prod');
+        envSelect.value = initialEnv;
+        applyEnvironment(initialEnv);
+
+        envSelect.addEventListener('change', () => {
+            applyEnvironment(envSelect.value);
+            // Re-testear conexión al cambiar de entorno
+            testConnection().catch(() => {});
+        });
 
         let selectedFile = null;
 
@@ -260,9 +292,6 @@
                 return;
             }
 
-            const limit = document.getElementById('limitSelect').value;
-            const threshold = document.getElementById('thresholdSelect').value;
-
             document.getElementById('loading').style.display = 'block';
             document.getElementById('results').innerHTML = '';
             document.getElementById('searchBtn').disabled = true;
@@ -273,8 +302,6 @@
 
                 const formData = new FormData();
                 formData.append('image', selectedFile);
-                formData.append('limit', limit);
-                formData.append('threshold', threshold);
 
                 const startTime = performance.now();
 
@@ -346,8 +373,8 @@
                 resultsDiv.innerHTML = `
                     <div class="error">
                         <h3>🔍 Sin resultados</h3>
-                        <p>No se encontraron productos similares con el umbral seleccionado.</p>
-                        <p>Prueba con un umbral más bajo o una imagen diferente.</p>
+                        <p>No se encontraron productos similares con la configuración del cliente.</p>
+                        <p>Prueba con una imagen diferente.</p>
                     </div>
                 `;
                 return;
@@ -442,13 +469,9 @@
 
         // Test de conexión al cargar
         window.addEventListener('load', () => {
-            if (SERVER_URL !== 'RAILWAY_URL_PLACEHOLDER') {
-                testConnection().catch(() => {
-                    // Error manejado en testConnection
-                });
-            } else {
-                document.getElementById('status').innerHTML = '<span style="color: #ffc107;">⚠️ URL no configurada</span>';
-            }
+            testConnection().catch(() => {
+                // Error manejado en testConnection
+            });
         });
     </script>
 </body>

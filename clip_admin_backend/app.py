@@ -23,12 +23,19 @@ from flask_sqlalchemy import SQLAlchemy
 
 # Cargar variables de entorno
 # Intentar cargar .env.local primero (desarrollo), luego .env (producción/fallback)
-if os.path.exists('.env.local'):
-    load_dotenv('.env.local')
-    print("📄 Cargando configuración desde .env.local (desarrollo)")
+# Buscar en el directorio raíz del proyecto (un nivel arriba)
+env_local_path = os.path.join(parent_dir, '.env.local')
+env_path = os.path.join(parent_dir, '.env')
+
+if os.path.exists(env_local_path):
+    load_dotenv(env_local_path)
+    print(f"📄 Cargando configuración desde {env_local_path} (desarrollo)")
+elif os.path.exists(env_path):
+    load_dotenv(env_path)
+    print(f"📄 Cargando configuración desde {env_path}")
 else:
     load_dotenv()
-    print("📄 Cargando configuración desde .env o variables de entorno")
+    print("📄 Cargando configuración desde variables de entorno")
 
 # Cliente Redis global
 redis_client = None
@@ -53,14 +60,14 @@ def create_app(config_name=None):
 
     # Importar configuración de entorno
     from app.config import Config, print_environment_info
-    
+
     # Mostrar información del entorno
     print_environment_info()
-    
+
     # Cargar configuración
     config = Config()
     app.config.from_object(config)
-    
+
     # PostgreSQL es obligatorio - no se permiten otras bases de datos
     app.config["JWT_SECRET_KEY"] = os.getenv(
         "JWT_SECRET_KEY", "jwt-secret-key"
@@ -119,10 +126,19 @@ def create_app(config_name=None):
     )
     login_manager.login_message_category = "info"
 
-    # Configurar Redis
+    # Configurar Redis (opcional en desarrollo)
     global redis_client
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-    redis_client = redis.from_url(redis_url, decode_responses=True)
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url:
+        try:
+            redis_client = redis.from_url(redis_url, decode_responses=True)
+            print("✅ Redis conectado correctamente")
+        except Exception as e:
+            print(f"⚠️  Error conectando a Redis: {e}")
+            redis_client = None
+    else:
+        redis_client = None
+        print("ℹ️  Redis no configurado (usando cache en memoria)")
 
     # User loader para Flask-Login
     @login_manager.user_loader
@@ -134,13 +150,12 @@ def create_app(config_name=None):
 
             print("👤 USER_LOADER: Importaciones exitosas")
 
-            # Usar directamente el string, no convertir a UUID object
-            # SQLite almacena UUIDs como strings
+            # UUID almacenado como String(36) en la base de datos
             print(f"👤 USER_LOADER: Buscando con string ID: {user_id}")
 
-            # Usar query.filter_by con el string directamente
+            # Query con string UUID directamente
             user = User.query.filter_by(id=user_id).first()
-            print("👤 USER_LOADER: Query ejecutado con string")
+            print("👤 USER_LOADER: Query ejecutado")
 
             if user:
                 print(f"👤 USER_LOADER: ✅ Usuario encontrado - Email: {user.email}, Active: {user.active}")

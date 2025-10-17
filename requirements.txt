@@ -14,7 +14,7 @@ asyncpg==0.29.0
 
 # Database Tools & Management
 Flask-Admin==1.6.1
-sqlite-utils==3.35
+# sqlite-utils==3.35  # REMOVIDO - Solo PostgreSQL soportado
 sqlalchemy-utils==0.41.1
 
 # Redis
@@ -43,6 +43,7 @@ python-multipart==0.0.6
 pydantic==2.5.0
 requests==2.31.0
 python-dotenv==1.0.0
+certifi>=2023.7.22  # Certificados SSL para descargas de modelos
 
 # Development & Validation
 pytest==7.4.3

@@ -1,6 +1,6 @@
 # Session Summary - CLIP Comparador V2
 
-**Fecha**: 17 de Octubre, 2025  
+**Fecha**: 17 de Octubre, 2025
 **Repositorio**: https://github.com/JuanCabardoneschi/CLIP_Comparador_V2
 
 ---
@@ -22,10 +22,9 @@
    - Filtrado de objetos no comerciales
    - Sistema funcionando correctamente en Railway
 
-3. **Arquitectura Dual**
-   - **Backend Admin** (Flask): Railway Production URL
-   - **Search API** (FastAPI): Pendiente de configuración
-   - Base de datos PostgreSQL compartida en Railway
+3. **Arquitectura**
+  - **Backend Admin** (Flask): Servicio único que expone el endpoint `/api/search`
+  - Base de datos PostgreSQL en Railway (prod) y local (dev)
 
 ---
 
@@ -40,20 +39,21 @@
 - **Super Admin**:
   - Usuario: `admin`
   - Password: `admin123`
-  
+
 - **Cliente Demo**:
   - Usuario: `demo`
   - Password: `demo123`
   - Nombre: Demo Fashion Store
   - ID Cliente: `60231500-ca6f-4c46-a960-2e17298fcdb0`
 
-### PostgreSQL Local (En Proceso de Configuración)
+### PostgreSQL Local (✅ CONFIGURADO Y FUNCIONANDO)
 - **Usuario**: `postgres`
 - **Password**: `Laurana@01`
 - **Puerto**: 5432
 - **Base de Datos**: `clip_comparador_v2`
-- **Estado**: Instalado pero necesita reinicialización
-- **Path**: `C:\Program Files\PostgreSQL\18\bin\`
+- **Estado**: ✅ Instalado, configurado y datos migrados desde Railway
+- **Path**: `C:\Program Files\PostgreSQL\18\bin\` (agregado al PATH)
+- **Datos**: 1 cliente, 2 usuarios, 12 categorías, 51 productos, 58 imágenes
 
 ---
 
@@ -75,7 +75,7 @@ CLIP_Comparador_V2/
 │   │   │       └── view.html   # UI con sliders de sensibilidad
 │   │   └── config.py           # Configuración de entorno
 │   └── app.py                  # Punto de entrada Flask
-├── clip_search_api/             # FastAPI Search (Puerto 8000)
+├── (eliminado) clip_search_api/ # FastAPI (no usado; eliminado)
 ├── docs/
 │   ├── SETUP_POSTGRES_LOCAL.md # Guía de instalación PostgreSQL
 │   └── SESSION_SUMMARY.md      # Este archivo
@@ -145,13 +145,13 @@ class Client(db.Model):
 
 ### Migración Ejecutada en Railway
 ```sql
-ALTER TABLE clients 
+ALTER TABLE clients
 ADD COLUMN category_confidence_threshold INTEGER DEFAULT 70,
 ADD COLUMN product_similarity_threshold INTEGER DEFAULT 30;
 
-UPDATE clients 
-SET category_confidence_threshold = 70, 
-    product_similarity_threshold = 30 
+UPDATE clients
+SET category_confidence_threshold = 70,
+    product_similarity_threshold = 30
 WHERE category_confidence_threshold IS NULL;
 ```
 
@@ -177,7 +177,7 @@ WHERE category_confidence_threshold IS NULL;
 
 ## 📝 API Endpoints Importantes
 
-### Búsqueda Visual
+### Búsqueda Visual (Flask)
 ```
 POST /api/search
 Headers: X-API-Key: <client_api_key>
@@ -205,21 +205,30 @@ POST /clients/<client_id>/regenerate-api-key
 
 ## 🔄 Workflow de Desarrollo
 
-### Desarrollo Local (Recomendado)
+### Iniciar Sistema Local (MÉTODO RÁPIDO)
 ```powershell
-# 1. Configurar PostgreSQL local
-.\setup_postgres.ps1
+# Opción 1: Script completo con validaciones
+.\start_local.ps1
 
-# 2. Crear .env.local
-cp .env.local.example .env.local
-# Editar con tus credenciales
+# Opción 2: Inicio rápido (3 líneas en 1)
+.\start.ps1
 
-# 3. Inicializar BD
-python setup_local_postgres.py
-
-# 4. Correr Flask
-cd clip_admin_backend
+# Opción 3: Comando manual
+& C:\Personal\CLIP_Comparador_V2\venv\Scripts\Activate.ps1
+cd C:\Personal\CLIP_Comparador_V2\clip_admin_backend
 python app.py
+```
+
+### Primera Configuración (Solo una vez)
+```powershell
+# 1. Restaurar BD desde Railway
+.\restore_from_railway.ps1
+
+# 2. Editar credenciales de Cloudinary
+notepad .env.local
+
+# 3. Iniciar sistema
+.\start.ps1
 ```
 
 ### Deploy a Railway
@@ -237,14 +246,13 @@ git push
 
 ## 🚨 Problemas Conocidos
 
-1. **PostgreSQL Local**: Instalado pero no inicializado
-   - Path: `C:\Program Files\PostgreSQL\18\bin\`
-   - Necesita crear base de datos `clip_comparador_v2`
-   
-2. **Rendimiento del Chat**: Esta sesión es muy larga
-   - Recomendación: Iniciar nuevo chat para mejor rendimiento
+1. **Credenciales de Cloudinary Faltantes**: `.env.local` necesita configuración
+   - CLOUDINARY_CLOUD_NAME (vacío)
+   - CLOUDINARY_API_KEY (vacío)
+   - CLOUDINARY_API_SECRET (vacío)
+   - Solución: Copiar desde variables de Railway
 
-3. **SQLite**: NO SOPORTADO
+2. **SQLite**: NO SOPORTADO
    - Sistema requiere PostgreSQL obligatoriamente
    - `config.py` valida y rechaza otras BDs
 
@@ -270,11 +278,12 @@ git push
 ### Inmediatos
 1. ✅ Configurar PostgreSQL local correctamente
 2. ✅ Crear base de datos `clip_comparador_v2`
-3. ✅ Ejecutar `setup_local_postgres.py`
-4. ✅ Probar sistema en local antes de deploy
+3. ✅ Migrar estructura y datos desde Railway
+4. ⏳ Obtener credenciales de Cloudinary desde Railway
+5. ⏳ Probar sistema en local antes de nuevos deploys
 
 ### Pendientes
-1. Implementar FastAPI Search API (puerto 8000)
+1. (eliminado) Implementar FastAPI Search API
 2. Integrar widget de búsqueda visual en sitios cliente
 3. Optimizar rendimiento de embeddings CLIP
 4. Implementar analytics de búsquedas
@@ -311,5 +320,5 @@ git push
 
 ---
 
-**Última actualización**: 17 de Octubre, 2025  
+**Última actualización**: 17 de Octubre, 2025
 **Próximo chat**: Continuar con configuración PostgreSQL local

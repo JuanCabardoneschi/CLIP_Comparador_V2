@@ -12,7 +12,7 @@ class Image(db.Model):
     client_id = db.Column(db.String(36), db.ForeignKey('clients.id'), nullable=False)
     product_id = db.Column(db.String(36), db.ForeignKey('products.id'), nullable=False)
     filename = db.Column(db.String(255), nullable=False)
-    original_filename = db.Column(db.String(255))  # Volviendo al nombre original de SQLite
+    original_filename = db.Column(db.String(500))  # Nombre del archivo original al subir
     cloudinary_url = db.Column(db.String(500))  # URL completa de Cloudinary
     cloudinary_public_id = db.Column(db.String(255))  # ID público de Cloudinary
     base64_data = db.Column(db.Text)  # Imagen en base64 para API (generado una sola vez)
