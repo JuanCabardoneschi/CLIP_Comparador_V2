@@ -185,3 +185,21 @@ def regenerate_api_key(client_id):
         db.session.rollback()
         flash(f"Error al regenerar API Key: {str(e)}", "error")
         return redirect(url_for("clients.view", client_id=client.id))
+
+
+# Endpoint AJAX para actualizar sensibilidad
+@bp.route("/<client_id>/update-sensitivity", methods=["POST"])
+@login_required
+def update_sensitivity(client_id):
+    client = Client.query.get_or_404(client_id)
+    data = request.get_json()
+    try:
+        cat = int(data.get("category_confidence_threshold", client.category_confidence_threshold or 70))
+        prod = int(data.get("product_similarity_threshold", client.product_similarity_threshold or 30))
+        client.category_confidence_threshold = cat
+        client.product_similarity_threshold = prod
+        db.session.commit()
+        return jsonify({"success": True, "category_confidence_threshold": cat, "product_similarity_threshold": prod})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)})

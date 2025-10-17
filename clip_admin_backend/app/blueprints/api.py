@@ -1158,16 +1158,20 @@ def visual_search():
             return error_response
 
         # Procesar datos de imagen
-        image_data, limit, threshold, error_response, status_code = _process_image_data(image_file)
+        image_data, limit, _, error_response, status_code = _process_image_data(image_file)
         if error_response:
             return error_response, status_code
 
+        # Sensibilidad personalizada por cliente
+        category_confidence_threshold = (getattr(client, 'category_confidence_threshold', 70) or 70) / 100.0
+        product_similarity_threshold = (getattr(client, 'product_similarity_threshold', 30) or 30) / 100.0
+
         # ===== PASO 1: DETECCIÓN GENERAL DEL OBJETO =====
         print(f"🔍 RAILWAY LOG: IDENTIFICANDO QUÉ ES EL OBJETO...")
-        
+
         detected_object, object_confidence = detect_general_object(image_data)
         print(f"🎯 RAILWAY LOG: OBJETO DETECTADO = {detected_object} (confianza: {object_confidence:.3f})")
-        
+
         # Mapeo de objetos detectados a si los comercializamos
         commercial_keywords = [
             "hat", "cap", "beanie", "gorra",
@@ -1175,7 +1179,7 @@ def visual_search():
             "shirt", "t-shirt", "clothing", "camisa",
             "jacket", "coat", "chaqueta"
         ]
-        
+
         # Verificar si el objeto detectado es comercializable
         is_commercial = detected_object in commercial_keywords
         
@@ -1197,7 +1201,7 @@ def visual_search():
         detected_category, category_confidence = detect_image_category_with_centroids(
             image_data,
             client.id,
-            confidence_threshold=0.7  # Umbral alto para evitar falsos positivos (70%+)
+            confidence_threshold=category_confidence_threshold  # Sensibilidad por cliente
         )
 
         print(f"🎯 RAILWAY LOG: Resultado detección = {detected_category.name if detected_category else 'NULL'} (conf: {category_confidence:.3f})")
@@ -1229,7 +1233,7 @@ def visual_search():
         product_best_match = _find_similar_products_in_category(
             client,
             query_embedding,
-            threshold,
+            product_similarity_threshold,
             detected_category.id
         )
 
