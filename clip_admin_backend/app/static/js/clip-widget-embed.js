@@ -333,6 +333,19 @@
 
             const data = await response.json();
 
+            console.log('🔍 CLIP Widget Response:', {
+                ok: response.ok,
+                status: response.status,
+                success: data.success,
+                resultCount: data.results ? data.results.length : 0,
+                firstResult: data.results && data.results[0] ? {
+                    name: data.results[0].name,
+                    hasImageUrl: !!data.results[0].image_url,
+                    imageUrlType: data.results[0].image_url ? 
+                        (data.results[0].image_url.startsWith('data:') ? 'base64' : 'url') : 'none'
+                } : null
+            });
+
             if (!response.ok || !data.success) {
                 throw new Error(data.message || data.error || 'Error en la búsqueda');
             }
