@@ -871,13 +871,8 @@ def _build_search_results(product_best_match, limit):
             if not primary_image:
                 primary_image = img
 
-            # Obtener URL de la imagen primaria
-            if primary_image.base64_data:
-                image_url = primary_image.base64_data
-            elif primary_image.cloudinary_url:
-                image_url = primary_image.cloudinary_url
-            else:
-                image_url = None
+            # Usar display_url del modelo (maneja cloudinary_url automáticamente)
+            image_url = primary_image.display_url if primary_image else None
         except Exception as e:
             print(f"❌ Error obteniendo imagen primaria: {e}")
             image_url = None
