@@ -817,6 +817,7 @@ def _build_search_results(product_best_match, limit):
         product = best_match['product']
         similarity = best_match['similarity']
         category_boost = best_match.get('category_boost', False)
+        color_boost = best_match.get('color_boost', False)
 
         # La primera vez, intentamos cargar la config de atributos visibles por cliente
         if not checked_config:
@@ -910,13 +911,15 @@ def _build_search_results(product_best_match, limit):
             "stock": product.stock if hasattr(product, 'stock') and product.stock is not None else 0,
             "category": product.category.name if product.category else "Sin categoría",
             "category_boost": category_boost,
+            "color_boost": color_boost,
             # Atributos dinámicos (filtrados si hay configuración)
             "attributes": product_attrs
         }
         results.append(result)
 
         boost_indicator = "🚀" if category_boost else ""
-        print(f"📦 DEBUG: Producto final añadido: {product.name} (similitud: {similarity:.4f}) {boost_indicator}")
+        color_indicator = "🎨" if color_boost else ""
+        print(f"📦 DEBUG: Producto final añadido: {product.name} (similitud: {similarity:.4f}) {boost_indicator}{color_indicator}")
 
     print(f"🎯 DEBUG: Total productos únicos procesados: {len(results)}")
 
@@ -925,32 +928,38 @@ def _build_search_results(product_best_match, limit):
     return results[:limit]
 
 
-def detect_general_object(image_data):
+def detect_dominant_color(image_data, client_id):
     """
-    Detecta QUÉ es el objeto en la imagen usando CLIP con categorías generales
+    Detecta el color dominante en la imagen usando CLIP
+    Usa los colores reales de los productos del cliente (dinámico)
 
     Args:
         image_data: Datos binarios de la imagen
+        client_id: ID del cliente para obtener sus colores de productos
 
     Returns:
-        tuple: (objeto_detectado, confidence_score)
+        tuple: (color_detectado, confidence_score)
     """
     try:
-        # Categorías generales para identificar objetos
-        general_categories = [
-            "car", "automobile", "vehicle",
-            "hat", "cap", "beanie", "gorra",
-            "shoe", "boot", "sneaker", "zapato",
-            "shirt", "t-shirt", "clothing", "camisa",
-            "jacket", "coat", "chaqueta",
-            "food", "comida", "meal",
-            "animal", "pet", "dog", "cat",
-            "electronics", "phone", "computer",
-            "furniture", "chair", "table",
-            "building", "house", "architecture",
-            "person", "human", "people",
-            "nature", "tree", "flower", "landscape"
-        ]
+        # Obtener colores únicos de los productos del cliente
+        from app.models.product import Product
+
+        colors_query = db.session.query(Product.color).filter(
+            Product.client_id == client_id,
+            Product.color.isnot(None),
+            Product.color != ''
+        ).distinct().all()
+
+        unique_colors = [c[0].strip() for c in colors_query if c[0] and c[0].strip()]
+
+        if not unique_colors:
+            print("⚠️ No hay colores definidos en productos del cliente")
+            return "unknown", 0.0
+
+        print(f"🎨 Colores disponibles del cliente: {unique_colors}")
+
+        # Crear prompts dinámicos basados en los colores del cliente
+        color_prompts = [f"a photo of {color.lower()} product" for color in unique_colors]
 
         # Convertir a imagen PIL
         from PIL import Image as PILImage
@@ -966,7 +975,88 @@ def detect_general_object(image_data):
             image_features = model.get_image_features(**image_inputs)
             image_embedding = image_features / image_features.norm(dim=-1, keepdim=True)
 
-            # Generar embeddings de texto para categorías generales
+            # Generar embeddings de texto para colores
+            text_inputs = processor(text=color_prompts, return_tensors="pt", padding=True)
+            text_features = model.get_text_features(**text_inputs)
+            text_embeddings = text_features / text_features.norm(dim=-1, keepdim=True)
+
+            # Calcular similitudes
+            similarities = torch.cosine_similarity(image_embedding, text_embeddings, dim=1)
+
+            # Encontrar la mejor coincidencia
+            best_idx = similarities.argmax().item()
+            best_score = similarities[best_idx].item()
+            detected_color = unique_colors[best_idx]
+
+            print(f"🎨 DETECCIÓN COLOR: {detected_color} (confianza: {best_score:.3f})")
+
+            return detected_color, best_score
+
+    except Exception as e:
+        print(f"❌ Error en detección de color: {e}")
+        import traceback
+        traceback.print_exc()
+        return "unknown", 0.0
+
+
+def detect_general_object(image_data, client_id=None):
+    """
+    Detecta QUÉ es el objeto en la imagen usando CLIP
+    Si se proporciona client_id, usa las categorías del cliente
+    Si no, usa categorías generales ampliadas
+
+    Args:
+        image_data: Datos binarios de la imagen
+        client_id: ID del cliente (opcional, para usar sus categorías)
+
+    Returns:
+        tuple: (objeto_detectado, confidence_score)
+    """
+    try:
+        # Si hay client_id, usar las categorías del cliente
+        if client_id:
+            categories = Category.query.filter_by(
+                client_id=client_id,
+                is_active=True
+            ).all()
+
+            if categories:
+                # Usar name_en de las categorías como términos de detección
+                general_categories = []
+                for cat in categories:
+                    if cat.name_en:
+                        general_categories.append(f"a photo of {cat.name_en.lower()}")
+                    else:
+                        general_categories.append(f"a photo of {cat.name.lower()}")
+
+                print(f"🔍 Usando categorías del cliente para detección: {[c.split('of ')[1] for c in general_categories]}")
+            else:
+                print("⚠️ No hay categorías activas, usando detección genérica")
+                general_categories = ["product", "item", "object"]
+        else:
+            # Detección genérica amplia para cualquier tipo de producto
+            general_categories = [
+                "product", "item", "object", "merchandise",
+                "clothing", "apparel", "garment",
+                "accessory", "tool", "equipment",
+                "furniture", "decoration", "appliance"
+            ]
+
+        # Convertir a imagen PIL
+        from PIL import Image as PILImage
+        import io
+        pil_image = PILImage.open(io.BytesIO(image_data))
+
+        # Obtener modelo CLIP
+        model, processor = get_clip_model()
+
+        # Generar embedding de imagen
+        with torch.no_grad():
+            image_inputs = processor(images=pil_image, return_tensors="pt")
+            image_features = model.get_image_features(**image_inputs)
+            image_embedding = image_features / image_features.norm(dim=-1, keepdim=True)
+
+            # Generar embeddings de texto para categorías
             text_inputs = processor(text=general_categories, return_tensors="pt", padding=True)
             text_features = model.get_text_features(**text_inputs)
             text_embeddings = text_features / text_features.norm(dim=-1, keepdim=True)
@@ -979,12 +1069,18 @@ def detect_general_object(image_data):
             best_score = similarities[best_idx].item()
             detected_object = general_categories[best_idx]
 
+            # Extraer solo el término del objeto (sin "a photo of")
+            if "a photo of" in detected_object:
+                detected_object = detected_object.replace("a photo of ", "").strip()
+
             print(f"🔍 DETECCIÓN GENERAL: {detected_object} (confianza: {best_score:.3f})")
 
             return detected_object, best_score
 
     except Exception as e:
         print(f"❌ Error en detección general: {e}")
+        import traceback
+        traceback.print_exc()
         return "unknown", 0.0
 
 
@@ -1080,46 +1176,36 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         if second_score >= 0 and (best_score - second_score) < MARGIN_DELTA:
             print(f"⚖️  RAILWAY LOG: MARGEN PEQUEÑO ({best_score - second_score:.4f} < {MARGIN_DELTA}), aplicando desempate por objeto general")
             try:
-                detected_object, object_confidence = detect_general_object(image_data)
+                detected_object, object_confidence = detect_general_object(image_data, client_id)
                 print(f"🔍 RAILWAY LOG: OBJETO GENERAL = {detected_object} (conf {object_confidence:.3f})")
 
-                # Mapeo simple de sinónimos a grupos de categorías
-                synonyms = {
-                    'shirt': {'camisas', 'remeras', 't-shirts', 't-shirt'},
-                    't-shirt': {'remeras', 'camisetas', 't-shirts', 't-shirt'},
-                    'hat': {'gorros', 'gorras', 'hats', 'caps', 'cap', 'beanie'},
-                    'cap': {'gorras', 'gorros', 'hats', 'caps', 'cap'},
-                    'beanie': {'gorros', 'beanies'},
-                    'jacket': {'casacas', 'jackets', 'chaquetas', 'coats'},
-                    'coat': {'casacas', 'jackets', 'chaquetas', 'coats'}
-                }
-
-                key = detected_object.lower()
-                preferred_terms = synonyms.get(key, set())
-
-                if preferred_terms and object_confidence >= 0.20:  # usar con umbral bajo, solo como desempate
-                    # Si la categoría top NO pertenece al grupo preferido y existe otra en top-2 que sí, elegimos esa
-                    best_name = (best_category.name or '').lower()
-                    best_name_en = (best_category.name_en or '').lower()
+                if object_confidence >= 0.20:  # usar con umbral bajo, solo como desempate
+                    # Comparar el objeto detectado con los nombres de las categorías (name y name_en)
                     top2 = category_similarities[:2]
 
-                    def cat_matches_group(cat):
-                        cn = (cat.name or '').lower()
-                        cne = (cat.name_en or '').lower()
-                        # match por inclusión de término
-                        return any(term in cn or term in cne for term in preferred_terms)
+                    def cat_matches_object(cat, obj):
+                        """Verifica si el objeto detectado está relacionado con la categoría"""
+                        cat_name = (cat.name or '').lower()
+                        cat_name_en = (cat.name_en or '').lower()
+                        obj_lower = obj.lower()
 
-                    best_in_group = cat_matches_group(best_category)
-                    other = top2[1]['category'] if len(top2) > 1 else None
-                    other_in_group = cat_matches_group(other) if other else False
+                        # Match directo o por inclusión
+                        return obj_lower in cat_name or obj_lower in cat_name_en or \
+                               cat_name in obj_lower or cat_name_en in obj_lower
 
-                    if not best_in_group and other and other_in_group:
+                    best_matches = cat_matches_object(best_category, detected_object)
+                    second_cat = top2[1]['category'] if len(top2) > 1 else None
+                    second_matches = cat_matches_object(second_cat, detected_object) if second_cat else False
+
+                    if not best_matches and second_matches:
                         # Elegir la segunda si está en el grupo preferido
-                        print(f"✅ RAILWAY LOG: DESEMPATE → Preferimos '{other.name}' por concordar con objeto '{detected_object}'")
-                        best_category = other
+                        print(f"✅ RAILWAY LOG: DESEMPATE → Preferimos '{second_cat.name}' por concordar con objeto '{detected_object}'")
+                        best_category = second_cat
                         best_score = top2[1]['similarity']
+                    else:
+                        print(f"ℹ️  RAILWAY LOG: Desempate mantiene categoría original (best={best_matches}, second={second_matches})")
                 else:
-                    print("ℹ️  RAILWAY LOG: Desempate no aplicado (sinónimos vacíos o baja confianza del objeto)")
+                    print("ℹ️  RAILWAY LOG: Desempate no aplicado (baja confianza del objeto)")
             except Exception as e:
                 print(f"⚠️ RAILWAY LOG: Error en desempate por objeto general: {e}")
 
@@ -1292,34 +1378,11 @@ def visual_search():
         category_confidence_threshold = (getattr(client, 'category_confidence_threshold', 70) or 70) / 100.0
         product_similarity_threshold = (getattr(client, 'product_similarity_threshold', 30) or 30) / 100.0
 
-        # ===== PASO 1: DETECCIÓN GENERAL DEL OBJETO =====
-        print(f"🔍 RAILWAY LOG: IDENTIFICANDO QUÉ ES EL OBJETO...")
+        # ===== PASO 1.5: DETECCIÓN DE COLOR DOMINANTE =====
+        print(f"🎨 RAILWAY LOG: IDENTIFICANDO COLOR DOMINANTE...")
 
-        detected_object, object_confidence = detect_general_object(image_data)
-        print(f"🎯 RAILWAY LOG: OBJETO DETECTADO = {detected_object} (confianza: {object_confidence:.3f})")
-
-        # Mapeo de objetos detectados a si los comercializamos
-        commercial_keywords = [
-            "hat", "cap", "beanie", "gorra",
-            "shoe", "boot", "sneaker", "zapato",
-            "shirt", "t-shirt", "clothing", "camisa",
-            "jacket", "coat", "chaqueta"
-        ]
-
-        # Verificar si el objeto detectado es comercializable
-        is_commercial = detected_object in commercial_keywords
-
-        if not is_commercial and object_confidence > 0.6:
-            # El objeto está claramente identificado pero no lo comercializamos
-            print(f"❌ RAILWAY LOG: OBJETO NO COMERCIAL - {detected_object}")
-            return jsonify({
-                "success": False,
-                "error": "non_commercial_object",
-                "message": f"Esta imagen contiene un {detected_object} que no comercializamos",
-                "details": f"Detectamos que es un '{detected_object}' con {object_confidence:.1%} de confianza, pero no vendemos este tipo de productos.",
-                "available_categories": [cat.name for cat in Category.query.filter_by(client_id=client.id, is_active=True).all()],
-                "processing_time": round(time.time() - start_time, 3)
-            }), 400
+        detected_color, color_confidence = detect_dominant_color(image_data, client.id)
+        print(f"🎨 RAILWAY LOG: COLOR DETECTADO = {detected_color} (confianza: {color_confidence:.3f})")
 
         # ===== PASO 2: DETECCIÓN DE CATEGORÍA ESPECÍFICA =====
         print(f"🚀 RAILWAY LOG: INICIANDO DETECCIÓN DE CATEGORÍA ESPECÍFICA")
@@ -1364,6 +1427,24 @@ def visual_search():
         )
 
         print(f"🎯 DEBUG: Productos encontrados en categoría {detected_category.name}: {len(product_best_match)}")
+
+        # ===== APLICAR BOOST POR COLOR MATCHING =====
+        if detected_color and detected_color != "unknown" and color_confidence >= 0.25:
+            print(f"🎨 RAILWAY LOG: Aplicando boost por color matching (color: {detected_color})")
+
+            for product_id, match_data in product_best_match.items():
+                product = match_data['product']
+                product_color = (product.color or '').strip()
+
+                # Si el color del producto coincide exactamente con el detectado, dar boost
+                if product_color and product_color.upper() == detected_color.upper():
+                    original_similarity = match_data['similarity']
+                    boosted_similarity = min(1.0, original_similarity * 1.12)  # Boost del 12%
+                    match_data['similarity'] = boosted_similarity
+                    match_data['color_boost'] = True
+                    print(f"🎨 COLOR BOOST: {product.name} ({product_color}) {original_similarity:.4f} → {boosted_similarity:.4f}")
+                else:
+                    match_data['color_boost'] = False
 
         # Construir resultados finales (sin filtro adicional de categoría)
         results = _build_search_results(product_best_match, limit)

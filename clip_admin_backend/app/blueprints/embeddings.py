@@ -549,6 +549,29 @@ def process_pending():
             db.session.commit()
             print(f"💾 Lote guardado: {processed_count}/{total_images} imágenes procesadas")
 
+            # 🎯 ACTUALIZAR CENTROIDES de categorías afectadas en este lote
+            affected_categories = set()
+            for image in images_batch:
+                if image.product and image.product.category and image.is_processed:
+                    affected_categories.add(image.product.category)
+
+            for category in affected_categories:
+                try:
+                    if category.needs_centroid_update():
+                        category.update_centroid_embedding(force_recalculate=False)
+                        print(f"📊 Centroide actualizado para categoría: {category.name}")
+                except Exception as e:
+                    print(f"⚠️ Error actualizando centroide de {category.name}: {e}")
+
+            # Commit de centroides actualizados
+            if affected_categories:
+                try:
+                    db.session.commit()
+                    print(f"✅ {len(affected_categories)} centroides actualizados")
+                except Exception as e:
+                    print(f"⚠️ Error guardando centroides: {e}")
+                    db.session.rollback()
+
         return jsonify({
             "success": True,
             "message": f"Se procesaron {processed_count} embeddings correctamente"
