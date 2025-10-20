@@ -119,21 +119,27 @@
         .clip-widget-result-item {
             background: white;
             border-radius: 12px;
-            overflow: hidden;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             transition: transform 0.2s, box-shadow 0.2s;
+            display: flex;
+            gap: 16px;
+            padding: 16px;
         }
         .clip-widget-result-item:hover {
             transform: translateY(-4px);
             box-shadow: 0 4px 16px rgba(0,0,0,0.15);
         }
         .clip-widget-result-img {
-            width: 100%;
-            height: 200px;
-            object-fit: cover;
+            width: 180px;
+            height: auto;
+            object-fit: contain;
+            border-radius: 8px;
+            flex-shrink: 0;
         }
         .clip-widget-result-content {
-            padding: 16px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
         }
         .clip-widget-result-name {
             font-weight: 700;
@@ -176,15 +182,16 @@
             text-align: right;
         }
         .clip-widget-result-link {
-            display: inline-block;
+            display: block;
             margin-top: 12px;
-            padding: 8px 16px;
+            padding: 10px 16px;
             background: #007bff;
             color: white;
             text-decoration: none;
             border-radius: 6px;
             font-size: 13px;
             font-weight: 500;
+            text-align: center;
             transition: background 0.2s;
         }
         .clip-widget-result-link:hover {
@@ -347,37 +354,39 @@
         }
 
         results.innerHTML = '<div class="clip-widget-results-grid">' + items.map(item => {
-            // Atributos visibles
+            // Separar URL del producto del resto de atributos
+            let productUrl = '';
             let attributesHtml = '';
+            
             if (item.attributes && typeof item.attributes === 'object') {
-                const visibleAttrs = Object.entries(item.attributes)
+                // Procesar atributos
+                const attrs = Object.entries(item.attributes)
                     .filter(([key, attr]) => {
-                        // Mostrar solo atributos marcados como visible
+                        // Excluir url_producto de los atributos (se mostrará al final)
+                        if (key === 'url_producto') {
+                            const value = typeof attr === 'object' ? attr.value : attr;
+                            if (value) {
+                                productUrl = value;
+                            }
+                            return false;
+                        }
+                        
+                        // Mostrar atributos marcados como visible
                         if (typeof attr === 'object' && attr.visible === true) {
                             return true;
                         }
-                        // O atributos simples que no son objetos de configuración
+                        
+                        // O atributos simples (no objetos de configuración)
                         if (typeof attr !== 'object' && key !== 'visible') {
                             return true;
                         }
+                        
                         return false;
                     })
                     .map(([key, attr]) => {
                         const value = typeof attr === 'object' ? attr.value : attr;
                         const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-
-                        // Si es url_producto, renderizar como link
-                        if (key === 'url_producto' && value) {
-                            return `
-                                <div class="clip-widget-result-attribute">
-                                    <a href="${value}" target="_blank" class="clip-widget-result-link">
-                                        Ver Producto →
-                                    </a>
-                                </div>
-                            `;
-                        }
-
-                        // Renderizar atributo normal
+                        
                         if (value && value !== '' && value !== null) {
                             const displayValue = Array.isArray(value) ? value.join(', ') : value;
                             return `
@@ -392,10 +401,17 @@
                     .filter(html => html !== '')
                     .join('');
 
-                if (visibleAttrs.length > 0) {
-                    attributesHtml = `<div class="clip-widget-result-attributes">${visibleAttrs}</div>`;
+                if (attrs.length > 0) {
+                    attributesHtml = `<div class="clip-widget-result-attributes">${attrs}</div>`;
                 }
             }
+
+            // Construir HTML del producto con URL al final
+            const urlHtml = productUrl ? `
+                <a href="${productUrl}" target="_blank" class="clip-widget-result-link">
+                    Ver Producto →
+                </a>
+            ` : '';
 
             return `
                 <div class="clip-widget-result-item">
@@ -407,15 +423,14 @@
                             ${Math.round(item.similarity * 100)}% similitud
                         </div>
                         ${attributesHtml}
+                        ${urlHtml}
                     </div>
                 </div>
             `;
         }).join('') + '</div>';
-
+        
         results.style.display = 'block';
-    }
-
-    // Mostrar error
+    }    // Mostrar error
     function showError(message) {
         error.textContent = message;
         error.style.display = 'block';
