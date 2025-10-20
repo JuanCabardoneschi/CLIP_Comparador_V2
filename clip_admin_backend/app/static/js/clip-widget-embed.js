@@ -123,7 +123,8 @@
             transition: transform 0.2s, box-shadow 0.2s;
             display: flex;
             gap: 16px;
-            padding: 16px;
+            padding: 0;
+            overflow: hidden;
         }
         .clip-widget-result-item:hover {
             transform: translateY(-4px);
@@ -131,15 +132,15 @@
         }
         .clip-widget-result-img {
             width: 180px;
-            height: auto;
-            object-fit: contain;
-            border-radius: 8px;
+            height: 100%;
+            object-fit: cover;
             flex-shrink: 0;
         }
         .clip-widget-result-content {
             flex: 1;
             display: flex;
             flex-direction: column;
+            padding: 16px;
         }
         .clip-widget-result-name {
             font-weight: 700;
@@ -180,6 +181,13 @@
         .clip-widget-result-attribute-value {
             color: #333;
             text-align: right;
+        }
+        .clip-widget-result-description {
+            color: #555;
+            font-size: 13px;
+            line-height: 1.5;
+            margin-top: 8px;
+            padding: 8px 0;
         }
         .clip-widget-result-link {
             display: block;
@@ -341,7 +349,7 @@
                 firstResult: data.results && data.results[0] ? {
                     name: data.results[0].name,
                     hasImageUrl: !!data.results[0].image_url,
-                    imageUrlType: data.results[0].image_url ? 
+                    imageUrlType: data.results[0].image_url ?
                         (data.results[0].image_url.startsWith('data:') ? 'base64' : 'url') : 'none'
                 } : null
             });
@@ -384,12 +392,18 @@
                 if (value !== undefined && value !== null && value !== '') {
                     const label = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                     const displayValue = Array.isArray(value) ? value.join(', ') : value;
-                    stdAttrs += `
-                        <div class="clip-widget-result-attribute">
-                            <span class="clip-widget-result-attribute-key">${label}:</span>
-                            <span class="clip-widget-result-attribute-value">${displayValue}</span>
-                        </div>
-                    `;
+                    
+                    // Description sin label "Descripción:" - solo el texto
+                    if (field === 'description') {
+                        stdAttrs += `<div class="clip-widget-result-description">${displayValue}</div>`;
+                    } else {
+                        stdAttrs += `
+                            <div class="clip-widget-result-attribute">
+                                <span class="clip-widget-result-attribute-key">${label}:</span>
+                                <span class="clip-widget-result-attribute-value">${displayValue}</span>
+                            </div>
+                        `;
+                    }
                 }
             });
 
