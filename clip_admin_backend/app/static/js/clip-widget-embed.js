@@ -392,7 +392,7 @@
                 if (value !== undefined && value !== null && value !== '') {
                     const label = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                     const displayValue = Array.isArray(value) ? value.join(', ') : value;
-                    
+
                     // Description sin label "Descripción:" - solo el texto
                     if (field === 'description') {
                         stdAttrs += `<div class="clip-widget-result-description">${displayValue}</div>`;

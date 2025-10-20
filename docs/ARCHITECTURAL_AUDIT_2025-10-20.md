@@ -1,6 +1,6 @@
 # 🏗️ Auditoría Arquitectónica - CLIP Comparador V2
-**Fecha**: 20 de Octubre 2025  
-**Tag Estable**: `stable-2025-10-20-widget-images-fixed`  
+**Fecha**: 20 de Octubre 2025
+**Tag Estable**: `stable-2025-10-20-widget-images-fixed`
 **Estado**: Sistema funcionando en Railway Production
 
 ---
@@ -200,7 +200,7 @@ image_url = image_manager.get_image_url(image)
 ## 🎯 Patrón Oficial: Manejo de Imágenes
 
 ### ✅ Regla de Oro
-**NUNCA llamar `manager.get_image_url()`**  
+**NUNCA llamar `manager.get_image_url()`**
 **SIEMPRE usar propiedades del modelo `Image`**
 
 ```python
@@ -314,5 +314,5 @@ clip_admin_backend/
 
 ---
 
-**Última Actualización:** 20 Octubre 2025  
+**Última Actualización:** 20 Octubre 2025
 **Próxima Revisión:** Después de implementar FASE 1 o FASE 2

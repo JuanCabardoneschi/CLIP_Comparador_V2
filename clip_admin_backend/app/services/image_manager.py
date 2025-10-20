@@ -6,6 +6,7 @@ Unifica toda la lógica de almacenamiento, recuperación y manipulación de imá
 import os
 import uuid
 import base64
+import warnings
 from typing import Optional, List, Tuple
 from werkzeug.utils import secure_filename
 from werkzeug.datastructures import FileStorage
@@ -267,6 +268,8 @@ class ImageManager:
 
     def get_image_url(self, image: Image, client_slug: str = None) -> str:
         """
+        ⚠️ DEPRECATED: Usar image.display_url directamente
+        
         Obtiene la URL pública de una imagen - SOLO Cloudinary
 
         Args:
@@ -275,7 +278,18 @@ class ImageManager:
 
         Returns:
             URL de la imagen (Cloudinary o placeholder)
+            
+        Deprecated:
+            Usar `image.display_url` directamente en lugar de este método.
+            Este método será eliminado en versiones futuras.
         """
+        warnings.warn(
+            "ImageManager.get_image_url() está deprecado. "
+            "Usar image.display_url directamente. "
+            "Este método será eliminado en futuras versiones.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         # SOLO usar Cloudinary - no hay fallback local
         if image.cloudinary_url:
             return image.cloudinary_url

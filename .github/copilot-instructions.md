@@ -87,6 +87,19 @@ cd clip_admin_backend && python app.py
 - Separate concerns between admin and API modules
 - Test both modules independently
 
+### ⚠️ Image Handling Pattern (CRITICAL)
+**ALWAYS use model properties for image URLs:**
+```python
+# ✅ CORRECT
+image_url = image.display_url
+thumbnail = image.thumbnail_url
+
+# ❌ WRONG (DEPRECATED)
+image_url = image_manager.get_image_url(image)
+image_url = cloudinary_manager.get_image_url(image)
+```
+**See `docs/IMAGE_HANDLING_GUIDE.md` for complete guide.**
+
 ## Railway Deployment
 - Single unified Flask service with PostgreSQL + Redis
 - Optimized for Railway Hobby Plan constraints
