@@ -53,10 +53,10 @@
   </div>
 
   <!-- WIDGET CLIP -->
-  
+
   <script>
     const debugDiv = document.getElementById('debug-content');
-    
+
     function log(message, type = 'pending') {
       const statusDiv = document.createElement('div');
       statusDiv.className = 'status ' + type;
@@ -64,14 +64,14 @@
       debugDiv.appendChild(statusDiv);
       console.log('[Widget Debug]', message);
     }
-    
+
     // 1. Verificar configuración
     window.CLIPWidget = {
       apiKey: 'test-api-key-demo-fashion-store-2024'
     };
     log('✅ Configuración cargada', 'ok');
     log('API Key: ' + window.CLIPWidget.apiKey.substring(0, 20) + '...', 'ok');
-    
+
     // 2. Verificar contenedor
     setTimeout(() => {
       const container = document.getElementById('clip-widget');
@@ -81,15 +81,15 @@
         log('❌ Contenedor NO encontrado', 'error');
       }
     }, 100);
-    
+
     // 3. Intentar cargar script
     const scriptUrl = 'https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed.js';
     log('⏳ Cargando script...', 'pending');
     log('URL: ' + scriptUrl, 'pending');
-    
+
     const script = document.createElement('script');
     script.src = scriptUrl;
-    
+
     script.onload = function() {
       log('✅ Script cargado correctamente', 'ok');
       setTimeout(() => {
@@ -100,12 +100,12 @@
         }
       }, 500);
     };
-    
+
     script.onerror = function() {
       log('❌ Error al cargar script', 'error');
       log('Verifica que el archivo exista en Railway', 'error');
     };
-    
+
     document.head.appendChild(script);
   </script>
 

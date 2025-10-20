@@ -834,7 +834,7 @@ def _build_search_results(product_best_match, limit):
                         ),
                         {"client_id": client_id},
                     ).fetchone()
-                    
+
                     # Si no hay ninguna configuración, tratar como "sin config" (None)
                     if total_configs and total_configs[0] == 0:
                         exposed_keys_cache = None
@@ -858,17 +858,28 @@ def _build_search_results(product_best_match, limit):
             finally:
                 checked_config = True
 
-        # Usar base64_data directamente del modelo Image
+        # Obtener la imagen primaria del producto en lugar de la que hizo match
+        primary_image = None
         try:
-            if img.base64_data:
-                image_url = img.base64_data
-            elif img.cloudinary_url:
-                # Fallback: usar URL de Cloudinary si no hay base64
-                image_url = img.cloudinary_url
+            # Buscar la imagen primaria del producto
+            primary_image = Image.query.filter_by(
+                product_id=product.id,
+                is_primary=True
+            ).first()
+
+            # Si no hay primaria, usar la que hizo match
+            if not primary_image:
+                primary_image = img
+
+            # Obtener URL de la imagen primaria
+            if primary_image.base64_data:
+                image_url = primary_image.base64_data
+            elif primary_image.cloudinary_url:
+                image_url = primary_image.cloudinary_url
             else:
                 image_url = None
         except Exception as e:
-            print(f"❌ Error obteniendo imagen {img.filename}: {e}")
+            print(f"❌ Error obteniendo imagen primaria: {e}")
             image_url = None
 
         # Preparar atributos dinámicos del producto (JSONB)

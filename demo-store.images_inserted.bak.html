@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GOODY Fashion Store - Tienda Online</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #fff;
+            color: #333;
+        }
+
+        /* Header GOODY */
+        .header {
+            background: #000;
+            color: white;
+            padding: 1rem 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 2.5rem;
+            font-weight: 900;
+            letter-spacing: 2px;
+            color: white;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            transition: opacity 0.3s;
+        }
+
+        .nav-links a:hover {
+            opacity: 0.7;
+        }
+
+        /* AI Search Button */
+        .ai-search-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 25px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+            animation: pulse-glow 2s infinite;
+        }
+
+        .ai-search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(102, 126, 234, 0.5); }
+            50% { box-shadow: 0 0 30px rgba(102, 126, 234, 0.8); }
+        }
+
+        /* Store View */
+        .store-view {
+            transition: opacity 0.3s;
+        }
+
+        .store-view.hidden {
+            display: none;
+        }
+
+        /* Hero Banner */
+        .hero-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4rem 2rem;
+            text-align: center;
+        }
+
+        .hero-banner h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .hero-banner p {
+            font-size: 1.3rem;
+            opacity: 0.95;
+        }
+
+        /* Products Grid */
+        .products-container {
+            max-width: 1400px;
+            margin: 3rem auto;
+            padding: 0 2rem;
+        }
+
+        .section-title {
+            font-size: 2rem;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .product-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+        }
+
+        .product-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+
+        .product-image-container {
+            position: relative;
+            width: 100%;
+            padding-top: 133%; /* 3:4 ratio */
+            background: #f9fafb;
+            overflow: hidden;
+        }
+
+        .product-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .product-info {
+            padding: 1.25rem;
+        }
+
+        .product-category {
+            color: #6b7280;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .product-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 0.75rem;
+            min-height: 2.5rem;
+        }
+
+        .product-price {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #000;
+        }
+
+        /* Search View */
+        .search-view {
+            display: none;
+            max-width: 1400px;
+            margin: 1rem auto;
+            padding: 0 1.5rem;
+        }
+
+        .search-view.active {
+            display: block;
+        }
+
+        .back-btn {
+            background: #6b7280;
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 1rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .back-btn:hover {
+            background: #4b5563;
+        }
+
+        .search-section {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .search-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .search-header h2 {
+            color: #667eea;
+            font-size: 1.5rem;
+        }
+
+        .upload-area {
+            border: 3px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8fafc;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f1f5f9;
+        }
+
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #eef2ff;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .upload-text {
+            font-size: 1.1rem;
+            color: #64748b;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-hint {
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .preview-area {
+            display: none;
+            text-align: center;
+            margin: 1.5rem 0;
+        }
+
+        .preview-area.active {
+            display: block;
+        }
+
+        .preview-image {
+            max-width: 350px;
+            max-height: 350px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            margin-bottom: 0.75rem;
+        }
+
+        .search-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 2rem;
+            font-size: 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            font-weight: 600;
+        }
+
+        .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .search-btn:disabled {
+            background: #cbd5e1;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 3rem;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #64748b;
+            font-size: 1.1rem;
+        }
+
+        .results-section {
+            display: none;
+        }
+
+        .results-section.active {
+            display: block;
+        }
+
+        .results-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+        }
+
+        .results-title {
+            font-size: 1.8rem;
+            color: #1e293b;
+        }
+
+        .results-count {
+            color: #64748b;
+            font-size: 1rem;
+        }
+
+        .similarity-badge {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(16, 185, 129, 0.95);
+            color: white;
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            backdrop-filter: blur(8px);
+        }
+
+        .product-stock {
+            font-size: 0.85rem;
+            color: #64748b;
+            margin-top: 0.5rem;
+        }
+
+        .product-stock.in-stock {
+            color: #10b981;
+        }
+
+        .product-stock.low-stock {
+            color: #f59e0b;
+        }
+
+        .product-attributes {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .attribute-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .attribute-label {
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        .attribute-value {
+            color: #111827;
+            font-weight: 600;
+        }
+
+        .attribute-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .attribute-link:hover {
+            text-decoration: underline;
+        }
+
+        .error-message {
+            display: none;
+            background: #fee2e2;
+            border-left: 4px solid #ef4444;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+
+        .error-message.active {
+            display: block;
+        }
+
+        .error-title {
+            color: #dc2626;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .error-text {
+            color: #991b1b;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero-banner h1 {
+                font-size: 2rem;
+            }
+
+            .products-grid {
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                gap: 1rem;
+            }
+
+            .nav-links {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">GOODY</div>
+            <div class="nav-links">
+                <a href="#" id="aiSearchToggle" class="ai-search-btn">
+                    🤖 Buscar con IA
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Store View (Default) -->
+    <div class="store-view" id="storeView">
+        <!-- Hero Banner -->
+        <div class="hero-banner">
+            <h1>Nueva Colección 2025</h1>
+            <p>Descubre las últimas tendencias en moda y estilo</p>
+        </div>
+
+        <!-- Products -->
+        <div class="products-container">
+            <h2 class="section-title">Productos Destacados</h2>
+            <div class="products-grid">
+                <!-- Product 1 -->
+                <div class="product-card">
+                    <div class="product-image-container">
+                    </div>
+                    <div class="product-info">
+                        <div class="product-category">CHAQUETAS</div>
+                        <div class="product-name">CHAQUETA POP NEGRA</div>
+                        <div class="product-price">$90.22</div>
+                    </div>
+                </div>
+
+                <!-- Product 2 -->
+                <div class="product-card">
+                    <div class="product-image-container">
+                    </div>
+                    <div class="product-info">
+                        <div class="product-category">CAMISAS HOMBRE – DAMA</div>
+                        <div class="product-name">CAMISA NEW NEGRA</div>
+                        <div class="product-price">$128.24</div>
+                    </div>
+                </div>
+
+                <!-- Product 3 -->
+                <div class="product-card">
+                    <div class="product-image-container">
+                    </div>
+                    <div class="product-info">
+                        <div class="product-category">DELANTAL</div>
+                        <div class="product-name">DELANTAL PECHERA JUMPER CON SOLAPA COLOR HABANO</div>
+                        <div class="product-price">$63.04</div>
+                    </div>
+                </div>
+
+                <!-- Product 4 -->
+                <div class="product-card">
+                    <div class="product-image-container">
+                    </div>
+                    <div class="product-info">
+                        <div class="product-category">GORROS</div>
+                        <div class="product-name">GORRA CUP NEGRA</div>
+                        <div class="product-price">$26.08</div>
+                    </div>
+                </div>
+
+                <!-- Product 5 -->
+                <div class="product-card">
+                    <div class="product-image-container">
+                    </div>
+                    <div class="product-info">
+                        <div class="product-category">AMBO VESTIR HOMBRE – DAMA</div>
+                        <div class="product-name">AMBO EN V NEW GOODY</div>
+                        <div class="product-price">$133.89</div>
+                    </div>
+                </div>
+
+                <!-- Product 6 -->
+                <div class="product-card">
+                    <div class="product-image-container">
+                    </div>
+                    <div class="product-info">
+                        <div class="product-category">DELANTAL</div>
+                        <div class="product-name">DELANTAL PECHERA IPA JEAN</div>
+                        <div class="product-price">$133.27</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search View (Hidden by default) -->
+    <div class="search-view" id="searchView">
+        <button class="back-btn" id="backToStore">
+            ← Volver a la tienda
+        </button>
+
+        <div class="search-section">
+            <div class="search-header">
+                <span style="font-size: 3rem;">🤖</span>
+                <div>
+                    <h2>Búsqueda Visual con Inteligencia Artificial</h2>
+                    <p style="color: #64748b; margin-top: 0.5rem;">Sube una foto y encuentra productos similares en nuestro catálogo</p>
+                </div>
+            </div>
+
+            <!-- Upload Area -->
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📸</div>
+                <div class="upload-text">Arrastra una imagen aquí o haz clic para seleccionar</div>
+                <div class="upload-hint">Formatos soportados: JPG, PNG, WEBP (máx. 10MB)</div>
+                <input type="file" id="fileInput" class="file-input" accept="image/jpeg,image/png,image/webp">
+            </div>
+
+            <!-- Preview Area -->
+            <div class="preview-area" id="previewArea">
+                <img id="previewImage" class="preview-image" alt="Vista previa">
+                <br>
+                <button class="search-btn" id="searchBtn">
+                    🔍 Buscar Productos Similares
+                </button>
+                <button class="search-btn" id="resetBtn" style="background: #6b7280; margin-left: 1rem;">
+                    🔄 Cambiar Imagen
+                </button>
+            </div>
+
+            <!-- Error Message -->
+            <div class="error-message" id="errorMessage">
+                <div class="error-title">❌ Error en la búsqueda</div>
+                <div class="error-text" id="errorText"></div>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div class="loading-text">Analizando imagen con inteligencia artificial...</div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection">
+            <div class="results-header">
+                <h2 class="results-title">✨ Productos Similares Encontrados</h2>
+                <div class="results-count" id="resultsCount"></div>
+            </div>
+            <div class="products-grid" id="resultsGrid"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://clipcomparadorv2-production.up.railway.app/api/search';
+        const API_KEY = 'test-api-key-demo-fashion-store-2024';
+
+        let selectedFile = null;
+
+        // Elements
+        const storeView = document.getElementById('storeView');
+        const searchView = document.getElementById('searchView');
+        const aiSearchToggle = document.getElementById('aiSearchToggle');
+        const backToStore = document.getElementById('backToStore');
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const previewArea = document.getElementById('previewArea');
+        const previewImage = document.getElementById('previewImage');
+        const searchBtn = document.getElementById('searchBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const loading = document.getElementById('loading');
+        const resultsSection = document.getElementById('resultsSection');
+        const resultsGrid = document.getElementById('resultsGrid');
+        const resultsCount = document.getElementById('resultsCount');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+
+        // Toggle between store and search views
+        aiSearchToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            storeView.classList.add('hidden');
+            searchView.classList.add('active');
+        });
+
+        backToStore.addEventListener('click', () => {
+            searchView.classList.remove('active');
+            storeView.classList.remove('hidden');
+            resetSearch();
+        });
+
+        // Upload area click
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        // File input change
+        fileInput.addEventListener('change', handleFileSelect);
+
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                handleFile(file);
+            }
+        });
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        }
+
+        function handleFile(file) {
+            if (file.size > 10 * 1024 * 1024) {
+                showError('El archivo es demasiado grande. Máximo 10MB.');
+                return;
+            }
+
+            selectedFile = file;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                previewImage.src = e.target.result;
+                uploadArea.style.display = 'none';
+                previewArea.classList.add('active');
+                errorMessage.classList.remove('active');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Reset button
+        resetBtn.addEventListener('click', () => {
+            selectedFile = null;
+            fileInput.value = '';
+            uploadArea.style.display = 'block';
+            previewArea.classList.remove('active');
+            resultsSection.classList.remove('active');
+            errorMessage.classList.remove('active');
+        });
+
+        function resetSearch() {
+            selectedFile = null;
+            fileInput.value = '';
+            uploadArea.style.display = 'block';
+            previewArea.classList.remove('active');
+            resultsSection.classList.remove('active');
+            errorMessage.classList.remove('active');
+            loading.classList.remove('active');
+        }
+
+        // Search button
+        searchBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            loading.classList.add('active');
+            resultsSection.classList.remove('active');
+            errorMessage.classList.remove('active');
+            searchBtn.disabled = true;
+
+            try {
+                const formData = new FormData();
+                formData.append('image', selectedFile);
+
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'X-API-Key': API_KEY
+                    },
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Error ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                displayResults(data);
+
+            } catch (error) {
+                console.error('Search error:', error);
+                showError(`Error al realizar la búsqueda: ${error.message}`);
+            } finally {
+                loading.classList.remove('active');
+                searchBtn.disabled = false;
+            }
+        });
+
+        function displayResults(data) {
+  if (!data || data.success === false) {
+    showError(data || 'Respuesta inválida');
+    return;
+  }
+            resultsGrid.innerHTML = '';
+
+            if (!data.results || data.results.length === 0) {
+                showError('No se encontraron productos similares. Intenta con otra imagen.');
+                return;
+            }
+
+            resultsCount.textContent = `${data.results.length} productos encontrados • Tiempo: ${data.processing_time}`;
+            resultsSection.classList.add('active');
+
+            data.results.forEach(product => {
+                const card = createProductCard(product);
+                resultsGrid.appendChild(card);
+            });
+
+            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function createProductCard(product) {
+            const card = document.createElement('div');
+            card.className = 'product-card';
+
+            const similarity = Math.round(product.similarity * 100);
+            const price = product.price ? `$${product.price.toFixed(2)}` : 'Consultar';
+            const stock = product.stock || 0;
+            const stockText = stock > 10 ? 'En stock' : stock > 0 ? `Quedan ${stock}` : 'Sin stock';
+            const stockClass = stock > 10 ? 'in-stock' : stock > 0 ? 'low-stock' : '';
+
+            // Build attributes HTML
+            let attributesHTML = '';
+            if (product.attributes && Object.keys(product.attributes).length > 0) {
+                attributesHTML = '<div class="product-attributes">';
+                for (const [key, value] of Object.entries(product.attributes)) {
+                    // Skip null/undefined values
+                    if (value === null || value === undefined) continue;
+
+                    const label = formatAttributeLabel(key);
+                    const formattedValue = formatAttributeValue(key, value);
+
+                    attributesHTML += `
+                        <div class="attribute-item">
+                            <span class="attribute-label">${label}:</span>
+                            <span class="attribute-value">${formattedValue}</span>
+                        </div>
+                    `;
+                }
+                attributesHTML += '</div>';
+            }
+
+            card.innerHTML = `
+                <div class="product-image-container">
+                    <img src="${product.image_url}" alt="${product.name}" class="product-image"
+                         onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22300%22 height=%22400%22%3E%3Crect fill=%22%23f1f5f9%22 width=%22300%22 height=%22400%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 fill=%22%2394a3b8%22 font-size=%2220%22%3ESin imagen%3C/text%3E%3C/svg%3E'">
+                    <div class="similarity-badge">${similarity}% similar</div>
+                </div>
+                <div class="product-info">
+                    <div class="product-category">${product.category}</div>
+                    <div class="product-name">${product.name}</div>
+                    <div class="product-price">${price}</div>
+                    <div class="product-stock ${stockClass}">${stockText}</div>
+                    ${attributesHTML}
+                </div>
+            `;
+
+            return card;
+        }
+
+        function formatAttributeLabel(key) {
+            const labels = {
+                'material': 'Material',
+                'talla': 'Talla',
+                'color': 'Color',
+                'marca': 'Marca',
+                'url_producto': 'Más info'
+            };
+            return labels[key] || key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+        }
+
+        function formatAttributeValue(key, value) {
+            // If it's a URL attribute and has a value, make it a link
+            if (key === 'url_producto' && value) {
+                return `<a href="${value}" target="_blank" class="attribute-link">Ver producto</a>`;
+            }
+
+            // If it's an array (multi-select), join with commas
+            if (Array.isArray(value)) {
+                return value.join(', ');
+            }
+
+            return value;
+        }
+
+        function showError(err) {
+  let msg = '';
+  if (err && typeof err === 'object') {
+    if (err.message) msg += err.message + \"
+\";
+    if (err.details) msg += err.details + \"
+\";
+    if (Array.isArray(err.available_categories)) {
+      msg += \"
+Categorías disponibles:\n- \" + err.available_categories.join('\n- ');
+    }
+  } else {
+    msg = String(err || 'Error desconocido');
+  }
+  const el = document.getElementById('errorMessage');
+  const tx = document.getElementById('errorText');
+  if (tx) tx.textContent = msg.trim();
+  if (el) el.classList.add('active');
+  const rs = document.getElementById('resultsSection');
+  if (rs) rs.classList.remove('active');
+}
+
+    </script>
+
+{}
+<script>
+// Reemplazos ligeros para mostrar mensajes detallados del backend
+(function() {{
+  // 1) showError mejorado
+  window.showError = function(err) {{
+    try {{
+      var msg = '';
+      if (err && typeof err === 'object') {{
+        if (err.message) msg += err.message + '
+';
+        if (err.details) msg += err.details + '
+';
+        if (Array.isArray(err.available_categories)) {{
+          msg += '
+Categorías disponibles:
+- ' + err.available_categories.join('
+- ');
+        }}
+      }} else {{
+        msg = String(err || 'Error desconocido');
+      }}
+      var el = document.getElementById('errorMessage');
+      var tx = document.getElementById('errorText');
+      if (tx) tx.textContent = msg.trim();
+      if (el) el.classList.add('active');
+    }} catch (e) {{
+      console.warn('showError fallback', e);
+    }}
+  }};
+
+  // 2) displayResults que respeta success=false
+  window.displayResults = function(data) {{
+    try {{
+      var grid = document.getElementById('resultsGrid');
+      var section = document.getElementById('resultsSection');
+      var count = document.getElementById('resultsCount');
+      if (grid) grid.innerHTML = '';
+
+      if (!data || data.success === false) {{
+        window.showError(data || 'Respuesta inválida');
+        return;
+      }}
+      if (!data.results || data.results.length === 0) {{
+        window.showError('No se encontraron productos similares. Intenta con otra imagen.');
+        return;
+      }}
+      if (count) count.textContent = `${data.results.length} productos encontrados • Tiempo: ${data.processing_time}`;
+      if (section) section.classList.add('active');
+
+      data.results.forEach(function(product) {{
+        var card = window.createProductCard ? window.createProductCard(product) : null;
+        if (card && grid) grid.appendChild(card);
+      }});
+      if (section && section.scrollIntoView) section.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+    }} catch (e) {{
+      console.error('displayResults override error', e);
+      window.showError(e.message || e);
+    }}
+  }};
+
+  // 3) Wrapper de fetch: si 4xx, devolver objeto con ok=true y body=JSON de error
+  if (window.fetch && !window.__fetchErrorPatched) {{
+    var originalFetch = window.fetch;
+    window.fetch = async function() {{
+      var res = await originalFetch.apply(this, arguments);
+      try {{
+        if (!res.ok && res.status >= 400) {{
+          var data = null;
+          try {{ data = await res.clone().json(); }} catch(_) {{}}
+          return {{
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            headers: res.headers,
+            json: async function() {{ return data || {{ success:false, message: `Error ${res.status}: ${res.statusText}` }}; }}
+          }};
+        }}
+      }} catch(_) {{}}
+      return res;
+    }};
+    window.__fetchErrorPatched = true;
+  }}
+}})();
+</script>
+{}
+</body>
+</html>

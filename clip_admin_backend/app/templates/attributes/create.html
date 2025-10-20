@@ -19,13 +19,13 @@
                             <div class="col-md-6 mb-3">
                                 <label for="key" class="form-label">
                                     Nombre Interno <span class="text-danger">*</span>
-                                    <i class="bi bi-info-circle text-muted" 
+                                    <i class="bi bi-info-circle text-muted"
                                        title="Identificador único del atributo. Se convertirá a minúsculas y sin espacios."></i>
                                 </label>
-                                <input type="text" 
-                                       class="form-control" 
-                                       id="key" 
-                                       name="key" 
+                                <input type="text"
+                                       class="form-control"
+                                       id="key"
+                                       name="key"
                                        required
                                        placeholder="ej: talla, material, color"
                                        pattern="[a-z0-9_]+"
@@ -40,10 +40,10 @@
                                 <label for="label" class="form-label">
                                     Etiqueta <span class="text-danger">*</span>
                                 </label>
-                                <input type="text" 
-                                       class="form-control" 
-                                       id="label" 
-                                       name="label" 
+                                <input type="text"
+                                       class="form-control"
+                                       id="label"
+                                       name="label"
                                        required
                                        placeholder="ej: Talla, Material, Color">
                                 <small class="form-text text-muted">
@@ -58,9 +58,9 @@
                                 <label for="type" class="form-label">
                                     Tipo de Campo <span class="text-danger">*</span>
                                 </label>
-                                <select class="form-select" 
-                                        id="type" 
-                                        name="type" 
+                                <select class="form-select"
+                                        id="type"
+                                        name="type"
                                         required
                                         onchange="toggleOptions()">
                                     <option value="text">Texto</option>
@@ -76,10 +76,10 @@
                                 <label for="field_order" class="form-label">
                                     Orden
                                 </label>
-                                <input type="number" 
-                                       class="form-control" 
-                                       id="field_order" 
-                                       name="field_order" 
+                                <input type="number"
+                                       class="form-control"
+                                       id="field_order"
+                                       name="field_order"
                                        value="0"
                                        min="0">
                                 <small class="form-text text-muted">
@@ -91,18 +91,18 @@
                             <div class="col-md-4 mb-3">
                                 <label class="form-label d-block">Opciones</label>
                                 <div class="form-check">
-                                    <input class="form-check-input" 
-                                           type="checkbox" 
-                                           id="required" 
+                                    <input class="form-check-input"
+                                           type="checkbox"
+                                           id="required"
                                            name="required">
                                     <label class="form-check-label" for="required">
                                         Obligatorio
                                     </label>
                                 </div>
                                 <div class="form-check">
-                                    <input class="form-check-input" 
-                                           type="checkbox" 
-                                           id="expose_in_search" 
+                                    <input class="form-check-input"
+                                           type="checkbox"
+                                           id="expose_in_search"
                                            name="expose_in_search">
                                     <label class="form-check-label" for="expose_in_search">
                                         Exponer en búsqueda
@@ -116,12 +116,12 @@
                             <div class="col-12 mb-3">
                                 <label for="options" class="form-label">
                                     Opciones <span class="text-danger">*</span>
-                                    <i class="bi bi-info-circle text-muted" 
+                                    <i class="bi bi-info-circle text-muted"
                                        title="Lista de valores separados por líneas o formato JSON"></i>
                                 </label>
-                                <textarea class="form-control font-monospace" 
-                                          id="options" 
-                                          name="options" 
+                                <textarea class="form-control font-monospace"
+                                          id="options"
+                                          name="options"
                                           rows="6"
                                           placeholder='Una opción por línea, o formato JSON: ["Opción 1", "Opción 2", "Opción 3"]'></textarea>
                                 <small class="form-text text-muted">
@@ -131,9 +131,9 @@
 
                             <div class="col-12 mb-3">
                                 <div class="form-check">
-                                    <input class="form-check-input" 
-                                           type="checkbox" 
-                                           id="is_multiple" 
+                                    <input class="form-check-input"
+                                           type="checkbox"
+                                           id="is_multiple"
                                            name="is_multiple">
                                     <label class="form-check-label" for="is_multiple">
                                         <strong>Permitir selección múltiple</strong>
@@ -180,7 +180,7 @@ function toggleOptions() {
     const type = document.getElementById('type').value;
     const listOptions = document.getElementById('listOptions');
     const optionsField = document.getElementById('options');
-    
+
     if (type === 'list') {
         listOptions.style.display = 'block';
         optionsField.required = true;

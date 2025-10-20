@@ -357,12 +357,35 @@
             // Separar URL del producto del resto de atributos
             let productUrl = '';
             let attributesHtml = '';
-            
+
+            // 1. Collect all non-custom fields except those shown elsewhere
+            const standardFields = [
+                'category', 'color', 'stock', 'price', 'brand', 'size', 'gender', 'material', 'description', 'model', 'season', 'discount', 'availability', 'rating', 'tags'
+            ];
+            // Exclude: image_url, name, sku, similarity, url_producto
+            const excludeFields = ['image_url', 'name', 'sku', 'similarity', 'url_producto'];
+            let stdAttrs = '';
+            standardFields.forEach(field => {
+                if (excludeFields.includes(field)) return;
+                let value = item[field];
+                if (value !== undefined && value !== null && value !== '') {
+                    const label = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const displayValue = Array.isArray(value) ? value.join(', ') : value;
+                    stdAttrs += `
+                        <div class="clip-widget-result-attribute">
+                            <span class="clip-widget-result-attribute-key">${label}:</span>
+                            <span class="clip-widget-result-attribute-value">${displayValue}</span>
+                        </div>
+                    `;
+                }
+            });
+
+            // 2. Custom attributes (from item.attributes)
+            let customAttrs = '';
             if (item.attributes && typeof item.attributes === 'object') {
-                // Procesar atributos
                 const attrs = Object.entries(item.attributes)
                     .filter(([key, attr]) => {
-                        // Excluir url_producto de los atributos (se mostrará al final)
+                        // Exclude url_producto (shown as link)
                         if (key === 'url_producto') {
                             const value = typeof attr === 'object' ? attr.value : attr;
                             if (value) {
@@ -370,23 +393,19 @@
                             }
                             return false;
                         }
-                        
-                        // Mostrar atributos marcados como visible
+                        // Show attributes marked as visible
                         if (typeof attr === 'object' && attr.visible === true) {
                             return true;
                         }
-                        
-                        // O atributos simples (no objetos de configuración)
+                        // Or simple attributes (not config objects)
                         if (typeof attr !== 'object' && key !== 'visible') {
                             return true;
                         }
-                        
                         return false;
                     })
                     .map(([key, attr]) => {
                         const value = typeof attr === 'object' ? attr.value : attr;
                         const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                        
                         if (value && value !== '' && value !== null) {
                             const displayValue = Array.isArray(value) ? value.join(', ') : value;
                             return `
@@ -400,22 +419,28 @@
                     })
                     .filter(html => html !== '')
                     .join('');
-
                 if (attrs.length > 0) {
-                    attributesHtml = `<div class="clip-widget-result-attributes">${attrs}</div>`;
+                    customAttrs = attrs;
                 }
             }
 
-            // Construir HTML del producto con URL al final
+            // Combine all attributes
+            if (stdAttrs || customAttrs) {
+                attributesHtml = `<div class="clip-widget-result-attributes">${stdAttrs}${customAttrs}</div>`;
+            }
+
+            // Product URL at the bottom
             const urlHtml = productUrl ? `
                 <a href="${productUrl}" target="_blank" class="clip-widget-result-link">
                     Ver Producto →
                 </a>
             ` : '';
 
+            // Usar imagen principal si existe, si no, imagen por defecto
+            let imgSrc = item.image_url && item.image_url !== 'null' && item.image_url !== '' ? item.image_url : 'https://res.cloudinary.com/demo/image/upload/v1699999999/no-image-clip.png';
             return `
                 <div class="clip-widget-result-item">
-                    <img src="${item.image_url}" alt="${item.name}" class="clip-widget-result-img">
+                    <img src="${imgSrc}" alt="${item.name}" class="clip-widget-result-img">
                     <div class="clip-widget-result-content">
                         <div class="clip-widget-result-name">${item.name}</div>
                         <div class="clip-widget-result-sku">SKU: ${item.sku}</div>
@@ -428,9 +453,8 @@
                 </div>
             `;
         }).join('') + '</div>';
-        
         results.style.display = 'block';
-    }    // Mostrar error
+    }
     function showError(message) {
         error.textContent = message;
         error.style.display = 'block';

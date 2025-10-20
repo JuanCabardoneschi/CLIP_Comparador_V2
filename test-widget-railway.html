@@ -408,7 +408,7 @@
                 let attributesHtml = '';
                 if (result.attributes && Object.keys(result.attributes).length > 0) {
                     const items = Object.entries(result.attributes)
-                        .map(([k, v]) => `<li><strong>${k}:</strong> ${Array.isArray(v) ? v.join(', ') : (v ?? '')}</li>`) 
+                        .map(([k, v]) => `<li><strong>${k}:</strong> ${Array.isArray(v) ? v.join(', ') : (v ?? '')}</li>`)
                         .join('');
                     attributesHtml = `
                         <div style="margin-top:8px;">

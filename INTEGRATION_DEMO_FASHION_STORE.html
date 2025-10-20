@@ -1,0 +1,351 @@
+<!--
+╔══════════════════════════════════════════════════════════════╗
+║  CLIP WIDGET - CÓDIGO DE INTEGRACIÓN                        ║
+║  Cliente: Demo Fashion Store                                ║
+║  Plan: Professional                                         ║
+║  Búsqueda Visual con IA - Ready to Use                      ║
+╚══════════════════════════════════════════════════════════════╝
+
+INSTRUCCIONES:
+✅ Este código está pre-configurado con tu API Key
+✅ Copia las líneas 15-23 y pégalas en tu página HTML
+✅ El widget aparecerá automáticamente donde pongas el <div>
+✅ ¡Listo! Ya tienes búsqueda visual funcionando
+
+SOPORTE:
+📧 Email: admin@demo.com
+🌐 Panel: https://clipcomparadorv2-production.up.railway.app
+📱 Plan: Professional (5,000 búsquedas/mes)
+-->
+
+<!-- ════════════════════════════════════════════════════════════
+     COPIA ESTE CÓDIGO Y PÉGALO EN TU PÁGINA
+     ════════════════════════════════════════════════════════════ -->
+
+<!-- 1️⃣ CONFIGURACIÓN -->
+<script>
+  window.CLIPWidget = {
+    apiKey: 'test-api-key-demo-fashion-store-2024'
+  };
+</script>
+
+<!-- 2️⃣ WIDGET -->
+<script src="https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed.js"></script>
+
+<!-- 3️⃣ CONTENEDOR -->
+<div id="clip-widget"></div>
+
+<!-- ════════════════════════════════════════════════════════════
+     FIN DEL CÓDIGO
+     ════════════════════════════════════════════════════════════ -->
+
+
+<!--
+╔══════════════════════════════════════════════════════════════╗
+║  PERSONALIZACIÓN (Opcional)                                 ║
+╚══════════════════════════════════════════════════════════════╝
+
+Si quieres personalizar el widget, usa esta configuración:
+-->
+
+<script>
+  window.CLIPWidget = {
+    apiKey: 'test-api-key-demo-fashion-store-2024',    // Tu API Key
+    maxResults: 5,                                      // Número de productos a mostrar
+    buttonText: '🔍 Buscar Productos Similares',        // Texto del botón
+    containerId: 'clip-widget'                          // ID del contenedor
+  };
+</script>
+<script src="https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed.js"></script>
+<div id="clip-widget"></div>
+
+
+<!--
+╔══════════════════════════════════════════════════════════════╗
+║  EJEMPLO COMPLETO - PÁGINA HTML                             ║
+╚══════════════════════════════════════════════════════════════╝
+-->
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo Fashion Store - Búsqueda Visual</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .header {
+      text-align: center;
+      color: white;
+      padding: 40px 20px;
+      margin-bottom: 30px;
+    }
+    .header h1 {
+      font-size: 42px;
+      margin: 0 0 10px 0;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .header p {
+      font-size: 18px;
+      opacity: 0.95;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin: 40px 0;
+    }
+    .feature {
+      background: rgba(255,255,255,0.95);
+      padding: 25px;
+      border-radius: 12px;
+      text-align: center;
+      backdrop-filter: blur(10px);
+    }
+    .feature-icon {
+      font-size: 48px;
+      margin-bottom: 15px;
+    }
+    .feature h3 {
+      color: #667eea;
+      margin: 0 0 10px 0;
+    }
+    .feature p {
+      color: #666;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .info-box {
+      background: rgba(255,255,255,0.95);
+      padding: 20px;
+      border-radius: 12px;
+      margin: 20px 0;
+      border-left: 4px solid #667eea;
+    }
+    .info-box strong {
+      color: #667eea;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>👗 Demo Fashion Store</h1>
+      <p>Encuentra tus prendas favoritas con Búsqueda Visual IA</p>
+    </div>
+
+    <div class="info-box">
+      <strong>✨ ¿Cómo funciona?</strong><br>
+      1. Sube una foto de una prenda que te guste<br>
+      2. Nuestro sistema encuentra productos similares en nuestro catálogo<br>
+      3. ¡Explora los resultados y encuentra tu look perfecto!
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════
+         WIDGET DE BÚSQUEDA VISUAL
+         ═══════════════════════════════════════════════════ -->
+
+    <script>
+      window.CLIPWidget = {
+        apiKey: 'test-api-key-demo-fashion-store-2024',
+        maxResults: 5,
+        buttonText: '✨ Buscar con IA'
+      };
+    </script>
+    <script src="https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed.js"></script>
+    <div id="clip-widget"></div>
+
+    <!-- ═══════════════════════════════════════════════════ -->
+
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">🤖</div>
+        <h3>Inteligencia Artificial</h3>
+        <p>Tecnología CLIP de última generación para búsqueda visual precisa</p>
+      </div>
+
+      <div class="feature">
+        <div class="feature-icon">⚡</div>
+        <h3>Resultados Instantáneos</h3>
+        <p>Encuentra productos similares en segundos, no en minutos</p>
+      </div>
+
+      <div class="feature">
+        <div class="feature-icon">🎯</div>
+        <h3>Alta Precisión</h3>
+        <p>Algoritmos avanzados que entienden estilos, colores y patrones</p>
+      </div>
+
+      <div class="feature">
+        <div class="feature-icon">📱</div>
+        <h3>100% Responsive</h3>
+        <p>Funciona perfecto en cualquier dispositivo: móvil, tablet o desktop</p>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <strong>📊 Tu Plan:</strong> Professional (5,000 búsquedas/mes)<br>
+      <strong>🔑 API Key:</strong> test-api-key-demo-fashion-store-2024<br>
+      <strong>🌐 Panel Admin:</strong> <a href="https://clipcomparadorv2-production.up.railway.app" target="_blank">Acceder →</a>
+    </div>
+
+  </div>
+</body>
+</html>
+
+
+<!--
+╔══════════════════════════════════════════════════════════════╗
+║  PERSONALIZACIÓN CON CSS                                     ║
+╚══════════════════════════════════════════════════════════════╝
+
+Cambia los colores del widget para que coincidan con tu marca:
+-->
+
+<style>
+  /* Cambiar color del botón de búsqueda */
+  .clip-widget-btn {
+    background: #667eea !important;
+  }
+
+  .clip-widget-btn:hover {
+    background: #5568d3 !important;
+  }
+
+  /* Cambiar color del área de upload */
+  .clip-widget-upload {
+    border-color: #667eea !important;
+  }
+
+  .clip-widget-upload:hover {
+    background: #f0f4ff !important;
+    border-color: #5568d3 !important;
+  }
+
+  /* Cambiar color de similitud en resultados */
+  .clip-widget-result-similarity {
+    color: #667eea !important;
+  }
+
+  /* Cambiar ancho máximo del widget */
+  .clip-widget-container {
+    max-width: 500px !important;
+  }
+</style>
+
+
+<!--
+╔══════════════════════════════════════════════════════════════╗
+║  MÚLTIPLES WIDGETS EN LA MISMA PÁGINA                       ║
+╚══════════════════════════════════════════════════════════════╝
+
+Si necesitas varios widgets en diferentes secciones:
+-->
+
+<!-- Widget 1: Página Principal -->
+<script>
+  window.CLIPWidget = {
+    apiKey: 'test-api-key-demo-fashion-store-2024',
+    containerId: 'busqueda-principal',
+    maxResults: 5,
+    buttonText: '✨ Buscar Look Completo'
+  };
+</script>
+<script src="https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed.js"></script>
+<div id="busqueda-principal"></div>
+
+<!-- Widget 2: Sidebar -->
+<script>
+  window.CLIPWidget = {
+    apiKey: 'test-api-key-demo-fashion-store-2024',
+    containerId: 'busqueda-sidebar',
+    maxResults: 3,
+    buttonText: '🔍 Buscar'
+  };
+</script>
+<script src="https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed.js"></script>
+<div id="busqueda-sidebar"></div>
+
+
+<!--
+╔══════════════════════════════════════════════════════════════╗
+║  CARACTERÍSTICAS DEL WIDGET                                  ║
+╚══════════════════════════════════════════════════════════════╝
+
+✅ Drag & Drop de imágenes
+✅ Click para seleccionar archivo
+✅ Preview de imagen antes de buscar
+✅ Spinner de carga mientras busca
+✅ Resultados con imagen, nombre, SKU y similitud
+✅ Botón de "Nueva búsqueda" para resetear
+✅ Manejo automático de errores
+✅ Responsive en todos los dispositivos
+✅ Zero dependencies (JavaScript vanilla)
+✅ Estilos incluidos (no necesitas CSS adicional)
+
+📦 FORMATOS SOPORTADOS:
+   - JPG/JPEG
+   - PNG
+   - WebP
+   - GIF
+
+📏 TAMAÑO MÁXIMO RECOMENDADO:
+   - 5MB por imagen
+
+🎯 CATEGORÍAS EN TU CATÁLOGO:
+   - AMBOS VESTIR
+   - CAMISAS
+   - CHAQUETAS
+   - DELANTALES
+   - GORRAS
+   - PANTALONES
+   - Y más...
+
+📊 MÉTRICAS:
+   - Todas las búsquedas se registran automáticamente
+   - Accede a analytics en el panel admin
+   - Monitorea uso y tendencias
+
+🔒 SEGURIDAD:
+   - API Key única y privada
+   - Rate limiting incluido
+   - Las imágenes no se almacenan
+   - Procesamiento en tiempo real
+
+📞 SOPORTE:
+   - Email: admin@demo.com
+   - Panel Admin: https://clipcomparadorv2-production.up.railway.app
+   - Documentación: Disponible en el panel
+-->
+
+<!--
+╔══════════════════════════════════════════════════════════════╗
+║  ¿NECESITAS AYUDA?                                          ║
+╚══════════════════════════════════════════════════════════════╝
+
+Si tienes preguntas o necesitas soporte técnico:
+
+1. Accede al panel de administración
+2. Contacta a soporte@clipcomparador.com
+3. Revisa la documentación completa
+4. Consulta ejemplos y casos de uso
+
+Tu plan Professional incluye:
+✨ 5,000 búsquedas mensuales
+✨ Soporte prioritario
+✨ Analytics avanzado
+✨ Personalización completa
+✨ Sin límite de widgets
+
+¡Gracias por confiar en CLIP Comparador! 🚀
+-->
