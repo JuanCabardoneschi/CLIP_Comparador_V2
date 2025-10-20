@@ -852,8 +852,11 @@ def _build_search_results(product_best_match, limit):
                         ).fetchall()
                         # Crear conjunto (vacío si todas están ocultas, con elementos si hay visibles)
                         exposed_keys_cache = {r[0] for r in rows}
-            except Exception:
+            except Exception as e:
                 # Si no existe la tabla o falla, seguimos sin filtrar (compatible hacia atrás)
+                print(f"⚠️ Error consultando product_attribute_config: {e}")
+                # CRITICAL: Hacer rollback para que queries posteriores funcionen
+                db.session.rollback()
                 exposed_keys_cache = None
             finally:
                 checked_config = True
@@ -871,19 +874,14 @@ def _build_search_results(product_best_match, limit):
             if not primary_image:
                 primary_image = img
 
-            # DEBUG: Verificar qué tiene la imagen
-            print(f"🔍 DEBUG Producto {product.sku}:")
-            print(f"   - primary_image existe: {primary_image is not None}")
-            if primary_image:
-                print(f"   - cloudinary_url: {primary_image.cloudinary_url[:80] if primary_image.cloudinary_url else 'None'}")
-                print(f"   - display_url: {primary_image.display_url[:80] if primary_image.display_url else 'None'}")
-
             # Usar display_url del modelo (maneja cloudinary_url automáticamente)
             image_url = primary_image.display_url if primary_image else None
-            print(f"   - image_url final: {image_url[:80] if image_url else 'None'}")
         except Exception as e:
             print(f"❌ Error obteniendo imagen primaria: {e}")
-            image_url = None
+            # CRITICAL: Hacer rollback para que queries posteriores funcionen
+            db.session.rollback()
+            # Si falla, usar la imagen que hizo match
+            image_url = img.display_url if img else None
 
         # Preparar atributos dinámicos del producto (JSONB)
         product_attrs = {}
