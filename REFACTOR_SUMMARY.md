@@ -26,7 +26,7 @@ url = image.display_url
 #### ✅ SOLUCIÓN
 **REGLA:** SIEMPRE usar propiedades del modelo `Image`
 - `image.display_url` → Para mostrar en UI
-- `image.thumbnail_url` → Para thumbnails  
+- `image.thumbnail_url` → Para thumbnails
 - `image.medium_url` → Para tamaños medianos
 
 #### 📍 Archivos a Corregir
@@ -62,7 +62,7 @@ demo-store.bak.html
 ```
 
 #### ✅ SOLUCIÓN
-**Opción A:** Mover a `backups/demo-store/`  
+**Opción A:** Mover a `backups/demo-store/`
 **Opción B:** Eliminar (ya tenemos git history)
 
 ---
@@ -130,19 +130,17 @@ tools/
 
 ## 📈 Impacto Esperado
 
-### Antes (Ahora)
-- ❌ 4 formas de obtener URL de imagen
-- ❌ 11 archivos backup desordenados
-- ❌ 15 scripts en root sin organizar
-- ❌ Carpeta obsoleta presente
-- ❌ Docs contradictorios
+### ~~Antes (Ahora)~~ **DESPUÉS DE FASE 1 & 2** ✅
+- ✅ **1 forma oficial** de obtener URL de imagen (`image.display_url`)
+- ✅ **Workspace limpio** y organizado (24 archivos reubicados)
+- ✅ **Scripts categorizados** en `tools/` con subcarpetas
+- ✅ **Solo arquitectura activa** (clip_search_api eliminado previamente)
+- ✅ **3 endpoints unificados** (api.py, images.py usan `image.display_url`)
 
-### Después (Post-Refactor)
-- ✅ 1 forma oficial (propiedades del modelo)
-- ✅ Workspace limpio y organizado
-- ✅ Scripts categorizados en `tools/`
-- ✅ Solo arquitectura activa
-- ✅ Docs consistentes y actualizados
+### Completado 20 Oct 2025
+- ✅ FASE 1: Limpieza de archivos obsoletos
+- ✅ FASE 2: Unificación de patrones de imagen
+- 🔄 FASE 3: Pendiente (deprecar métodos en managers)
 
 ---
 
