@@ -95,8 +95,8 @@ def view(image_id):
     """Ver detalles de una imagen"""
     image = Image.query.get_or_404(image_id)
 
-    # Usar ImageManager para obtener la URL (auto-detecta client_slug)
-    image_url = image_manager.get_image_url(image)
+    # Usar propiedad del modelo (patrón unificado)
+    image_url = image.display_url
 
     return render_template("images/view.html",
                            image=image,
@@ -178,7 +178,7 @@ def api_by_product(product_id):
 
     return jsonify([{
         "id": image.id,
-        "image_url": image_manager.get_image_url(image),  # Auto-detecta client_slug
+        "image_url": image.display_url,  # Usar propiedad del modelo (patrón unificado)
         "alt_text": image.alt_text,
         "is_primary": image.is_primary,
         "filename": image.filename

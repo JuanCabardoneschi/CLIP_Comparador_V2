@@ -128,7 +128,7 @@ def global_search():
         "id": image.id,
         "product_name": image.product.name,
         "alt_text": image.alt_text,
-        "url": image_manager.get_image_url(image),  # Auto-detecta client_slug
+        "url": image.display_url,  # Usar propiedad del modelo (patrón unificado)
         "type": "image"
     } for image in images]
 
