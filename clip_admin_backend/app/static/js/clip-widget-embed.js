@@ -436,11 +436,13 @@
                 </a>
             ` : '';
 
-            // Usar imagen principal si existe, si no, imagen por defecto
-            let imgSrc = item.image_url && item.image_url !== 'null' && item.image_url !== '' ? item.image_url : 'https://res.cloudinary.com/demo/image/upload/v1699999999/no-image-clip.png';
+          // Usar exactamente la URL provista por el backend (sin fallback artificial)
+          let imgSrc = (item.image_url && item.image_url !== 'null' && item.image_url !== '') ? item.image_url : '';
             return `
                 <div class="clip-widget-result-item">
-                    <img src="${imgSrc}" alt="${item.name}" class="clip-widget-result-img">
+                <img src="${imgSrc}"
+                    alt="${item.name}"
+                    class="clip-widget-result-img">
                     <div class="clip-widget-result-content">
                         <div class="clip-widget-result-name">${item.name}</div>
                         <div class="clip-widget-result-sku">SKU: ${item.sku}</div>
