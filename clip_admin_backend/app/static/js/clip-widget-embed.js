@@ -365,7 +365,7 @@
                     .map(([key, attr]) => {
                         const value = typeof attr === 'object' ? attr.value : attr;
                         const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                        
+
                         // Si es url_producto, renderizar como link
                         if (key === 'url_producto' && value) {
                             return `
@@ -376,7 +376,7 @@
                                 </div>
                             `;
                         }
-                        
+
                         // Renderizar atributo normal
                         if (value && value !== '' && value !== null) {
                             const displayValue = Array.isArray(value) ? value.join(', ') : value;
@@ -411,7 +411,7 @@
                 </div>
             `;
         }).join('') + '</div>';
-        
+
         results.style.display = 'block';
     }
 
