@@ -12,20 +12,22 @@
         return;
     }
 
-    const config = {
-        apiKey: window.CLIPWidget.apiKey,
-        serverUrl: window.CLIPWidget.serverUrl || 'https://clipcomparadorv2-production.up.railway.app',
-        containerId: window.CLIPWidget.containerId || 'clip-widget',
-        maxResults: window.CLIPWidget.maxResults || 3,
-        buttonText: window.CLIPWidget.buttonText || '🔍 Buscar con IA'
-    };
+    // Esperar a que el DOM esté listo
+    function initWidget() {
+        const config = {
+            apiKey: window.CLIPWidget.apiKey,
+            serverUrl: window.CLIPWidget.serverUrl || 'https://clipcomparadorv2-production.up.railway.app',
+            containerId: window.CLIPWidget.containerId || 'clip-widget',
+            maxResults: window.CLIPWidget.maxResults || 3,
+            buttonText: window.CLIPWidget.buttonText || '🔍 Buscar con IA'
+        };
 
     // CSS completo inyectado
     const style = document.createElement('style');
     style.textContent = `
         .clip-widget-container {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 400px;
+            max-width: 1200px;
             margin: 20px auto;
             padding: 20px;
             background: white;
@@ -109,43 +111,84 @@
             margin-top: 20px;
             display: none;
         }
+        .clip-widget-results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
         .clip-widget-result-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            transition: transform 0.2s;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
         }
         .clip-widget-result-item:hover {
-            transform: translateX(5px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transform: translateY(-4px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
         }
         .clip-widget-result-img {
-            width: 60px;
-            height: 60px;
+            width: 100%;
+            height: 200px;
             object-fit: cover;
-            border-radius: 6px;
-            flex-shrink: 0;
         }
-        .clip-widget-result-info {
-            flex: 1;
+        .clip-widget-result-content {
+            padding: 16px;
         }
         .clip-widget-result-name {
-            font-weight: 600;
+            font-weight: 700;
             color: #333;
-            margin-bottom: 4px;
+            margin-bottom: 8px;
+            font-size: 16px;
         }
         .clip-widget-result-sku {
-            font-size: 12px;
+            font-size: 13px;
             color: #888;
+            margin-bottom: 12px;
         }
         .clip-widget-result-similarity {
-            font-size: 12px;
+            display: inline-block;
+            padding: 4px 10px;
+            background: #e3f2fd;
             color: #007bff;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+        .clip-widget-result-attributes {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #eee;
+        }
+        .clip-widget-result-attribute {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 13px;
+        }
+        .clip-widget-result-attribute-key {
+            color: #666;
             font-weight: 500;
+        }
+        .clip-widget-result-attribute-value {
+            color: #333;
+            text-align: right;
+        }
+        .clip-widget-result-link {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        .clip-widget-result-link:hover {
+            background: #0056b3;
         }
         .clip-widget-error {
             background: #f8d7da;
@@ -303,18 +346,71 @@
             return;
         }
 
-        results.innerHTML = items.map(item => `
-            <div class="clip-widget-result-item">
-                <img src="${item.image_url}" alt="${item.name}" class="clip-widget-result-img">
-                <div class="clip-widget-result-info">
-                    <div class="clip-widget-result-name">${item.name}</div>
-                    <div class="clip-widget-result-sku">SKU: ${item.sku}</div>
-                    <div class="clip-widget-result-similarity">
-                        Similitud: ${Math.round(item.similarity * 100)}%
+        results.innerHTML = '<div class="clip-widget-results-grid">' + items.map(item => {
+            // Atributos visibles
+            let attributesHtml = '';
+            if (item.attributes && typeof item.attributes === 'object') {
+                const visibleAttrs = Object.entries(item.attributes)
+                    .filter(([key, attr]) => {
+                        // Mostrar solo atributos marcados como visible
+                        if (typeof attr === 'object' && attr.visible === true) {
+                            return true;
+                        }
+                        // O atributos simples que no son objetos de configuración
+                        if (typeof attr !== 'object' && key !== 'visible') {
+                            return true;
+                        }
+                        return false;
+                    })
+                    .map(([key, attr]) => {
+                        const value = typeof attr === 'object' ? attr.value : attr;
+                        const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        
+                        // Si es url_producto, renderizar como link
+                        if (key === 'url_producto' && value) {
+                            return `
+                                <div class="clip-widget-result-attribute">
+                                    <a href="${value}" target="_blank" class="clip-widget-result-link">
+                                        Ver Producto →
+                                    </a>
+                                </div>
+                            `;
+                        }
+                        
+                        // Renderizar atributo normal
+                        if (value && value !== '' && value !== null) {
+                            const displayValue = Array.isArray(value) ? value.join(', ') : value;
+                            return `
+                                <div class="clip-widget-result-attribute">
+                                    <span class="clip-widget-result-attribute-key">${label}:</span>
+                                    <span class="clip-widget-result-attribute-value">${displayValue}</span>
+                                </div>
+                            `;
+                        }
+                        return '';
+                    })
+                    .filter(html => html !== '')
+                    .join('');
+
+                if (visibleAttrs.length > 0) {
+                    attributesHtml = `<div class="clip-widget-result-attributes">${visibleAttrs}</div>`;
+                }
+            }
+
+            return `
+                <div class="clip-widget-result-item">
+                    <img src="${item.image_url}" alt="${item.name}" class="clip-widget-result-img">
+                    <div class="clip-widget-result-content">
+                        <div class="clip-widget-result-name">${item.name}</div>
+                        <div class="clip-widget-result-sku">SKU: ${item.sku}</div>
+                        <div class="clip-widget-result-similarity">
+                            ${Math.round(item.similarity * 100)}% similitud
+                        </div>
+                        ${attributesHtml}
                     </div>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('') + '</div>';
         
         results.style.display = 'block';
     }
@@ -338,4 +434,13 @@
     });
 
     console.log('✅ CLIP Widget cargado correctamente');
+    window.clipWidgetLoaded = true;
+    }
+
+    // Inicializar cuando el DOM esté listo
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initWidget);
+    } else {
+        initWidget();
+    }
 })();
