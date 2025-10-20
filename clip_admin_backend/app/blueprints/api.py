@@ -829,7 +829,7 @@ def _build_search_results(product_best_match, limit):
                             """
                             SELECT COUNT(*) as total
                             FROM product_attribute_config
-                            WHERE client_id = :client_id::uuid
+                            WHERE client_id = :client_id
                             """
                         ),
                         {"client_id": client_id},
@@ -845,7 +845,7 @@ def _build_search_results(product_best_match, limit):
                                 """
                                 SELECT key
                                 FROM product_attribute_config
-                                WHERE client_id = :client_id::uuid AND expose_in_search = true
+                                WHERE client_id = :client_id AND expose_in_search = true
                                 """
                             ),
                             {"client_id": client_id},
@@ -1063,12 +1063,65 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
             print(f"❌ RAILWAY LOG: NO HAY SIMILITUDES - sin centroides válidos")
             return None, 0
 
-        # 6. Encontrar la mejor coincidencia
-        best_match = max(category_similarities, key=lambda x: x['similarity'])
+        # 6. Encontrar la mejor coincidencia con margen de victoria y desempate
+        # Ordenar por similitud descendente
+        category_similarities.sort(key=lambda x: x['similarity'], reverse=True)
+        best_match = category_similarities[0]
         best_category = best_match['category']
         best_score = best_match['similarity']
+        second_score = category_similarities[1]['similarity'] if len(category_similarities) > 1 else -1.0
 
-        print(f"🎯 RAILWAY LOG: MEJOR: {best_category.name} = {best_score:.4f}")
+        print(f"🎯 RAILWAY LOG: MEJOR: {best_category.name} = {best_score:.4f} | SEGUNDO = {second_score:.4f}")
+
+        # Margen de victoria mínimo para aceptar directamente la categoría ganadora
+        MARGIN_DELTA = 0.03  # 3 puntos de similitud coseno
+
+        # Si el margen es muy chico, usamos un desempate con la detección general
+        if second_score >= 0 and (best_score - second_score) < MARGIN_DELTA:
+            print(f"⚖️  RAILWAY LOG: MARGEN PEQUEÑO ({best_score - second_score:.4f} < {MARGIN_DELTA}), aplicando desempate por objeto general")
+            try:
+                detected_object, object_confidence = detect_general_object(image_data)
+                print(f"🔍 RAILWAY LOG: OBJETO GENERAL = {detected_object} (conf {object_confidence:.3f})")
+
+                # Mapeo simple de sinónimos a grupos de categorías
+                synonyms = {
+                    'shirt': {'camisas', 'remeras', 't-shirts', 't-shirt'},
+                    't-shirt': {'remeras', 'camisetas', 't-shirts', 't-shirt'},
+                    'hat': {'gorros', 'gorras', 'hats', 'caps', 'cap', 'beanie'},
+                    'cap': {'gorras', 'gorros', 'hats', 'caps', 'cap'},
+                    'beanie': {'gorros', 'beanies'},
+                    'jacket': {'casacas', 'jackets', 'chaquetas', 'coats'},
+                    'coat': {'casacas', 'jackets', 'chaquetas', 'coats'}
+                }
+
+                key = detected_object.lower()
+                preferred_terms = synonyms.get(key, set())
+
+                if preferred_terms and object_confidence >= 0.20:  # usar con umbral bajo, solo como desempate
+                    # Si la categoría top NO pertenece al grupo preferido y existe otra en top-2 que sí, elegimos esa
+                    best_name = (best_category.name or '').lower()
+                    best_name_en = (best_category.name_en or '').lower()
+                    top2 = category_similarities[:2]
+
+                    def cat_matches_group(cat):
+                        cn = (cat.name or '').lower()
+                        cne = (cat.name_en or '').lower()
+                        # match por inclusión de término
+                        return any(term in cn or term in cne for term in preferred_terms)
+
+                    best_in_group = cat_matches_group(best_category)
+                    other = top2[1]['category'] if len(top2) > 1 else None
+                    other_in_group = cat_matches_group(other) if other else False
+
+                    if not best_in_group and other and other_in_group:
+                        # Elegir la segunda si está en el grupo preferido
+                        print(f"✅ RAILWAY LOG: DESEMPATE → Preferimos '{other.name}' por concordar con objeto '{detected_object}'")
+                        best_category = other
+                        best_score = top2[1]['similarity']
+                else:
+                    print("ℹ️  RAILWAY LOG: Desempate no aplicado (sinónimos vacíos o baja confianza del objeto)")
+            except Exception as e:
+                print(f"⚠️ RAILWAY LOG: Error en desempate por objeto general: {e}")
 
         # 7. Verificar umbral de confianza
         if best_score >= confidence_threshold:
