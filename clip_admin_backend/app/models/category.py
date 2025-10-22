@@ -11,6 +11,9 @@ class Category(db.Model):
     id = db.Column(db.String(36), primary_key=True)
     client_id = db.Column(db.String(36), db.ForeignKey('clients.id'), nullable=False)
 
+    # Slug único para URLs
+    slug = db.Column(db.String(100), nullable=False)
+
     # Campos bilingües
     name = db.Column(db.String(100), nullable=False)  # Nombre en español (interfaz)
     name_en = db.Column(db.String(100), nullable=False)  # Nombre en inglés (CLIP)
@@ -39,6 +42,13 @@ class Category(db.Model):
         if 'id' not in kwargs:
             import uuid
             kwargs['id'] = str(uuid.uuid4())
+        
+        # Generar slug automáticamente si no se proporciona
+        if 'slug' not in kwargs and 'name' in kwargs:
+            from slugify import slugify
+            base_slug = slugify(kwargs['name'])
+            kwargs['slug'] = base_slug
+        
         super(Category, self).__init__(**kwargs)
 
     def __repr__(self):
