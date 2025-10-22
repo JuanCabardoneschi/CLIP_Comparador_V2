@@ -58,8 +58,14 @@ def create():
 @bp.route("/<client_id>")
 @login_required
 def view(client_id):
-    """Ver detalles de un cliente"""
+    """Ver detalles de un cliente - Super Admin o usuario del cliente"""
     client = Client.query.get_or_404(client_id)
+
+    # Verificar permisos: Super Admin o usuario del mismo cliente
+    if not current_user.is_super_admin and str(current_user.client_id) != str(client_id):
+        flash("No tienes permisos para ver este cliente", "error")
+        return redirect(url_for("dashboard.index"))
+
     # api_keys = APIKey.query.filter_by(client_id=client_id).all()  # COMENTADO: No existe APIKey
     api_keys = []  # Lista vacía temporal
     users = User.query.filter_by(client_id=client_id).all()
@@ -171,8 +177,13 @@ def api_search():
 @bp.route("/<client_id>/regenerate-api-key", methods=["POST"])
 @login_required
 def regenerate_api_key(client_id):
-    """Regenerar API Key de un cliente - Solo Super Admin"""
+    """Regenerar API Key de un cliente - Super Admin o usuario del cliente"""
     client = Client.query.get_or_404(client_id)
+
+    # Verificar permisos: Super Admin o usuario del mismo cliente
+    if not current_user.is_super_admin and str(current_user.client_id) != str(client_id):
+        flash("No tienes permisos para regenerar la API Key de este cliente", "error")
+        return redirect(url_for("dashboard.index"))
 
     try:
         old_key, new_key = client.regenerate_api_key()

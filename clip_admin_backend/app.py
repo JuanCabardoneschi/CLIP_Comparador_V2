@@ -282,6 +282,14 @@ def register_blueprints(app):
     except ImportError as e:
         print(f"✗ Error importando clients blueprint: {e}")
 
+    # Blueprint de usuarios
+    try:
+        from app.blueprints.users import bp as users_bp
+        app.register_blueprint(users_bp, url_prefix="/users")
+        print("✓ Blueprint users registrado")
+    except ImportError as e:
+        print(f"✗ Error importando users blueprint: {e}")
+
     # Blueprint de categorías
     try:
         from app.blueprints.categories import bp as categories_bp

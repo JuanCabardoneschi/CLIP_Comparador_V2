@@ -144,6 +144,57 @@
                 };
                 </script>
                 <!-- Fin sensibilidad -->
+
+                <!-- API Key del Cliente -->
+                <hr>
+                <div class="mb-3">
+                    <label class="form-label text-muted">
+                        <i class="bi bi-key me-1"></i>
+                        API Key del Cliente
+                    </label>
+                    <div class="input-group mb-2">
+                        <input type="password" class="form-control font-monospace" id="apiKeyInput" value="{{ client.api_key }}" readonly>
+                        <button class="btn btn-outline-secondary" type="button" id="toggleApiKeyBtn" title="Mostrar/Ocultar">
+                            <i class="bi bi-eye" id="eyeIcon"></i>
+                        </button>
+                        <button class="btn btn-outline-primary" type="button" id="copyApiKeyBtn" title="Copiar">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                    <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#regenerateApiKeyModal">
+                        <i class="bi bi-arrow-clockwise me-1"></i> Regenerar API Key
+                    </button>
+                    <div class="form-text">⚠️ Al regenerar la API Key, la anterior dejará de funcionar inmediatamente</div>
+                </div>
+                <script>
+                // Toggle mostrar/ocultar API Key
+                document.getElementById('toggleApiKeyBtn').onclick = function() {
+                    const input = document.getElementById('apiKeyInput');
+                    const icon = document.getElementById('eyeIcon');
+                    if (input.type === 'password') {
+                        input.type = 'text';
+                        icon.className = 'bi bi-eye-slash';
+                    } else {
+                        input.type = 'password';
+                        icon.className = 'bi bi-eye';
+                    }
+                };
+                // Copiar API Key
+                document.getElementById('copyApiKeyBtn').onclick = function() {
+                    const input = document.getElementById('apiKeyInput');
+                    input.type = 'text';
+                    input.select();
+                    document.execCommand('copy');
+                    input.type = 'password';
+
+                    // Cambiar ícono temporalmente
+                    const btn = this;
+                    const originalHTML = btn.innerHTML;
+                    btn.innerHTML = '<i class="bi bi-check-lg text-success"></i>';
+                    setTimeout(() => { btn.innerHTML = originalHTML; }, 1500);
+                };
+                </script>
+                <!-- Fin API Key -->
             </div>
         </div>
     </div>
@@ -323,6 +374,44 @@
     </div>
 </div>
 -->
+
+<!--
+
+<!-- Modal para Regenerar API Key -->
+<div class="modal fade" id="regenerateApiKeyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-arrow-clockwise text-warning me-2"></i>
+                    Regenerar API Key
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>⚠️ Advertencia:</strong> Al regenerar la API Key:
+                    <ul class="mb-0 mt-2">
+                        <li>La API Key actual dejará de funcionar inmediatamente</li>
+                        <li>Deberás actualizar el widget en todas las páginas web</li>
+                        <li>Las búsquedas con la clave anterior fallarán</li>
+                    </ul>
+                </div>
+                <p>¿Estás seguro de que deseas continuar?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form method="POST" action="{{ url_for('clients.regenerate_api_key', client_id=client.id) }}" class="d-inline">
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-arrow-clockwise me-2"></i>
+                        Regenerar API Key
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Modal de confirmación de eliminación -->
 <div class="modal fade" id="deleteModal" tabindex="-1">

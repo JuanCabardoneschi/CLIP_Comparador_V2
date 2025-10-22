@@ -142,7 +142,7 @@
 
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint and 'users' in request.endpoint %}active{% endif %}"
-                           href="#" onclick="alert('Gestión de Usuarios - En desarrollo')">
+                           href="{{ url_for('users.index') }}">
                             <i class="bi bi-people me-2"></i>
                             Gestión de Usuarios
                         </a>
@@ -207,6 +207,26 @@
                            href="#" onclick="alert('Analytics de Mi Tienda - En desarrollo')">
                             <i class="bi bi-bar-chart me-2"></i>
                             Analytics de Tienda
+                        </a>
+                    </li>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-section-title">Configuración</div>
+
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint and 'clients.view' in request.endpoint %}active{% endif %}"
+                           href="{{ url_for('clients.view', client_id=current_user.client_id) }}">
+                            <i class="bi bi-key me-2"></i>
+                            Mi API Key
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint and 'users' in request.endpoint %}active{% endif %}"
+                           href="{{ url_for('users.index') }}">
+                            <i class="bi bi-people me-2"></i>
+                            Usuarios
                         </a>
                     </li>
                 </div>

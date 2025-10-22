@@ -1,0 +1,250 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ user.full_name }} - CLIP Comparador V2{% endblock %}
+
+{% block page_title %}{{ user.full_name or user.email }}{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('users.index') }}">Usuarios</a></li>
+        <li class="breadcrumb-item active">{{ user.full_name or user.email }}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block page_actions %}
+<div class="btn-group" role="group">
+    <a href="{{ url_for('users.edit', user_id=user.id) }}" class="btn btn-outline-primary">
+        <i class="bi bi-pencil me-2"></i>
+        Editar
+    </a>
+    {% if current_user.is_super_admin and current_user.id != user.id %}
+    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+        <i class="bi bi-trash me-2"></i>
+        Eliminar
+    </button>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Información del Usuario -->
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-person me-2"></i>
+                    Información del Usuario
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <div class="avatar-lg bg-{{ 'danger' if user.role == 'SUPER_ADMIN' else 'secondary' }} rounded-circle mx-auto d-flex align-items-center justify-content-center mb-2">
+                        <i class="bi bi-person text-white fs-1"></i>
+                    </div>
+                    <h5 class="mb-1">{{ user.full_name or 'Sin nombre' }}</h5>
+                    <p class="text-muted">{{ user.email }}</p>
+                    <span class="badge bg-{{ 'danger' if user.role == 'SUPER_ADMIN' else 'primary' }}">
+                        {{ user.role }}
+                    </span>
+                </div>
+
+                <hr>
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <small class="text-muted">Cliente</small>
+                    {% if user.client %}
+                    <a href="{{ url_for('clients.view', client_id=user.client_id) }}" class="badge bg-info">
+                        {{ user.client.name }}
+                    </a>
+                    {% else %}
+                    <span class="badge bg-secondary">Sin cliente</span>
+                    {% endif %}
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <small class="text-muted">Último Acceso</small>
+                    {% if user.last_login %}
+                    <span class="text-muted">{{ user.last_login.strftime('%d/%m/%Y %H:%M') }}</span>
+                    {% else %}
+                    <span class="text-muted">Nunca</span>
+                    {% endif %}
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <small class="text-muted">Registrado</small>
+                    <span class="badge bg-info">{{ user.created_at.strftime('%d/%m/%Y') }}</span>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="text-muted">Estado</small>
+                    {% if user.active %}
+                    <span class="badge bg-success">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Activo
+                    </span>
+                    {% else %}
+                    <span class="badge bg-danger">
+                        <i class="bi bi-x-circle me-1"></i>
+                        Inactivo
+                    </span>
+                    {% endif %}
+                </div>
+
+                {% if current_user.is_super_admin and current_user.id != user.id %}
+                <hr>
+                <form method="POST" action="{{ url_for('users.toggle_active', user_id=user.id) }}">
+                    <button type="submit" class="btn btn-{{ 'warning' if user.active else 'success' }} btn-sm w-100">
+                        <i class="bi bi-{{ 'pause' if user.active else 'play' }}-circle me-2"></i>
+                        {{ 'Desactivar' if user.active else 'Activar' }} Usuario
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Acciones del Usuario -->
+    <div class="col-lg-8 mb-4">
+        <!-- Resetear Contraseña -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-key me-2"></i>
+                    Gestión de Contraseña
+                </h6>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Establece una nueva contraseña para este usuario. La contraseña se mostrará en pantalla después de resetearla.</p>
+                <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#resetPasswordModal">
+                    <i class="bi bi-arrow-clockwise me-2"></i>
+                    Resetear Contraseña
+                </button>
+            </div>
+        </div>
+
+        <!-- Permisos -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-shield-lock me-2"></i>
+                    Permisos y Accesos
+                </h6>
+            </div>
+            <div class="card-body">
+                <h6>Rol: {{ user.role }}</h6>
+                {% if user.role == 'SUPER_ADMIN' %}
+                <ul>
+                    <li>Acceso total al sistema</li>
+                    <li>Gestionar todos los clientes</li>
+                    <li>Crear y eliminar usuarios</li>
+                    <li>Regenerar API Keys</li>
+                    <li>Ver analytics globales</li>
+                </ul>
+                {% else %}
+                <ul>
+                    <li>Gestionar categorías de su cliente</li>
+                    <li>Administrar productos e imágenes</li>
+                    <li>Ver analytics de su cliente</li>
+                    <li>Procesar embeddings CLIP</li>
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Resetear Contraseña -->
+<div class="modal fade" id="resetPasswordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('users.reset_password', user_id=user.id) }}">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="bi bi-key text-warning me-2"></i>
+                        Resetear Contraseña
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="bi bi-info-circle me-2"></i>
+                        La nueva contraseña se mostrará en pantalla. Guárdala en un lugar seguro.
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">Nueva Contraseña</label>
+                        <input type="password" class="form-control" id="new_password" name="new_password" required minlength="6">
+                        <div class="form-text">Mínimo 6 caracteres</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">Confirmar Contraseña</label>
+                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required minlength="6">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="bi bi-arrow-clockwise me-2"></i>
+                        Resetear Contraseña
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmación de eliminación -->
+{% if current_user.is_super_admin and current_user.id != user.id %}
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle text-danger me-2"></i>
+                    Confirmar Eliminación
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>¿Estás seguro de que deseas eliminar al usuario <strong>{{ user.full_name or user.email }}</strong>?</p>
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Esta acción no se puede deshacer.
+                </div>
+                <p>Escribe <code>DELETE</code> para confirmar:</p>
+                <form id="deleteForm" method="POST" action="{{ url_for('users.delete', user_id=user.id) }}">
+                    <input type="text" class="form-control" id="confirmInput" placeholder="DELETE">
+                    <input type="hidden" name="confirm" id="confirmValue">
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" onclick="submitDelete()">
+                    <i class="bi bi-trash me-2"></i>
+                    Eliminar Usuario
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function submitDelete() {
+    const input = document.getElementById('confirmInput').value;
+    if (input === 'DELETE') {
+        document.getElementById('confirmValue').value = 'DELETE';
+        document.getElementById('deleteForm').submit();
+    } else {
+        alert('Debes escribir DELETE para confirmar la eliminación');
+    }
+}
+</script>
+{% endblock %}
