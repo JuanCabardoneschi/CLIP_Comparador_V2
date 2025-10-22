@@ -133,8 +133,9 @@ class CloudinaryImageManager:
                 mime_type=f"image/{upload_result.get('format', 'jpeg')}",
                 alt_text=alt_text or f"Imagen de {product_id}",
                 is_primary=is_primary,
-                is_processed=True,
-                upload_status="uploaded"
+                # Al subir una imagen NO está procesada para embeddings aún
+                is_processed=False,
+                upload_status="pending"
             )
 
             db.session.add(image)
@@ -214,8 +215,9 @@ class CloudinaryImageManager:
                 mime_type=f"image/{upload_result.get('format', 'jpeg')}",
                 alt_text=f"Imagen de {product_id}",
                 is_primary=is_primary,
-                is_processed=True,
-                upload_status="uploaded"
+                # Al subir una imagen NO está procesada para embeddings aún
+                is_processed=False,
+                upload_status="pending"
             )
 
             db.session.add(image)
@@ -258,7 +260,7 @@ class CloudinaryImageManager:
     def get_image_url(self, image: 'Image', transformation: Dict[str, Any] = None) -> Optional[str]:
         """
         ⚠️ DEPRECATED: Usar image.display_url directamente
-        
+
         Obtener URL de imagen con transformaciones opcionales
 
         Args:
@@ -267,7 +269,7 @@ class CloudinaryImageManager:
 
         Returns:
             URL de la imagen
-            
+
         Deprecated:
             Usar `image.display_url` directamente en lugar de este método.
             Este método será eliminado en versiones futuras.
@@ -291,7 +293,7 @@ class CloudinaryImageManager:
     def get_image_base64(self, image: 'Image') -> Optional[str]:
         """
         ⚠️ DEPRECATED: Cloudinary devuelve URLs, no base64
-        
+
         Obtener imagen como base64 (para compatibilidad con el código existente)
 
         Args:
@@ -299,7 +301,7 @@ class CloudinaryImageManager:
 
         Returns:
             URL de Cloudinary (ya optimizada)
-            
+
         Deprecated:
             Este método está deprecado. Cloudinary maneja URLs directamente.
             Usar `image.display_url` en su lugar.

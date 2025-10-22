@@ -615,16 +615,29 @@ def generate_embeddings():
         if not pending_images:
             return jsonify({"success": True, "message": "No hay imágenes pendientes"})
 
-        # TODO: Aquí iría la lógica de generación de embeddings con CLIP
-        # Por ahora simulamos el proceso
-
+        # Usar la lógica REAL de generación de embeddings del blueprint de embeddings
         processed = 0
+        from app.blueprints.embeddings import generate_clip_embedding  # import local para evitar ciclos
+
         for image in pending_images:
-            # Simular procesamiento
-            image.upload_status = 'completed'
-            image.is_processed = True
-            # image.clip_embedding = generate_clip_embedding(image_path)
-            processed += 1
+            try:
+                if not image.cloudinary_url:
+                    image.upload_status = 'failed'
+                    image.error_message = 'No hay URL de Cloudinary disponible'
+                    continue
+
+                embedding, metadata = generate_clip_embedding(image.cloudinary_url, image)
+                if not embedding:
+                    raise Exception('No se generó el embedding')
+
+                image.clip_embedding = json.dumps(embedding)
+                image.is_processed = True
+                image.upload_status = 'completed'
+                image.error_message = None
+                processed += 1
+            except Exception as e:
+                image.upload_status = 'failed'
+                image.error_message = str(e)
 
         db.session.commit()
 

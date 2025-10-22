@@ -510,9 +510,9 @@ def process_pending():
                     # SOLO usar Cloudinary - no hay fallback local
                     if not image.cloudinary_url:
                         print(f"❌ Error: {image.filename} no tiene URL de Cloudinary")
-                        image.upload_status = 'error'
+                        # Mantener coherencia de estados: usar 'failed'
+                        image.upload_status = 'failed'
                         image.error_message = "No hay URL de Cloudinary disponible"
-                        processed_count += 1
                         continue
 
                     image_source = image.cloudinary_url
@@ -527,6 +527,7 @@ def process_pending():
                     # Guardar embedding y metadata en la base de datos
                     image.clip_embedding = json.dumps(embedding)
                     image.is_processed = True
+                    image.upload_status = 'completed'
                     image.updated_at = datetime.utcnow()
 
                     # Guardar metadata si hay espacio (opcional)
@@ -551,7 +552,7 @@ def process_pending():
 
             # 🎯 ACTUALIZAR CENTROIDES de categorías afectadas en este lote
             affected_categories = set()
-            for image in images_batch:
+            for image in batch:
                 if image.product and image.product.category and image.is_processed:
                     affected_categories.add(image.product.category)
 
