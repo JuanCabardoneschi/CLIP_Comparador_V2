@@ -45,7 +45,8 @@ class CloudinaryImageManager:
         secured_name = secure_filename(filename)
         name_without_ext = os.path.splitext(secured_name)[0]
         unique_id = str(uuid.uuid4())[:8]
-        return f"clip_v2/{client_slug}/{product_id}/{name_without_ext}_{unique_id}"
+        # Solo retornar el path relativo dentro de la carpeta del producto
+        return f"products/{product_id}/{name_without_ext}_{unique_id}"
 
     def upload_image(self,
                     file: FileStorage,

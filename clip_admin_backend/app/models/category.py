@@ -42,13 +42,13 @@ class Category(db.Model):
         if 'id' not in kwargs:
             import uuid
             kwargs['id'] = str(uuid.uuid4())
-        
+
         # Generar slug automáticamente si no se proporciona
         if 'slug' not in kwargs and 'name' in kwargs:
             from slugify import slugify
             base_slug = slugify(kwargs['name'])
             kwargs['slug'] = base_slug
-        
+
         super(Category, self).__init__(**kwargs)
 
     def __repr__(self):

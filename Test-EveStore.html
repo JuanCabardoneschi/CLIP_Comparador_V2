@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLIP Widget - Demo</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .widget-error {
+      max-width: 500px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 8px;
+      color: #856404;
+      text-align: center;
+      display: none;
+    }
+    .widget-error h3 {
+      margin: 0 0 10px 0;
+      color: #dc3545;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- WIDGET CLIP - Solo 3 líneas -->
+
+  <script>
+    window.CLIPWidget = {
+      apiKey: 'clip_fe117bcd62de8a1e05a214c5'
+    };
+  </script>
+
+  <script src="https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed.js"
+          onerror="document.getElementById('widget-error').style.display='block'"></script>
+
+  <div id="clip-widget"></div>
+
+  <!-- Mensaje de error si el script no carga -->
+  <div id="widget-error" class="widget-error">
+    <h3>⚠️ Widget No Disponible</h3>
+    <p>El widget de búsqueda visual no se pudo cargar.</p>
+    <p>Por favor, intenta recargar la página en unos minutos.</p>
+  </div>
+
+  <!-- Verificar que el widget se cargó después de 2 segundos -->
+  <script>
+    setTimeout(function() {
+      if (!window.clipWidgetLoaded) {
+        document.getElementById('widget-error').style.display = 'block';
+      }
+    }, 2000);
+  </script>
+
+</body>
+</html>

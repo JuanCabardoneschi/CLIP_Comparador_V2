@@ -33,7 +33,7 @@ def create():
         name = request.form.get("name")
         email = request.form.get("email")
         industry = request.form.get("industry", "general")
-        
+
         # Datos del usuario administrador
         admin_name = request.form.get("admin_name")
         admin_email = request.form.get("admin_email")
@@ -44,15 +44,15 @@ def create():
         if not name or not email:
             flash("Nombre y email del cliente son requeridos", "error")
             return render_template("clients/create.html")
-            
+
         if not admin_name or not admin_email or not admin_password:
             flash("Todos los campos del usuario administrador son requeridos", "error")
             return render_template("clients/create.html")
-            
+
         if admin_password != admin_password_confirm:
             flash("Las contraseñas no coinciden", "error")
             return render_template("clients/create.html")
-            
+
         if len(admin_password) < 6:
             flash("La contraseña debe tener al menos 6 caracteres", "error")
             return render_template("clients/create.html")
@@ -62,7 +62,7 @@ def create():
         if existing_client:
             flash("Ya existe un cliente con ese email", "error")
             return render_template("clients/create.html")
-            
+
         # Verificar que no exista un usuario con el mismo email
         existing_user = User.query.filter_by(email=admin_email).first()
         if existing_user:
@@ -74,7 +74,7 @@ def create():
             client = Client(name=name, email=email, industry=industry)
             db.session.add(client)
             db.session.flush()  # Para obtener el client.id
-            
+
             # Crear usuario administrador para este cliente
             admin_user = User(
                 email=admin_email,
@@ -85,7 +85,7 @@ def create():
             )
             admin_user.set_password(admin_password)
             db.session.add(admin_user)
-            
+
             db.session.commit()
 
             # Mostrar credenciales completas
@@ -95,9 +95,9 @@ def create():
             flash(f"📧 Email: {admin_email}", "info")
             flash(f"🔐 Contraseña: {admin_password}", "info")
             flash("⚠️ IMPORTANTE: Guarda estas credenciales, la contraseña no se mostrará nuevamente", "warning")
-            
+
             return redirect(url_for("clients.view", client_id=client.id))
-            
+
         except Exception as e:
             db.session.rollback()
             flash(f"Error al crear cliente: {str(e)}", "error")

@@ -269,7 +269,7 @@ class ImageManager:
     def get_image_url(self, image: Image, client_slug: str = None) -> str:
         """
         ⚠️ DEPRECATED: Usar image.display_url directamente
-        
+
         Obtiene la URL pública de una imagen - SOLO Cloudinary
 
         Args:
@@ -278,7 +278,7 @@ class ImageManager:
 
         Returns:
             URL de la imagen (Cloudinary o placeholder)
-            
+
         Deprecated:
             Usar `image.display_url` directamente en lugar de este método.
             Este método será eliminado en versiones futuras.

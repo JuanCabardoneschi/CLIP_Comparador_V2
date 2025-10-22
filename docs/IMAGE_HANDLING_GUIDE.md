@@ -1,13 +1,13 @@
 # 📸 Guía Oficial de Manejo de Imágenes
 
-**Fecha**: 20 Octubre 2025  
+**Fecha**: 20 Octubre 2025
 **Versión**: 2.0 (Post FASE 3)
 
 ---
 
 ## 🎯 Regla de Oro
 
-> **SIEMPRE usar propiedades del modelo `Image`**  
+> **SIEMPRE usar propiedades del modelo `Image`**
 > **NUNCA llamar métodos de managers para obtener URLs**
 
 ---
@@ -84,8 +84,8 @@ url = image.display_url
 ## 📋 Propiedades Disponibles del Modelo Image
 
 ### `image.display_url`
-**Uso**: Imagen principal para mostrar en pantalla  
-**Retorna**: `str` - URL de Cloudinary o placeholder  
+**Uso**: Imagen principal para mostrar en pantalla
+**Retorna**: `str` - URL de Cloudinary o placeholder
 **Ejemplo**:
 ```python
 # Vista de producto
@@ -93,8 +93,8 @@ url = image.display_url
 ```
 
 ### `image.thumbnail_url`
-**Uso**: Thumbnail para listados y previsualizaciones  
-**Retorna**: `str` - URL de Cloudinary o placeholder  
+**Uso**: Thumbnail para listados y previsualizaciones
+**Retorna**: `str` - URL de Cloudinary o placeholder
 **Ejemplo**:
 ```python
 # Galería de productos
@@ -104,8 +104,8 @@ url = image.display_url
 ```
 
 ### `image.medium_url`
-**Uso**: Tamaño mediano para detalles  
-**Retorna**: `str` - URL de Cloudinary o placeholder  
+**Uso**: Tamaño mediano para detalles
+**Retorna**: `str` - URL de Cloudinary o placeholder
 **Ejemplo**:
 ```python
 # Modal de preview
@@ -185,10 +185,10 @@ from app.services.image_manager import image_manager
 def view_product(product_id):
     product = Product.query.get(product_id)
     image = product.primary_image
-    
+
     # ❌ Antiguo
     image_url = image_manager.get_image_url(image)
-    
+
     return render_template('product.html', image_url=image_url)
 ```
 
@@ -197,10 +197,10 @@ def view_product(product_id):
 def view_product(product_id):
     product = Product.query.get(product_id)
     image = product.primary_image
-    
+
     # ✅ Nuevo - más simple y directo
     image_url = image.display_url
-    
+
     return render_template('product.html', image_url=image_url)
 ```
 
@@ -208,7 +208,7 @@ O mejor aún, pasar el objeto directamente:
 ```python
 def view_product(product_id):
     product = Product.query.get(product_id)
-    
+
     # ✅ Mejor - el template accede directamente a la propiedad
     return render_template('product.html', product=product)
 ```
@@ -225,8 +225,8 @@ Template:
 A partir de hoy (20 Oct 2025), llamar a los métodos deprecados emitirá:
 
 ```
-DeprecationWarning: ImageManager.get_image_url() está deprecado. 
-Usar image.display_url directamente. 
+DeprecationWarning: ImageManager.get_image_url() está deprecado.
+Usar image.display_url directamente.
 Este método será eliminado en futuras versiones.
 ```
 
@@ -244,7 +244,7 @@ Este método será eliminado en futuras versiones.
 # products/index.html
 {% for product in products %}
 <div class="product-card">
-    <img src="{{ product.primary_image.thumbnail_url }}" 
+    <img src="{{ product.primary_image.thumbnail_url }}"
          alt="{{ product.name }}">
     <h3>{{ product.name }}</h3>
 </div>
@@ -291,14 +291,14 @@ grep -r "get_image_url" --include="*.py" clip_admin_backend/
 # test_image_properties.py
 def test_image_display_url():
     image = Image.query.first()
-    
+
     # ✅ Verificar que la propiedad funciona
     assert image.display_url is not None
     assert image.display_url.startswith('https://')
-    
+
 def test_deprecated_warning():
     image = Image.query.first()
-    
+
     # ⚠️ Verificar que emite warning
     with pytest.warns(DeprecationWarning):
         url = image_manager.get_image_url(image)
@@ -316,5 +316,5 @@ def test_deprecated_warning():
 
 ---
 
-**Última Actualización**: 20 Octubre 2025  
+**Última Actualización**: 20 Octubre 2025
 **Próxima Revisión**: 3 Noviembre 2025 (verificar eliminación de métodos deprecados)
