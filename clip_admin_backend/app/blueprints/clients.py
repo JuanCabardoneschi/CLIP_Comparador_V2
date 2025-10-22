@@ -28,29 +28,80 @@ def index():
 @login_required
 @requires_super_admin
 def create():
-    """Crear nuevo cliente - Solo Super Admin"""
+    """Crear nuevo cliente con usuario administrador - Solo Super Admin"""
     if request.method == "POST":
         name = request.form.get("name")
         email = request.form.get("email")
         industry = request.form.get("industry", "general")
+        
+        # Datos del usuario administrador
+        admin_name = request.form.get("admin_name")
+        admin_email = request.form.get("admin_email")
+        admin_password = request.form.get("admin_password")
+        admin_password_confirm = request.form.get("admin_password_confirm")
 
+        # Validaciones básicas
         if not name or not email:
-            flash("Nombre y email son requeridos", "error")
+            flash("Nombre y email del cliente son requeridos", "error")
+            return render_template("clients/create.html")
+            
+        if not admin_name or not admin_email or not admin_password:
+            flash("Todos los campos del usuario administrador son requeridos", "error")
+            return render_template("clients/create.html")
+            
+        if admin_password != admin_password_confirm:
+            flash("Las contraseñas no coinciden", "error")
+            return render_template("clients/create.html")
+            
+        if len(admin_password) < 6:
+            flash("La contraseña debe tener al menos 6 caracteres", "error")
             return render_template("clients/create.html")
 
         # Verificar que no exista un cliente con el mismo email
-        existing = Client.query.filter_by(email=email).first()
-        if existing:
+        existing_client = Client.query.filter_by(email=email).first()
+        if existing_client:
             flash("Ya existe un cliente con ese email", "error")
             return render_template("clients/create.html")
+            
+        # Verificar que no exista un usuario con el mismo email
+        existing_user = User.query.filter_by(email=admin_email).first()
+        if existing_user:
+            flash("Ya existe un usuario con ese email de login", "error")
+            return render_template("clients/create.html")
 
-        # Crear cliente (la API Key se genera automáticamente)
-        client = Client(name=name, email=email, industry=industry)
-        db.session.add(client)
-        db.session.commit()
+        try:
+            # Crear cliente (la API Key se genera automáticamente)
+            client = Client(name=name, email=email, industry=industry)
+            db.session.add(client)
+            db.session.flush()  # Para obtener el client.id
+            
+            # Crear usuario administrador para este cliente
+            admin_user = User(
+                email=admin_email,
+                full_name=admin_name,
+                client_id=client.id,
+                role="STORE_ADMIN",
+                active=True
+            )
+            admin_user.set_password(admin_password)
+            db.session.add(admin_user)
+            
+            db.session.commit()
 
-        flash(f"Cliente '{name}' creado exitosamente. API Key generada: {client.api_key}", "success")
-        return redirect(url_for("clients.view", client_id=client.id))
+            # Mostrar credenciales completas
+            flash(f"✅ Cliente '{name}' creado exitosamente", "success")
+            flash(f"🔑 API Key: {client.api_key}", "info")
+            flash(f"👤 Usuario Administrador creado:", "success")
+            flash(f"📧 Email: {admin_email}", "info")
+            flash(f"🔐 Contraseña: {admin_password}", "info")
+            flash("⚠️ IMPORTANTE: Guarda estas credenciales, la contraseña no se mostrará nuevamente", "warning")
+            
+            return redirect(url_for("clients.view", client_id=client.id))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error al crear cliente: {str(e)}", "error")
+            return render_template("clients/create.html")
 
     return render_template("clients/create.html")
 

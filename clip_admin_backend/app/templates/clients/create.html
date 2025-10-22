@@ -85,22 +85,79 @@
                             </select>
                             <div class="form-text">La industria ayuda a optimizar las traducciones automáticas</div>
                         </div>
+                    </div>
+
+                    <hr class="my-4">
+                    <h6 class="mb-3">
+                        <i class="bi bi-person-plus me-2"></i>
+                        Usuario Administrador (para acceder al panel)
+                    </h6>
+
+                    <div class="row">
                         <div class="col-md-6 mb-3">
-                            <!-- Espacio reservado para futuros campos -->
+                            <label for="admin_name" class="form-label">
+                                <i class="bi bi-person me-1"></i>
+                                Nombre Completo <span class="text-danger">*</span>
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   id="admin_name"
+                                   name="admin_name"
+                                   required
+                                   placeholder="Ej: Juan Pérez">
+                            <div class="form-text">Nombre del usuario administrador</div>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="admin_email" class="form-label">
+                                <i class="bi bi-envelope me-1"></i>
+                                Email de Login <span class="text-danger">*</span>
+                            </label>
+                            <input type="email"
+                                   class="form-control"
+                                   id="admin_email"
+                                   name="admin_email"
+                                   required
+                                   placeholder="admin@empresa.com">
+                            <div class="form-text">Email para iniciar sesión en el panel</div>
                         </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label for="description" class="form-label">
-                            <i class="bi bi-card-text me-1"></i>
-                            Descripción
-                        </label>
-                        <textarea class="form-control"
-                                  id="description"
-                                  name="description"
-                                  rows="3"
-                                  placeholder="Descripción opcional del cliente y su negocio..."></textarea>
-                        <div class="form-text">Información adicional sobre el cliente (opcional)</div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="admin_password" class="form-label">
+                                <i class="bi bi-lock me-1"></i>
+                                Contraseña <span class="text-danger">*</span>
+                            </label>
+                            <input type="password"
+                                   class="form-control"
+                                   id="admin_password"
+                                   name="admin_password"
+                                   required
+                                   minlength="6"
+                                   placeholder="Mínimo 6 caracteres">
+                            <div class="form-text">Contraseña para el administrador</div>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="admin_password_confirm" class="form-label">
+                                <i class="bi bi-lock-fill me-1"></i>
+                                Confirmar Contraseña <span class="text-danger">*</span>
+                            </label>
+                            <input type="password"
+                                   class="form-control"
+                                   id="admin_password_confirm"
+                                   name="admin_password_confirm"
+                                   required
+                                   minlength="6"
+                                   placeholder="Repetir contraseña">
+                            <div class="form-text">Debe coincidir con la contraseña</div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Importante:</strong> Se creará el cliente con su API Key y un usuario administrador que podrá acceder al panel inmediatamente.
                     </div>
 
                     <div class="d-flex justify-content-between">
@@ -111,7 +168,7 @@
 
                         <button type="submit" class="btn btn-primary">
                             <i class="bi bi-check-circle me-2"></i>
-                            Crear Cliente
+                            Crear Cliente y Usuario
                         </button>
                     </div>
                 </form>
@@ -192,6 +249,8 @@ document.getElementById('name').addEventListener('input', function(e) {
 document.getElementById('clientForm').addEventListener('submit', function(e) {
     const name = document.getElementById('name').value.trim();
     const email = document.getElementById('email').value.trim();
+    const adminPassword = document.getElementById('admin_password').value;
+    const adminPasswordConfirm = document.getElementById('admin_password_confirm').value;
 
     if (!name || !email) {
         e.preventDefault();
@@ -204,6 +263,14 @@ document.getElementById('clientForm').addEventListener('submit', function(e) {
     if (!emailRegex.test(email)) {
         e.preventDefault();
         alert('Por favor ingresa un email válido');
+        return false;
+    }
+
+    // Validar que las contraseñas coincidan
+    if (adminPassword !== adminPasswordConfirm) {
+        e.preventDefault();
+        alert('Las contraseñas no coinciden. Por favor, verifica e intenta nuevamente.');
+        document.getElementById('admin_password_confirm').focus();
         return false;
     }
 

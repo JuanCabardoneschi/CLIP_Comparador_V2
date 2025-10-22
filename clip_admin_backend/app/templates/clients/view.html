@@ -16,14 +16,16 @@
 
 {% block page_actions %}
 <div class="btn-group" role="group">
+    {% if current_user.is_super_admin %}
     <a href="{{ url_for('clients.edit', client_id=client.id) }}" class="btn btn-outline-primary">
         <i class="bi bi-pencil me-2"></i>
         Editar
     </a>
-    <button type="button" class="btn btn-outline-danger" onclick="confirmDelete()">
+    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
         <i class="bi bi-trash me-2"></i>
         Eliminar
     </button>
+    {% endif %}
 </div>
 {% endblock %}
 
