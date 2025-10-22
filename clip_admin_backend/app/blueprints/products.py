@@ -323,8 +323,12 @@ def create():
 
             db.session.commit()
 
-            # TODO: Aquí se dispararía el proceso de subida a Cloudinary y generación de embeddings
-            # Por ahora solo marcamos como pendiente
+            # Generar embeddings y actualizar centroide de la categoría del producto recién creado
+            try:
+                _process_embeddings_and_centroid_for_product(product)
+            except Exception as e:
+                # No bloquear la creación por un fallo en embeddings; mostrar aviso suave
+                flash(f"El producto se creó, pero hubo un problema generando el embedding: {str(e)}", "warning")
 
             return redirect(url_for("products.view", product_id=product.id))
 
@@ -343,6 +347,71 @@ def create():
     return render_template("products/create.html",
                          categories=categories,
                          attribute_configs=attribute_configs)
+
+
+def _process_embeddings_and_centroid_for_product(product):
+    """Genera embeddings para las imágenes pendientes del producto y actualiza el centroide de su categoría.
+
+    Nota: esta función es síncrona y se ejecuta al crear el producto para evitar que el
+    usuario tenga que ir al menú de embeddings. Mantiene cambios mínimos y reutiliza
+    la lógica existente de generación de embeddings.
+    """
+    from app.models.image import Image
+    from app.blueprints.embeddings import generate_clip_embedding
+
+    # Obtener imágenes pendientes del producto
+    pending_images = Image.query.filter_by(
+        product_id=product.id,
+        is_processed=False,
+        upload_status='pending'
+    ).all()
+
+    if not pending_images:
+        return
+
+    processed = 0
+    for image in pending_images:
+        # Requiere URL de Cloudinary
+        if not image.cloudinary_url:
+            image.upload_status = 'failed'
+            image.error_message = 'No hay URL de Cloudinary disponible'
+            continue
+
+        # Generar embedding con la lógica real (optimizada si hay contexto)
+        embedding, metadata = generate_clip_embedding(image.cloudinary_url, image)
+        if not embedding:
+            image.upload_status = 'failed'
+            image.error_message = 'No se generó el embedding'
+            continue
+
+        image.clip_embedding = json.dumps(embedding)
+        image.is_processed = True
+        image.upload_status = 'completed'
+        image.error_message = None
+
+        # Guardar metadata si el modelo la soporta
+        if hasattr(image, 'metadata') and metadata:
+            try:
+                image.metadata = json.dumps(metadata)
+            except Exception:
+                pass
+
+        processed += 1
+
+    # Persistir imágenes procesadas
+    db.session.commit()
+
+    # Actualizar centroide de la categoría del producto si corresponde
+    category = product.category
+    if category and processed > 0:
+        try:
+            if category.needs_centroid_update():
+                category.update_centroid_embedding(force_recalculate=False)
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+            # No propagar excepción para no interrumpir el flujo de creación
+            pass
 
 
 @bp.route("/<product_id>")
@@ -516,6 +585,14 @@ def add_images(product_id):
 
         if images_processed > 0:
             db.session.commit()
+
+        # Generar embeddings y actualizar centroide si se agregaron imágenes
+        if images_processed > 0:
+            try:
+                _process_embeddings_and_centroid_for_product(product)
+            except Exception as e:
+                # Mantener respuesta exitosa aunque falle la generación; informar en mensaje
+                errors.append(f"Embeddings: {str(e)}")
 
         # Preparar respuesta
         if images_processed > 0 and not errors:
