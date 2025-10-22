@@ -24,9 +24,11 @@ PyJWT==2.8.0
 bcrypt==4.1.2
 passlib[bcrypt]==1.7.4
 
-# AI & ML - Railway compatible
-torch==2.1.1
-torchvision==0.16.1
+# AI & ML - Railway compatible (CPU-only)
+# Usamos ruedas CPU para evitar dependencias CUDA en Railway
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.1.1+cpu
+torchvision==0.16.1+cpu
 transformers==4.35.2
 Pillow==10.1.0
 numpy==1.25.2
