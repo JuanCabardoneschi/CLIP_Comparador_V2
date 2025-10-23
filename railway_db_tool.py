@@ -92,13 +92,59 @@ def cmd_sql(args):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(query)
+            
+            # Si es un SELECT, mostrar resultados
+            if cur.description:
+                # Obtener nombres de columnas
+                columns = [desc[0] for desc in cur.description]
+                rows = cur.fetchall()
+                
+                print(f"\n{'=' * 80}")
+                print(f"📊 RESULTADOS: {len(rows)} filas")
+                print(f"{'=' * 80}\n")
+                
+                if rows:
+                    # Calcular ancho máximo por columna
+                    col_widths = [len(col) for col in columns]
+                    for row in rows:
+                        for i, val in enumerate(row):
+                            col_widths[i] = max(col_widths[i], len(str(val)) if val is not None else 4)
+                    
+                    # Limitar ancho máximo a 50 caracteres
+                    col_widths = [min(w, 50) for w in col_widths]
+                    
+                    # Imprimir encabezados
+                    header = " | ".join(col.ljust(col_widths[i]) for i, col in enumerate(columns))
+                    print(header)
+                    print("-" * len(header))
+                    
+                    # Imprimir filas
+                    for row in rows:
+                        row_str = " | ".join(
+                            str(val).ljust(col_widths[i])[:col_widths[i]] if val is not None else "NULL".ljust(col_widths[i])
+                            for i, val in enumerate(row)
+                        )
+                        print(row_str)
+                    
+                    print(f"\n{'=' * 80}\n")
+                else:
+                    print("(Sin resultados)\n")
+            
             affected = cur.rowcount
-            if args.yes:
-                conn.commit()
-                print(f"✅ COMMIT realizado. Filas afectadas (si aplica): {affected}")
+            
+            # Para INSERT/UPDATE/DELETE
+            if not cur.description:
+                if args.yes:
+                    conn.commit()
+                    print(f"✅ COMMIT realizado. Filas afectadas: {affected}")
+                else:
+                    conn.rollback()
+                    print(f"🛟 ROLLBACK (usar --yes para confirmar). Filas que se afectarían: {affected}")
             else:
-                conn.rollback()
-                print(f"🛟 ROLLBACK (usar --yes para confirmar). Filas que se afectarían (si aplica): {affected}")
+                # Para SELECT, no hacer commit/rollback
+                if args.yes:
+                    conn.commit()
+                print(f"✅ Query ejecutado exitosamente")
 
 
 def build_parser():
