@@ -255,10 +255,11 @@
                 </div>
                 {% endif %}
 
-                {% if product.color %}
+                {% set color = (product.attributes['color'] if product.attributes and 'color' in product.attributes else None) %}
+                {% if color %}
                 <div class="info-item">
                     <span class="info-label">Color:</span>
-                    <span class="info-value">{{ product.color }}</span>
+                    <span class="info-value">{{ color }}</span>
                 </div>
                 {% endif %}
 
