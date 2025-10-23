@@ -886,8 +886,22 @@ def _build_search_results(product_best_match, limit):
             if not primary_image:
                 primary_image = img
 
-            # Usar display_url del modelo (maneja cloudinary_url automáticamente)
-            image_url = primary_image.display_url if primary_image else None
+            # Preferir base64 para no exponer origen; fallback a display_url
+            image_url = None
+            if primary_image and getattr(primary_image, 'base64_data', None):
+                try:
+                    base64_str = primary_image.base64_data.strip()
+                    if not base64_str.startswith('data:'):
+                        mime = (primary_image.mime_type or 'image/jpeg').strip()
+                        base64_str = f"data:{mime};base64,{base64_str}"
+                    image_url = base64_str
+                    print("🖼️ API IMG: usando base64_data para respuesta")
+                except Exception as _e:
+                    # Si base64 está corrupto, continuar con URL
+                    image_url = primary_image.display_url
+            else:
+                # Usar display_url del modelo (maneja cloudinary_url automáticamente)
+                image_url = primary_image.display_url if primary_image else None
         except Exception as e:
             print(f"❌ Error obteniendo imagen primaria: {e}")
             # CRITICAL: Hacer rollback para que queries posteriores funcionen
