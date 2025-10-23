@@ -811,7 +811,7 @@ def _apply_category_filter(product_best_match, limit):
 def _build_search_results(product_best_match, limit):
     """Construye la lista final de resultados"""
     results = []
-    
+
     # 🔍 DEBUG: Verificar contenido del dict recibido
     print(f"🔍 DEBUG _build_search_results: Recibido dict con {len(product_best_match)} productos")
     if product_best_match:
@@ -819,7 +819,7 @@ def _build_search_results(product_best_match, limit):
         sample_match = product_best_match[sample_id]
         print(f"🔍 DEBUG _build_search_results: Claves en sample_match: {list(sample_match.keys())}")
         print(f"🔍 DEBUG _build_search_results: Tiene optimizer_scores: {'optimizer_scores' in sample_match}")
-    
+
     # Intentar obtener configuración de atributos a exponer (si existe la tabla)
     exposed_keys_cache = None  # cache por request
     checked_config = False
@@ -1024,6 +1024,66 @@ def detect_dominant_color(image_data, client_id):
         traceback.print_exc()
         return "unknown", 0.0
 
+
+def detect_dominant_color_from_palette(image_data, colors_list):
+    """
+    Detecta el color dominante restringiendo la comparación a una paleta dada.
+
+    Args:
+        image_data: bytes de la imagen
+        colors_list: lista de strings con colores disponibles para comparar
+
+    Returns:
+        tuple: (color_detectado, confidence_score)
+    """
+    try:
+        unique_colors = [c.strip() for c in colors_list if c and str(c).strip()]
+
+        if not unique_colors:
+            print("⚠️ Paleta de colores vacía para la categoría")
+            return "unknown", 0.0
+
+        print(f"🎨 Paleta de colores (categoría): {unique_colors}")
+
+        # Crear prompts dinámicos basados en los colores de la categoría
+        color_prompts = [f"a photo of {color.lower()} product" for color in unique_colors]
+
+        # Convertir a imagen PIL
+        from PIL import Image as PILImage
+        import io
+        pil_image = PILImage.open(io.BytesIO(image_data))
+
+        # Obtener modelo CLIP
+        model, processor = get_clip_model()
+
+        # Generar embedding de imagen
+        with torch.no_grad():
+            image_inputs = processor(images=pil_image, return_tensors="pt")
+            image_features = model.get_image_features(**image_inputs)
+            image_embedding = image_features / image_features.norm(dim=-1, keepdim=True)
+
+            # Generar embeddings de texto para colores
+            text_inputs = processor(text=color_prompts, return_tensors="pt", padding=True)
+            text_features = model.get_text_features(**text_inputs)
+            text_embeddings = text_features / text_features.norm(dim=-1, keepdim=True)
+
+            # Calcular similitudes
+            similarities = torch.cosine_similarity(image_embedding, text_embeddings, dim=1)
+
+            # Encontrar la mejor coincidencia
+            best_idx = similarities.argmax().item()
+            best_score = similarities[best_idx].item()
+            detected_color = unique_colors[best_idx]
+
+            print(f"🎨 DETECCIÓN COLOR (categoría): {detected_color} (confianza: {best_score:.3f})")
+
+            return detected_color, best_score
+
+    except Exception as e:
+        print(f"❌ Error en detección de color (paleta): {e}")
+        import traceback
+        traceback.print_exc()
+        return "unknown", 0.0
 
 def detect_general_object(image_data, client_id=None):
     """
@@ -1422,13 +1482,7 @@ def visual_search():
                 # Si falla, continuar sin optimizer
                 search_optimizer = None
 
-        # ===== PASO 1.5: DETECCIÓN DE COLOR DOMINANTE =====
-        print(f"🎨 RAILWAY LOG: IDENTIFICANDO COLOR DOMINANTE...")
-
-        detected_color, color_confidence = detect_dominant_color(image_data, client.id)
-        print(f"🎨 RAILWAY LOG: COLOR DETECTADO = {detected_color} (confianza: {color_confidence:.3f})")
-
-        # ===== PASO 2: DETECCIÓN DE CATEGORÍA ESPECÍFICA =====
+        # ===== PASO 1: DETECCIÓN DE CATEGORÍA ESPECÍFICA =====
         print(f"🚀 RAILWAY LOG: INICIANDO DETECCIÓN DE CATEGORÍA ESPECÍFICA")
 
         detected_category, category_confidence = detect_image_category_with_centroids(
@@ -1453,6 +1507,27 @@ def visual_search():
 
         print(f"✅ RAILWAY LOG: CATEGORÍA OK: {detected_category.name} - procediendo a búsqueda")
 
+        # ===== PASO 2: DETECCIÓN DE COLOR RESTRINGIDO A LA CATEGORÍA =====
+        print(f"🎨 RAILWAY LOG: IDENTIFICANDO COLOR DOMINANTE (por categoría)...")
+
+        # Construir paleta de colores solo con los productos de la categoría
+        from app.models.product import Product as _ProductForColors
+        colors_query = db.session.query(_ProductForColors.color).filter(
+            _ProductForColors.client_id == client.id,
+            _ProductForColors.category_id == detected_category.id,
+            _ProductForColors.color.isnot(None),
+            _ProductForColors.color != ''
+        ).distinct().all()
+
+        category_colors = [c[0].strip() for c in colors_query if c[0] and c[0].strip()]
+
+        if category_colors:
+            detected_color, color_confidence = detect_dominant_color_from_palette(image_data, category_colors)
+            print(f"🎨 RAILWAY LOG: COLOR DETECTADO (cat) = {detected_color} (confianza: {color_confidence:.3f})")
+        else:
+            detected_color, color_confidence = ("unknown", 0.0)
+            print("⚠️ RAILWAY LOG: Categoría sin colores definidos; se omite boost/metadata por color")
+
         # ===== GENERAR EMBEDDING DE LA IMAGEN =====
         query_embedding, error_response, status_code = _generate_query_embedding(image_data)
         if error_response:
@@ -1473,7 +1548,7 @@ def visual_search():
         print(f"🎯 DEBUG: Productos encontrados en categoría {detected_category.name}: {len(product_best_match)}")
 
         # ===== APLICAR BOOST POR COLOR MATCHING =====
-        if detected_color and detected_color != "unknown" and color_confidence >= 0.25:
+        if detected_color and detected_color != "unknown" and color_confidence >= 0.30:
             print(f"🎨 RAILWAY LOG: Aplicando boost por color matching (color: {detected_color})")
 
             for product_id, match_data in product_best_match.items():
@@ -1498,6 +1573,7 @@ def visual_search():
             detected_attributes = {}
             if detected_color and detected_color != "unknown":
                 detected_attributes['color'] = detected_color
+                print(f"🔍 DEBUG: Atributos detectados para metadata scoring: {detected_attributes}")
 
             # Convertir product_best_match a formato esperado por optimizer
             raw_results = [
@@ -1517,7 +1593,7 @@ def visual_search():
                     # ranked.product_id es string, pero las claves del dict son UUID objects
                     # Buscar por el objeto Product directamente
                     product_obj = ranked.product
-                    
+
                     # Buscar la clave UUID en el diccionario que corresponde a este producto
                     for dict_product_id, match_data in product_best_match.items():
                         if str(dict_product_id) == ranked.product_id:
