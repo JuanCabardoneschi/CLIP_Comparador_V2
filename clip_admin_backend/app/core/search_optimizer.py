@@ -131,13 +131,13 @@ class SearchOptimizer:
     def _normalize_color_gender(self, color_str: str) -> str:
         """
         Normaliza género en nombres de colores para matching consistente.
-        
+
         CLIP detecta colores en masculino (NEGRO, BLANCO, ROJO),
         pero en BD pueden estar en femenino (NEGRA, BLANCA, ROJA).
-        
+
         Args:
             color_str: Color en mayúsculas (ej: "NEGRA", "BLANCO")
-            
+
         Returns:
             Color normalizado a masculino (ej: "NEGRO", "BLANCO")
         """
@@ -162,7 +162,7 @@ class SearchOptimizer:
             'PLATEADA': 'PLATEADO',
             'BRONCEADA': 'BRONCEADO'
         }
-        
+
         return GENDER_MAP.get(color_str.upper(), color_str.upper())
 
     def calculate_metadata_score(

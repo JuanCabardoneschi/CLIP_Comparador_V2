@@ -1631,9 +1631,13 @@ def visual_search():
 
             # Preparar atributos detectados para metadata scoring
             detected_attributes = {}
-            if detected_color and detected_color != "unknown":
+            # Solo usar el color detectado si la confianza es suficiente (>= 0.30)
+            if detected_color and detected_color != "unknown" and color_confidence >= 0.30:
                 detected_attributes['color'] = detected_color
                 print(f"🔍 DEBUG: Atributos detectados para metadata scoring: {detected_attributes}")
+            else:
+                if detected_color and detected_color != "unknown":
+                    print(f"ℹ️ DEBUG: Color detectado '{detected_color}' omitido para metadata (confianza {color_confidence:.2f} < 0.30)")
 
             # Convertir product_best_match a formato esperado por optimizer
             raw_results = [
