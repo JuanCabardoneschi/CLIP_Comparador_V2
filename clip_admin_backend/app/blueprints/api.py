@@ -811,6 +811,15 @@ def _apply_category_filter(product_best_match, limit):
 def _build_search_results(product_best_match, limit):
     """Construye la lista final de resultados"""
     results = []
+    
+    # 🔍 DEBUG: Verificar contenido del dict recibido
+    print(f"🔍 DEBUG _build_search_results: Recibido dict con {len(product_best_match)} productos")
+    if product_best_match:
+        sample_id = list(product_best_match.keys())[0]
+        sample_match = product_best_match[sample_id]
+        print(f"🔍 DEBUG _build_search_results: Claves en sample_match: {list(sample_match.keys())}")
+        print(f"🔍 DEBUG _build_search_results: Tiene optimizer_scores: {'optimizer_scores' in sample_match}")
+    
     # Intentar obtener configuración de atributos a exponer (si existe la tabla)
     exposed_keys_cache = None  # cache por request
     checked_config = False
@@ -1519,7 +1528,7 @@ def visual_search():
 
                 print(f"✅ OPTIMIZER: Ranking completado. Top 3 scores: " +
                       ", ".join([f"{r.final_score:.3f}" for r in ranked_results[:3]]))
-                
+
                 # Debug: verificar que optimizer_scores se guardó
                 sample_id = list(product_best_match.keys())[0] if product_best_match else None
                 if sample_id:
