@@ -4,6 +4,61 @@
 
 ---
 
+## 🔥 URGENTE - FASE 5 (Sistema en Producción)
+
+### 1. Admin Panel de Atributos
+**Estado**: ⏳ Pendiente
+**Complejidad**: Media
+**Impacto**: Alto (actualmente se editan a mano en BD)
+**Fecha agregada**: 23 Octubre 2025
+
+**Problema**:
+- Los atributos (color, marca, talla, etc.) se crean desde el formulario de productos
+- `expose_in_search` queda en `false` por defecto → atributos NO aparecen en API
+- No hay forma de gestionar atributos centralizadamente
+- Cambiar `expose_in_search` requiere UPDATE manual en BD
+
+**Solución Necesaria**:
+1. **Blueprint `/attributes/`** con vistas:
+   - `GET /attributes/` → Lista todos los atributos del cliente
+   - `GET /attributes/create` → Formulario crear atributo
+   - `POST /attributes/create` → Guardar nuevo atributo
+   - `GET /attributes/edit/<key>` → Formulario editar
+   - `POST /attributes/edit/<key>` → Guardar cambios
+   - `POST /attributes/delete/<key>` → Eliminar atributo
+
+2. **Formulario debe incluir**:
+   - Key (identificador único)
+   - Label (nombre visible)
+   - Type (text, select, list, url, etc.)
+   - ☑️ **Expose in Search** (default: `True`) ← CRÍTICO
+   - Description (opcional)
+   - Options (para select/list)
+
+3. **Cambiar default en modelo**:
+   ```python
+   # En ProductAttributeConfig
+   expose_in_search = Column(Boolean, default=True, nullable=False)  # Cambiar a True
+   ```
+
+4. **Migración para datos existentes**:
+   ```sql
+   UPDATE product_attribute_config 
+   SET expose_in_search = true 
+   WHERE key IN ('color', 'marca', 'talla', 'material');
+   ```
+
+**Archivos a crear/modificar**:
+- Nuevo: `app/blueprints/attributes.py`
+- Nuevo: `app/templates/attributes/index.html`
+- Nuevo: `app/templates/attributes/form.html`
+- Modificar: `app/models/product_attribute_config.py` (default=True)
+- Migración: `migrations/versions/xxx_set_expose_default_true.py`
+
+**Estimación**: 2-3 días
+
+---
+
 ## 🎯 PRIORIDAD ALTA
 
 ### 1. Sistema de Aprendizaje Adaptativo por Cliente
