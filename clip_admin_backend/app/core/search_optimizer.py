@@ -128,6 +128,43 @@ class SearchOptimizer:
             f"v={self.visual_weight}, m={self.metadata_weight}, b={self.business_weight}"
         )
 
+    def _normalize_color_gender(self, color_str: str) -> str:
+        """
+        Normaliza género en nombres de colores para matching consistente.
+        
+        CLIP detecta colores en masculino (NEGRO, BLANCO, ROJO),
+        pero en BD pueden estar en femenino (NEGRA, BLANCA, ROJA).
+        
+        Args:
+            color_str: Color en mayúsculas (ej: "NEGRA", "BLANCO")
+            
+        Returns:
+            Color normalizado a masculino (ej: "NEGRO", "BLANCO")
+        """
+        # Mapa de conversión femenino → masculino
+        GENDER_MAP = {
+            'NEGRA': 'NEGRO',
+            'BLANCA': 'BLANCO',
+            'ROJA': 'ROJO',
+            'AMARILLA': 'AMARILLO',
+            'VERDE': 'VERDE',  # Invariante
+            'AZUL': 'AZUL',    # Invariante
+            'GRIS': 'GRIS',    # Invariante
+            'ROSA': 'ROSA',    # Invariante (o ROSADO)
+            'NARANJA': 'NARANJA',  # Invariante
+            'VIOLETA': 'VIOLETA',  # Invariante
+            'MORADA': 'MORADO',
+            'CELESTE': 'CELESTE',  # Invariante
+            'TURQUESA': 'TURQUESA',  # Invariante
+            'BEIGE': 'BEIGE',  # Invariante
+            'MARRON': 'MARRON',  # Invariante (o MARRÓN)
+            'DORADA': 'DORADO',
+            'PLATEADA': 'PLATEADO',
+            'BRONCEADA': 'BRONCEADO'
+        }
+        
+        return GENDER_MAP.get(color_str.upper(), color_str.upper())
+
     def calculate_metadata_score(
         self,
         product: Any,
@@ -183,16 +220,16 @@ class SearchOptimizer:
             # Obtener peso del atributo (si no está en defaults, usar 0.5)
             weight = weights.get(attr_name, 0.5)
 
-            # Obtener valor del producto (case-insensitive)
+            # Obtener valor del producto (priorizar JSONB sobre columnas directas)
             product_value = None
 
-            # Buscar en atributos directos
-            if hasattr(product, attr_name):
-                product_value = getattr(product, attr_name)
-
-            # Buscar en attributes JSONB si no se encontró
-            if product_value is None and hasattr(product, 'attributes') and product.attributes:
+            # 1. Buscar en attributes JSONB primero (más confiable y actualizado)
+            if hasattr(product, 'attributes') and product.attributes:
                 product_value = product.attributes.get(attr_name)
+
+            # 2. Fallback a atributos directos si no está en JSONB
+            if product_value is None and hasattr(product, attr_name):
+                product_value = getattr(product, attr_name)
 
             # Si no hay valor en producto, no contar este atributo
             if product_value is None:
@@ -201,6 +238,11 @@ class SearchOptimizer:
             # Comparar valores (case-insensitive, strip whitespace)
             detected_str = str(detected_value).strip().upper()
             product_str = str(product_value).strip().upper()
+
+            # Normalizar género para colores (NEGRO/NEGRA, BLANCO/BLANCA, etc.)
+            if attr_name.lower() == 'color':
+                detected_str = self._normalize_color_gender(detected_str)
+                product_str = self._normalize_color_gender(product_str)
 
             is_match = detected_str == product_str
 

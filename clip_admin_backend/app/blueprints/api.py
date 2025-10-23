@@ -979,6 +979,18 @@ def _build_search_results(product_best_match, limit):
     return results[:limit]
 
 
+def _normalize_color_gender(color_str: str) -> str:
+    """Normaliza género en nombres de colores para matching consistente."""
+    if not color_str:
+        return color_str
+    mapping = {
+        'NEGRA': 'NEGRO', 'BLANCA': 'BLANCO', 'ROJA': 'ROJO', 'AMARILLA': 'AMARILLO',
+        'MORADA': 'MORADO', 'DORADA': 'DORADO', 'PLATEADA': 'PLATEADO', 'BRONCEADA': 'BRONCEADO'
+    }
+    u = str(color_str).strip().upper()
+    return mapping.get(u, u)
+
+
 def detect_dominant_color(image_data, client_id):
     """
     Detecta el color dominante en la imagen usando CLIP
@@ -992,22 +1004,27 @@ def detect_dominant_color(image_data, client_id):
         tuple: (color_detectado, confidence_score)
     """
     try:
-        # Obtener colores únicos de los productos del cliente
-        from app.models.product import Product
+        # Obtener colores únicos desde JSONB attributes->>'color' (preferido)
+        rows = db.session.execute(
+            text(
+                """
+                SELECT DISTINCT UPPER(TRIM(attributes->>'color')) AS color
+                FROM products
+                WHERE client_id = :client_id
+                  AND attributes ? 'color'
+                  AND NULLIF(TRIM(attributes->>'color'), '') IS NOT NULL
+                """
+            ),
+            {"client_id": client_id},
+        ).fetchall()
 
-        colors_query = db.session.query(Product.color).filter(
-            Product.client_id == client_id,
-            Product.color.isnot(None),
-            Product.color != ''
-        ).distinct().all()
-
-        unique_colors = [c[0].strip() for c in colors_query if c[0] and c[0].strip()]
+        unique_colors = [r[0] for r in rows if r[0]]
 
         if not unique_colors:
             print("⚠️ No hay colores definidos en productos del cliente")
             return "unknown", 0.0
 
-        print(f"🎨 Colores disponibles del cliente: {unique_colors}")
+        print(f"🎨 Colores disponibles del cliente (JSONB): {unique_colors}")
 
         # Crear prompts dinámicos basados en los colores del cliente
         color_prompts = [f"a photo of {color.lower()} product" for color in unique_colors]
@@ -1536,15 +1553,22 @@ def visual_search():
         print(f"🎨 RAILWAY LOG: IDENTIFICANDO COLOR DOMINANTE (por categoría)...")
 
         # Construir paleta de colores solo con los productos de la categoría
-        from app.models.product import Product as _ProductForColors
-        colors_query = db.session.query(_ProductForColors.color).filter(
-            _ProductForColors.client_id == client.id,
-            _ProductForColors.category_id == detected_category.id,
-            _ProductForColors.color.isnot(None),
-            _ProductForColors.color != ''
-        ).distinct().all()
+        # Preferir colores desde JSONB attributes->>'color' para la categoría
+        rows = db.session.execute(
+            text(
+                """
+                SELECT DISTINCT UPPER(TRIM(p.attributes->>'color')) AS color
+                FROM products p
+                WHERE p.client_id = :client_id
+                  AND p.category_id = :category_id
+                  AND p.attributes ? 'color'
+                  AND NULLIF(TRIM(p.attributes->>'color'), '') IS NOT NULL
+                """
+            ),
+            {"client_id": client.id, "category_id": detected_category.id},
+        ).fetchall()
 
-        category_colors = [c[0].strip() for c in colors_query if c[0] and c[0].strip()]
+        category_colors = [r[0] for r in rows if r[0]]
 
         if category_colors:
             detected_color, color_confidence = detect_dominant_color_from_palette(image_data, category_colors)
@@ -1578,15 +1602,26 @@ def visual_search():
 
             for product_id, match_data in product_best_match.items():
                 product = match_data['product']
-                product_color = (product.color or '').strip()
+                # Obtener color preferentemente desde JSONB y normalizar género
+                product_color = None
+                try:
+                    if hasattr(product, 'attributes') and product.attributes:
+                        product_color = product.attributes.get('color')
+                except Exception:
+                    product_color = None
+                if not product_color:
+                    product_color = (getattr(product, 'color', None) or '').strip()
+
+                product_color_norm = _normalize_color_gender(product_color)
+                detected_color_norm = _normalize_color_gender(detected_color)
 
                 # Si el color del producto coincide exactamente con el detectado, dar boost
-                if product_color and product_color.upper() == detected_color.upper():
+                if product_color_norm and product_color_norm == detected_color_norm:
                     original_similarity = match_data['similarity']
                     boosted_similarity = min(1.0, original_similarity * 1.12)  # Boost del 12%
                     match_data['similarity'] = boosted_similarity
                     match_data['color_boost'] = True
-                    print(f"🎨 COLOR BOOST: {product.name} ({product_color}) {original_similarity:.4f} → {boosted_similarity:.4f}")
+                    print(f"🎨 COLOR BOOST: {product.name} ({product_color_norm}) {original_similarity:.4f} → {boosted_similarity:.4f}")
                 else:
                     match_data['color_boost'] = False
 
