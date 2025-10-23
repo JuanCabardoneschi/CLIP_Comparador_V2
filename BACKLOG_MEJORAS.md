@@ -27,12 +27,12 @@
 1. Detectar categorías presentes (CLIP zero-shot classification)
    Input: Imagen + categorías del catálogo del cliente
    Output: ['CAMISAS', 'PANTALONES', 'CALZADO'] con confidencias
-   
+
 2. Para cada categoría detectada (threshold > 25%):
    - Generar embedding CLIP (UNA SOLA VEZ, reutilizar)
    - Buscar productos similares en esa categoría
    - Aplicar SearchOptimizer por categoría
-   
+
 3. Retornar resultados agrupados por categoría
 ```
 
@@ -69,7 +69,7 @@ def multi_category_search(image_data, client_id):
     - Buscar en cada una
     - Agrupar resultados
     """
-    
+
 # Modificar endpoint /api/search:
 # - Feature flag: multi_category_enabled (default: True)
 # - Response con mode: 'single' | 'multi_product'

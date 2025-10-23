@@ -8,14 +8,14 @@ Versión: V2 - SearchOptimizer Integrado
 EL PROBLEMA: ¿QUÉ ESTÁ PASANDO?
 ================================================================================
 
-Cuando un cliente sube una foto para buscar productos similares, nuestro 
+Cuando un cliente sube una foto para buscar productos similares, nuestro
 sistema hace dos cosas importantes:
 
 1. IDENTIFICA QUÉ tipo de producto es (camisa, pantalón, zapatilla, etc.)
 2. DETECTA el COLOR predominante de la foto
 
-Actualmente, cuando detectamos que la foto muestra una CAMISA BLANCA, el 
-sistema prioriza fuertemente las camisas blancas en los resultados, aunque 
+Actualmente, cuando detectamos que la foto muestra una CAMISA BLANCA, el
+sistema prioriza fuertemente las camisas blancas en los resultados, aunque
 la foto también tenga similitud visual con camisas negras.
 
 
@@ -26,9 +26,9 @@ la foto también tenga similitud visual con camisas negras.
 En el ejemplo de prueba:
 - La foto subida tiene una CAMISA BLANCA
 - El sistema detectó correctamente: "esto es una CAMISA" + "el color es BLANCO"
-- Como resultado, las 3 camisas blancas recibieron puntuaciones perfectas de 
+- Como resultado, las 3 camisas blancas recibieron puntuaciones perfectas de
   coincidencia de color (100%)
-- Las camisas negras quedaron más abajo porque NO COINCIDEN en color, aunque 
+- Las camisas negras quedaron más abajo porque NO COINCIDEN en color, aunque
   visualmente sean similares
 
 
@@ -69,22 +69,22 @@ ESCENARIOS Y COMPORTAMIENTOS
 ESCENARIO 1: Cliente busca "camisa blanca con short jean"
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✅ Resultado actual: Solo camisas BLANCAS → CORRECTO
-   
+
    El color detectado fue BLANCO
    Metadata (30%) premia camisas blancas con 100% de coincidencia
    Resultado: Camisas blancas suben al Top 3, negras quedan abajo
-   
+
    RECOMENDACIÓN: Mantener este comportamiento
 
 
 ESCENARIO 2: Cliente busca "camisa" (sin preferencia de color clara)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️  Resultado actual: Puede sesgar hacia UN color específico
-   
+
    Si la foto tiene tonos ambiguos, el sistema "adivina" un color
    Metadata (30%) premia ese color, aunque no sea la intención del cliente
    Resultado: Podría faltar diversidad de colores en resultados
-   
+
    PREGUNTA CLAVE: ¿Esto es un problema para nuestros clientes?
 
 
