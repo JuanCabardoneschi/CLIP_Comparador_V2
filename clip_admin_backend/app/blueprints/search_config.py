@@ -53,6 +53,21 @@ def index():
     return render_template("search_config/index.html", configs=configs_data)
 
 
+@bp.route("/edit", methods=["GET"])
+@login_required
+def edit_redirect():
+    """
+    Ruta sin client_id: redirige al cliente del usuario actual
+    """
+    if current_user.is_super_admin:
+        # Super admin necesita especificar client_id
+        flash("Selecciona un cliente desde la lista", "info")
+        return redirect(url_for("search_config.index"))
+    else:
+        # Cliente admin: redirigir a su propia configuración
+        return redirect(url_for("search_config.edit", client_id=current_user.client_id))
+
+
 @bp.route("/edit/<client_id>", methods=["GET", "POST"])
 @login_required
 def edit(client_id):
