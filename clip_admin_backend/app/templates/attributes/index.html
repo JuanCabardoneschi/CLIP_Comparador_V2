@@ -79,10 +79,12 @@
                                         {% endif %}
                                     </td>
                                     <td>
-                                        {% if attr.type == 'list' and attr.options and attr.options.get('multiple') %}
-                                            <i class="bi bi-ui-checks text-primary" title="Multi-selección activada"></i>
-                                        {% elif attr.type == 'list' %}
-                                            <i class="bi bi-ui-radios text-muted" title="Selección simple"></i>
+                                        {% if attr.type == 'list' and attr.options %}
+                                            {% if attr.options is mapping and attr.options.get('multiple') %}
+                                                <i class="bi bi-ui-checks text-primary" title="Multi-selección activada"></i>
+                                            {% else %}
+                                                <i class="bi bi-ui-radios text-muted" title="Selección simple"></i>
+                                            {% endif %}
                                         {% else %}
                                             <span class="text-muted">—</span>
                                         {% endif %}
