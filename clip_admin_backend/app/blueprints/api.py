@@ -1514,17 +1514,23 @@ def visual_search():
 
                 # Actualizar product_best_match con scores enriquecidos
                 for ranked in ranked_results:
-                    product_id = ranked.product_id
-                    if product_id in product_best_match:
-                        product_best_match[product_id]['optimizer_scores'] = {
-                            'visual_score': ranked.visual_score,
-                            'metadata_score': ranked.metadata_score,
-                            'business_score': ranked.business_score,
-                            'final_score': ranked.final_score,
-                            'debug_info': ranked.debug_info
-                        }
-                        # Actualizar similarity con final_score para que _build_search_results ordene correctamente
-                        product_best_match[product_id]['similarity'] = ranked.final_score
+                    # ranked.product_id es string, pero las claves del dict son UUID objects
+                    # Buscar por el objeto Product directamente
+                    product_obj = ranked.product
+                    
+                    # Buscar la clave UUID en el diccionario que corresponde a este producto
+                    for dict_product_id, match_data in product_best_match.items():
+                        if str(dict_product_id) == ranked.product_id:
+                            product_best_match[dict_product_id]['optimizer_scores'] = {
+                                'visual_score': ranked.visual_score,
+                                'metadata_score': ranked.metadata_score,
+                                'business_score': ranked.business_score,
+                                'final_score': ranked.final_score,
+                                'debug_info': ranked.debug_info
+                            }
+                            # Actualizar similarity con final_score para que _build_search_results ordene correctamente
+                            product_best_match[dict_product_id]['similarity'] = ranked.final_score
+                            break
 
                 print(f"✅ OPTIMIZER: Ranking completado. Top 3 scores: " +
                       ", ".join([f"{r.final_score:.3f}" for r in ranked_results[:3]]))

@@ -162,6 +162,14 @@ def api_update(client_id):
             "error": "No tienes permisos para modificar esta configuración"
         }), 403
 
+    # Obtener cliente
+    client = Client.query.get(client_id)
+    if not client:
+        return jsonify({
+            "success": False,
+            "error": "Cliente no encontrado"
+        }), 404
+
     # Obtener configuración
     config = StoreSearchConfig.query.get(client_id)
     if not config:
