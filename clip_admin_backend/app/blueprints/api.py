@@ -17,7 +17,9 @@ from app.models.category import Category
 from app.models.product import Product
 from app.models.image import Image
 from app.models.search_log import SearchLog
+from app.models.store_search_config import StoreSearchConfig
 from app.services.image_manager import image_manager
+from app.core.search_optimizer import SearchOptimizer
 from sqlalchemy import func, or_, text
 from googletrans import Translator
 
@@ -900,6 +902,9 @@ def _build_search_results(product_best_match, limit):
             print(f"⚠️ Error leyendo atributos de producto {product.id}: {e}")
             product_attrs = {}
 
+        # 🚀 FASE 3: Incluir optimizer_scores si están disponibles
+        optimizer_scores = best_match.get('optimizer_scores')
+        
         result = {
             "product_id": product.id,
             "name": product.name,
@@ -915,11 +920,23 @@ def _build_search_results(product_best_match, limit):
             # Atributos dinámicos (filtrados si hay configuración)
             "attributes": product_attrs
         }
+        
+        # Agregar scores del optimizer si existen
+        if optimizer_scores:
+            result['optimizer'] = {
+                'visual_score': round(optimizer_scores['visual_score'], 4),
+                'metadata_score': round(optimizer_scores['metadata_score'], 4),
+                'business_score': round(optimizer_scores['business_score'], 4),
+                'final_score': round(optimizer_scores['final_score'], 4),
+                'enabled': True
+            }
+        
         results.append(result)
 
         boost_indicator = "🚀" if category_boost else ""
         color_indicator = "🎨" if color_boost else ""
-        print(f"📦 DEBUG: Producto final añadido: {product.name} (similitud: {similarity:.4f}) {boost_indicator}{color_indicator}")
+        optimizer_indicator = "🎯" if optimizer_scores else ""
+        print(f"📦 DEBUG: Producto final añadido: {product.name} (similitud: {similarity:.4f}) {boost_indicator}{color_indicator}{optimizer_indicator}")
 
     print(f"🎯 DEBUG: Total productos únicos procesados: {len(results)}")
 
@@ -1377,6 +1394,24 @@ def visual_search():
         # Sensibilidad personalizada por cliente
         category_confidence_threshold = (getattr(client, 'category_confidence_threshold', 70) or 70) / 100.0
         product_similarity_threshold = (getattr(client, 'product_similarity_threshold', 30) or 30) / 100.0
+        
+        # 🚀 FASE 3: Cargar configuración de SearchOptimizer (si existe)
+        use_optimizer = request.form.get('use_optimizer', 'true').lower() == 'true'  # Feature flag
+        store_config = None
+        search_optimizer = None
+        
+        if use_optimizer:
+            try:
+                store_config = StoreSearchConfig.query.get(client.id)
+                if store_config:
+                    search_optimizer = SearchOptimizer(store_config)
+                    print(f"🎯 OPTIMIZER: Activado para {client.name} (v={store_config.visual_weight}, m={store_config.metadata_weight}, b={store_config.business_weight})")
+                else:
+                    print(f"⚠️ OPTIMIZER: No config found for client {client.id}, usando búsqueda tradicional")
+            except Exception as e:
+                print(f"❌ OPTIMIZER: Error cargando config: {e}")
+                # Si falla, continuar sin optimizer
+                search_optimizer = None
 
         # ===== PASO 1.5: DETECCIÓN DE COLOR DOMINANTE =====
         print(f"🎨 RAILWAY LOG: IDENTIFICANDO COLOR DOMINANTE...")
@@ -1445,6 +1480,51 @@ def visual_search():
                     print(f"🎨 COLOR BOOST: {product.name} ({product_color}) {original_similarity:.4f} → {boosted_similarity:.4f}")
                 else:
                     match_data['color_boost'] = False
+        
+        # 🚀 FASE 3: APLICAR SEARCH OPTIMIZER (si está activado)
+        if search_optimizer and len(product_best_match) > 0:
+            print(f"🎯 OPTIMIZER: Aplicando ranking avanzado a {len(product_best_match)} productos")
+            
+            # Preparar atributos detectados para metadata scoring
+            detected_attributes = {}
+            if detected_color and detected_color != "unknown":
+                detected_attributes['color'] = detected_color
+            
+            # Convertir product_best_match a formato esperado por optimizer
+            raw_results = [
+                {
+                    'product': match_data['product'],
+                    'similarity': match_data['similarity']
+                }
+                for product_id, match_data in product_best_match.items()
+            ]
+            
+            # Aplicar ranking con SearchOptimizer
+            try:
+                ranked_results = search_optimizer.rank_results(raw_results, detected_attributes)
+                
+                # Actualizar product_best_match con scores enriquecidos
+                for ranked in ranked_results:
+                    product_id = ranked.product_id
+                    if product_id in product_best_match:
+                        product_best_match[product_id]['optimizer_scores'] = {
+                            'visual_score': ranked.visual_score,
+                            'metadata_score': ranked.metadata_score,
+                            'business_score': ranked.business_score,
+                            'final_score': ranked.final_score,
+                            'debug_info': ranked.debug_info
+                        }
+                        # Actualizar similarity con final_score para que _build_search_results ordene correctamente
+                        product_best_match[product_id]['similarity'] = ranked.final_score
+                
+                print(f"✅ OPTIMIZER: Ranking completado. Top 3 scores: " + 
+                      ", ".join([f"{r.final_score:.3f}" for r in ranked_results[:3]]))
+                      
+            except Exception as e:
+                print(f"❌ OPTIMIZER: Error durante ranking: {e}")
+                # Si falla, continuar con scores originales
+                import traceback
+                traceback.print_exc()
 
         # Construir resultados finales (sin filtro adicional de categoría)
         results = _build_search_results(product_best_match, limit)
