@@ -33,11 +33,14 @@
 
   <script>
     window.CLIPWidget = {
-      apiKey: 'test-api-key-demo-fashion-store-2024'
+      apiKey: 'test-api-key-demo-fashion-store-2024',
+      // Fuerza uso explícito de PROD
+      serverUrl: 'https://clipcomparadorv2-production.up.railway.app'
     };
   </script>
 
-  <script src="https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed.js"
+  <!-- Cache busting para asegurar la última versión del widget -->
+  <script src="https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed.js?v=20251023-1"
           onerror="document.getElementById('widget-error').style.display='block'"></script>
 
   <div id="clip-widget"></div>

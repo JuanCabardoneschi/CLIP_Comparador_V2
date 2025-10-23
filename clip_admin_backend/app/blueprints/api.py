@@ -952,7 +952,7 @@ def _build_search_results(product_best_match, limit):
             # Atributos dinámicos (filtrados si hay configuración)
             "attributes": product_attrs,
             # URL del producto si está configurada
-            "product_url": product_attrs.get('url_producto') if product_attrs else None
+            "product_url": product_url_value
         }
 
         # Agregar scores del optimizer si existen
@@ -1654,7 +1654,7 @@ def visual_search():
         processing_time = time.time() - start_time
 
         # Respuesta con información de categoría detectada
-        result = {
+        response = {
             "success": True,
             "query_type": "image_with_category_detection",
             "detected_category": {
@@ -1667,9 +1667,6 @@ def visual_search():
                 "method": "category_detection_with_clip",
                 "detected_category": detected_category.name,
                 "confidence": round(category_confidence, 4),
-            "attributes": product_attrs,
-            # URL del producto si está configurada (siempre incluida aunque no esté expuesta)
-            "product_url": product_url_value
                 "category_filter": True
             },
             "results": results,
