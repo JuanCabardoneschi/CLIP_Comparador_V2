@@ -188,8 +188,7 @@ def api_update(client_id):
         success, error = config.update_weights(
             visual=visual_weight,
             metadata=metadata_weight,
-            business=business_weight,
-            commit=False  # No commit aún, vamos a actualizar más campos
+            business=business_weight
         )
 
         if not success:
