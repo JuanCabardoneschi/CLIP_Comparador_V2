@@ -904,7 +904,7 @@ def _build_search_results(product_best_match, limit):
 
         # 🚀 FASE 3: Incluir optimizer_scores si están disponibles
         optimizer_scores = best_match.get('optimizer_scores')
-        
+
         result = {
             "product_id": product.id,
             "name": product.name,
@@ -920,7 +920,7 @@ def _build_search_results(product_best_match, limit):
             # Atributos dinámicos (filtrados si hay configuración)
             "attributes": product_attrs
         }
-        
+
         # Agregar scores del optimizer si existen
         if optimizer_scores:
             result['optimizer'] = {
@@ -930,7 +930,7 @@ def _build_search_results(product_best_match, limit):
                 'final_score': round(optimizer_scores['final_score'], 4),
                 'enabled': True
             }
-        
+
         results.append(result)
 
         boost_indicator = "🚀" if category_boost else ""
@@ -1394,12 +1394,12 @@ def visual_search():
         # Sensibilidad personalizada por cliente
         category_confidence_threshold = (getattr(client, 'category_confidence_threshold', 70) or 70) / 100.0
         product_similarity_threshold = (getattr(client, 'product_similarity_threshold', 30) or 30) / 100.0
-        
+
         # 🚀 FASE 3: Cargar configuración de SearchOptimizer (si existe)
         use_optimizer = request.form.get('use_optimizer', 'true').lower() == 'true'  # Feature flag
         store_config = None
         search_optimizer = None
-        
+
         if use_optimizer:
             try:
                 store_config = StoreSearchConfig.query.get(client.id)
@@ -1480,16 +1480,16 @@ def visual_search():
                     print(f"🎨 COLOR BOOST: {product.name} ({product_color}) {original_similarity:.4f} → {boosted_similarity:.4f}")
                 else:
                     match_data['color_boost'] = False
-        
+
         # 🚀 FASE 3: APLICAR SEARCH OPTIMIZER (si está activado)
         if search_optimizer and len(product_best_match) > 0:
             print(f"🎯 OPTIMIZER: Aplicando ranking avanzado a {len(product_best_match)} productos")
-            
+
             # Preparar atributos detectados para metadata scoring
             detected_attributes = {}
             if detected_color and detected_color != "unknown":
                 detected_attributes['color'] = detected_color
-            
+
             # Convertir product_best_match a formato esperado por optimizer
             raw_results = [
                 {
@@ -1498,11 +1498,11 @@ def visual_search():
                 }
                 for product_id, match_data in product_best_match.items()
             ]
-            
+
             # Aplicar ranking con SearchOptimizer
             try:
                 ranked_results = search_optimizer.rank_results(raw_results, detected_attributes)
-                
+
                 # Actualizar product_best_match con scores enriquecidos
                 for ranked in ranked_results:
                     product_id = ranked.product_id
@@ -1516,10 +1516,10 @@ def visual_search():
                         }
                         # Actualizar similarity con final_score para que _build_search_results ordene correctamente
                         product_best_match[product_id]['similarity'] = ranked.final_score
-                
-                print(f"✅ OPTIMIZER: Ranking completado. Top 3 scores: " + 
+
+                print(f"✅ OPTIMIZER: Ranking completado. Top 3 scores: " +
                       ", ".join([f"{r.final_score:.3f}" for r in ranked_results[:3]]))
-                      
+
             except Exception as e:
                 print(f"❌ OPTIMIZER: Error durante ranking: {e}")
                 # Si falla, continuar con scores originales

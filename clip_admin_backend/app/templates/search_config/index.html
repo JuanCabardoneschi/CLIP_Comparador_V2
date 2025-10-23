@@ -1,0 +1,354 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Configuración de Búsqueda - CLIP Comparador V2{% endblock %}
+
+{% block page_title %}Configuración de Búsqueda{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item active">Configuración de Búsqueda</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    {% for item in configs %}
+    <div class="col-lg-6 col-xl-4 mb-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-gradient-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="m-0">
+                        <i class="bi bi-gear-fill me-2"></i>
+                        {{ item.client.name }}
+                    </h6>
+                    {% if item.config %}
+                    <span class="badge bg-light text-dark">
+                        <i class="bi bi-check-circle me-1"></i>
+                        Configurado
+                    </span>
+                    {% else %}
+                    <span class="badge bg-warning">
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        Sin Config
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card-body">
+                {% if item.config %}
+                <!-- Sensibilidad de Detección -->
+                <div class="mb-3 pb-3 border-bottom">
+                    <h6 class="text-muted mb-3">
+                        <i class="bi bi-bullseye text-info me-1"></i>
+                        Sensibilidad de Detección:
+                    </h6>
+
+                    <!-- Category Confidence -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label mb-0 small">
+                                <i class="bi bi-tags text-info"></i>
+                                Confianza de Categoría
+                            </label>
+                            <span class="badge bg-info">{{ item.client.category_confidence_threshold or 70 }}%</span>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-info"
+                                 role="progressbar"
+                                 style="width: {{ item.client.category_confidence_threshold or 70 }}%"
+                                 aria-valuenow="{{ item.client.category_confidence_threshold or 70 }}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Product Similarity -->
+                    <div class="mb-0">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label mb-0 small">
+                                <i class="bi bi-diagram-3 text-info"></i>
+                                Similitud de Productos
+                            </label>
+                            <span class="badge bg-info">{{ item.client.product_similarity_threshold or 30 }}%</span>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-info"
+                                 role="progressbar"
+                                 style="width: {{ item.client.product_similarity_threshold or 30 }}%"
+                                 aria-valuenow="{{ item.client.product_similarity_threshold or 30 }}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pesos del Optimizer -->
+                <div class="mb-3">
+                    <h6 class="text-muted mb-3">
+                        <i class="bi bi-sliders text-primary me-1"></i>
+                        Pesos del Optimizer:
+                    </h6>
+
+                    <!-- Visual Weight -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label mb-0 small">
+                                <i class="bi bi-eye text-primary"></i>
+                                Visual
+                            </label>
+                            <span class="badge bg-primary">{{ (item.config.visual_weight * 100)|int }}%</span>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-primary"
+                                 role="progressbar"
+                                 style="width: {{ (item.config.visual_weight * 100)|int }}%"
+                                 aria-valuenow="{{ (item.config.visual_weight * 100)|int }}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Metadata Weight -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label mb-0 small">
+                                <i class="bi bi-tags text-success"></i>
+                                Metadata
+                            </label>
+                            <span class="badge bg-success">{{ (item.config.metadata_weight * 100)|int }}%</span>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-success"
+                                 role="progressbar"
+                                 style="width: {{ (item.config.metadata_weight * 100)|int }}%"
+                                 aria-valuenow="{{ (item.config.metadata_weight * 100)|int }}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Business Weight -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label mb-0 small">
+                                <i class="bi bi-shop text-warning"></i>
+                                Business
+                            </label>
+                            <span class="badge bg-warning text-dark">{{ (item.config.business_weight * 100)|int }}%</span>
+                        </div>
+                        <div class="progress" style="height: 8px;">
+                            <div class="progress-bar bg-warning"
+                                 role="progressbar"
+                                 style="width: {{ (item.config.business_weight * 100)|int }}%"
+                                 aria-valuenow="{{ (item.config.business_weight * 100)|int }}"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Suma Total -->
+                    <div class="alert alert-light border mb-0">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="small text-muted">
+                                <i class="bi bi-calculator me-1"></i>
+                                Suma Total:
+                            </span>
+                            <strong>{{ (item.config.visual_weight + item.config.metadata_weight + item.config.business_weight)|round(2) }}</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metadata del Sistema -->
+                <div class="mb-3">
+                    <small class="text-muted d-block mb-1">
+                        <i class="bi bi-clock-history me-1"></i>
+                        Última actualización:
+                        {{ item.config.updated_at.strftime('%d/%m/%Y %H:%M') if item.config.updated_at else 'N/A' }}
+                    </small>
+                </div>
+
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="bi bi-exclamation-circle text-warning" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-3">No hay configuración definida para este cliente.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="card-footer bg-white border-top-0">
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('search_config.edit', client_id=item.client.id) }}"
+                       class="btn btn-primary flex-grow-1">
+                        <i class="bi bi-sliders me-2"></i>
+                        Configurar Pesos
+                    </a>
+                    <button type="button"
+                            class="btn btn-outline-info"
+                            data-bs-toggle="modal"
+                            data-bs-target="#helpModal">
+                        <i class="bi bi-question-circle"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if not configs %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-warning text-center">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            No hay configuraciones disponibles.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Modal de Ayuda -->
+<div class="modal fade" id="helpModal" tabindex="-1" aria-labelledby="helpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="helpModalLabel">
+                    <i class="bi bi-lightbulb-fill me-2"></i>
+                    ¿Cómo funciona la Configuración de Búsqueda?
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="lead mb-4">
+                    Este panel te permite ajustar cómo se comporta el buscador visual de tu tienda para que muestre los productos más relevantes a tus clientes.
+                </p>
+
+                <!-- Sensibilidad de Detección -->
+                <div class="mb-4">
+                    <h6 class="text-primary mb-3">
+                        <i class="bi bi-funnel-fill me-2"></i>
+                        1. Sensibilidad de Detección
+                    </h6>
+                    <p class="mb-3">
+                        <strong>¿Qué hace?</strong> Define qué tan exigente será el sistema al buscar productos similares.
+                    </p>
+
+                    <div class="alert alert-light border">
+                        <p class="mb-2">
+                            <strong><i class="bi bi-tags text-info me-1"></i> Confianza de Categoría (60-80% recomendado):</strong>
+                        </p>
+                        <p class="mb-3 small">
+                            Cuando un cliente sube una foto, el sistema intenta adivinar qué tipo de producto es (zapatos, vestidos, etc.).
+                            Este valor indica qué tan seguro debe estar antes de buscar. <br>
+                            <strong>Más alto</strong> = Solo busca si está muy seguro (menos resultados, más precisos) <br>
+                            <strong>Más bajo</strong> = Busca aunque no esté tan seguro (más resultados, menos precisos)
+                        </p>
+
+                        <p class="mb-2">
+                            <strong><i class="bi bi-diagram-3 text-info me-1"></i> Similitud de Productos (20-40% recomendado):</strong>
+                        </p>
+                        <p class="mb-0 small">
+                            Una vez encontrada la categoría, este valor indica qué tan parecido debe ser un producto a la foto para mostrarlo. <br>
+                            <strong>Más alto</strong> = Solo muestra productos MUY parecidos (pocos resultados) <br>
+                            <strong>Más bajo</strong> = Muestra productos medianamente parecidos (más resultados)
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Pesos del Optimizer -->
+                <div class="mb-4">
+                    <h6 class="text-success mb-3">
+                        <i class="bi bi-sort-down-alt me-2"></i>
+                        2. Pesos del Optimizer (Ordenamiento)
+                    </h6>
+                    <p class="mb-3">
+                        <strong>¿Qué hace?</strong> Decide qué criterios son más importantes para ordenar los productos encontrados.
+                    </p>
+
+                    <div class="alert alert-light border">
+                        <p class="mb-2">
+                            <strong><i class="bi bi-eye text-primary me-1"></i> Visual:</strong>
+                        </p>
+                        <p class="mb-3 small">
+                            Prioriza productos que se parezcan visualmente a la foto (color, forma, estilo).
+                            Ideal si vendes productos donde la apariencia es lo más importante (ropa, decoración).
+                        </p>
+
+                        <p class="mb-2">
+                            <strong><i class="bi bi-tags text-success me-1"></i> Metadata:</strong>
+                        </p>
+                        <p class="mb-3 small">
+                            Prioriza productos con características similares (misma marca, mismo color exacto, mismo material).
+                            Útil si tus clientes buscan especificaciones técnicas precisas.
+                        </p>
+
+                        <p class="mb-2">
+                            <strong><i class="bi bi-shop text-warning me-1"></i> Business:</strong>
+                        </p>
+                        <p class="mb-0 small">
+                            Prioriza productos según tu estrategia de negocio (productos en stock, destacados, con descuento).
+                            Útil para promover lo que más te interesa vender.
+                        </p>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>Importante:</strong> Los tres pesos deben sumar exactamente <code>1.0</code> (ej: 0.6 + 0.3 + 0.1 = 1.0)
+                    </div>
+                </div>
+
+                <!-- Ejemplo Práctico -->
+                <div class="alert alert-success">
+                    <h6 class="mb-2">
+                        <i class="bi bi-stars me-2"></i>
+                        Ejemplo Práctico
+                    </h6>
+                    <p class="mb-2 small">
+                        <strong>Tienda de Moda:</strong> Visual: 0.7, Metadata: 0.2, Business: 0.1
+                    </p>
+                    <p class="mb-0 small">
+                        El buscador priorizará productos que "se vean similares" (70%), luego considerará si coinciden atributos como color o marca (20%),
+                        y finalmente dará un pequeño empujón a productos destacados o en stock (10%).
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">
+                    <i class="bi bi-check-circle me-1"></i>
+                    Entendido
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+
+    .progress {
+        background-color: #e9ecef;
+    }
+</style>
+{% endblock %}

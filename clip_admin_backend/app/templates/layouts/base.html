@@ -157,6 +157,14 @@
                     </li>
 
                     <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint and 'search_config' in request.endpoint %}active{% endif %}"
+                           href="{{ url_for('search_config.index') }}">
+                            <i class="bi bi-sliders me-2"></i>
+                            Configuración de Búsqueda
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
                         <a class="nav-link {% if request.endpoint and 'system_config' in request.endpoint %}active{% endif %}"
                            href="#" onclick="alert('Configuración del Sistema - En desarrollo')">
                             <i class="bi bi-gear me-2"></i>
@@ -213,6 +221,14 @@
 
                 <div class="sidebar-section">
                     <div class="sidebar-section-title">Configuración</div>
+
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint and 'search_config' in request.endpoint %}active{% endif %}"
+                           href="{{ url_for('search_config.index') }}">
+                            <i class="bi bi-sliders me-2"></i>
+                            Configuración de Búsqueda
+                        </a>
+                    </li>
 
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint and 'clients.view' in request.endpoint %}active{% endif %}"

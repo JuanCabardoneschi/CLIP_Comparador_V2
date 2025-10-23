@@ -1,6 +1,6 @@
 # BACKLOG DE MEJORAS Y PENDIENTES
 **Fecha de Creación**: 22 Octubre 2025
-**Última Actualización**: 22 Octubre 2025
+**Última Actualización**: 23 Octubre 2025
 
 ---
 
@@ -96,6 +96,81 @@
 ---
 
 ## 🔧 PENDIENTES TÉCNICOS
+
+### 1. Migrar Templates de Atributos por Industria a Base de Datos
+**Estado**: 📋 Backlog (Fase 2)
+**Complejidad**: Media
+**Impacto**: Alto para escalabilidad
+**Relacionado con**: Sistema de atributos dinámicos + SearchOptimizer metadata scoring
+
+**Contexto**:
+- Actualmente los templates de atributos por industria están hardcoded en `app/utils/industry_templates.py`
+- Funcionan bien para MVP pero limitan la flexibilidad de super_admin
+- Cada industria (fashion, automotive, home, electronics, generic) tiene atributos diferentes con pesos de optimizer específicos
+
+**Problema Actual**:
+- Agregar nueva industria requiere modificar código y redesplegar
+- Super admin no puede editar templates desde UI
+- No hay historial de cambios en templates (solo Git)
+- Testing requiere modificar diccionario Python
+
+**Solución Propuesta**:
+```sql
+CREATE TABLE attribute_templates (
+   id SERIAL PRIMARY KEY,
+   industry VARCHAR(100) NOT NULL,     -- 'fashion', 'automotive', etc.
+   key VARCHAR(100) NOT NULL,          -- 'color', 'marca', etc.
+   label VARCHAR(200) NOT NULL,
+   type VARCHAR(20) NOT NULL,          -- 'text', 'list', etc.
+   is_system BOOLEAN DEFAULT TRUE,
+   is_deletable BOOLEAN DEFAULT FALSE,
+   optimizer_weight FLOAT,             -- Peso en SearchOptimizer
+   description TEXT,
+   options JSON,
+   field_order INT DEFAULT 0,
+   expose_in_search BOOLEAN DEFAULT TRUE,
+   required BOOLEAN DEFAULT FALSE,
+   created_at TIMESTAMP DEFAULT NOW(),
+   updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_attr_templates_industry_key
+ON attribute_templates(industry, key);
+```
+
+**Cambios Requeridos**:
+1. **Migración Alembic**: Crear tabla `attribute_templates`
+2. **Seed Script**: `python scripts/migrate_templates_to_db.py`
+  - Lee `INDUSTRY_TEMPLATES` de `industry_templates.py`
+  - Inserta todos los templates en BD
+  - Verifica integridad de datos
+3. **Modelo SQLAlchemy**: `app/models/attribute_template.py`
+4. **Blueprint Admin**: `app/blueprints/attribute_templates.py`
+  - CRUD para templates (solo super_admin)
+  - UI para agregar/editar industrias
+  - Validación de cambios (no romper configs existentes)
+5. **Actualizar `seed_industry_attributes()`**:
+  - Cambiar de leer dict a query DB
+  ```python
+  templates = AttributeTemplate.query.filter_by(industry=industry).all()
+  ```
+
+**Beneficios**:
+- ✅ Super admin puede crear nuevas industrias desde UI
+- ✅ Editar templates sin redesplegar
+- ✅ Historial en DB con timestamps
+- ✅ Testing más robusto (seed test DB)
+- ✅ Multi-tenant escalable (diferentes templates por región?)
+
+**Riesgos**:
+- ⚠️ Migración de datos existentes (clientes con templates hardcoded)
+- ⚠️ Validación compleja (cambios en templates no deben romper productos existentes)
+- ⚠️ Caché necesario para performance (Redis?)
+
+**Estimación**: 1-2 semanas
+**Prioridad**: Baja (MVP funciona con hardcoded), Alta para multi-cliente/regiones
+
+---
 
 ### 2. Eliminar Métodos Deprecados de Image Managers
 **Estado**: ⏳ Programado para 10 Nov 2025

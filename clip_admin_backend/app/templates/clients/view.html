@@ -86,67 +86,6 @@
                     </span>
                 </div>
 
-                <!-- Sensibilidad de Detección Visual -->
-                <hr>
-                <div class="mb-3">
-                    <label class="form-label text-muted">
-                        <i class="bi bi-sliders me-1"></i>
-                        Sensibilidad de Detección
-                    </label>
-                    <div class="mb-2">
-                        <span class="text-muted">Confianza de Categoría:</span>
-                        <input type="range" class="form-range" id="category_confidence_threshold" min="1" max="100" value="{{ client.category_confidence_threshold or 70 }}" step="1">
-                        <span class="badge bg-primary" id="category_confidence_value">{{ client.category_confidence_threshold or 70 }}%</span>
-                    </div>
-                    <div class="mb-2">
-                        <span class="text-muted">Similitud de Productos:</span>
-                        <input type="range" class="form-range" id="product_similarity_threshold" min="1" max="100" value="{{ client.product_similarity_threshold or 30 }}" step="1">
-                        <span class="badge bg-success" id="product_similarity_value">{{ client.product_similarity_threshold or 30 }}%</span>
-                    </div>
-                    <button class="btn btn-outline-primary btn-sm mt-2" id="saveSensitivityBtn">
-                        <i class="bi bi-save me-1"></i> Guardar Sensibilidad
-                    </button>
-                    <div id="sensitivityStatus" class="mt-2" style="display:none;"></div>
-                </div>
-                <script>
-                // Actualizar valores en tiempo real
-                const catSlider = document.getElementById('category_confidence_threshold');
-                const catValue = document.getElementById('category_confidence_value');
-                catSlider.addEventListener('input', function() {
-                    catValue.textContent = catSlider.value + '%';
-                });
-                const prodSlider = document.getElementById('product_similarity_threshold');
-                const prodValue = document.getElementById('product_similarity_value');
-                prodSlider.addEventListener('input', function() {
-                    prodValue.textContent = prodSlider.value + '%';
-                });
-                // Guardar sensibilidad por AJAX
-                document.getElementById('saveSensitivityBtn').onclick = function() {
-                    const cat = catSlider.value;
-                    const prod = prodSlider.value;
-                    fetch(`/clients/{{ client.id }}/update-sensitivity`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            category_confidence_threshold: cat,
-                            product_similarity_threshold: prod
-                        })
-                    }).then(r => r.json()).then(data => {
-                        const status = document.getElementById('sensitivityStatus');
-                        if (data.success) {
-                            status.textContent = 'Sensibilidad actualizada correctamente.';
-                            status.className = 'alert alert-success';
-                        } else {
-                            status.textContent = 'Error al guardar sensibilidad.';
-                            status.className = 'alert alert-danger';
-                        }
-                        status.style.display = 'block';
-                        setTimeout(() => { status.style.display = 'none'; }, 2500);
-                    });
-                };
-                </script>
-                <!-- Fin sensibilidad -->
-
                 <!-- API Key del Cliente -->
                 <hr>
                 <div class="mb-3">

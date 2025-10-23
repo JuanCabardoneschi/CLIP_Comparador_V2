@@ -1,0 +1,783 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Editar Configuración - {{ client.name }} - CLIP Comparador V2{% endblock %}
+
+{% block page_title %}Configurar Pesos de Búsqueda{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('search_config.index') }}">Configuración de Búsqueda</a></li>
+        <li class="breadcrumb-item active">{{ client.name }}</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 col-xl-9">
+        <!-- Tarjeta Principal de Configuración -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-gradient-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="m-0">
+                        <i class="bi bi-sliders me-2"></i>
+                        Ajustar Pesos para {{ client.name }}
+                    </h5>
+                    <span class="badge bg-light text-dark" id="validation-badge">
+                        <i class="bi bi-check-circle me-1"></i>
+                        <span id="sum-display">1.00</span>
+                    </span>
+                </div>
+            </div>
+
+            <div class="card-body">
+                <!-- Formulario de Sliders -->
+                <form id="weights-form">
+                    <!-- Sensibilidad de Detección Visual -->
+                    <div class="mb-4 pb-4 border-bottom">
+                        <h6 class="mb-3">
+                            <i class="bi bi-bullseye text-info me-2"></i>
+                            <strong>Sensibilidad de Detección Visual</strong>
+                        </h6>
+                        <p class="small text-muted mb-3">
+                            Controla los umbrales mínimos para considerar coincidencias válidas en la búsqueda visual.
+                        </p>
+
+                        <!-- Category Confidence Threshold -->
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label for="category-confidence" class="form-label mb-0">
+                                    <i class="bi bi-tags text-primary me-2"></i>
+                                    <strong>Confianza de Categoría</strong>
+                                </label>
+                                <div class="d-flex align-items-center">
+                                    <input type="number"
+                                           id="category-confidence-input"
+                                           class="form-control form-control-sm text-end me-2"
+                                           style="width: 80px;"
+                                           min="1"
+                                           max="100"
+                                           step="1"
+                                           value="{{ client.category_confidence_threshold or 70 }}">
+                                    <span class="badge bg-primary fs-6" id="category-confidence-percent">{{ client.category_confidence_threshold or 70 }}%</span>
+                                </div>
+                            </div>
+                            <input type="range"
+                                   class="form-range"
+                                   id="category-confidence"
+                                   min="1"
+                                   max="100"
+                                   step="1"
+                                   value="{{ client.category_confidence_threshold or 70 }}">
+                            <small class="text-muted">
+                                Umbral mínimo de confianza para detectar la categoría del producto (recomendado: 60-80%)
+                            </small>
+                        </div>
+
+                        <!-- Product Similarity Threshold -->
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label for="product-similarity" class="form-label mb-0">
+                                    <i class="bi bi-diagram-3 text-success me-2"></i>
+                                    <strong>Similitud de Productos</strong>
+                                </label>
+                                <div class="d-flex align-items-center">
+                                    <input type="number"
+                                           id="product-similarity-input"
+                                           class="form-control form-control-sm text-end me-2"
+                                           style="width: 80px;"
+                                           min="1"
+                                           max="100"
+                                           step="1"
+                                           value="{{ client.product_similarity_threshold or 30 }}">
+                                    <span class="badge bg-success fs-6" id="product-similarity-percent">{{ client.product_similarity_threshold or 30 }}%</span>
+                                </div>
+                            </div>
+                            <input type="range"
+                                   class="form-range"
+                                   id="product-similarity"
+                                   min="1"
+                                   max="100"
+                                   step="1"
+                                   value="{{ client.product_similarity_threshold or 30 }}">
+                            <small class="text-muted">
+                                Umbral mínimo de similitud visual para mostrar un producto (recomendado: 20-40%)
+                            </small>
+                        </div>
+                    </div>
+
+                    <!-- Visual Weight Slider -->
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label for="visual-weight" class="form-label mb-0">
+                                <i class="bi bi-eye text-primary me-2"></i>
+                                <strong>Peso Visual (CLIP)</strong>
+                            </label>
+                            <div class="d-flex align-items-center">
+                                <input type="number"
+                                       id="visual-weight-input"
+                                       class="form-control form-control-sm text-end me-2"
+                                       style="width: 80px;"
+                                       min="0"
+                                       max="1"
+                                       step="0.01"
+                                       value="{{ config.visual_weight if config else 0.7 }}">
+                                <span class="badge bg-primary fs-6" id="visual-percent">70%</span>
+                            </div>
+                        </div>
+                        <input type="range"
+                               class="form-range weight-slider"
+                               id="visual-weight"
+                               min="0"
+                               max="1"
+                               step="0.01"
+                               value="{{ config.visual_weight if config else 0.7 }}"
+                               data-target="visual">
+                        <small class="text-muted">
+                            Relevancia basada en similitud visual de imágenes usando embeddings CLIP
+                        </small>
+                    </div>
+
+                    <!-- Metadata Weight Slider -->
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label for="metadata-weight" class="form-label mb-0">
+                                <i class="bi bi-tags text-success me-2"></i>
+                                <strong>Peso Metadata</strong>
+                            </label>
+                            <div class="d-flex align-items-center">
+                                <input type="number"
+                                       id="metadata-weight-input"
+                                       class="form-control form-control-sm text-end me-2"
+                                       style="width: 80px;"
+                                       min="0"
+                                       max="1"
+                                       step="0.01"
+                                       value="{{ config.metadata_weight if config else 0.2 }}">
+                                <span class="badge bg-success fs-6" id="metadata-percent">20%</span>
+                            </div>
+                        </div>
+                        <input type="range"
+                               class="form-range weight-slider"
+                               id="metadata-weight"
+                               min="0"
+                               max="1"
+                               step="0.01"
+                               value="{{ config.metadata_weight if config else 0.2 }}"
+                               data-target="metadata">
+                        <small class="text-muted">
+                            Coincidencia de atributos: color, marca, patrón, material, temporada, etc.
+                        </small>
+                    </div>
+
+                    <!-- Business Weight Slider -->
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label for="business-weight" class="form-label mb-0">
+                                <i class="bi bi-shop text-warning me-2"></i>
+                                <strong>Peso Business</strong>
+                            </label>
+                            <div class="d-flex align-items-center">
+                                <input type="number"
+                                       id="business-weight-input"
+                                       class="form-control form-control-sm text-end me-2"
+                                       style="width: 80px;"
+                                       min="0"
+                                       max="1"
+                                       step="0.01"
+                                       value="{{ config.business_weight if config else 0.1 }}">
+                                <span class="badge bg-warning text-dark fs-6" id="business-percent">10%</span>
+                            </div>
+                        </div>
+                        <input type="range"
+                               class="form-range weight-slider"
+                               id="business-weight"
+                               min="0"
+                               max="1"
+                               step="0.01"
+                               value="{{ config.business_weight if config else 0.1 }}"
+                               data-target="business">
+                        <small class="text-muted">
+                            Métricas de negocio: disponibilidad de stock, productos destacados, descuentos activos
+                        </small>
+                    </div>
+
+                    <!-- Suma Total y Validación -->
+                    <div class="alert mb-4" id="validation-alert" role="alert">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>
+                                <i class="bi bi-calculator me-2"></i>
+                                <strong>Suma Total:</strong>
+                            </span>
+                            <span class="fs-4" id="total-sum">1.00</span>
+                        </div>
+                        <div class="progress mt-2" style="height: 10px;">
+                            <div class="progress-bar" id="sum-progress" role="progressbar" style="width: 100%"></div>
+                        </div>
+                        <small class="text-muted mt-1 d-block" id="validation-message">
+                            ✅ Los pesos están correctamente balanceados
+                        </small>
+                    </div>
+
+                    <!-- Botones de Acción -->
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg flex-grow-1" id="save-btn">
+                            <i class="bi bi-save me-2"></i>
+                            Guardar Configuración
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-info btn-lg"
+                                data-bs-toggle="modal"
+                                data-bs-target="#helpModal">
+                            <i class="bi bi-question-circle"></i>
+                        </button>
+                        <a href="{{ url_for('search_config.index') }}" class="btn btn-outline-secondary btn-lg">
+                            <i class="bi bi-x-circle me-2"></i>
+                            Cancelar
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Panel Lateral: Presets -->
+    <div class="col-lg-4 col-xl-3">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <h6 class="m-0">
+                    <i class="bi bi-lightning-charge-fill text-warning me-2"></i>
+                    Presets Rápidos
+                </h6>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted">
+                    Aplica configuraciones predefinidas según tu tipo de catálogo:
+                </p>
+
+                <!-- Preset: Visual-Heavy -->
+                <button type="button" class="btn btn-outline-primary w-100 mb-3 preset-btn" data-preset="visual_heavy">
+                    <div class="d-flex align-items-start">
+                        <i class="bi bi-eye-fill me-2 mt-1"></i>
+                        <div class="text-start">
+                            <div><strong>Visual-Heavy</strong></div>
+                            <small class="text-muted d-block">
+                                Visual: 80% • Meta: 15% • Biz: 5%
+                            </small>
+                            <small class="text-muted d-block">
+                                Ideal para moda, accesorios, decoración
+                            </small>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Preset: Balanced -->
+                <button type="button" class="btn btn-outline-success w-100 mb-3 preset-btn" data-preset="balanced">
+                    <div class="d-flex align-items-start">
+                        <i class="bi bi-bar-chart-fill me-2 mt-1"></i>
+                        <div class="text-start">
+                            <div><strong>Balanced</strong></div>
+                            <small class="text-muted d-block">
+                                Visual: 50% • Meta: 30% • Biz: 20%
+                            </small>
+                            <small class="text-muted d-block">
+                                Balance entre visual y especificaciones
+                            </small>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Preset: Metadata-Heavy -->
+                <button type="button" class="btn btn-outline-info w-100 mb-3 preset-btn" data-preset="metadata_heavy">
+                    <div class="d-flex align-items-start">
+                        <i class="bi bi-tags-fill me-2 mt-1"></i>
+                        <div class="text-start">
+                            <div><strong>Metadata-Heavy</strong></div>
+                            <small class="text-muted d-block">
+                                Visual: 30% • Meta: 60% • Biz: 10%
+                            </small>
+                            <small class="text-muted d-block">
+                                Para catálogos con atributos muy específicos
+                            </small>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Preset: Business-Focused -->
+                <button type="button" class="btn btn-outline-warning w-100 preset-btn" data-preset="business_focused">
+                    <div class="d-flex align-items-start">
+                        <i class="bi bi-shop-window me-2 mt-1"></i>
+                        <div class="text-start">
+                            <div><strong>Business-Focused</strong></div>
+                            <small class="text-muted d-block">
+                                Visual: 40% • Meta: 20% • Biz: 40%
+                            </small>
+                            <small class="text-muted d-block">
+                                Prioriza stock y productos destacados
+                            </small>
+                        </div>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Info Adicional -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-light">
+                <h6 class="m-0">
+                    <i class="bi bi-question-circle-fill text-info me-2"></i>
+                    Guía Rápida
+                </h6>
+            </div>
+            <div class="card-body">
+                <dl class="mb-0">
+                    <dt class="mb-1">
+                        <i class="bi bi-eye text-primary me-1"></i>
+                        Visual:
+                    </dt>
+                    <dd class="small text-muted mb-2">
+                        Qué tan importante es el parecido visual directo (formas, colores, composición)
+                    </dd>
+
+                    <dt class="mb-1">
+                        <i class="bi bi-tags text-success me-1"></i>
+                        Metadata:
+                    </dt>
+                    <dd class="small text-muted mb-2">
+                        Peso de características específicas como marca, color, material, etc.
+                    </dd>
+
+                    <dt class="mb-1">
+                        <i class="bi bi-shop text-warning me-1"></i>
+                        Business:
+                    </dt>
+                    <dd class="small text-muted mb-0">
+                        Factores comerciales: disponibilidad, promociones, productos destacados
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Ayuda -->
+<div class="modal fade" id="helpModal" tabindex="-1" aria-labelledby="helpModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="helpModalLabel">
+                    <i class="bi bi-lightbulb-fill me-2"></i>
+                    ¿Cómo funciona la Configuración de Búsqueda?
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="lead mb-4">
+                    Este panel te permite ajustar cómo se comporta el buscador visual de tu tienda para que muestre los productos más relevantes a tus clientes.
+                </p>
+
+                <!-- Sensibilidad de Detección -->
+                <div class="mb-4">
+                    <h6 class="text-primary mb-3">
+                        <i class="bi bi-funnel-fill me-2"></i>
+                        1. Sensibilidad de Detección
+                    </h6>
+                    <p class="mb-3">
+                        <strong>¿Qué hace?</strong> Define qué tan exigente será el sistema al buscar productos similares.
+                    </p>
+
+                    <div class="alert alert-light border">
+                        <p class="mb-2">
+                            <strong><i class="bi bi-tags text-info me-1"></i> Confianza de Categoría (60-80% recomendado):</strong>
+                        </p>
+                        <p class="mb-3 small">
+                            Cuando un cliente sube una foto, el sistema intenta adivinar qué tipo de producto es (zapatos, vestidos, etc.).
+                            Este valor indica qué tan seguro debe estar antes de buscar. <br>
+                            <strong>Más alto</strong> = Solo busca si está muy seguro (menos resultados, más precisos) <br>
+                            <strong>Más bajo</strong> = Busca aunque no esté tan seguro (más resultados, menos precisos)
+                        </p>
+
+                        <p class="mb-2">
+                            <strong><i class="bi bi-diagram-3 text-info me-1"></i> Similitud de Productos (20-40% recomendado):</strong>
+                        </p>
+                        <p class="mb-0 small">
+                            Una vez encontrada la categoría, este valor indica qué tan parecido debe ser un producto a la foto para mostrarlo. <br>
+                            <strong>Más alto</strong> = Solo muestra productos MUY parecidos (pocos resultados) <br>
+                            <strong>Más bajo</strong> = Muestra productos medianamente parecidos (más resultados)
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Pesos del Optimizer -->
+                <div class="mb-4">
+                    <h6 class="text-success mb-3">
+                        <i class="bi bi-sort-down-alt me-2"></i>
+                        2. Pesos del Optimizer (Ordenamiento)
+                    </h6>
+                    <p class="mb-3">
+                        <strong>¿Qué hace?</strong> Decide qué criterios son más importantes para ordenar los productos encontrados.
+                    </p>
+
+                    <div class="alert alert-light border">
+                        <p class="mb-2">
+                            <strong><i class="bi bi-eye text-primary me-1"></i> Visual:</strong>
+                        </p>
+                        <p class="mb-3 small">
+                            Prioriza productos que se parezcan visualmente a la foto (color, forma, estilo).
+                            Ideal si vendes productos donde la apariencia es lo más importante (ropa, decoración).
+                        </p>
+
+                        <p class="mb-2">
+                            <strong><i class="bi bi-tags text-success me-1"></i> Metadata:</strong>
+                        </p>
+                        <p class="mb-3 small">
+                            Prioriza productos con características similares (misma marca, mismo color exacto, mismo material).
+                            Útil si tus clientes buscan especificaciones técnicas precisas.
+                        </p>
+
+                        <p class="mb-2">
+                            <strong><i class="bi bi-shop text-warning me-1"></i> Business:</strong>
+                        </p>
+                        <p class="mb-0 small">
+                            Prioriza productos según tu estrategia de negocio (productos en stock, destacados, con descuento).
+                            Útil para promover lo que más te interesa vender.
+                        </p>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>Importante:</strong> Los tres pesos deben sumar exactamente <code>1.0</code> (ej: 0.6 + 0.3 + 0.1 = 1.0)
+                    </div>
+                </div>
+
+                <!-- Ejemplo Práctico -->
+                <div class="alert alert-success">
+                    <h6 class="mb-2">
+                        <i class="bi bi-stars me-2"></i>
+                        Ejemplo Práctico
+                    </h6>
+                    <p class="mb-2 small">
+                        <strong>Tienda de Moda:</strong> Visual: 0.7, Metadata: 0.2, Business: 0.1
+                    </p>
+                    <p class="mb-0 small">
+                        El buscador priorizará productos que "se vean similares" (70%), luego considerará si coinciden atributos como color o marca (20%),
+                        y finalmente dará un pequeño empujón a productos destacados o en stock (10%).
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">
+                    <i class="bi bi-check-circle me-1"></i>
+                    Entendido
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .form-range::-webkit-slider-thumb {
+        background: #667eea;
+    }
+
+    .form-range::-moz-range-thumb {
+        background: #667eea;
+    }
+
+    .preset-btn {
+        border: 2px dashed;
+        transition: all 0.2s;
+    }
+
+    .preset-btn:hover {
+        transform: translateY(-2px);
+        border-style: solid;
+    }
+
+    #validation-alert.alert-success {
+        background-color: #d1e7dd;
+        border-color: #badbcc;
+        color: #0f5132;
+    }
+
+    #validation-alert.alert-danger {
+        background-color: #f8d7da;
+        border-color: #f5c2c7;
+        color: #842029;
+    }
+
+    #validation-alert.alert-warning {
+        background-color: #fff3cd;
+        border-color: #ffecb5;
+        color: #664d03;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const clientId = "{{ client.id }}";
+
+    // Referencias a elementos
+    const sliders = {
+        visual: document.getElementById('visual-weight'),
+        metadata: document.getElementById('metadata-weight'),
+        business: document.getElementById('business-weight'),
+        categoryConfidence: document.getElementById('category-confidence'),
+        productSimilarity: document.getElementById('product-similarity')
+    };
+
+    const inputs = {
+        visual: document.getElementById('visual-weight-input'),
+        metadata: document.getElementById('metadata-weight-input'),
+        business: document.getElementById('business-weight-input'),
+        categoryConfidence: document.getElementById('category-confidence-input'),
+        productSimilarity: document.getElementById('product-similarity-input')
+    };
+
+    const percents = {
+        visual: document.getElementById('visual-percent'),
+        metadata: document.getElementById('metadata-percent'),
+        business: document.getElementById('business-percent'),
+        categoryConfidence: document.getElementById('category-confidence-percent'),
+        productSimilarity: document.getElementById('product-similarity-percent')
+    };
+
+    const totalSumEl = document.getElementById('total-sum');
+    const sumDisplayEl = document.getElementById('sum-display');
+    const validationAlert = document.getElementById('validation-alert');
+    const validationBadge = document.getElementById('validation-badge');
+    const validationMessage = document.getElementById('validation-message');
+    const sumProgress = document.getElementById('sum-progress');
+    const saveBtn = document.getElementById('save-btn');
+    const form = document.getElementById('weights-form');
+
+    // Event listeners para sensitivity sliders
+    sliders.categoryConfidence.addEventListener('input', function() {
+        const value = parseInt(this.value);
+        inputs.categoryConfidence.value = value;
+        percents.categoryConfidence.textContent = value + '%';
+    });
+
+    sliders.productSimilarity.addEventListener('input', function() {
+        const value = parseInt(this.value);
+        inputs.productSimilarity.value = value;
+        percents.productSimilarity.textContent = value + '%';
+    });
+
+    inputs.categoryConfidence.addEventListener('input', function() {
+        const value = parseInt(this.value) || 70;
+        sliders.categoryConfidence.value = Math.max(1, Math.min(100, value));
+        percents.categoryConfidence.textContent = sliders.categoryConfidence.value + '%';
+    });
+
+    inputs.productSimilarity.addEventListener('input', function() {
+        const value = parseInt(this.value) || 30;
+        sliders.productSimilarity.value = Math.max(1, Math.min(100, value));
+        percents.productSimilarity.textContent = sliders.productSimilarity.value + '%';
+    });
+
+    // Función para actualizar UI
+    function updateUI() {
+        const visual = parseFloat(sliders.visual.value);
+        const metadata = parseFloat(sliders.metadata.value);
+        const business = parseFloat(sliders.business.value);
+        const sum = visual + metadata + business;
+
+        // Actualizar inputs numéricos
+        inputs.visual.value = visual.toFixed(2);
+        inputs.metadata.value = metadata.toFixed(2);
+        inputs.business.value = business.toFixed(2);
+
+        // Actualizar badges de porcentaje
+        percents.visual.textContent = Math.round(visual * 100) + '%';
+        percents.metadata.textContent = Math.round(metadata * 100) + '%';
+        percents.business.textContent = Math.round(business * 100) + '%';
+
+        // Actualizar suma total
+        totalSumEl.textContent = sum.toFixed(2);
+        sumDisplayEl.textContent = sum.toFixed(2);
+
+        // Actualizar barra de progreso
+        const progressPercent = Math.min((sum / 1.0) * 100, 100);
+        sumProgress.style.width = progressPercent + '%';
+
+        // Validación visual
+        const isValid = Math.abs(sum - 1.0) < 0.01;
+
+        if (isValid) {
+            validationAlert.className = 'alert alert-success mb-4';
+            validationBadge.className = 'badge bg-success';
+            validationBadge.innerHTML = '<i class="bi bi-check-circle me-1"></i><span id="sum-display">' + sum.toFixed(2) + '</span>';
+            validationMessage.innerHTML = '✅ Los pesos están correctamente balanceados';
+            sumProgress.className = 'progress-bar bg-success';
+            saveBtn.disabled = false;
+        } else if (sum < 1.0) {
+            validationAlert.className = 'alert alert-warning mb-4';
+            validationBadge.className = 'badge bg-warning text-dark';
+            validationBadge.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i><span id="sum-display">' + sum.toFixed(2) + '</span>';
+            validationMessage.innerHTML = '⚠️ La suma es menor a 1.0 (faltan ' + (1.0 - sum).toFixed(2) + ' puntos)';
+            sumProgress.className = 'progress-bar bg-warning';
+            saveBtn.disabled = true;
+        } else {
+            validationAlert.className = 'alert alert-danger mb-4';
+            validationBadge.className = 'badge bg-danger';
+            validationBadge.innerHTML = '<i class="bi bi-x-circle me-1"></i><span id="sum-display">' + sum.toFixed(2) + '</span>';
+            validationMessage.innerHTML = '❌ La suma excede 1.0 (sobran ' + (sum - 1.0).toFixed(2) + ' puntos)';
+            sumProgress.className = 'progress-bar bg-danger';
+            saveBtn.disabled = true;
+        }
+    }
+
+    // Event listeners para sliders
+    Object.values(sliders).forEach(slider => {
+        slider.addEventListener('input', updateUI);
+    });
+
+    // Event listeners para inputs numéricos
+    Object.keys(inputs).forEach(key => {
+        inputs[key].addEventListener('input', function() {
+            const value = parseFloat(this.value) || 0;
+            sliders[key].value = Math.max(0, Math.min(1, value));
+            updateUI();
+        });
+    });
+
+    // Event listeners para botones de preset
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const preset = this.dataset.preset;
+
+            // Mostrar loading
+            const originalHtml = this.innerHTML;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Aplicando...';
+            this.disabled = true;
+
+            try {
+                const response = await fetch(`/search-config/api/${clientId}/preset/${preset}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Actualizar sliders con los valores del preset
+                    sliders.visual.value = data.config.visual_weight;
+                    sliders.metadata.value = data.config.metadata_weight;
+                    sliders.business.value = data.config.business_weight;
+                    updateUI();
+
+                    // Mostrar mensaje de éxito
+                    showToast('Preset aplicado correctamente', 'success');
+                } else {
+                    showToast('Error: ' + data.error, 'danger');
+                }
+            } catch (error) {
+                showToast('Error al aplicar preset: ' + error.message, 'danger');
+            } finally {
+                this.innerHTML = originalHtml;
+                this.disabled = false;
+            }
+        });
+    });
+
+    // Submit del formulario
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const visual = parseFloat(sliders.visual.value);
+        const metadata = parseFloat(sliders.metadata.value);
+        const business = parseFloat(sliders.business.value);
+        const categoryConfidence = parseInt(sliders.categoryConfidence.value);
+        const productSimilarity = parseInt(sliders.productSimilarity.value);
+
+        // Validar suma
+        const sum = visual + metadata + business;
+        if (Math.abs(sum - 1.0) >= 0.01) {
+            showToast('La suma de los pesos debe ser exactamente 1.0', 'danger');
+            return;
+        }
+
+        // Mostrar loading
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
+        saveBtn.disabled = true;
+
+        try {
+            const response = await fetch(`/search-config/api/${clientId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    visual_weight: visual,
+                    metadata_weight: metadata,
+                    business_weight: business,
+                    category_confidence_threshold: categoryConfidence,
+                    product_similarity_threshold: productSimilarity
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showToast('Configuración guardada correctamente', 'success');
+                setTimeout(() => {
+                    window.location.href = "{{ url_for('search_config.index') }}";
+                }, 1500);
+            } else {
+                showToast('Error: ' + data.error, 'danger');
+                saveBtn.innerHTML = '<i class="bi bi-save me-2"></i>Guardar Configuración';
+                saveBtn.disabled = false;
+            }
+        } catch (error) {
+            showToast('Error al guardar: ' + error.message, 'danger');
+            saveBtn.innerHTML = '<i class="bi bi-save me-2"></i>Guardar Configuración';
+            saveBtn.disabled = false;
+        }
+    });
+
+    // Función para mostrar toast
+    function showToast(message, type = 'info') {
+        // Crear toast si no existe contenedor
+        let toastContainer = document.getElementById('toast-container');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.id = 'toast-container';
+            toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+            toastContainer.style.zIndex = '9999';
+            document.body.appendChild(toastContainer);
+        }
+
+        const toastEl = document.createElement('div');
+        toastEl.className = `toast align-items-center text-white bg-${type} border-0`;
+        toastEl.setAttribute('role', 'alert');
+        toastEl.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        `;
+
+        toastContainer.appendChild(toastEl);
+        const toast = new bootstrap.Toast(toastEl, { autohide: true, delay: 3000 });
+        toast.show();
+
+        toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+    }
+
+    // Inicializar UI
+    updateUI();
+</script>
+{% endblock %}

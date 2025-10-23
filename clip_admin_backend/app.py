@@ -346,6 +346,14 @@ def register_blueprints(app):
     except ImportError as e:
         print(f"✗ Error importando attributes blueprint: {e}")
 
+    # Blueprint de configuración de búsqueda
+    try:
+        from app.blueprints.search_config import bp as search_config_bp
+        app.register_blueprint(search_config_bp, url_prefix="/search-config")
+        print("✓ Blueprint search_config registrado")
+    except ImportError as e:
+        print(f"✗ Error importando search_config blueprint: {e}")
+
 
 # Crear instancia de la aplicación
 app = create_app()
