@@ -1,6 +1,6 @@
 # Interacción: Sensibilidad de Detección vs Search Optimizers
 
-**Fecha**: 23 Octubre 2025  
+**Fecha**: 23 Octubre 2025
 **Versión**: CLIP Comparador V2
 
 ---
@@ -93,7 +93,7 @@ Producto B: similarity = 0.40  → posición 2
 Producto C: similarity = 0.35  → posición 3
 
 # Con optimizer (visual=0.6, metadata=0.3, business=0.1)
-Producto B: 
+Producto B:
   - visual_score = 0.40
   - metadata_score = 0.8 (color + marca coinciden)
   - business_score = 0.6 (en stock + featured)
@@ -131,21 +131,21 @@ Producto C:
 └─────────────────────────────────────────────────────────────────┘
 
 1. CLIP compara imagen vs centroides de categorías
-   
+
    Resultados:
    - CAMISAS: 78% de confianza
    - GORROS: 76% de confianza
    - CASACAS: 45% de confianza
 
 2. Verificar threshold: category_confidence_threshold = 70%
-   
+
    ✅ CAMISAS pasa el 70% → ACEPTADA
    ✅ GORROS pasa el 70% → ACEPTADA (pero se usa desempate)
    ❌ CASACAS NO pasa el 70% → DESCARTADA
 
 3. Aplicar desempate (margin=3%):
    78% - 76% = 2% < 3% → Muy ajustado, usar detector general
-   
+
    Detector general: "shirt" (conf: 65%)
    "shirt" match con CAMISAS → CATEGORÍA FINAL: CAMISAS ✅
 
@@ -155,9 +155,9 @@ Producto C:
 └─────────────────────────────────────────────────────────────────┘
 
 4. Buscar productos solo en CAMISAS
-   
+
    Color detectado: BLANCO (conf: 78%)
-   
+
    Resultados con similarity:
    - Polo Nike blanco: 0.82 (color match) → +12% boost → 0.92
    - Camisa Adidas blanca: 0.77 (color match) → +12% boost → 0.86
@@ -166,7 +166,7 @@ Producto C:
    - Polo genérico gris: 0.28
 
 5. Verificar threshold: product_similarity_threshold = 30%
-   
+
    ✅ Polo Nike blanco (0.92) → INCLUIR
    ✅ Camisa Adidas blanca (0.86) → INCLUIR
    ✅ Polo Nike negro (0.80) → INCLUIR

@@ -68,7 +68,7 @@ def create_store_search_config_table():
                     metadata_config JSONB NOT NULL DEFAULT '{"color": {"enabled": true, "weight": 0.3}, "brand": {"enabled": true, "weight": 0.3}, "pattern": {"enabled": false, "weight": 0.2}}'::jsonb,
                     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    CONSTRAINT fk_store_id FOREIGN KEY (store_id) 
+                    CONSTRAINT fk_store_id FOREIGN KEY (store_id)
                         REFERENCES clients(id) ON DELETE CASCADE
                 );
             """)            # Crear índices

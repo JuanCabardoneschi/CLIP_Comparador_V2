@@ -130,7 +130,7 @@ class StoreSearchConfig(db.Model):
                 'brand': {'enabled': True, 'weight': 0.3},
                 'pattern': {'enabled': False, 'weight': 0.2}
             }
-        
+
         super(StoreSearchConfig, self).__init__(**kwargs)
 
     def __repr__(self):
