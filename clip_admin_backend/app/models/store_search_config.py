@@ -117,6 +117,20 @@ class StoreSearchConfig(db.Model):
             business_weight (float): Peso business (default 0.1)
             metadata_config (dict): Config de atributos de metadata
         """
+        # Asegurar valores default si no se proporcionan
+        if 'visual_weight' not in kwargs:
+            kwargs['visual_weight'] = 0.6
+        if 'metadata_weight' not in kwargs:
+            kwargs['metadata_weight'] = 0.3
+        if 'business_weight' not in kwargs:
+            kwargs['business_weight'] = 0.1
+        if 'metadata_config' not in kwargs:
+            kwargs['metadata_config'] = {
+                'color': {'enabled': True, 'weight': 0.3},
+                'brand': {'enabled': True, 'weight': 0.3},
+                'pattern': {'enabled': False, 'weight': 0.2}
+            }
+        
         super(StoreSearchConfig, self).__init__(**kwargs)
 
     def __repr__(self):

@@ -1,7 +1,7 @@
 # Plan de Implementación: Search Optimizers
-**Fecha de Inicio**: 23 Octubre 2025  
-**Tag de Referencia**: `v2.0.0-pre-search-optimizer`  
-**Duración Estimada**: 3-4 semanas  
+**Fecha de Inicio**: 23 Octubre 2025
+**Tag de Referencia**: `v2.0.0-pre-search-optimizer`
+**Duración Estimada**: 3-4 semanas
 **Responsable**: Equipo de Desarrollo
 
 ---
@@ -64,12 +64,12 @@ Implementar un sistema de optimizadores de búsqueda configurable por tienda que
 ---
 
 ## **FASE 1: FUNDAMENTOS (Semana 1)**
-**Objetivo**: Crear modelo de datos y migración  
-**Duración**: 5 días laborales  
+**Objetivo**: Crear modelo de datos y migración
+**Duración**: 5 días laborales
 **Prioridad**: 🔴 CRÍTICA
 
 ### Task 1.1: Crear modelo StoreSearchConfig
-**Archivo**: `clip_admin_backend/app/models/store_search_config.py`  
+**Archivo**: `clip_admin_backend/app/models/store_search_config.py`
 **Estimación**: 2 horas
 
 **Checklist**:
@@ -115,7 +115,7 @@ assert sum([config.visual_weight, config.metadata_weight, config.business_weight
 SELECT * FROM store_search_config;
 
 -- Debe tener constraint de FK
-SELECT constraint_name FROM information_schema.table_constraints 
+SELECT constraint_name FROM information_schema.table_constraints
 WHERE table_name = 'store_search_config' AND constraint_type = 'FOREIGN KEY';
 ```
 
@@ -163,8 +163,8 @@ assert clients_count == configs_count
 ---
 
 ## **FASE 2: CLASE SEARCHOPTIMIZER (Semana 2)**
-**Objetivo**: Crear lógica de optimización modular  
-**Duración**: 5 días laborales  
+**Objetivo**: Crear lógica de optimización modular
+**Duración**: 5 días laborales
 **Prioridad**: 🔴 CRÍTICA
 
 ### Task 2.1: Crear directorio core y estructura
@@ -282,12 +282,12 @@ assert hasattr(ranked[0], 'metadata_score')
 ---
 
 ## **FASE 3: INTEGRACIÓN EN API (Semana 3 - Días 1-3)**
-**Objetivo**: Integrar SearchOptimizer en flujo de búsqueda  
-**Duración**: 3 días laborales  
+**Objetivo**: Integrar SearchOptimizer en flujo de búsqueda
+**Duración**: 3 días laborales
 **Prioridad**: 🔴 CRÍTICA
 
 ### Task 3.1: Modificar _find_similar_products()
-**Archivo**: `clip_admin_backend/app/blueprints/api.py`  
+**Archivo**: `clip_admin_backend/app/blueprints/api.py`
 **Estimación**: 4 horas
 
 **Checklist**:
@@ -423,12 +423,12 @@ return product_best_match
 ---
 
 ## **FASE 4: PANEL DE ADMINISTRACIÓN (Semana 3-4)**
-**Objetivo**: Interface para configurar optimizadores  
-**Duración**: 5 días laborales  
+**Objetivo**: Interface para configurar optimizadores
+**Duración**: 5 días laborales
 **Prioridad**: 🟡 ALTA
 
 ### Task 4.1: Blueprint de configuración
-**Archivo**: `clip_admin_backend/app/blueprints/search_config.py`  
+**Archivo**: `clip_admin_backend/app/blueprints/search_config.py`
 **Estimación**: 3 horas
 
 **Checklist**:
@@ -450,7 +450,7 @@ return product_best_match
 ---
 
 ### Task 4.2: Template con sliders
-**Archivo**: `clip_admin_backend/app/templates/search_config/edit.html`  
+**Archivo**: `clip_admin_backend/app/templates/search_config/edit.html`
 **Estimación**: 4 horas
 
 **Checklist**:
@@ -506,8 +506,8 @@ return product_best_match
 ---
 
 ## **FASE 5: VALIDACIÓN EN RAILWAY (Semana 4)**
-**Objetivo**: Deploy y validación en producción  
-**Duración**: 3 días laborales  
+**Objetivo**: Deploy y validación en producción
+**Duración**: 3 días laborales
 **Prioridad**: 🔴 CRÍTICA
 
 ### Task 5.1: Deploy a Railway
@@ -618,8 +618,8 @@ python seed_search_config.py
 ## ⚠️ RIESGOS Y CONTINGENCIAS
 
 ### Riesgo 1: Overhead de CPU excede límites
-**Probabilidad**: Media  
-**Impacto**: Alto  
+**Probabilidad**: Media
+**Impacto**: Alto
 **Mitigación**:
 - Cacheo agresivo de configuraciones en Redis
 - Lazy loading de business_score (solo si weight > 0.1)
@@ -627,8 +627,8 @@ python seed_search_config.py
 **Plan B**: Desactivar optimizer y usar solo visual similarity
 
 ### Riesgo 2: Configuración compleja para usuarios
-**Probabilidad**: Alta  
-**Impacto**: Medio  
+**Probabilidad**: Alta
+**Impacto**: Medio
 **Mitigación**:
 - Presets simples ("Visual", "Exactitud", "Balanceado")
 - Tooltips explicativos en cada control
@@ -636,8 +636,8 @@ python seed_search_config.py
 **Plan B**: Configuración por defecto optimizada, UI oculta para usuarios básicos
 
 ### Riesgo 3: Degradación de calidad de resultados
-**Probabilidad**: Baja  
-**Impacidad**: Alto  
+**Probabilidad**: Baja
+**Impacidad**: Alto
 **Mitigación**:
 - A/B testing obligatorio antes de rollout completo
 - Dashboard de métricas de calidad
@@ -707,5 +707,5 @@ El proyecto se considera exitoso cuando:
 
 ---
 
-**Última Actualización**: 23 Octubre 2025  
+**Última Actualización**: 23 Octubre 2025
 **Próxima Revisión**: Checkpoint 1 (28 Octubre 2025)
