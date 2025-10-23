@@ -404,6 +404,23 @@
 
             results.forEach((result, index) => {
                 const similarity = (result.similarity * 100).toFixed(1);
+                
+                // Construir bloque de optimizer si existe
+                let optimizerHtml = '';
+                if (result.optimizer) {
+                    const opt = result.optimizer;
+                    optimizerHtml = `
+                        <div style="margin-top:12px; padding:10px; background:#f8f9fa; border-radius:6px; border-left:3px solid #007bff;">
+                            <p style="margin:0 0 8px 0; font-weight:600; color:#333; font-size:13px;">🎯 Optimizer Scores:</p>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; font-size:12px;">
+                                <div><strong>Visual:</strong> ${(opt.visual_score * 100).toFixed(1)}%</div>
+                                <div><strong>Metadata:</strong> ${(opt.metadata_score * 100).toFixed(1)}%</div>
+                                <div><strong>Business:</strong> ${(opt.business_score * 100).toFixed(1)}%</div>
+                                <div><strong>Final:</strong> ${(opt.final_score * 100).toFixed(1)}%</div>
+                            </div>
+                        </div>`;
+                }
+                
                 // Construir bloque de atributos dinámicos si existen
                 let attributesHtml = '';
                 if (result.attributes && Object.keys(result.attributes).length > 0) {
@@ -426,6 +443,7 @@
                             <p><strong>SKU:</strong> ${result.sku || 'N/A'} | <strong>Precio:</strong> ${result.price ? '$' + result.price : 'No disponible'}</p>
                             <p><strong>Stock:</strong> ${result.stock || 0} unidades</p>
                             ${attributesHtml}
+                            ${optimizerHtml}
                             <span class="similarity-score">${similarity}% similar</span>
                         </div>
                     </div>

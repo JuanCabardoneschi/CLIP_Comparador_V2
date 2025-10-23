@@ -1519,6 +1519,12 @@ def visual_search():
 
                 print(f"✅ OPTIMIZER: Ranking completado. Top 3 scores: " +
                       ", ".join([f"{r.final_score:.3f}" for r in ranked_results[:3]]))
+                
+                # Debug: verificar que optimizer_scores se guardó
+                sample_id = list(product_best_match.keys())[0] if product_best_match else None
+                if sample_id:
+                    has_optimizer = 'optimizer_scores' in product_best_match[sample_id]
+                    print(f"🔍 DEBUG: Primer producto tiene optimizer_scores: {has_optimizer}")
 
             except Exception as e:
                 print(f"❌ OPTIMIZER: Error durante ranking: {e}")
