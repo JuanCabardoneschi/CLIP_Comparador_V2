@@ -6,7 +6,163 @@
 
 ## 🔥 URGENTE - FASE 5 (Sistema en Producción)
 
-### 1. Admin Panel de Atributos
+### 1. Detección Multi-Producto con CLIP (Zero-Shot Multi-Categoría)
+**Estado**: 💡 Diseñado, listo para implementar
+**Complejidad**: Media
+**Impacto**: Alto (expande casos de uso: outfits completos, room decor, etc.)
+**Prioridad**: MÁXIMA para mañana
+**Fecha agregada**: 23 Octubre 2025
+**Estimación**: 3-4 días
+
+**Problema Actual**:
+- Sistema actual procesa imagen completa → 1 categoría → 3 productos similares
+- Si usuario sube foto de outfit (camisa + pantalón + zapatos), solo matchea el elemento dominante
+- Se pierden oportunidades de venta cruzada
+- Competidores ya tienen esta funcionalidad
+
+**Solución Diseñada - CLIP Multi-Categoría Iterativa**:
+
+**Pipeline**:
+```
+1. Detectar categorías presentes (CLIP zero-shot classification)
+   Input: Imagen + categorías del catálogo del cliente
+   Output: ['CAMISAS', 'PANTALONES', 'CALZADO'] con confidencias
+   
+2. Para cada categoría detectada (threshold > 25%):
+   - Generar embedding CLIP (UNA SOLA VEZ, reutilizar)
+   - Buscar productos similares en esa categoría
+   - Aplicar SearchOptimizer por categoría
+   
+3. Retornar resultados agrupados por categoría
+```
+
+**Casos de Uso**:
+- **1 categoría detectada** → Comportamiento actual (backward compatible)
+- **2+ categorías detectadas** → Modo multi-producto (nuevas ventas)
+- **0 categorías > threshold** → Búsqueda sin restricción (fallback)
+
+**Ventajas**:
+- ✅ Sin modelos adicionales (solo CLIP que ya tienes)
+- ✅ Zero-shot (adaptable a cualquier catálogo)
+- ✅ Latencia baja (2 CLIP calls: 1 detección + 1 embedding)
+- ✅ Backward compatible (si 1 categoría → funciona como siempre)
+- ✅ Configurable por cliente (threshold, max categorías)
+- ✅ Railway Hobby Plan compatible (sin GPU extra)
+
+**Implementación**:
+
+**Fase 1 - Backend (1-2 días)**:
+```python
+# Función nueva 1: Detectar categorías presentes
+def detect_present_categories(image_data, client_id, threshold=0.25):
+    """
+    Usa CLIP para detectar qué categorías del catálogo están en la imagen
+    Returns: [{'name': 'CAMISAS', 'confidence': 0.45}, ...]
+    """
+    # CLIP zero-shot classification con prompts dinámicos
+
+# Función nueva 2: Búsqueda multi-categoría
+def multi_category_search(image_data, client_id):
+    """
+    Pipeline completo:
+    - Detectar categorías
+    - Buscar en cada una
+    - Agrupar resultados
+    """
+    
+# Modificar endpoint /api/search:
+# - Feature flag: multi_category_enabled (default: True)
+# - Response con mode: 'single' | 'multi_product'
+```
+
+**Fase 2 - Widget UI (1 día)**:
+```javascript
+// Detectar modo multi-producto
+if (response.mode === 'multi_product') {
+  // Mostrar tabs por categoría
+  // Grid de productos por tab
+} else {
+  // UI actual (single)
+}
+```
+
+**Fase 3 - Admin Config (1 día)**:
+```python
+# Agregar a modelo Client:
+multi_category_enabled = Column(Boolean, default=True)
+multi_category_threshold = Column(Float, default=0.25)
+max_categories_per_search = Column(Integer, default=3)
+
+# UI Admin:
+# - ☑️ Habilitar detección multi-categoría
+# - Threshold confianza: [slider 0.20 - 0.50]
+# - Máximo categorías: [1-5]
+```
+
+**Response Format**:
+```json
+{
+  "mode": "multi_product",
+  "detected_categories": 3,
+  "results": {
+    "CAMISAS": {
+      "confidence": 0.45,
+      "products": [
+        {"name": "Camisa Blanca", "similarity": 0.89},
+        ...
+      ]
+    },
+    "PANTALONES": {
+      "confidence": 0.38,
+      "products": [...]
+    },
+    "CALZADO": {
+      "confidence": 0.28,
+      "products": [...]
+    }
+  }
+}
+```
+
+**Performance Estimado**:
+- 1 categoría: ~300ms (como ahora)
+- 2 categorías: ~350ms (+50ms DB)
+- 3 categorías: ~400ms (+100ms DB)
+- Sin overhead de CLIP adicional (embedding se reutiliza)
+
+**Testing**:
+- Imagen outfit completo (camisa + pantalón + zapatos)
+- Imagen producto único (backward compatibility)
+- Imagen sin productos del catálogo (fallback)
+- A/B testing threshold 0.20 vs 0.25 vs 0.30
+
+**Métricas de Éxito**:
+- > 30% usuarios usan multi-producto
+- +25% conversión en búsquedas multi-producto
+- < 5% falsos positivos (categorías incorrectas)
+
+**Archivos a Crear/Modificar**:
+- Nuevo: `app/blueprints/multi_category_detection.py`
+- Modificar: `app/blueprints/api.py` (integrar multi-categoría)
+- Modificar: `app/models/client.py` (campos config)
+- Modificar: `clip_admin_backend/app/static/js/clip-widget-embed.js` (UI tabs)
+- Nuevo: `tests/test_multi_category.py`
+
+**Dependencias**:
+- CLIP ya integrado ✅
+- SearchOptimizer funcionando ✅
+- Widget responsive ✅
+
+**Riesgos**:
+- ⚠️ Threshold muy bajo → falsos positivos (ej: detectar "zapatos" en reflejo)
+- ⚠️ Threshold muy alto → perder categorías válidas
+- Mitigación: Threshold configurable + A/B testing
+
+**Siguiente Paso**: Implementar Fase 1 (backend) mañana 24 Oct 2025
+
+---
+
+### 2. Admin Panel de Atributos
 **Estado**: ⏳ Pendiente
 **Complejidad**: Media
 **Impacto**: Alto (actualmente se editan a mano en BD)
