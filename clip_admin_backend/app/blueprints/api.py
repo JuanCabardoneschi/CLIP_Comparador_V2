@@ -936,7 +936,9 @@ def _build_search_results(product_best_match, limit):
             "category_boost": category_boost,
             "color_boost": color_boost,
             # Atributos dinámicos (filtrados si hay configuración)
-            "attributes": product_attrs
+            "attributes": product_attrs,
+            # URL del producto si está configurada
+            "product_url": product_attrs.get('url_producto') if product_attrs else None
         }
 
         # Agregar scores del optimizer si existen

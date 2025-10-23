@@ -43,8 +43,8 @@
 
 4. **Migración para datos existentes**:
    ```sql
-   UPDATE product_attribute_config 
-   SET expose_in_search = true 
+   UPDATE product_attribute_config
+   SET expose_in_search = true
    WHERE key IN ('color', 'marca', 'talla', 'material');
    ```
 

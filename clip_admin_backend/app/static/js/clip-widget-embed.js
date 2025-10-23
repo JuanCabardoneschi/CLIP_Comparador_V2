@@ -407,6 +407,11 @@
                 }
             });
 
+            // Check for product URL (from new direct field or attributes)
+            if (item.product_url) {
+                productUrl = item.product_url;
+            }
+
             // 2. Custom attributes (from item.attributes)
             let customAttrs = '';
             if (item.attributes && typeof item.attributes === 'object') {
@@ -415,8 +420,8 @@
                         // Exclude url_producto (shown as link)
                         if (key === 'url_producto') {
                             const value = typeof attr === 'object' ? attr.value : attr;
-                            if (value) {
-                                productUrl = value;
+                            if (value && !productUrl) {
+                                productUrl = value; // Fallback
                             }
                             return false;
                         }

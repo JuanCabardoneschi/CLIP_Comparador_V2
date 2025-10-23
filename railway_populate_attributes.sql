@@ -8,11 +8,11 @@
 -- 2. Poblar atributos de productos directamente
 -- Extraer color del campo 'color' o 'description', asignar marca GOODY, tallas S/M/L
 
-UPDATE products SET 
+UPDATE products SET
     attributes = jsonb_build_object(
         'color', COALESCE(
             UPPER(TRIM(color)),  -- Usar campo color si existe
-            CASE 
+            CASE
                 WHEN UPPER(name) LIKE '%BLANCO%' OR UPPER(name) LIKE '%BLANCA%' OR UPPER(name) LIKE '%WHITE%' THEN 'BLANCA'
                 WHEN UPPER(name) LIKE '%NEGRO%' OR UPPER(name) LIKE '%NEGRA%' OR UPPER(name) LIKE '%BLACK%' THEN 'NEGRA'
                 WHEN UPPER(name) LIKE '%AZUL%' OR UPPER(name) LIKE '%BLUE%' THEN 'AZUL'
@@ -34,7 +34,7 @@ WHERE client_id = '60231500-ca6f-4c46-a960-2e17298fcdb0'
   AND (attributes IS NULL OR attributes = '{}'::jsonb);
 
 -- 3. Verificar resultados
-SELECT 
+SELECT
     name,
     sku,
     color as color_columna,
@@ -42,7 +42,7 @@ SELECT
     attributes->>'marca' as marca,
     attributes->'talla' as tallas,
     attributes
-FROM products 
+FROM products
 WHERE client_id = '60231500-ca6f-4c46-a960-2e17298fcdb0'
 ORDER BY name
 LIMIT 10;

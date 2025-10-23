@@ -404,7 +404,7 @@
 
             results.forEach((result, index) => {
                 const similarity = (result.similarity * 100).toFixed(1);
-                
+
                 // Construir bloque de optimizer si existe
                 let optimizerHtml = '';
                 if (result.optimizer) {
@@ -420,7 +420,7 @@
                             </div>
                         </div>`;
                 }
-                
+
                 // Construir bloque de atributos dinámicos si existen
                 let attributesHtml = '';
                 if (result.attributes && Object.keys(result.attributes).length > 0) {
