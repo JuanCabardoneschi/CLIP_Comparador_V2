@@ -906,8 +906,22 @@ def _build_search_results(product_best_match, limit):
 
         # Preparar atributos dinámicos del producto (JSONB)
         product_attrs = {}
+        product_url_value = None  # Siempre intentar extraer el link, aunque no esté expuesto
         try:
             if hasattr(product, 'attributes') and product.attributes:
+                # 1) Siempre intentar obtener url_producto del JSON bruto (ignorar filtros de exposición)
+                try:
+                    raw_url = product.attributes.get('url_producto')
+                    if isinstance(raw_url, dict):
+                        # Algunos stores guardan { value: 'https://...' }
+                        product_url_value = raw_url.get('value') or raw_url.get('url') or None
+                    else:
+                        product_url_value = raw_url
+                except Exception as ie:
+                    print(f"⚠️ Error extrayendo url_producto para {product.id}: {ie}")
+                    product_url_value = None
+
+                # 2) Aplicar filtros de exposición solo para el bloque de attributes
                 if exposed_keys_cache is not None:
                     # Filtrar solo los atributos configurados para exponerse
                     product_attrs = {
@@ -1640,7 +1654,7 @@ def visual_search():
         processing_time = time.time() - start_time
 
         # Respuesta con información de categoría detectada
-        response = {
+        result = {
             "success": True,
             "query_type": "image_with_category_detection",
             "detected_category": {
@@ -1653,7 +1667,9 @@ def visual_search():
                 "method": "category_detection_with_clip",
                 "detected_category": detected_category.name,
                 "confidence": round(category_confidence, 4),
-                "threshold_used": product_similarity_threshold,
+            "attributes": product_attrs,
+            # URL del producto si está configurada (siempre incluida aunque no esté expuesta)
+            "product_url": product_url_value
                 "category_filter": True
             },
             "results": results,
