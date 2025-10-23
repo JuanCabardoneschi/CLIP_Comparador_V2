@@ -715,7 +715,7 @@
         saveBtn.disabled = true;
 
         try {
-            const response = await fetch(`/search-config/api/${clientId}`, {
+            const response = await fetch(`/search-config/api/update/${clientId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
