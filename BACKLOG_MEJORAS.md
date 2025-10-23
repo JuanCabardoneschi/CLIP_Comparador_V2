@@ -41,6 +41,58 @@
 
 **Estimación**: 2-4 semanas (MVP) / 6-8 semanas (completo)
 
+### 2. Validación Zero‑Shot Dinámica contra Catálogo (CLIP sin hardcode)
+**Estado**: 💡 Propuesto (Alta prioridad)
+**Complejidad**: Media
+**Impacto**: Alto (reduce falsos positivos como "pantalón" en tienda que vende "remeras")
+
+**Idea**:
+- Usar CLIP en modo open‑vocabulary (zero‑shot) para describir la imagen sin forzar categorías.
+- Generar términos dinámicos del catálogo del cliente: nombres/aliases de categorías, nombres de productos, tags y keywords de descripciones.
+- Construir prompts a partir de esos términos y validar si la imagen matchea algún término del catálogo por encima de un umbral configurable por cliente.
+
+**Contrato mínimo**:
+- Input: imagen subida por el widget; client_id.
+- Proceso: `get_client_searchable_terms(client) → prompts → similitud CLIP`.
+- Output: `matches_catalog: bool`, `best_term`, `similarity`.
+- Umbral: `catalog_match_threshold` en tabla/config del cliente.
+
+**Criterios de aceptación**:
+- Si la imagen no corresponde al catálogo, el endpoint devuelve 400 con error `content_not_in_catalog` y lista de familias que sí comercializa.
+- Si corresponde, continúa el flujo normal (detección de categoría + ranking de productos).
+- Sin hardcode de categorías globales; todo surge del catálogo del cliente.
+
+**Dependencias**:
+- Posible cache de embeddings de términos por cliente (Redis, TTL 24h).
+
+**Estimación**: 1 semana (incluye prueba A/B en 1 cliente)
+
+---
+
+### 3. Búsqueda Híbrida Texto + Imagen (hints en la búsqueda)
+**Estado**: 💡 Propuesto (Alta prioridad)
+**Complejidad**: Media
+**Impacto**: Alto (permite guiar la intención: "con león", "sin estampado", "color verde")
+
+**Idea**:
+- El widget permite un campo de texto opcional (hints) junto a la imagen.
+- Se genera un embedding híbrido combinando `image_embedding` + `text_embedding` de CLIP con pesos configurables por cliente.
+
+**Contrato**:
+- Input: `image`, `query_text` (opcional), `client_id`.
+- Proceso: `hybrid = α*image + (1-α)*text` (α configurable, ej. 0.7).
+- Output: ranking de productos usando el embedding híbrido.
+
+**Criterios de aceptación**:
+- Si `query_text` está vacío, comportamiento actual (solo imagen).
+- Con `query_text`, los resultados reflejan restricciones/señas del texto (ej.: prioriza "león" o "verde").
+- Nuevo parámetro en API: `query_text` (opcional) y soporte en widget.
+
+**Dependencias**:
+- Posible reuso de `client_search_config` para peso α del híbrido.
+
+**Estimación**: 1 semana (MVP)
+
 ---
 
 ## 🔧 PENDIENTES TÉCNICOS
@@ -339,13 +391,14 @@
 ## 📋 RESUMEN DE PRIORIZACIÓN
 
 ### Sprint 1 (2 semanas)
-1. ✅ Fix Cloudinary paths (30min)
-2. 🎯 MVP Sistema de Ponderación Adaptativa (#1 opción 1)
-3. 🔧 Eliminar métodos deprecados (#2)
+1. 🧠 Validación Zero‑Shot Dinámica contra Catálogo (#2 Prioridad Alta)
+2. 📝 Búsqueda Híbrida Texto + Imagen (MVP) (#3 Prioridad Alta)
+3. ✅ Fix Cloudinary paths (30min)
+4. 🔧 Eliminar métodos deprecados (#2 Pendientes Técnicos)
 
 ### Sprint 2 (2 semanas)
-4. 📊 Implementar SearchLog y analytics básicas (#4)
-5. 🎨 Auto-tagging con CLIP (#6.1)
+5. 🎯 MVP Sistema de Ponderación Adaptativa (#1 opción 1)
+6. 📊 Implementar SearchLog y analytics básicas (#4)
 
 ### Sprint 3 (2 semanas)
 6. 🎨 Panel de entrenamiento - Modo Comparación (#5.1)
@@ -370,6 +423,8 @@
 **22 Oct 2025**:
 - Documento creado
 - Agregado item #1: Sistema de Aprendizaje Adaptativo (prioridad alta)
+- Agregado item #2: Validación Zero‑Shot Dinámica contra Catálogo (prioridad alta)
+- Agregado item #3: Búsqueda Híbrida Texto + Imagen (prioridad alta)
 - Agregado item #3: Fix duplicación Cloudinary paths (pendiente push)
 - Agregados items #2-#14 recopilados de TODOs y discusiones
 
