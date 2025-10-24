@@ -160,13 +160,12 @@ def edit(id):
             current_app.logger.error(f'Error al actualizar atributo: {str(e)}')
             flash(f'Error al actualizar atributo: {str(e)}', 'danger')
 
-    # Para el formulario, convertir options a string
+    # Para el formulario, convertir options a string (variable local)
+    options_str = ''
     if attribute.options and isinstance(attribute.options, dict) and 'values' in attribute.options:
-        attribute.options_str = json.dumps(attribute.options['values'], ensure_ascii=False, indent=2)
-    else:
-        attribute.options_str = ''
+        options_str = json.dumps(attribute.options['values'], ensure_ascii=False, indent=2)
 
-    return render_template('attributes/edit.html', attribute=attribute)
+    return render_template('attributes/edit.html', attribute=attribute, options_str=options_str)
 
 @bp.route('/<int:id>/delete', methods=['POST'])
 @login_required

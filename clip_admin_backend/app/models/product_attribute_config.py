@@ -22,16 +22,16 @@ class ProductAttributeConfig(db.Model):
         """
         Convierte las opciones JSON a string para mostrar en textarea.
         Formato esperado: {'multiple': bool, 'values': [...]}
-        
+
         Returns:
             str: Lista de valores formateada como JSON
         """
         if not self.options:
             return ''
-        
+
         if isinstance(self.options, dict) and 'values' in self.options:
             return json.dumps(self.options['values'], ensure_ascii=False, indent=2)
-        
+
         return ''
 
     def __repr__(self):

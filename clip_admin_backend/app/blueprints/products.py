@@ -108,7 +108,7 @@ def _validate_attribute_options(attributes, attribute_configs):
     for config in attribute_configs:
         if config.type == 'list' and config.key in attributes:
             value = attributes[config.key]
-            
+
             # Obtener lista de opciones permitidas
             allowed = []
             if config.options and isinstance(config.options, dict):
