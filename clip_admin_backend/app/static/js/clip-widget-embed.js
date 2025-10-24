@@ -133,7 +133,7 @@
         .clip-widget-result-img {
             width: 180px;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
             flex-shrink: 0;
         }
         .clip-widget-result-content {
@@ -479,7 +479,7 @@
                         <div class="clip-widget-result-name">${item.name}</div>
                         <div class="clip-widget-result-sku">SKU: ${item.sku}</div>
                         <div class="clip-widget-result-similarity">
-                            ${Math.round(item.similarity * 100)}% similitud
+                            ${Math.round((item.optimizer?.visual_score || item.similarity) * 100)}% similitud
                         </div>
                         ${attributesHtml}
                         ${urlHtml}

@@ -1597,8 +1597,10 @@ def visual_search():
         print(f"🎯 DEBUG: Productos encontrados en categoría {detected_category.name}: {len(product_best_match)}")
 
         # ===== APLICAR BOOST POR COLOR MATCHING =====
-        if detected_color and detected_color != "unknown" and color_confidence >= 0.30:
-            print(f"🎨 RAILWAY LOG: Aplicando boost por color matching (color: {detected_color})")
+        # Aplicar boost siempre que se detecte un color (independiente de confianza)
+        # para que el usuario vea resultados del color detectado
+        if detected_color and detected_color != "unknown":
+            print(f"🎨 RAILWAY LOG: Aplicando boost por color matching (color: {detected_color}, confianza: {color_confidence:.2f})")
 
             for product_id, match_data in product_best_match.items():
                 product = match_data['product']
