@@ -452,6 +452,10 @@ def edit(product_id):
 
     if request.method == "POST":
         try:
+            # Guardar categoría anterior para recalcular centroide si cambia
+            old_category_id = product.category_id
+            old_category = product.category if old_category_id else None
+            
             # Actualizar datos del producto
             product.name = request.form.get("name", "").strip()
             product.description = request.form.get("description", "").strip()
@@ -477,12 +481,13 @@ def edit(product_id):
                                      attribute_configs=attribute_configs)
 
             # Verificar categoría
+            new_category = None
             if product.category_id:
-                category = Category.query.filter_by(
+                new_category = Category.query.filter_by(
                     id=product.category_id,
                     client_id=current_user.client_id
                 ).first()
-                if not category:
+                if not new_category:
                     flash("Categoría no válida", "error")
                     return render_template("products/edit.html",
                                          product=product,
@@ -490,6 +495,32 @@ def edit(product_id):
                                          attribute_configs=attribute_configs)
 
             db.session.commit()
+            
+            # Recalcular centroides si cambió la categoría
+            if old_category_id != product.category_id:
+                # Verificar que el producto tiene imágenes procesadas
+                has_processed_images = any(img.is_processed for img in product.images)
+                
+                if has_processed_images:
+                    try:
+                        # Recalcular centroide de la categoría ANTIGUA (ya no incluye este producto)
+                        if old_category:
+                            if old_category.needs_centroid_update():
+                                old_category.update_centroid_embedding(force_recalculate=False)
+                                print(f"📊 Centroide actualizado para categoría antigua: {old_category.name}")
+                        
+                        # Recalcular centroide de la categoría NUEVA (ahora incluye este producto)
+                        if new_category:
+                            if new_category.needs_centroid_update():
+                                new_category.update_centroid_embedding(force_recalculate=False)
+                                print(f"📊 Centroide actualizado para categoría nueva: {new_category.name}")
+                        
+                        db.session.commit()
+                    except Exception as e:
+                        # No bloquear la edición por error en centroides
+                        print(f"⚠️ Error actualizando centroides tras cambio de categoría: {e}")
+                        db.session.rollback()
+            
             flash("Producto actualizado correctamente", "success")
             return redirect(url_for("products.view", product_id=product.id))
 
@@ -519,6 +550,10 @@ def delete(product_id):
     ).first_or_404()
 
     try:
+        # Guardar referencia a la categoría y verificar si tiene imágenes procesadas
+        category = product.category
+        has_processed_images = any(img.is_processed for img in product.images)
+        
         # Obtener todas las imágenes antes de eliminar el producto
         images = product.images.all()
 
@@ -538,6 +573,19 @@ def delete(product_id):
         # Eliminar producto (las imágenes se eliminan automáticamente por cascade)
         db.session.delete(product)
         db.session.commit()
+        
+        # Recalcular centroide de la categoría si el producto tenía imágenes procesadas
+        if category and has_processed_images:
+            try:
+                if category.needs_centroid_update():
+                    category.update_centroid_embedding(force_recalculate=False)
+                    db.session.commit()
+                    print(f"📊 Centroide actualizado para categoría tras eliminar producto: {category.name}")
+            except Exception as e:
+                # No bloquear la eliminación por error en centroide
+                print(f"⚠️ Error actualizando centroide tras eliminar producto: {e}")
+                db.session.rollback()
+        
         flash("Producto e imágenes eliminados correctamente", "success")
     except Exception as e:
         db.session.rollback()
@@ -646,7 +694,7 @@ def set_primary_image(product_id, image_id):
 def delete_image(product_id, image_id):
     """Eliminar una imagen del producto y su archivo físico"""
     # Verificar que el producto pertenece al cliente del usuario actual
-    Product.query.filter_by(
+    product = Product.query.filter_by(
         id=product_id,
         client_id=current_user.client_id
     ).first_or_404()
@@ -658,6 +706,10 @@ def delete_image(product_id, image_id):
         ).first()
 
         if image:
+            # Guardar referencia a la categoría antes de eliminar
+            category = product.category
+            was_processed = image.is_processed
+            
             # Eliminar archivo físico
             client = Client.query.get(current_user.client_id)
             if client:
@@ -672,6 +724,18 @@ def delete_image(product_id, image_id):
             # Eliminar registro de base de datos
             db.session.delete(image)
             db.session.commit()
+            
+            # Recalcular centroide de la categoría si la imagen estaba procesada
+            if category and was_processed:
+                try:
+                    if category.needs_centroid_update():
+                        category.update_centroid_embedding(force_recalculate=False)
+                        db.session.commit()
+                except Exception as e:
+                    # No bloquear la eliminación por error en centroide
+                    print(f"⚠️ Error actualizando centroide tras eliminar imagen: {e}")
+                    db.session.rollback()
+            
             return jsonify({"success": True, "message": "Imagen eliminada correctamente"})
         else:
             return jsonify({"success": False, "message": "Imagen no encontrada"})

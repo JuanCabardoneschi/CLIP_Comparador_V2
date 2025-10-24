@@ -77,6 +77,14 @@ def upload():
         # Mostrar resultados
         if uploaded_count > 0:
             db.session.commit()
+            
+            # Generar embeddings y actualizar centroide
+            try:
+                from app.blueprints.products import _process_embeddings_and_centroid_for_product
+                _process_embeddings_and_centroid_for_product(product)
+            except Exception as e:
+                flash(f"Imágenes subidas, pero error generando embeddings: {str(e)}", "warning")
+            
             flash(f"{uploaded_count} imagen(es) subida(s) exitosamente", "success")
 
         for error in errors:
@@ -133,12 +141,30 @@ def delete(image_id):
     """Eliminar imagen"""
     image = Image.query.get_or_404(image_id)
     product_id = image.product_id
+    
+    # Guardar referencias antes de eliminar
+    product = image.product
+    category = product.category if product else None
+    was_processed = image.is_processed
 
     if request.form.get("confirm") == "DELETE":
         try:
             # Usar ImageManager para eliminar la imagen (auto-detecta client_slug)
             if image_manager.delete_image(image):
                 db.session.commit()
+                
+                # Recalcular centroide si la imagen estaba procesada
+                if category and was_processed:
+                    try:
+                        if category.needs_centroid_update():
+                            category.update_centroid_embedding(force_recalculate=False)
+                            db.session.commit()
+                            print(f"📊 Centroide actualizado para categoría tras eliminar imagen: {category.name}")
+                    except Exception as e:
+                        # No bloquear la eliminación por error en centroide
+                        print(f"⚠️ Error actualizando centroide tras eliminar imagen: {e}")
+                        db.session.rollback()
+                
                 flash("Imagen eliminada exitosamente", "success")
             else:
                 flash("Error eliminando imagen", "error")
