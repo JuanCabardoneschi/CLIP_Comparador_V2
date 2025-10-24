@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLIP Widget - Debug</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+      font-family: Arial, sans-serif;
+    }
+    #debug {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      max-width: 300px;
+      font-size: 12px;
+      z-index: 9999;
+    }
+    #debug h4 {
+      margin: 0 0 10px 0;
+      color: #333;
+    }
+    #debug .status {
+      padding: 5px 0;
+      border-bottom: 1px solid #eee;
+    }
+    #debug .status:last-child {
+      border-bottom: none;
+    }
+    #debug .status.ok {
+      color: green;
+    }
+    #debug .status.error {
+      color: red;
+    }
+    #debug .status.pending {
+      color: orange;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="debug">
+    <h4>🔍 Debug Widget</h4>
+    <div id="debug-content">Inicializando...</div>
+  </div>
+
+  <!-- WIDGET CLIP -->
+
+  <script>
+    const debugDiv = document.getElementById('debug-content');
+
+    function log(message, type = 'pending') {
+      const statusDiv = document.createElement('div');
+      statusDiv.className = 'status ' + type;
+      statusDiv.innerHTML = message;
+      debugDiv.appendChild(statusDiv);
+      console.log('[Widget Debug]', message);
+    }
+
+    // 1. Verificar configuración
+    window.CLIPWidget = {
+      apiKey: 'test-api-key-demo-fashion-store-2024'
+    };
+    log('✅ Configuración cargada', 'ok');
+    log('API Key: ' + window.CLIPWidget.apiKey.substring(0, 20) + '...', 'ok');
+
+    // 2. Verificar contenedor
+    setTimeout(() => {
+      const container = document.getElementById('clip-widget');
+      if (container) {
+        log('✅ Contenedor encontrado', 'ok');
+      } else {
+        log('❌ Contenedor NO encontrado', 'error');
+      }
+    }, 100);
+
+    // 3. Intentar cargar script
+    const scriptUrl = 'https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed.js';
+    log('⏳ Cargando script...', 'pending');
+    log('URL: ' + scriptUrl, 'pending');
+
+    const script = document.createElement('script');
+    script.src = scriptUrl;
+
+    script.onload = function() {
+      log('✅ Script cargado correctamente', 'ok');
+      setTimeout(() => {
+        if (window.clipWidgetLoaded) {
+          log('✅ Widget inicializado', 'ok');
+        } else {
+          log('⚠️ Script cargado pero widget no inicializó', 'error');
+        }
+      }, 500);
+    };
+
+    script.onerror = function() {
+      log('❌ Error al cargar script', 'error');
+      log('Verifica que el archivo exista en Railway', 'error');
+    };
+
+    document.head.appendChild(script);
+  </script>
+
+  <div id="clip-widget"></div>
+
+</body>
+</html>

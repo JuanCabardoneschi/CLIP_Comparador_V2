@@ -549,7 +549,7 @@
             `;
         }).join('') + '</div>';
         results.style.display = 'block';
-        
+
         // Agregar event listeners a las imágenes para abrir modal
         setTimeout(() => {
             document.querySelectorAll('.clip-widget-result-img').forEach(img => {
@@ -569,7 +569,7 @@
     modalClose.addEventListener('click', () => {
         modal.classList.remove('active');
     });
-    
+
     modal.addEventListener('click', (e) => {
         if (e.target === modal) {
             modal.classList.remove('active');

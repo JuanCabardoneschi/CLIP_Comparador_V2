@@ -1,2 +1,0 @@
-UPDATE product_attribute_config SET options = '{"multiple": true, "values": ["XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL"]}' WHERE key = 'talla';
-UPDATE product_attribute_config SET options = '{"multiple": false, "values": ["Algodón", "Poliéster", "Lana", "Seda", "Nylon", "Rayón", "Spandex", "Viscosa", "Acetato", "Modal", "Elastano", "Cachemira", "Lino", "Denim", "Franela", "Piel", "Cuero", "Gamuza", "Microfibra", "Tencel", "Bambú", "Fibras recicladas", "Mezcla"]}' WHERE key = 'material';
