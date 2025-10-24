@@ -455,7 +455,7 @@ def edit(product_id):
             # Guardar categoría anterior para recalcular centroide si cambia
             old_category_id = product.category_id
             old_category = product.category if old_category_id else None
-            
+
             # Actualizar datos del producto
             product.name = request.form.get("name", "").strip()
             product.description = request.form.get("description", "").strip()
@@ -495,12 +495,12 @@ def edit(product_id):
                                          attribute_configs=attribute_configs)
 
             db.session.commit()
-            
+
             # Recalcular centroides si cambió la categoría
             if old_category_id != product.category_id:
                 # Verificar que el producto tiene imágenes procesadas
                 has_processed_images = any(img.is_processed for img in product.images)
-                
+
                 if has_processed_images:
                     try:
                         # Recalcular centroide de la categoría ANTIGUA (ya no incluye este producto)
@@ -508,19 +508,19 @@ def edit(product_id):
                             if old_category.needs_centroid_update():
                                 old_category.update_centroid_embedding(force_recalculate=False)
                                 print(f"📊 Centroide actualizado para categoría antigua: {old_category.name}")
-                        
+
                         # Recalcular centroide de la categoría NUEVA (ahora incluye este producto)
                         if new_category:
                             if new_category.needs_centroid_update():
                                 new_category.update_centroid_embedding(force_recalculate=False)
                                 print(f"📊 Centroide actualizado para categoría nueva: {new_category.name}")
-                        
+
                         db.session.commit()
                     except Exception as e:
                         # No bloquear la edición por error en centroides
                         print(f"⚠️ Error actualizando centroides tras cambio de categoría: {e}")
                         db.session.rollback()
-            
+
             flash("Producto actualizado correctamente", "success")
             return redirect(url_for("products.view", product_id=product.id))
 
@@ -553,7 +553,7 @@ def delete(product_id):
         # Guardar referencia a la categoría y verificar si tiene imágenes procesadas
         category = product.category
         has_processed_images = any(img.is_processed for img in product.images)
-        
+
         # Obtener todas las imágenes antes de eliminar el producto
         images = product.images.all()
 
@@ -573,7 +573,7 @@ def delete(product_id):
         # Eliminar producto (las imágenes se eliminan automáticamente por cascade)
         db.session.delete(product)
         db.session.commit()
-        
+
         # Recalcular centroide de la categoría si el producto tenía imágenes procesadas
         if category and has_processed_images:
             try:
@@ -585,7 +585,7 @@ def delete(product_id):
                 # No bloquear la eliminación por error en centroide
                 print(f"⚠️ Error actualizando centroide tras eliminar producto: {e}")
                 db.session.rollback()
-        
+
         flash("Producto e imágenes eliminados correctamente", "success")
     except Exception as e:
         db.session.rollback()
@@ -709,7 +709,7 @@ def delete_image(product_id, image_id):
             # Guardar referencia a la categoría antes de eliminar
             category = product.category
             was_processed = image.is_processed
-            
+
             # Eliminar archivo físico
             client = Client.query.get(current_user.client_id)
             if client:
@@ -724,7 +724,7 @@ def delete_image(product_id, image_id):
             # Eliminar registro de base de datos
             db.session.delete(image)
             db.session.commit()
-            
+
             # Recalcular centroide de la categoría si la imagen estaba procesada
             if category and was_processed:
                 try:
@@ -735,7 +735,7 @@ def delete_image(product_id, image_id):
                     # No bloquear la eliminación por error en centroide
                     print(f"⚠️ Error actualizando centroide tras eliminar imagen: {e}")
                     db.session.rollback()
-            
+
             return jsonify({"success": True, "message": "Imagen eliminada correctamente"})
         else:
             return jsonify({"success": False, "message": "Imagen no encontrada"})

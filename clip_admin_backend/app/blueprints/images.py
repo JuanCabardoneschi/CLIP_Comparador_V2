@@ -77,14 +77,14 @@ def upload():
         # Mostrar resultados
         if uploaded_count > 0:
             db.session.commit()
-            
+
             # Generar embeddings y actualizar centroide
             try:
                 from app.blueprints.products import _process_embeddings_and_centroid_for_product
                 _process_embeddings_and_centroid_for_product(product)
             except Exception as e:
                 flash(f"Imágenes subidas, pero error generando embeddings: {str(e)}", "warning")
-            
+
             flash(f"{uploaded_count} imagen(es) subida(s) exitosamente", "success")
 
         for error in errors:
@@ -141,7 +141,7 @@ def delete(image_id):
     """Eliminar imagen"""
     image = Image.query.get_or_404(image_id)
     product_id = image.product_id
-    
+
     # Guardar referencias antes de eliminar
     product = image.product
     category = product.category if product else None
@@ -152,7 +152,7 @@ def delete(image_id):
             # Usar ImageManager para eliminar la imagen (auto-detecta client_slug)
             if image_manager.delete_image(image):
                 db.session.commit()
-                
+
                 # Recalcular centroide si la imagen estaba procesada
                 if category and was_processed:
                     try:
@@ -164,7 +164,7 @@ def delete(image_id):
                         # No bloquear la eliminación por error en centroide
                         print(f"⚠️ Error actualizando centroide tras eliminar imagen: {e}")
                         db.session.rollback()
-                
+
                 flash("Imagen eliminada exitosamente", "success")
             else:
                 flash("Error eliminando imagen", "error")

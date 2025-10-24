@@ -1,6 +1,58 @@
 # BACKLOG DE MEJORAS Y PENDIENTES
 **Fecha de Creación**: 22 Octubre 2025
-**Última Actualización**: 23 Octubre 2025
+**Última Actualización**: 24 Octubre 2025
+
+---
+
+## ✅ COMPLETADO - Octubre 2025
+
+### 📦 Sistema de Gestión de Inventario (24 Oct 2025)
+**Estado**: ✅ COMPLETADO
+**Complejidad**: Media
+**Impacto**: Alto (permite integraciones ecommerce/POS)
+
+**Implementado**:
+
+1. **API Externa de Inventario** (`app/blueprints/external_inventory.py`):
+   - ✅ POST `/api/external/inventory/reduce-stock` - Reducir stock post-venta
+   - ✅ GET `/api/external/inventory/check-stock` - Consultar disponibilidad
+   - ✅ POST `/api/external/inventory/bulk-check-stock` - Consultas masivas
+   - ✅ Autenticación con API Key vía header `X-API-Key`
+   - ✅ Validación de stock (no permite negativos)
+   - ✅ Lookup flexible (product_id o sku)
+   - ✅ Transacciones atómicas con rollback
+
+2. **Panel de Administración de Stock** (`app/blueprints/inventory.py`):
+   - ✅ Dashboard con estadísticas (total, sin stock, bajo stock, disponible)
+   - ✅ Filtros por categoría, búsqueda, nivel de stock
+   - ✅ Ajuste inline con botones +/-
+   - ✅ Establecer stock absoluto manualmente
+   - ✅ Indicadores visuales color-coded (rojo/amarillo/verde)
+   - ✅ Updates en tiempo real con AJAX
+
+3. **Sistema de Autenticación** (`app/utils/api_auth.py`):
+   - ✅ Decorador `@require_api_key` reutilizable
+   - ✅ Validación contra modelo Client existente
+   - ✅ Respuestas HTTP estandarizadas (401/403)
+
+4. **Documentación**:
+   - ✅ [docs/API_INVENTARIO_EXTERNA.md](docs/API_INVENTARIO_EXTERNA.md) - Guía completa de API
+   - ✅ Ejemplos en JavaScript, Python, cURL
+   - ✅ Actualizado [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md)
+   - ✅ Actualizado [.github/copilot-instructions.md](.github/copilot-instructions.md)
+
+**Archivos Creados/Modificados**:
+- `clip_admin_backend/app/utils/api_auth.py` (nuevo)
+- `clip_admin_backend/app/blueprints/inventory.py` (nuevo)
+- `clip_admin_backend/app/blueprints/external_inventory.py` (nuevo)
+- `clip_admin_backend/app/templates/inventory/index.html` (nuevo)
+- `clip_admin_backend/app.py` (modificado - blueprints registrados)
+- `clip_admin_backend/app/templates/layouts/base.html` (modificado - menú)
+
+**Pendiente**:
+- [ ] Testing de endpoints en Railway
+- [ ] Agregar historial de cambios de stock (audit log)
+- [ ] Notificaciones cuando stock crítico (<5 unidades)
 
 ---
 

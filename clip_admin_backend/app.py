@@ -354,6 +354,22 @@ def register_blueprints(app):
     except ImportError as e:
         print(f"✗ Error importando search_config blueprint: {e}")
 
+    # Blueprint de inventario (gestión de stock)
+    try:
+        from app.blueprints.inventory import bp as inventory_bp
+        app.register_blueprint(inventory_bp, url_prefix="/inventory")
+        print("✓ Blueprint inventory registrado")
+    except ImportError as e:
+        print(f"✗ Error importando inventory blueprint: {e}")
+
+    # Blueprint de API externa de inventario
+    try:
+        from app.blueprints.external_inventory import bp as external_inventory_bp
+        app.register_blueprint(external_inventory_bp)
+        print("✓ Blueprint external_inventory registrado")
+    except ImportError as e:
+        print(f"✗ Error importando external_inventory blueprint: {e}")
+
 
 # Crear instancia de la aplicación
 app = create_app()

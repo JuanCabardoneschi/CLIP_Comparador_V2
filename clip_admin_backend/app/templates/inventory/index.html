@@ -1,0 +1,302 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Gestión de Inventario - CLIP Comparador V2{% endblock %}
+
+{% block page_title %}Gestión de Inventario{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item active">Inventario</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Estadísticas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Total Productos</h5>
+                    <h2>{{ stats.total }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Sin Stock</h5>
+                    <h2>{{ stats.out_of_stock }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Stock Bajo</h5>
+                    <h2>{{ stats.low_stock }}</h2>
+                    <small>(≤ 10 unidades)</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Disponibles</h5>
+                    <h2>{{ stats.available }}</h2>
+                    <small>(> 10 unidades)</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('inventory.index') }}" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Buscar</label>
+                    <input type="text" name="search" class="form-control" 
+                           placeholder="Nombre o SKU" value="{{ current_search }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Categoría</label>
+                    <select name="category_id" class="form-select">
+                        <option value="">Todas las categorías</option>
+                        {% for category in categories %}
+                        <option value="{{ category.id }}" 
+                                {% if current_category == category.id %}selected{% endif %}>
+                            {{ category.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Estado Stock</label>
+                    <select name="stock_filter" class="form-select">
+                        <option value="">Todos</option>
+                        <option value="out" {% if current_filter == 'out' %}selected{% endif %}>Sin stock</option>
+                        <option value="low" {% if current_filter == 'low' %}selected{% endif %}>Stock bajo</option>
+                        <option value="available" {% if current_filter == 'available' %}selected{% endif %}>Disponible</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary me-2">
+                        <i class="bi bi-search"></i> Filtrar
+                    </button>
+                    <a href="{{ url_for('inventory.index') }}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> Limpiar
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabla de Productos -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">Productos ({{ products|length }})</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Imagen</th>
+                            <th>Producto</th>
+                            <th>SKU</th>
+                            <th>Categoría</th>
+                            <th>Precio</th>
+                            <th>Stock Actual</th>
+                            <th>Ajustar Stock</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for product in products %}
+                        <tr id="product-{{ product.id }}">
+                            <td>
+                                {% if product.primary_image %}
+                                <img src="{{ product.primary_image.thumbnail_url }}" 
+                                     alt="{{ product.name }}"
+                                     style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;">
+                                {% else %}
+                                <div style="width: 50px; height: 50px; background: #f0f0f0; 
+                                            border-radius: 4px; display: flex; align-items: center; 
+                                            justify-content: center;">
+                                    <i class="bi bi-image text-muted"></i>
+                                </div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <strong>{{ product.name }}</strong><br>
+                                <small class="text-muted">ID: {{ product.id[:8] }}...</small>
+                            </td>
+                            <td>
+                                {% if product.sku %}
+                                <span class="badge bg-secondary">{{ product.sku }}</span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if product.category %}
+                                {{ product.category.name }}
+                                {% else %}
+                                <span class="text-muted">Sin categoría</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if product.price %}
+                                ${{ "%.2f"|format(product.price) }}
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge {% if product.stock == 0 %}bg-danger
+                                              {% elif product.stock <= 10 %}bg-warning
+                                              {% else %}bg-success{% endif %}"
+                                      id="stock-badge-{{ product.id }}">
+                                    {{ product.stock }} unidades
+                                </span>
+                            </td>
+                            <td>
+                                <div class="input-group input-group-sm" style="width: 200px;">
+                                    <button class="btn btn-outline-danger" type="button"
+                                            onclick="adjustStock('{{ product.id }}', -1)">
+                                        <i class="bi bi-dash"></i>
+                                    </button>
+                                    <input type="number" class="form-control text-center" 
+                                           id="stock-input-{{ product.id }}"
+                                           value="{{ product.stock }}" min="0">
+                                    <button class="btn btn-outline-success" type="button"
+                                            onclick="adjustStock('{{ product.id }}', 1)">
+                                        <i class="bi bi-plus"></i>
+                                    </button>
+                                    <button class="btn btn-primary" type="button"
+                                            onclick="setStock('{{ product.id }}')">
+                                        <i class="bi bi-check2"></i>
+                                    </button>
+                                </div>
+                            </td>
+                            <td>
+                                <a href="{{ url_for('products.view', product_id=product.id) }}" 
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-eye"></i> Ver
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-4">
+                                <i class="bi bi-inbox" style="font-size: 3rem; color: #ddd;"></i>
+                                <p class="text-muted mt-2">No hay productos que coincidan con los filtros</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function adjustStock(productId, amount) {
+    const input = document.getElementById(`stock-input-${productId}`);
+    const currentValue = parseInt(input.value) || 0;
+    const newValue = Math.max(0, currentValue + amount);
+    input.value = newValue;
+    
+    // Auto-guardar después de ajuste rápido
+    setStock(productId);
+}
+
+function setStock(productId) {
+    const input = document.getElementById(`stock-input-${productId}`);
+    const newStock = parseInt(input.value);
+    
+    if (isNaN(newStock) || newStock < 0) {
+        alert('El stock debe ser un número positivo');
+        return;
+    }
+    
+    fetch('{{ url_for("inventory.set_stock") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            product_id: productId,
+            stock: newStock,
+            reason: 'Ajuste manual desde panel de inventario'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Actualizar badge
+            const badge = document.getElementById(`stock-badge-${productId}`);
+            badge.textContent = `${newStock} unidades`;
+            
+            // Actualizar color del badge
+            badge.className = 'badge';
+            if (newStock == 0) {
+                badge.classList.add('bg-danger');
+            } else if (newStock <= 10) {
+                badge.classList.add('bg-warning');
+            } else {
+                badge.classList.add('bg-success');
+            }
+            
+            // Mostrar toast de éxito
+            showToast('Stock actualizado', `Stock establecido en ${newStock} unidades`, 'success');
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error al actualizar stock');
+    });
+}
+
+function showToast(title, message, type = 'info') {
+    // Crear toast dinámicamente
+    const toastHtml = `
+        <div class="toast align-items-center text-bg-${type} border-0" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <strong>${title}</strong><br>${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" 
+                        data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    `;
+    
+    // Agregar al container
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+        document.body.appendChild(container);
+    }
+    
+    container.insertAdjacentHTML('beforeend', toastHtml);
+    const toastElement = container.lastElementChild;
+    const toast = new bootstrap.Toast(toastElement);
+    toast.show();
+    
+    // Eliminar después de mostrar
+    toastElement.addEventListener('hidden.bs.toast', () => {
+        toastElement.remove();
+    });
+}
+</script>
+{% endblock %}

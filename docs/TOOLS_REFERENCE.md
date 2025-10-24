@@ -197,6 +197,95 @@ python check_clients_id.py
 
 ---
 
+---
+
+## 📦 Sistema de Inventario (Octubre 2025)
+
+### Panel de Administración de Inventario
+**Ruta**: `/inventory/`
+**Acceso**: Panel de administración Flask (requiere login)
+
+**Funcionalidades**:
+- Dashboard con estadísticas de stock (total, sin stock, stock bajo, disponible)
+- Filtrado por categoría, búsqueda por nombre/SKU, nivel de stock
+- Ajuste inline de stock con botones +/-
+- Establecer valor absoluto de stock
+- Indicadores visuales por nivel de stock (rojo=0, amarillo≤10, verde>10)
+
+**Endpoints del panel**:
+```
+GET  /inventory/                    # Vista principal del inventario
+POST /inventory/api/adjust-stock    # Ajustar stock por delta (+/-)
+POST /inventory/api/set-stock       # Establecer stock absoluto
+```
+
+### API Externa de Inventario
+**Blueprint**: `external_inventory.py`
+**Autenticación**: API Key del cliente vía header `X-API-Key`
+
+**Documentación completa**: [docs/API_INVENTARIO_EXTERNA.md](./API_INVENTARIO_EXTERNA.md)
+
+**Endpoints disponibles**:
+
+#### 1. Reducir Stock (POST)
+```
+POST /api/external/inventory/reduce-stock
+Content-Type: application/json
+X-API-Key: clip_xxxxxxxxxxxxxxxxxxxx
+
+{
+  "product_id": "uuid-del-producto",  // o "sku": "PROD-001"
+  "quantity": 1,
+  "reason": "Venta online #12345"     // opcional
+}
+```
+
+#### 2. Consultar Stock (GET)
+```
+GET /api/external/inventory/check-stock?sku=PROD-001
+X-API-Key: clip_xxxxxxxxxxxxxxxxxxxx
+```
+
+#### 3. Consulta Masiva (POST)
+```
+POST /api/external/inventory/bulk-check-stock
+Content-Type: application/json
+X-API-Key: clip_xxxxxxxxxxxxxxxxxxxx
+
+{
+  "products": [
+    {"product_id": "uuid1"},
+    {"sku": "PROD-001"}
+  ]
+}
+```
+
+**Uso típico**:
+```python
+import requests
+
+headers = {
+    "X-API-Key": "clip_tu_api_key_aqui",
+    "Content-Type": "application/json"
+}
+
+# Reducir stock después de una venta
+response = requests.post(
+    "https://tu-dominio.railway.app/api/external/inventory/reduce-stock",
+    headers=headers,
+    json={"sku": "PROD-001", "quantity": 1, "reason": "Venta POS"}
+)
+```
+
+**Características de seguridad**:
+- Validación de API Key en cada request
+- Prevención de stock negativo
+- Transacciones atómicas con rollback automático
+- Rate limiting por cliente
+- Respuestas detalladas de error
+
+---
+
 ## 🔑 Patrones y Convenciones
 
 ### Conexión a Railway
