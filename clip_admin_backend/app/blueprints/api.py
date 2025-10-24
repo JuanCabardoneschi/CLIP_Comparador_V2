@@ -886,17 +886,8 @@ def _build_search_results(product_best_match, limit):
             if not primary_image:
                 primary_image = img
 
-            # Preferir base64 consistente (generar si falta); fallback a display_url
-            image_url = None
-            if primary_image:
-                b64 = image_manager.get_image_base64(primary_image)
-                if b64:
-                    image_url = b64
-                    print("🖼️ API IMG: usando base64_data (directo o generado)")
-                else:
-                    image_url = primary_image.display_url
-            else:
-                image_url = None
+            # Retornar SIEMPRE la URL de Cloudinary (patrón unificado)
+            image_url = primary_image.display_url if primary_image else None
         except Exception as e:
             print(f"❌ Error obteniendo imagen primaria: {e}")
             # CRITICAL: Hacer rollback para que queries posteriores funcionen
