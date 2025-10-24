@@ -140,6 +140,53 @@
             height: 200px;
             object-fit: contain;
             background: white;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .clip-widget-result-img:hover {
+            opacity: 0.9;
+        }
+        .clip-widget-modal {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            justify-content: center;
+            align-items: center;
+        }
+        .clip-widget-modal.active {
+            display: flex;
+        }
+        .clip-widget-modal-content {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        .clip-widget-modal-close {
+            position: absolute;
+            top: 20px;
+            right: 40px;
+            font-size: 40px;
+            color: white;
+            cursor: pointer;
+            background: rgba(0, 0, 0, 0.5);
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            transition: background 0.3s;
+        }
+        .clip-widget-modal-close:hover {
+            background: rgba(0, 0, 0, 0.8);
         }
         .clip-widget-result-content {
             flex: 1;
@@ -262,6 +309,10 @@
             <div class="clip-widget-error" id="clip-error"></div>
             <button class="clip-widget-reset" id="clip-reset-btn">Nueva búsqueda</button>
         </div>
+        <div class="clip-widget-modal" id="clip-modal">
+            <span class="clip-widget-modal-close" id="clip-modal-close">&times;</span>
+            <img class="clip-widget-modal-content" id="clip-modal-img" alt="Imagen ampliada">
+        </div>
     `;
 
     // Referencias a elementos
@@ -274,6 +325,9 @@
     const results = document.getElementById('clip-results');
     const error = document.getElementById('clip-error');
     const resetBtn = document.getElementById('clip-reset-btn');
+    const modal = document.getElementById('clip-modal');
+    const modalImg = document.getElementById('clip-modal-img');
+    const modalClose = document.getElementById('clip-modal-close');
 
     let selectedFile = null;
 
@@ -495,11 +549,32 @@
             `;
         }).join('') + '</div>';
         results.style.display = 'block';
+        
+        // Agregar event listeners a las imágenes para abrir modal
+        setTimeout(() => {
+            document.querySelectorAll('.clip-widget-result-img').forEach(img => {
+                img.addEventListener('click', () => {
+                    modalImg.src = img.src;
+                    modal.classList.add('active');
+                });
+            });
+        }, 100);
     }
     function showError(message) {
         error.textContent = message;
         error.style.display = 'block';
     }
+
+    // Modal handlers
+    modalClose.addEventListener('click', () => {
+        modal.classList.remove('active');
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.classList.remove('active');
+        }
+    });
 
     // Reset
     resetBtn.addEventListener('click', () => {
