@@ -875,7 +875,7 @@
             // Crear botón de compra solo si hay stock
             // Priorizar SKU (más genérico) sobre ID
             console.log('Product data for buy button:', { id: product.id, sku: product.sku, name: product.name });
-            
+
             const buyButtonHTML = stock > 0 ? `
                 <button class="buy-btn" onclick="handlePurchase('${product.sku || ''}', '${product.name}', ${stock})">
                     🛒 Comprar
@@ -933,9 +933,9 @@
         // Handle purchase function
         async function handlePurchase(sku, productName, currentStock) {
             const INVENTORY_API_URL = 'https://clipcomparadorv2-production.up.railway.app/api/external/inventory/reduce-stock';
-            
+
             console.log('handlePurchase called with:', { sku, productName, currentStock });
-            
+
             // Validar que tenemos SKU
             if (!sku || sku === 'undefined' || sku === '') {
                 const errorMsg = `Error: No se puede identificar el producto.\nSKU: ${sku}`;
@@ -943,7 +943,7 @@
                 showCopyableError(errorMsg);
                 return;
             }
-            
+
             // Confirmar compra
             if (!confirm(`¿Confirmar compra de "${productName}"?`)) {
                 return;
@@ -962,9 +962,9 @@
                     quantity: 1,
                     reason: 'Compra desde demo-store'
                 };
-                
+
                 console.log('Sending request:', requestBody);
-                
+
                 const response = await fetch(INVENTORY_API_URL, {
                     method: 'POST',
                     headers: {
@@ -982,11 +982,11 @@
                     const newStock = data.new_stock;
                     const productId = data.product_id; // Obtener ID real de la respuesta
                     const stockElement = document.getElementById(`stock-${productId}`);
-                    
+
                     if (stockElement) {
                         const stockText = newStock > 10 ? 'En stock' : newStock > 0 ? `Quedan ${newStock}` : 'Sin stock';
                         const stockClass = newStock > 10 ? 'in-stock' : newStock > 0 ? 'low-stock' : '';
-                        
+
                         stockElement.textContent = stockText;
                         stockElement.className = `product-stock ${stockClass}`;
                     }
@@ -1011,16 +1011,16 @@
                 }
             } catch (error) {
                 console.error('Purchase error:', error);
-                
+
                 // Mostrar error copiable
                 const errorDetails = `Error en la compra:
 Producto: ${productName}
 SKU: ${sku}
 Error: ${error.message}
 Stack: ${error.stack || 'N/A'}`;
-                
+
                 showCopyableError(errorDetails);
-                
+
                 // Restaurar botones
                 buttons.forEach(btn => {
                     btn.disabled = false;
@@ -1042,7 +1042,7 @@ Stack: ${error.stack || 'N/A'}`;
             document.body.appendChild(errorDiv);
         }
 
-        
+
         </script>
 
 
@@ -1059,7 +1059,7 @@ Stack: ${error.stack || 'N/A'}`;
   // Override de showError para mostrar mensajes detallados del backend
   window.showError = function(err) {
     var msg = '';
-    
+
     if (err && typeof err === 'object') {
       if (err.message) {
         msg += err.message + '\n';
@@ -1073,11 +1073,11 @@ Stack: ${error.stack || 'N/A'}`;
     } else {
       msg = String(err || 'Error desconocido');
     }
-    
+
     var errorText = document.getElementById('errorText');
     var errorMessage = document.getElementById('errorMessage');
     var resultsSection = document.getElementById('resultsSection');
-    
+
     if (errorText) {
       errorText.textContent = msg.trim();
     }
@@ -1088,7 +1088,7 @@ Stack: ${error.stack || 'N/A'}`;
       resultsSection.classList.remove('active');
     }
   };
-  
+
   console.log('✅ Error handler override instalado');
 })();
 </script>

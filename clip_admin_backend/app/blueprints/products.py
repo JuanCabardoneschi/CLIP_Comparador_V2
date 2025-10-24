@@ -432,10 +432,14 @@ def view(product_id):
         Image.is_primary.desc(),
         Image.created_at.asc()
     ).all()
+    
+    # Verificar si hay imágenes procesadas
+    any_processed = any(img.is_processed for img in images) if images else False
 
     return render_template("products/view.html",
                            product=product,
-                           images=images)
+                           images=images,
+                           any_processed=any_processed)
 
 
 @bp.route("/<product_id>/edit", methods=["GET", "POST"])

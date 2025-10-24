@@ -34,5 +34,5 @@ RUN mkdir -p instance
 # Exponer puerto
 EXPOSE $PORT
 
-# Comando de inicio
+# Comando de inicio - Flask app (NO FastAPI)
 CMD ["python", "app.py"]

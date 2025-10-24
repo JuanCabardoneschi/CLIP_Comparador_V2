@@ -25,10 +25,10 @@ def index():
     category_id = request.args.get('category_id')
     search = request.args.get('search', '').strip()
     stock_filter = request.args.get('stock_filter')  # 'low', 'out', 'available'
-    
+
     # Determinar si hay filtros activos
     has_filters = bool(category_id or search or stock_filter)
-    
+
     # Solo cargar productos si hay filtros aplicados
     products = []
     if has_filters:
