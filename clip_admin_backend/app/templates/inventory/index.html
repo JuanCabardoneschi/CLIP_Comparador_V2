@@ -59,7 +59,7 @@
             <form method="GET" action="{{ url_for('inventory.index') }}" class="row g-3">
                 <div class="col-md-3">
                     <label class="form-label">Buscar</label>
-                    <input type="text" name="search" class="form-control" 
+                    <input type="text" name="search" class="form-control"
                            placeholder="Nombre o SKU" value="{{ current_search }}">
                 </div>
                 <div class="col-md-3">
@@ -67,7 +67,7 @@
                     <select name="category_id" class="form-select">
                         <option value="">Todas las categorías</option>
                         {% for category in categories %}
-                        <option value="{{ category.id }}" 
+                        <option value="{{ category.id }}"
                                 {% if current_category == category.id %}selected{% endif %}>
                             {{ category.name }}
                         </option>
@@ -120,12 +120,12 @@
                         <tr id="product-{{ product.id }}">
                             <td>
                                 {% if product.primary_image %}
-                                <img src="{{ product.primary_image.thumbnail_url }}" 
+                                <img src="{{ product.primary_image.thumbnail_url }}"
                                      alt="{{ product.name }}"
                                      style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;">
                                 {% else %}
-                                <div style="width: 50px; height: 50px; background: #f0f0f0; 
-                                            border-radius: 4px; display: flex; align-items: center; 
+                                <div style="width: 50px; height: 50px; background: #f0f0f0;
+                                            border-radius: 4px; display: flex; align-items: center;
                                             justify-content: center;">
                                     <i class="bi bi-image text-muted"></i>
                                 </div>
@@ -133,7 +133,7 @@
                             </td>
                             <td>
                                 <strong>{{ product.name }}</strong><br>
-                                <small class="text-muted">ID: {{ product.id[:8] }}...</small>
+                                <small class="text-muted">ID: {{ product.id|string|truncate(8, True, '') }}...</small>
                             </td>
                             <td>
                                 {% if product.sku %}
@@ -170,7 +170,7 @@
                                             onclick="adjustStock('{{ product.id }}', -1)">
                                         <i class="bi bi-dash"></i>
                                     </button>
-                                    <input type="number" class="form-control text-center" 
+                                    <input type="number" class="form-control text-center"
                                            id="stock-input-{{ product.id }}"
                                            value="{{ product.stock }}" min="0">
                                     <button class="btn btn-outline-success" type="button"
@@ -184,7 +184,7 @@
                                 </div>
                             </td>
                             <td>
-                                <a href="{{ url_for('products.view', product_id=product.id) }}" 
+                                <a href="{{ url_for('products.view', product_id=product.id) }}"
                                    class="btn btn-sm btn-outline-primary">
                                     <i class="bi bi-eye"></i> Ver
                                 </a>
@@ -211,7 +211,7 @@ function adjustStock(productId, amount) {
     const currentValue = parseInt(input.value) || 0;
     const newValue = Math.max(0, currentValue + amount);
     input.value = newValue;
-    
+
     // Auto-guardar después de ajuste rápido
     setStock(productId);
 }
@@ -219,12 +219,12 @@ function adjustStock(productId, amount) {
 function setStock(productId) {
     const input = document.getElementById(`stock-input-${productId}`);
     const newStock = parseInt(input.value);
-    
+
     if (isNaN(newStock) || newStock < 0) {
         alert('El stock debe ser un número positivo');
         return;
     }
-    
+
     fetch('{{ url_for("inventory.set_stock") }}', {
         method: 'POST',
         headers: {
@@ -242,7 +242,7 @@ function setStock(productId) {
             // Actualizar badge
             const badge = document.getElementById(`stock-badge-${productId}`);
             badge.textContent = `${newStock} unidades`;
-            
+
             // Actualizar color del badge
             badge.className = 'badge';
             if (newStock == 0) {
@@ -252,7 +252,7 @@ function setStock(productId) {
             } else {
                 badge.classList.add('bg-success');
             }
-            
+
             // Mostrar toast de éxito
             showToast('Stock actualizado', `Stock establecido en ${newStock} unidades`, 'success');
         } else {
@@ -273,12 +273,12 @@ function showToast(title, message, type = 'info') {
                 <div class="toast-body">
                     <strong>${title}</strong><br>${message}
                 </div>
-                <button type="button" class="btn-close btn-close-white me-2 m-auto" 
+                <button type="button" class="btn-close btn-close-white me-2 m-auto"
                         data-bs-dismiss="toast"></button>
             </div>
         </div>
     `;
-    
+
     // Agregar al container
     let container = document.getElementById('toast-container');
     if (!container) {
@@ -287,12 +287,12 @@ function showToast(title, message, type = 'info') {
         container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
         document.body.appendChild(container);
     }
-    
+
     container.insertAdjacentHTML('beforeend', toastHtml);
     const toastElement = container.lastElementChild;
     const toast = new bootstrap.Toast(toastElement);
     toast.show();
-    
+
     // Eliminar después de mostrar
     toastElement.addEventListener('hidden.bs.toast', () => {
         toastElement.remove();

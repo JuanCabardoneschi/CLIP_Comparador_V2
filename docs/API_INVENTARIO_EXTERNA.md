@@ -174,9 +174,9 @@ async function registrarVenta(sku, cantidad) {
       reason: 'Venta online #' + Date.now()
     })
   });
-  
+
   const data = await response.json();
-  
+
   if (data.success) {
     console.log(`Stock reducido: ${data.old_stock} → ${data.new_stock}`);
   } else {
@@ -194,7 +194,7 @@ async function verificarDisponibilidad(sku) {
       }
     }
   );
-  
+
   const data = await response.json();
   return data.is_available;
 }

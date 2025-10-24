@@ -437,6 +437,45 @@
             text-decoration: underline;
         }
 
+        /* Buy Button */
+        .buy-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .buy-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+
+        .buy-btn:active {
+            transform: translateY(0);
+        }
+
+        .buy-btn.disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .buy-btn.disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
         .error-message {
             display: none;
             background: #fee2e2;
@@ -833,6 +872,17 @@
                 attributesHTML += '</div>';
             }
 
+            // Crear botón de compra solo si hay stock
+            const buyButtonHTML = stock > 0 ? `
+                <button class="buy-btn" onclick="handlePurchase('${product.id}', '${product.sku}', '${product.name}', ${stock})">
+                    🛒 Comprar
+                </button>
+            ` : `
+                <button class="buy-btn disabled" disabled>
+                    Sin stock
+                </button>
+            `;
+
             card.innerHTML = `
                 <div class="product-image-container">
                     <img src="${product.image_url}" alt="${product.name}" class="product-image"
@@ -843,8 +893,9 @@
                     <div class="product-category">${product.category}</div>
                     <div class="product-name">${product.name}</div>
                     <div class="product-price">${price}</div>
-                    <div class="product-stock ${stockClass}">${stockText}</div>
+                    <div class="product-stock ${stockClass}" id="stock-${product.id}">${stockText}</div>
                     ${attributesHTML}
+                    ${buyButtonHTML}
                 </div>
             `;
 
@@ -874,6 +925,82 @@
             }
 
             return value;
+        }
+
+        // Handle purchase function
+        async function handlePurchase(productId, sku, productName, currentStock) {
+            const INVENTORY_API_URL = 'https://clipcomparadorv2-production.up.railway.app/api/external/inventory/reduce-stock';
+            
+            // Confirmar compra
+            if (!confirm(`¿Confirmar compra de "${productName}"?`)) {
+                return;
+            }
+
+            // Deshabilitar botón mientras se procesa
+            const buttons = document.querySelectorAll(`button[onclick*="${productId}"]`);
+            buttons.forEach(btn => {
+                btn.disabled = true;
+                btn.textContent = '⏳ Procesando...';
+            });
+
+            try {
+                const response = await fetch(INVENTORY_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': API_KEY
+                    },
+                    body: JSON.stringify({
+                        product_id: productId,
+                        sku: sku,
+                        quantity: 1,
+                        reason: 'Compra desde demo-store'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Actualizar stock en la UI
+                    const newStock = data.new_stock;
+                    const stockElement = document.getElementById(`stock-${productId}`);
+                    
+                    if (stockElement) {
+                        const stockText = newStock > 10 ? 'En stock' : newStock > 0 ? `Quedan ${newStock}` : 'Sin stock';
+                        const stockClass = newStock > 10 ? 'in-stock' : newStock > 0 ? 'low-stock' : '';
+                        
+                        stockElement.textContent = stockText;
+                        stockElement.className = `product-stock ${stockClass}`;
+                    }
+
+                    // Actualizar o deshabilitar botón
+                    buttons.forEach(btn => {
+                        if (newStock > 0) {
+                            btn.disabled = false;
+                            btn.textContent = '🛒 Comprar';
+                            btn.onclick = () => handlePurchase(productId, sku, productName, newStock);
+                        } else {
+                            btn.disabled = true;
+                            btn.textContent = 'Sin stock';
+                            btn.className = 'buy-btn disabled';
+                        }
+                    });
+
+                    // Mostrar mensaje de éxito
+                    alert(`✅ ¡Compra exitosa!\n\n${productName}\nStock anterior: ${data.old_stock}\nStock actual: ${data.new_stock}`);
+                } else {
+                    throw new Error(data.error || 'Error en la compra');
+                }
+            } catch (error) {
+                console.error('Purchase error:', error);
+                alert(`❌ Error en la compra: ${error.message}`);
+                
+                // Restaurar botones
+                buttons.forEach(btn => {
+                    btn.disabled = false;
+                    btn.textContent = '🛒 Comprar';
+                });
+            }
         }
 
         
