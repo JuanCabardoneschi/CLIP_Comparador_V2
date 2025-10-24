@@ -122,7 +122,7 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             transition: transform 0.2s, box-shadow 0.2s;
             display: flex;
-            gap: 16px;
+            flex-direction: column;
             padding: 0;
             overflow: hidden;
         }
@@ -130,11 +130,16 @@
             transform: translateY(-4px);
             box-shadow: 0 4px 16px rgba(0,0,0,0.15);
         }
+        .clip-widget-result-header {
+            padding: 12px 16px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
         .clip-widget-result-img {
-            width: 180px;
-            height: 100%;
+            width: 100%;
+            height: 200px;
             object-fit: contain;
-            flex-shrink: 0;
+            background: white;
         }
         .clip-widget-result-content {
             flex: 1;
@@ -145,13 +150,13 @@
         .clip-widget-result-name {
             font-weight: 700;
             color: #333;
-            margin-bottom: 8px;
-            font-size: 16px;
+            margin-bottom: 4px;
+            font-size: 14px;
+            line-height: 1.3;
         }
         .clip-widget-result-sku {
-            font-size: 13px;
-            color: #888;
-            margin-bottom: 12px;
+            font-size: 11px;
+            color: #999;
         }
         .clip-widget-result-similarity {
             display: inline-block;
@@ -472,12 +477,14 @@
           let imgSrc = (item.image_url && item.image_url !== 'null' && item.image_url !== '') ? item.image_url : '';
             return `
                 <div class="clip-widget-result-item">
-                <img src="${imgSrc}"
-                    alt="${item.name}"
-                    class="clip-widget-result-img">
-                    <div class="clip-widget-result-content">
+                    <div class="clip-widget-result-header">
                         <div class="clip-widget-result-name">${item.name}</div>
                         <div class="clip-widget-result-sku">SKU: ${item.sku}</div>
+                    </div>
+                    <img src="${imgSrc}"
+                        alt="${item.name}"
+                        class="clip-widget-result-img">
+                    <div class="clip-widget-result-content">
                         <div class="clip-widget-result-similarity">
                             ${Math.round((item.optimizer?.visual_score || item.similarity) * 100)}% similitud
                         </div>

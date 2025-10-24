@@ -216,8 +216,8 @@
                                         {% elif config.type == 'date' %}
                                             <input type="date" class="form-control" id="attr_{{ config.key }}" name="attr_{{ config.key }}" value="{{ product.attributes.get(config.key, '') if product.attributes else '' }}" {% if config.required %}required{% endif %}>
                                         {% elif config.type == 'list' %}
-                                            {% set is_multiple = config.options['multiple'] if config.options and 'multiple' in config.options else False %}
-                                            {% set values = config.options['values'] if config.options and 'values' in config.options else config.options %}
+                                            {% set is_multiple = config.options.get('multiple', False) if config.options else False %}
+                                            {% set values = config.options.get('values', []) if config.options else [] %}
                                             {# Coaccionar a lista si es multiple y el valor guardado es string legacy #}
                                             {% if is_multiple %}
                                                 {% set raw_val = product.attributes.get(config.key) if product.attributes else [] %}
@@ -231,8 +231,7 @@
                                             {% endif %}
                                             <select class="form-select" id="attr_{{ config.key }}" name="attr_{{ config.key }}{% if is_multiple %}[]{% endif %}" {% if is_multiple %}multiple{% endif %} {% if config.required %}required{% endif %}>
                                                 <option value="">Seleccionar...</option>
-                                                {% if values %}
-                                                    {% for option in values %}
+                                                {% for option in values %}
                                                         {% if is_multiple %}
                                                             <option value="{{ option }}" {% if current_value and option in current_value %}selected{% endif %}>{{ option }}</option>
                                                         {% else %}

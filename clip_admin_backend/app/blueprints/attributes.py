@@ -160,12 +160,9 @@ def edit(id):
             current_app.logger.error(f'Error al actualizar atributo: {str(e)}')
             flash(f'Error al actualizar atributo: {str(e)}', 'danger')
 
-    # Para el formulario, convertir options a string si es lista
-    if attribute.options and isinstance(attribute.options, dict):
-        if 'values' in attribute.options:
-            attribute.options_str = json.dumps(attribute.options['values'], ensure_ascii=False, indent=2)
-        else:
-            attribute.options_str = json.dumps(attribute.options, ensure_ascii=False, indent=2)
+    # Para el formulario, convertir options a string
+    if attribute.options and isinstance(attribute.options, dict) and 'values' in attribute.options:
+        attribute.options_str = json.dumps(attribute.options['values'], ensure_ascii=False, indent=2)
     else:
         attribute.options_str = ''
 

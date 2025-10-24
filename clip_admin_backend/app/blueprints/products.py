@@ -101,24 +101,28 @@ def _process_dynamic_attributes(request_form, attribute_configs):
 
 
 def _validate_attribute_options(attributes, attribute_configs):
-    """Valida que los valores de tipo 'list' estén en las opciones configuradas"""
+    """
+    Valida que los valores de tipo 'list' estén en las opciones configuradas.
+    Formato esperado de options: {'multiple': bool, 'values': [...]}
+    """
     for config in attribute_configs:
         if config.type == 'list' and config.key in attributes:
             value = attributes[config.key]
+            
             # Obtener lista de opciones permitidas
             allowed = []
-            if config.options:
-                if isinstance(config.options, dict):
-                    allowed = config.options.get('values', []) or []
-                elif isinstance(config.options, list):
-                    allowed = config.options
+            if config.options and isinstance(config.options, dict):
+                allowed = config.options.get('values', [])
+
+            if not allowed:
+                continue  # Sin opciones configuradas, no validar
 
             if isinstance(value, list):
                 invalid = [v for v in value if v not in allowed]
                 if invalid:
                     raise ValueError(f"Valor(es) no válidos para '{config.label}': {', '.join(invalid)}")
             else:
-                if allowed and value not in allowed:
+                if value not in allowed:
                     raise ValueError(f"El valor '{value}' no es válido para '{config.label}'")
     return True
 
