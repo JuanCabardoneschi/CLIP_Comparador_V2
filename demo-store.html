@@ -873,8 +873,11 @@
             }
 
             // Crear botón de compra solo si hay stock
+            // Priorizar SKU (más genérico) sobre ID
+            console.log('Product data for buy button:', { id: product.id, sku: product.sku, name: product.name });
+            
             const buyButtonHTML = stock > 0 ? `
-                <button class="buy-btn" onclick="handlePurchase('${product.id}', '${product.sku}', '${product.name}', ${stock})">
+                <button class="buy-btn" onclick="handlePurchase('${product.sku || ''}', '${product.name}', ${stock})">
                     🛒 Comprar
                 </button>
             ` : `
@@ -928,8 +931,18 @@
         }
 
         // Handle purchase function
-        async function handlePurchase(productId, sku, productName, currentStock) {
+        async function handlePurchase(sku, productName, currentStock) {
             const INVENTORY_API_URL = 'https://clipcomparadorv2-production.up.railway.app/api/external/inventory/reduce-stock';
+            
+            console.log('handlePurchase called with:', { sku, productName, currentStock });
+            
+            // Validar que tenemos SKU
+            if (!sku || sku === 'undefined' || sku === '') {
+                const errorMsg = `Error: No se puede identificar el producto.\nSKU: ${sku}`;
+                console.error(errorMsg);
+                showCopyableError(errorMsg);
+                return;
+            }
             
             // Confirmar compra
             if (!confirm(`¿Confirmar compra de "${productName}"?`)) {
@@ -937,32 +950,37 @@
             }
 
             // Deshabilitar botón mientras se procesa
-            const buttons = document.querySelectorAll(`button[onclick*="${productId}"]`);
+            const buttons = document.querySelectorAll(`button[onclick*="${sku}"]`);
             buttons.forEach(btn => {
                 btn.disabled = true;
                 btn.textContent = '⏳ Procesando...';
             });
 
             try {
+                const requestBody = {
+                    sku: sku,
+                    quantity: 1,
+                    reason: 'Compra desde demo-store'
+                };
+                
+                console.log('Sending request:', requestBody);
+                
                 const response = await fetch(INVENTORY_API_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-API-Key': API_KEY
                     },
-                    body: JSON.stringify({
-                        product_id: productId,
-                        sku: sku,
-                        quantity: 1,
-                        reason: 'Compra desde demo-store'
-                    })
+                    body: JSON.stringify(requestBody)
                 });
 
                 const data = await response.json();
+                console.log('Response:', data);
 
                 if (data.success) {
                     // Actualizar stock en la UI
                     const newStock = data.new_stock;
+                    const productId = data.product_id; // Obtener ID real de la respuesta
                     const stockElement = document.getElementById(`stock-${productId}`);
                     
                     if (stockElement) {
@@ -978,7 +996,7 @@
                         if (newStock > 0) {
                             btn.disabled = false;
                             btn.textContent = '🛒 Comprar';
-                            btn.onclick = () => handlePurchase(productId, sku, productName, newStock);
+                            btn.onclick = () => handlePurchase(sku, productName, newStock);
                         } else {
                             btn.disabled = true;
                             btn.textContent = 'Sin stock';
@@ -987,13 +1005,21 @@
                     });
 
                     // Mostrar mensaje de éxito
-                    alert(`✅ ¡Compra exitosa!\n\n${productName}\nStock anterior: ${data.old_stock}\nStock actual: ${data.new_stock}`);
+                    alert(`✅ ¡Compra exitosa!\n\n${productName}\nSKU: ${sku}\nStock anterior: ${data.old_stock}\nStock actual: ${data.new_stock}`);
                 } else {
                     throw new Error(data.error || 'Error en la compra');
                 }
             } catch (error) {
                 console.error('Purchase error:', error);
-                alert(`❌ Error en la compra: ${error.message}`);
+                
+                // Mostrar error copiable
+                const errorDetails = `Error en la compra:
+Producto: ${productName}
+SKU: ${sku}
+Error: ${error.message}
+Stack: ${error.stack || 'N/A'}`;
+                
+                showCopyableError(errorDetails);
                 
                 // Restaurar botones
                 buttons.forEach(btn => {
@@ -1001,6 +1027,19 @@
                     btn.textContent = '🛒 Comprar';
                 });
             }
+        }
+
+        // Función para mostrar errores copiables
+        function showCopyableError(errorMsg) {
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border:2px solid #dc3545;z-index:10000;max-width:90%;max-height:80vh;overflow:auto;box-shadow:0 4px 20px rgba(0,0,0,0.3);border-radius:8px;';
+            errorDiv.innerHTML = `
+                <h3 style="color:#dc3545;margin-top:0;">❌ Error</h3>
+                <pre style="background:#f8f9fa;padding:15px;overflow:auto;user-select:all;cursor:text;border:1px solid #dee2e6;border-radius:4px;font-family:monospace;font-size:12px;white-space:pre-wrap;word-wrap:break-word;">${errorMsg}</pre>
+                <button onclick="navigator.clipboard.writeText(\`${errorMsg.replace(/`/g, '\\`')}\`).then(() => alert('Copiado al portapapeles'))" style="margin-top:10px;padding:10px 20px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;margin-right:10px;">📋 Copiar</button>
+                <button onclick="this.parentElement.remove()" style="margin-top:10px;padding:10px 20px;background:#6c757d;color:white;border:none;border-radius:4px;cursor:pointer;">Cerrar</button>
+            `;
+            document.body.appendChild(errorDiv);
         }
 
         

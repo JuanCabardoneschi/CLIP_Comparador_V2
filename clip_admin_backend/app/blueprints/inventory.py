@@ -19,39 +19,45 @@ bp = Blueprint('inventory', __name__, url_prefix='/inventory')
 def index():
     """
     Vista principal de inventario
-    Muestra todos los productos con sus stocks
+    Carga vacía - solo trae productos al filtrar
     """
     # Obtener parámetros de filtro
     category_id = request.args.get('category_id')
     search = request.args.get('search', '').strip()
     stock_filter = request.args.get('stock_filter')  # 'low', 'out', 'available'
+    
+    # Determinar si hay filtros activos
+    has_filters = bool(category_id or search or stock_filter)
+    
+    # Solo cargar productos si hay filtros aplicados
+    products = []
+    if has_filters:
+        # Query base
+        query = Product.query.filter_by(client_id=current_user.client_id)
 
-    # Query base
-    query = Product.query.filter_by(client_id=current_user.client_id)
+        # Filtrar por categoría
+        if category_id:
+            query = query.filter_by(category_id=category_id)
 
-    # Filtrar por categoría
-    if category_id:
-        query = query.filter_by(category_id=category_id)
-
-    # Búsqueda por nombre o SKU
-    if search:
-        query = query.filter(
-            db.or_(
-                Product.name.ilike(f'%{search}%'),
-                Product.sku.ilike(f'%{search}%')
+        # Búsqueda por nombre o SKU
+        if search:
+            query = query.filter(
+                db.or_(
+                    Product.name.ilike(f'%{search}%'),
+                    Product.sku.ilike(f'%{search}%')
+                )
             )
-        )
 
-    # Filtrar por estado de stock
-    if stock_filter == 'out':
-        query = query.filter(Product.stock == 0)
-    elif stock_filter == 'low':
-        query = query.filter(Product.stock > 0, Product.stock <= 10)
-    elif stock_filter == 'available':
-        query = query.filter(Product.stock > 10)
+        # Filtrar por estado de stock
+        if stock_filter == 'out':
+            query = query.filter(Product.stock == 0)
+        elif stock_filter == 'low':
+            query = query.filter(Product.stock > 0, Product.stock <= 10)
+        elif stock_filter == 'available':
+            query = query.filter(Product.stock > 10)
 
-    # Ordenar por stock (productos sin stock primero)
-    products = query.order_by(Product.stock.asc(), Product.name.asc()).all()
+        # Ordenar por stock (productos sin stock primero)
+        products = query.order_by(Product.stock.asc(), Product.name.asc()).all()
 
     # Obtener categorías para el filtro
     categories = Category.query.filter_by(
@@ -59,7 +65,7 @@ def index():
         is_active=True
     ).order_by(Category.name).all()
 
-    # Estadísticas
+    # Estadísticas (siempre se muestran)
     total_products = Product.query.filter_by(client_id=current_user.client_id).count()
     out_of_stock = Product.query.filter_by(client_id=current_user.client_id, stock=0).count()
     low_stock = Product.query.filter_by(client_id=current_user.client_id).filter(
@@ -78,6 +84,7 @@ def index():
         products=products,
         categories=categories,
         stats=stats,
+        has_filters=has_filters,
         current_category=category_id,
         current_search=search,
         current_filter=stock_filter
