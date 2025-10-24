@@ -383,7 +383,25 @@ if __name__ == "__main__":
     print(f"🔧 Debug: {debug}")
     print(f"🗄️ Base de datos: {os.getenv('DATABASE_URL', 'No configurada')}")
 
-    # CLIP se cargará bajo demanda (lazy loading) para evitar timeouts en Railway
-    print("⚡ CLIP se cargará al primer uso (lazy loading)")
+    # Precarga condicional de CLIP: en Railway/producción se precarga; en local queda lazy
+    try:
+        from app.config import is_production
+        preload_env = os.getenv("CLIP_PRELOAD", "auto").lower()  # 'auto' | 'true' | 'false'
+        should_preload = (
+            (preload_env == "true") or
+            (preload_env == "auto" and is_production())
+        )
+
+        if should_preload:
+            print("⚡ Precargando modelo CLIP al iniciar (modo producción)")
+            from app.blueprints.embeddings import get_clip_model
+            get_clip_model()
+            print("✅ CLIP precargado correctamente")
+        else:
+            # Lazy load en desarrollo
+            print("⚡ CLIP se cargará al primer uso (lazy loading)")
+    except Exception as e:
+        # En caso de fallo de precarga, continuar para no bloquear el arranque
+        print(f"❌ Error precargando CLIP (continuando con lazy load): {e}")
 
     app.run(host="0.0.0.0", port=port, debug=debug)

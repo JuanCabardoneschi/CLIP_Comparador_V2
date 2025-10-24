@@ -232,13 +232,12 @@
                                             <select class="form-select" id="attr_{{ config.key }}" name="attr_{{ config.key }}{% if is_multiple %}[]{% endif %}" {% if is_multiple %}multiple{% endif %} {% if config.required %}required{% endif %}>
                                                 <option value="">Seleccionar...</option>
                                                 {% for option in values %}
-                                                        {% if is_multiple %}
-                                                            <option value="{{ option }}" {% if current_value and option in current_value %}selected{% endif %}>{{ option }}</option>
-                                                        {% else %}
-                                                            <option value="{{ option }}" {% if option == current_value %}selected{% endif %}>{{ option }}</option>
-                                                        {% endif %}
-                                                    {% endfor %}
-                                                {% endif %}
+                                                    {% if is_multiple %}
+                                                        <option value="{{ option }}" {% if current_value and option in current_value %}selected{% endif %}>{{ option }}</option>
+                                                    {% else %}
+                                                        <option value="{{ option }}" {% if option == current_value %}selected{% endif %}>{{ option }}</option>
+                                                    {% endif %}
+                                                {% endfor %}
                                             </select>
                                             {% if is_multiple %}
                                                 <div class="form-text">Puedes seleccionar varias opciones con Ctrl o Shift</div>
