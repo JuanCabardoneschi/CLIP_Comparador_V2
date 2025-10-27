@@ -456,15 +456,26 @@ def test_endpoint():
 
 def verify_api_key():
     """Verificar API Key del header (simplificado para testing)"""
+    start_auth = time.time()
+    print(f"🔑 [AUTH T+0.000s] verify_api_key: INICIO")
+    
     api_key = request.headers.get('X-API-Key')
     if not api_key:
+        print(f"🔑 [AUTH T+{time.time() - start_auth:.3f}s] Sin API Key en header")
         return None, "API Key requerida en header X-API-Key"
 
+    print(f"🔑 [AUTH T+{time.time() - start_auth:.3f}s] API Key recibida, consultando DB...")
+    db_start = time.time()
     # Para testing, usar la API Key del cliente demo
     client = Client.query.filter_by(api_key=api_key, is_active=True).first()
+    db_time = time.time() - db_start
+    print(f"🔑 [AUTH T+{time.time() - start_auth:.3f}s] Query DB completada ({db_time:.3f}s)")
+    
     if not client:
+        print(f"🔑 [AUTH T+{time.time() - start_auth:.3f}s] API Key inválida")
         return None, "API Key inválida"
 
+    print(f"🔑 [AUTH T+{time.time() - start_auth:.3f}s] Cliente validado: {client.name}")
     return client, None
 
 
@@ -996,9 +1007,9 @@ def _build_search_results(product_best_match, limit):
         boost_indicator = "🚀" if category_boost else ""
         color_indicator = "🎨" if color_boost else ""
         optimizer_indicator = "🎯" if optimizer_scores else ""
-        print(f"📦 DEBUG: Producto final añadido: {product.name} (similitud: {similarity:.4f}) {boost_indicator}{color_indicator}{optimizer_indicator}")
+    # 🔕 LOG SILENCIADO: detalle de producto añadido al resultado
 
-    print(f"🎯 DEBUG: Total productos únicos procesados: {len(results)}")
+    # 🔕 LOG SILENCIADO: total de productos procesados
 
     # Ordenar por similitud y limitar resultados
     results.sort(key=lambda x: x['similarity'], reverse=True)
@@ -1082,7 +1093,7 @@ def detect_dominant_color(image_data, client_id):
             best_score = similarities[best_idx].item()
             detected_color = unique_colors[best_idx]
 
-            print(f"🎨 DETECCIÓN COLOR: {detected_color} (confianza: {best_score:.3f})")
+            # 🔕 LOG SILENCIADO: resultado de detección de color
 
             return detected_color, best_score
 
@@ -1143,7 +1154,7 @@ def detect_dominant_color_from_palette(image_data, colors_list):
             best_score = similarities[best_idx].item()
             detected_color = unique_colors[best_idx]
 
-            print(f"🎨 DETECCIÓN COLOR (categoría): {detected_color} (confianza: {best_score:.3f})")
+            # 🔕 LOG SILENCIADO: resultado de detección de color (paleta)
 
             return detected_color, best_score
 
@@ -1183,9 +1194,9 @@ def detect_general_object(image_data, client_id=None):
                     else:
                         general_categories.append(f"a photo of {cat.name.lower()}")
 
-                print(f"🔍 Usando categorías del cliente para detección: {[c.split('of ')[1] for c in general_categories]}")
+                # � LOG SILENCIADO: categorías usadas para detección
             else:
-                print("⚠️ No hay categorías activas, usando detección genérica")
+                # 🔕 LOG SILENCIADO: fallback a detección genérica
                 general_categories = ["product", "item", "object"]
         else:
             # Detección genérica amplia para cualquier tipo de producto
@@ -1227,7 +1238,7 @@ def detect_general_object(image_data, client_id=None):
             if "a photo of" in detected_object:
                 detected_object = detected_object.replace("a photo of ", "").strip()
 
-            print(f"🔍 DETECCIÓN GENERAL: {detected_object} (confianza: {best_score:.3f})")
+            # � LOG SILENCIADO: resultado de detección general
 
             return detected_object, best_score
 
@@ -1271,12 +1282,12 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         # 2. Generar embedding de la imagen nueva
         from PIL import Image as PILImage
         import io
-        pil_image = PILImage.open(io.BytesIO(image_data))
-        print(f"🖼️ DEBUG: Imagen preparada: {pil_image.size}")
+    pil_image = PILImage.open(io.BytesIO(image_data))
+    # 🔕 LOG SILENCIADO: detalles de imagen preparada
 
         # 3. Obtener modelo CLIP
-        model, processor = get_clip_model()
-        print("🤖 DEBUG: Modelo CLIP obtenido")
+    model, processor = get_clip_model()
+    # 🔕 LOG SILENCIADO: confirmación de modelo obtenido
 
         # 4. Generar embedding de imagen nueva
         with torch.no_grad():
@@ -1288,7 +1299,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
             new_embedding = image_features.squeeze(0).numpy()
 
-        print(f"🔍 DEBUG: Embedding generado: shape {new_embedding.shape}")
+    # 🔕 LOG SILENCIADO: detalles de embedding generado
 
         # 5. Calcular similitudes contra centroides de cada categoría
         category_similarities = []
@@ -1387,7 +1398,7 @@ def detect_image_category(image_data, client_id, confidence_threshold=0.2):
     Función de detección por prompts (obsoleta, usa centroides como fallback)
     """
     try:
-        print(f"🎯 DEBUG: Usando método de centroides en lugar de prompts")
+            # 🔕 LOG SILENCIADO: usar centroides en lugar de prompts
         return detect_image_category_with_centroids(image_data, client_id, confidence_threshold)
 
     except Exception as e:
@@ -1410,7 +1421,7 @@ def detect_image_category(image_data, client_id, confidence_threshold=0.2):
         tuple: (categoria_detectada, confidence_score) o (None, 0) si no detecta
     """
     try:
-        print(f"🎯 DEBUG: Iniciando detección de categoría para cliente {client_id}")
+    # 🔕 LOG SILENCIADO: inicio de detección de categoría (prompts)
 
         # 1. Obtener categorías activas del cliente
         categories = Category.query.filter_by(
@@ -1419,20 +1430,20 @@ def detect_image_category(image_data, client_id, confidence_threshold=0.2):
         ).all()
 
         if not categories:
-            print(f"❌ DEBUG: No se encontraron categorías para cliente {client_id}")
+            # 🔕 LOG SILENCIADO: sin categorías para cliente
             return None, 0
 
-        print(f"📋 DEBUG: Encontradas {len(categories)} categorías activas")
+        # � LOG SILENCIADO: conteo de categorías activas
 
         # 2. Preparar imagen para CLIP
         from PIL import Image as PILImage
         import io
-        pil_image = PILImage.open(io.BytesIO(image_data))
-        print(f"🖼️ DEBUG: Imagen preparada: {pil_image.size}")
+    pil_image = PILImage.open(io.BytesIO(image_data))
+    # 🔕 LOG SILENCIADO: detalles de imagen preparada
 
         # 3. Obtener modelo CLIP
-        model, processor = get_clip_model()
-        print("🤖 DEBUG: Modelo CLIP obtenido")
+    model, processor = get_clip_model()
+    # 🔕 LOG SILENCIADO: confirmación de modelo obtenido
 
         # 4. Preparar prompts de categorías
         category_prompts = []
@@ -1449,7 +1460,7 @@ def detect_image_category(image_data, client_id, confidence_threshold=0.2):
 
             category_prompts.append(prompt)
             category_objects.append(category)
-            print(f"📝 DEBUG: Prompt para {category.name}: {prompt}")
+            # � LOG SILENCIADO: prompt generado por categoría
 
         # 5. Procesar imagen y textos con CLIP
         with torch.no_grad():
@@ -1474,21 +1485,21 @@ def detect_image_category(image_data, client_id, confidence_threshold=0.2):
             # Calcular similitudes
             similarities = (image_features @ text_features.T).squeeze(0)
 
-            print(f"🔍 DEBUG: Similitudes calculadas: {similarities.tolist()}")
+            # � LOG SILENCIADO: similitudes calculadas (lista)
 
         # 6. Encontrar la mejor coincidencia
         best_idx = similarities.argmax().item()
         best_score = similarities[best_idx].item()
         best_category = category_objects[best_idx]
 
-        print(f"🎯 DEBUG: Mejor coincidencia: {best_category.name} ({best_score:.4f})")
+    # 🔕 LOG SILENCIADO: mejor coincidencia
 
         # 7. Verificar umbral de confianza
         if best_score >= confidence_threshold:
-            print(f"✅ DEBUG: Categoría detectada con confianza suficiente")
+            # 🔕 LOG SILENCIADO: confianza suficiente
             return best_category, best_score
         else:
-            print(f"❌ DEBUG: Confianza insuficiente ({best_score:.4f} < {confidence_threshold})")
+            # 🔕 LOG SILENCIADO: confianza insuficiente
             return None, best_score
 
     except Exception as e:
@@ -1511,8 +1522,13 @@ def visual_search():
         limit: Número de resultados (default: 3, max: 10)
         threshold: Umbral de similitud (default: 0.1)
     """
+    # ⏱️ TIMING CRÍTICO: Capturar el momento EXACTO en que Flask entra a esta función
+    entry_time = time.time()
+    print(f"\n🚀 [ENDPOINT ENTRY] visual_search() invocada en timestamp={entry_time}")
+    
     # Manejar preflight OPTIONS request
     if request.method == 'OPTIONS':
+        print(f"⏱️  [ENDPOINT T+{time.time() - entry_time:.3f}s] OPTIONS request - devolviendo CORS headers")
         response = jsonify({'status': 'ok'})
         response.headers['Access-Control-Allow-Origin'] = '*'
         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
@@ -1521,7 +1537,7 @@ def visual_search():
 
     start_time = time.time()
     print(f"\n{'='*80}")
-    print(f"🔍 [SEARCH T+0.000s] POST /api/search - INICIO")
+    print(f"🔍 [SEARCH T+0.000s] POST /api/search - INICIO (entry fue T+{start_time - entry_time:.3f}s antes)")
     print(f"{'='*80}")
 
     try:
@@ -1635,7 +1651,8 @@ def visual_search():
         # ===== BUSCAR SOLO EN LA CATEGORÍA DETECTADA =====
         print(f"\n⏱️  [SEARCH T+{time.time() - start_time:.3f}s] ===== PASO 3: BÚSQUEDA EN CATEGORÍA =====")
         search_start = time.time()
-        print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Buscando productos en categoría: {detected_category.name}")
+    # 🔎 INFO: contexto de búsqueda por categoría específica
+    print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Buscando en categoría: {detected_category.name}")
 
         # Modificar la búsqueda para filtrar por categoría detectada
         product_best_match = _find_similar_products_in_category(
@@ -1645,13 +1662,13 @@ def visual_search():
             detected_category.id
         )
 
-        print(f"🎯 DEBUG: Productos encontrados en categoría {detected_category.name}: {len(product_best_match)}")
+    # 🔕 LOG SILENCIADO: conteo de productos encontrados por categoría
 
         # ===== APLICAR BOOST POR COLOR MATCHING =====
         # Aplicar boost siempre que se detecte un color (independiente de confianza)
         # para que el usuario vea resultados del color detectado
         if detected_color and detected_color != "unknown":
-            print(f"🎨 RAILWAY LOG: Aplicando boost por color matching (color: {detected_color}, confianza: {color_confidence:.2f})")
+            # 🔕 LOG SILENCIADO: aviso de aplicación de boost por color
 
             for product_id, match_data in product_best_match.items():
                 product = match_data['product']
@@ -1777,7 +1794,9 @@ def visual_search():
         response_obj.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
         response_obj.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
 
-        return response_obj
+    # Marcar fin de la operación
+    print(f"🏁 [SEARCH T+{time.time() - start_time:.3f}s] FIN - Respuesta enviada ({len(results)} resultados)")
+    return response_obj
 
     except Exception as e:
         processing_time = time.time() - start_time

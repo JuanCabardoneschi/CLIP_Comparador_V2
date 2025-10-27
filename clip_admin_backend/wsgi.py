@@ -5,6 +5,7 @@ Aplicación Flask para gestión de clientes y catálogos
 
 import os
 import sys
+import time
 
 # Añadir el directorio padre al path para las importaciones
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -178,7 +179,14 @@ def create_app(config_name=None):
     # Headers anti-caché para desarrollo
     @app.before_request
     def before_request():
-        """Log de requests para debug"""
+        """Log de requests para debug + timing crítico para /api/search"""
+        # ⏱️ TIMING CRÍTICO: Capturar timestamp en el punto más temprano posible
+        request._wsgi_entry_time = time.time()
+        
+        # Solo mostrar timing para /api/search
+        if '/api/search' in request.path:
+            print(f"\n⏰ [WSGI BEFORE_REQUEST T+0.000s] {request.method} {request.path} - Request recibido por Flask")
+        
         # print(f"🌐 REQUEST: {request.method} {request.path}")
         # print(f"🍪 COOKIES: {dict(request.cookies)}")
         # if hasattr(current_user, 'is_authenticated'):
