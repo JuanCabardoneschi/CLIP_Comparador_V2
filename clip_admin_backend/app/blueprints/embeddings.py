@@ -21,6 +21,8 @@ from PIL import Image as PILImage
 import torch
 from transformers import CLIPProcessor, CLIPModel
 import numpy as np
+import threading
+import time
 
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
 from flask_login import login_required, current_user
@@ -48,36 +50,141 @@ def load_image_from_source(source):
 # Variables globales para el modelo CLIP
 _clip_model = None
 _clip_processor = None
+_clip_last_used_ts = None  # epoch seconds de último uso
+_clip_cleanup_thread_started = False
+_clip_lock = threading.Lock()
+
+
+def _now_ts() -> float:
+    return time.time()
+
+
+def _touch_clip_last_used():
+    global _clip_last_used_ts
+    _clip_last_used_ts = _now_ts()
+
+
+def _get_idle_timeout_seconds() -> int:
+    """Obtiene el timeout de inactividad para descargar CLIP.
+
+    Prioridad:
+    1) app.utils.system_config.system_config['clip']['idle_timeout_minutes'] (si existe)
+    2) Env var CLIP_IDLE_TIMEOUT_MINUTES
+    3) Env var CLIP_IDLE_TIMEOUT_SECONDS
+    4) Default: 120 minutos
+    """
+    # Intentar leer desde un sistema de configuración central (si existe en esta versión)
+    try:
+        from app.utils import system_config  # type: ignore
+        # system_config es esperado como un dict o wrapper con .get(seccion, clave, default)
+        if hasattr(system_config, 'system_config'):
+            cfg = system_config.system_config
+            # Soportar acceso estilo cfg.get('clip', 'idle_timeout_minutes', 120)
+            try:
+                minutes = cfg.get('clip', 'idle_timeout_minutes', 120)
+                return int(minutes) * 60
+            except Exception:
+                pass
+        elif isinstance(system_config, dict):
+            minutes = (
+                system_config.get('clip', {}).get('idle_timeout_minutes', 120)
+            )
+            return int(minutes) * 60
+    except Exception:
+        # Ignorar: este módulo puede no existir en este commit
+        pass
+
+    # Variables de entorno
+    minutes_env = os.getenv('CLIP_IDLE_TIMEOUT_MINUTES')
+    if minutes_env and minutes_env.isdigit():
+        return int(minutes_env) * 60
+
+    seconds_env = os.getenv('CLIP_IDLE_TIMEOUT_SECONDS')
+    if seconds_env and seconds_env.isdigit():
+        return int(seconds_env)
+
+    # Default: 2 horas
+    return 120 * 60
+
+
+def _start_cleanup_thread_once():
+    """Inicia un hilo daemon que descarga el modelo tras inactividad."""
+    global _clip_cleanup_thread_started
+    if _clip_cleanup_thread_started:
+        return
+
+    _clip_cleanup_thread_started = True
+    idle_timeout = _get_idle_timeout_seconds()
+
+    def _worker():
+        global _clip_model, _clip_processor, _clip_last_used_ts
+        check_every = min(60, max(10, idle_timeout // 6))  # entre 10s y 60s
+        while True:
+            try:
+                time.sleep(check_every)
+                with _clip_lock:
+                    if _clip_model is None:
+                        continue
+                    if _clip_last_used_ts is None:
+                        # Nunca usado: considerar descargar si pasó el timeout desde arranque
+                        # Por simplicidad, sólo si el timeout es corto; de lo contrario esperar uso
+                        continue
+                    idle_for = _now_ts() - _clip_last_used_ts
+                    if idle_for >= idle_timeout:
+                        # Descargar modelo para liberar RAM
+                        try:
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                        except Exception:
+                            pass
+                        # Resetear referencias
+                        _clip_model = None
+                        _clip_processor = None
+                        # Mantener last_used; se actualizará en el próximo get_clip_model
+                        print(f"🧹 CLIP descargado por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
+            except Exception as _e:
+                # No matar el hilo por errores transitorios
+                continue
+
+    t = threading.Thread(target=_worker, name="clip-idle-cleanup", daemon=True)
+    t.start()
 
 def get_clip_model():
-    """Cargar modelo CLIP una sola vez (singleton)"""
+    """Cargar modelo CLIP una sola vez (singleton con auto-descarga por inactividad)."""
     global _clip_model, _clip_processor
 
-    if _clip_model is None:
-        print("🔄 Cargando modelo CLIP ViT-B/16...")
-        try:
-            _clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
-            _clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
+    # Asegurar hilo de limpieza iniciado una vez
+    _start_cleanup_thread_once()
 
-            # Configurar para CPU
-            _clip_model.eval()
-            if torch.cuda.is_available():
-                print("🔥 GPU disponible, usando CUDA")
-                _clip_model = _clip_model.cuda()
-            else:
-                print("💻 Usando CPU para CLIP")
+    with _clip_lock:
+        if _clip_model is None:
+            print("🔄 Cargando modelo CLIP ViT-B/16...")
+            try:
+                _clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
+                _clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
 
-            print("✅ Modelo CLIP cargado exitosamente")
-        except Exception as e:
-            print(f"❌ Error cargando CLIP: {e}")
-            raise
+                # Configurar para CPU/GPU
+                _clip_model.eval()
+                if torch.cuda.is_available():
+                    print("🔥 GPU disponible, usando CUDA")
+                    _clip_model = _clip_model.cuda()
+                else:
+                    print("💻 Usando CPU para CLIP")
 
-    return _clip_model, _clip_processor
+                print("✅ Modelo CLIP cargado exitosamente")
+            except Exception as e:
+                print(f"❌ Error cargando CLIP: {e}")
+                raise
+
+        # Marcar último uso y devolver
+        _touch_clip_last_used()
+        return _clip_model, _clip_processor
 
 def generate_clip_embedding(image_path, image_obj=None):
     """Generar embedding CLIP optimizado usando contexto del cliente y categoría"""
     try:
         model, processor = get_clip_model()
+        _touch_clip_last_used()
 
         # Obtener información contextual del producto/imagen
         context_info = get_image_context(image_obj) if image_obj else {}
