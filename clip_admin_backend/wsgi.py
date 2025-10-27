@@ -30,13 +30,10 @@ env_path = os.path.join(parent_dir, '.env')
 
 if os.path.exists(env_local_path):
     load_dotenv(env_local_path)
-    print(f"📄 Cargando configuración desde {env_local_path} (desarrollo)")
 elif os.path.exists(env_path):
     load_dotenv(env_path)
-    print(f"📄 Cargando configuración desde {env_path}")
 else:
     load_dotenv()
-    print("📄 Cargando configuración desde variables de entorno")
 
 # Cliente Redis global
 redis_client = None
@@ -54,11 +51,6 @@ def create_app(config_name=None):
     app = Flask(__name__,
                 template_folder=template_dir,
                 static_folder=static_dir)
-
-    # Debug: Verificar rutas de templates
-    print(f"📁 Template folder: {template_dir}")
-    print(f"📁 Static folder: {static_dir}")
-    print(f"📁 Template folder exists: {os.path.exists(template_dir)}")
 
     # Importar configuración de entorno
     from app.config import Config, print_environment_info
@@ -91,14 +83,6 @@ def create_app(config_name=None):
     app.config["SESSION_COOKIE_NAME"] = "clip_session"  # Nombre específico
     app.config["SESSION_REFRESH_EACH_REQUEST"] = True  # Renovar sesión en cada request
 
-    print("⚙️ Configuración de sesiones:")
-    print(f"   SESSION_COOKIE_SECURE: {app.config.get('SESSION_COOKIE_SECURE')}")
-    print(f"   SESSION_COOKIE_HTTPONLY: {app.config.get('SESSION_COOKIE_HTTPONLY')}")
-    print(f"   SESSION_COOKIE_SAMESITE: {app.config.get('SESSION_COOKIE_SAMESITE')}")
-    print(f"   SESSION_COOKIE_NAME: {app.config.get('SESSION_COOKIE_NAME')}")
-    print(f"   SESSION_PERMANENT: {app.config.get('SESSION_PERMANENT')}")
-    print(f"   PERMANENT_SESSION_LIFETIME: {app.config.get('PERMANENT_SESSION_LIFETIME')}")
-
     # Configuración anti-caché para desarrollo
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -119,7 +103,6 @@ def create_app(config_name=None):
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
          allow_headers=["Content-Type", "X-API-Key", "Authorization"],
          supports_credentials=False)
-    print("🌐 CORS configurado para permitir requests externos")
 
     # Configurar Flask-Login
     login_manager.login_view = "auth.login"
@@ -134,13 +117,11 @@ def create_app(config_name=None):
     if redis_url:
         try:
             redis_client = redis.from_url(redis_url, decode_responses=True)
-            print("✅ Redis conectado correctamente")
         except Exception as e:
             print(f"⚠️  Error conectando a Redis: {e}")
             redis_client = None
     else:
         redis_client = None
-        print("ℹ️  Redis no configurado (usando cache en memoria)")
 
     # User loader para Flask-Login
     @login_manager.user_loader
@@ -265,7 +246,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.main import bp as main_bp
         app.register_blueprint(main_bp)
-        print("✓ Blueprint main registrado")
     except ImportError as e:
         print(f"✗ Error importando main blueprint: {e}")
 
@@ -273,7 +253,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.auth import bp as auth_bp
         app.register_blueprint(auth_bp, url_prefix="/auth")
-        print("✓ Blueprint auth registrado")
     except ImportError as e:
         print(f"✗ Error importando auth blueprint: {e}")
 
@@ -281,7 +260,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.dashboard import bp as dashboard_bp
         app.register_blueprint(dashboard_bp, url_prefix="/dashboard")
-        print("✓ Blueprint dashboard registrado")
     except ImportError as e:
         print(f"✗ Error importando dashboard blueprint: {e}")
 
@@ -289,7 +267,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.clients import bp as clients_bp
         app.register_blueprint(clients_bp, url_prefix="/clients")
-        print("✓ Blueprint clients registrado")
     except ImportError as e:
         print(f"✗ Error importando clients blueprint: {e}")
 
@@ -297,7 +274,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.users import bp as users_bp
         app.register_blueprint(users_bp, url_prefix="/users")
-        print("✓ Blueprint users registrado")
     except ImportError as e:
         print(f"✗ Error importando users blueprint: {e}")
 
@@ -305,7 +281,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.categories import bp as categories_bp
         app.register_blueprint(categories_bp, url_prefix="/categories")
-        print("✓ Blueprint categories registrado")
     except ImportError as e:
         print(f"✗ Error importando categories blueprint: {e}")
 
@@ -313,7 +288,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.products import bp as products_bp
         app.register_blueprint(products_bp, url_prefix="/products")
-        print("✓ Blueprint products registrado")
     except ImportError as e:
         print(f"✗ Error importando products blueprint: {e}")
 
@@ -321,7 +295,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.images import bp as images_bp
         app.register_blueprint(images_bp, url_prefix="/images")
-        print("✓ Blueprint images registrado")
     except ImportError as e:
         print(f"✗ Error importando images blueprint: {e}")
 
@@ -329,7 +302,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.analytics import bp as analytics_bp
         app.register_blueprint(analytics_bp, url_prefix="/analytics")
-        print("✓ Blueprint analytics registrado")
     except ImportError as e:
         print(f"✗ Error importando analytics blueprint: {e}")
 
@@ -337,7 +309,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.api import bp as api_bp
         app.register_blueprint(api_bp, url_prefix="/api")
-        print("✓ Blueprint api registrado")
     except ImportError as e:
         print(f"✗ Error importando api blueprint: {e}")
 
@@ -345,7 +316,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.embeddings import bp as embeddings_bp
         app.register_blueprint(embeddings_bp, url_prefix="/embeddings")
-        print("✓ Blueprint embeddings registrado")
     except ImportError as e:
         print(f"✗ Error importando embeddings blueprint: {e}")
 
@@ -353,7 +323,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.attributes import bp as attributes_bp
         app.register_blueprint(attributes_bp, url_prefix="/attributes")
-        print("✓ Blueprint attributes registrado")
     except ImportError as e:
         print(f"✗ Error importando attributes blueprint: {e}")
 
@@ -361,7 +330,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.search_config import bp as search_config_bp
         app.register_blueprint(search_config_bp, url_prefix="/search-config")
-        print("✓ Blueprint search_config registrado")
     except ImportError as e:
         print(f"✗ Error importando search_config blueprint: {e}")
 
@@ -369,7 +337,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.inventory import bp as inventory_bp
         app.register_blueprint(inventory_bp, url_prefix="/inventory")
-        print("✓ Blueprint inventory registrado")
     except ImportError as e:
         print(f"✗ Error importando inventory blueprint: {e}")
 
@@ -377,7 +344,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.external_inventory import bp as external_inventory_bp
         app.register_blueprint(external_inventory_bp)
-        print("✓ Blueprint external_inventory registrado")
     except ImportError as e:
         print(f"✗ Error importando external_inventory blueprint: {e}")
 
@@ -385,7 +351,6 @@ def register_blueprints(app):
     try:
         from app.blueprints.system_config_admin import bp as system_config_bp
         app.register_blueprint(system_config_bp, url_prefix="/admin/system-config")
-        print("✓ Blueprint system_config registrado")
     except ImportError as e:
         print(f"✗ Error importando system_config blueprint: {e}")
 

@@ -547,7 +547,7 @@ def process_image_for_search(image_data):
             print(f"⏱️  [T+{total_time:.3f}s] CLIP PROCESSING TOTAL: {process_time:.3f}s | FUNCIÓN COMPLETA: {total_time:.3f}s")
 
         print(f"✅ Embedding generado: {len(embedding_list)} dimensiones")
-        return embedding_list, None
+        return embedding_list
 
     except Exception as e:
         error_msg = f"❌ FATAL: Error en process_image_for_search: {str(e)}"
