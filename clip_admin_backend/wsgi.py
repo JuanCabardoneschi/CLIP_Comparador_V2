@@ -144,25 +144,26 @@ def create_app(config_name=None):
     # User loader para Flask-Login
     @login_manager.user_loader
     def load_user(user_id):
-        print(f"👤 USER_LOADER: ¡INICIO! Cargando usuario con ID: {user_id} (tipo: {type(user_id)})")
+        # print(f"👤 USER_LOADER: ¡INICIO! Cargando usuario con ID: {user_id} (tipo: {type(user_id)})")
 
         try:
             from app.models.user import User
 
-            print("👤 USER_LOADER: Importaciones exitosas")
+            # print("👤 USER_LOADER: Importaciones exitosas")
 
             # UUID almacenado como String(36) en la base de datos
-            print(f"👤 USER_LOADER: Buscando con string ID: {user_id}")
+            # print(f"👤 USER_LOADER: Buscando con string ID: {user_id}")
 
             # Query con string UUID directamente
             user = User.query.filter_by(id=user_id).first()
-            print("👤 USER_LOADER: Query ejecutado")
+            # print("👤 USER_LOADER: Query ejecutado")
 
             if user:
-                print(f"👤 USER_LOADER: ✅ Usuario encontrado - Email: {user.email}, Active: {user.active}")
+                # print(f"👤 USER_LOADER: ✅ Usuario encontrado - Email: {user.email}, Active: {user.active}")
                 return user
             else:
-                print("👤 USER_LOADER: ❌ Usuario no encontrado en BD")
+                # print("👤 USER_LOADER: ❌ Usuario no encontrado en BD")
+                pass
                 return None
 
         except Exception as e:
@@ -178,22 +179,23 @@ def create_app(config_name=None):
     @app.before_request
     def before_request():
         """Log de requests para debug"""
-        print(f"🌐 REQUEST: {request.method} {request.path}")
-        print(f"🍪 COOKIES: {dict(request.cookies)}")
-        if hasattr(current_user, 'is_authenticated'):
-            print(f"🌐 REQUEST: Usuario autenticado: {current_user.is_authenticated}")
-            if current_user.is_authenticated:
-                print(f"🌐 REQUEST: Usuario actual: {current_user.email}")
+        # print(f"🌐 REQUEST: {request.method} {request.path}")
+        # print(f"🍪 COOKIES: {dict(request.cookies)}")
+        # if hasattr(current_user, 'is_authenticated'):
+        #     print(f"🌐 REQUEST: Usuario autenticado: {current_user.is_authenticated}")
+        #     if current_user.is_authenticated:
+        #         print(f"🌐 REQUEST: Usuario actual: {current_user.email}")
 
-        # Verificar session
-        from flask import session
-        print(f"🎫 SESSION: {dict(session)}")
+        # # Verificar session
+        # from flask import session
+        # print(f"🎫 SESSION: {dict(session)}")
+        pass
 
     @app.after_request
     def after_request(response):
         """Agregar headers anti-caché en desarrollo y log response"""
-        print(f"🌐 RESPONSE: {response.status_code} para {request.path}")
-        print(f"🍪 SET-COOKIES: {response.headers.getlist('Set-Cookie')}")
+        # print(f"🌐 RESPONSE: {response.status_code} para {request.path}")
+        # print(f"🍪 SET-COOKIES: {response.headers.getlist('Set-Cookie')}")
         if os.getenv("FLASK_DEBUG", "False").lower() == "true":
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response.headers["Pragma"] = "no-cache"
