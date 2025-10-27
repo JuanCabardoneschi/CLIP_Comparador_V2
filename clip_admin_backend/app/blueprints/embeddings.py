@@ -1,6 +1,11 @@
 """
 Blueprint de Embeddings CLIP
 Administración y generación de embeddings para búsqueda visual
+
+Optimización Railway:
+- Lazy loading de CLIP (carga solo cuando se necesita)
+- Auto-cleanup después de CLIP_IDLE_TIMEOUT segundos sin uso
+- Imports condicionales para reducir memoria inicial
 """
 
 import os
@@ -18,9 +23,8 @@ import requests
 from io import BytesIO
 from datetime import datetime
 from PIL import Image as PILImage
-import torch
-from transformers import CLIPProcessor, CLIPModel
-import numpy as np
+# NOTE: torch y transformers se importan SOLO cuando se necesitan (lazy imports)
+# Esto ahorra ~200MB de RAM si no se usan búsquedas
 
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
 from flask_login import login_required, current_user
@@ -45,34 +49,106 @@ def load_image_from_source(source):
         print(f"❌ Error cargando imagen desde Cloudinary {source}: {e}")
         raise
 
-# Variables globales para el modelo CLIP
+# Variables globales para el modelo CLIP con gestión de memoria
 _clip_model = None
 _clip_processor = None
+_clip_last_used = None
+_clip_cleanup_thread = None
+_clip_lock = None
 
 def get_clip_model():
-    """Cargar modelo CLIP una sola vez (singleton)"""
-    global _clip_model, _clip_processor
+    """
+    Cargar modelo CLIP con lazy loading y auto-cleanup.
 
-    if _clip_model is None:
-        print("🔄 Cargando modelo CLIP ViT-B/16...")
-        try:
-            _clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
-            _clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
+    Optimización Railway:
+    - Carga el modelo solo cuando se necesita (lazy loading)
+    - Libera memoria automáticamente después de CLIP_IDLE_TIMEOUT segundos sin uso
+    - Reduce consumo de RAM de ~600MB a 0MB cuando está idle
+    """
+    global _clip_model, _clip_processor, _clip_last_used, _clip_cleanup_thread, _clip_lock
 
-            # Configurar para CPU
-            _clip_model.eval()
-            if torch.cuda.is_available():
-                print("🔥 GPU disponible, usando CUDA")
-                _clip_model = _clip_model.cuda()
-            else:
-                print("💻 Usando CPU para CLIP")
+    # Lazy imports (solo cargar cuando se necesita)
+    import torch
+    from transformers import CLIPProcessor, CLIPModel
 
-            print("✅ Modelo CLIP cargado exitosamente")
-        except Exception as e:
-            print(f"❌ Error cargando CLIP: {e}")
-            raise
+    # Inicializar lock si no existe (thread-safe)
+    if _clip_lock is None:
+        import threading
+        _clip_lock = threading.Lock()
+
+    with _clip_lock:
+        # Cargar modelo solo si no existe (lazy loading)
+        if _clip_model is None:
+            print("🔄 Cargando modelo CLIP ViT-B/16 (lazy loading)...")
+            try:
+                _clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
+                _clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
+
+                # Configurar para CPU
+                _clip_model.eval()
+                if torch.cuda.is_available():
+                    print("🔥 GPU disponible, usando CUDA")
+                    _clip_model = _clip_model.cuda()
+                else:
+                    print("💻 Usando CPU para CLIP")
+
+                print("✅ Modelo CLIP cargado exitosamente")
+
+                # Iniciar thread de cleanup si no existe
+                if _clip_cleanup_thread is None:
+                    _start_clip_cleanup_thread()
+
+            except Exception as e:
+                print(f"❌ Error cargando CLIP: {e}")
+                raise
+
+        # Actualizar timestamp de último uso
+        import time
+        _clip_last_used = time.time()
 
     return _clip_model, _clip_processor
+
+
+def _start_clip_cleanup_thread():
+    """Iniciar thread en background para liberar CLIP cuando está idle"""
+    global _clip_cleanup_thread
+
+    import threading
+    import time
+    import torch
+
+    def cleanup_worker():
+        """Worker que revisa periódicamente si CLIP está idle y lo libera"""
+        global _clip_model, _clip_processor, _clip_last_used
+
+        # Timeout configurable (default 5 minutos)
+        idle_timeout = int(os.getenv('CLIP_IDLE_TIMEOUT', '300'))  # segundos
+
+        while True:
+            time.sleep(60)  # Revisar cada minuto
+
+            if _clip_model is not None and _clip_last_used is not None:
+                idle_time = time.time() - _clip_last_used
+
+                if idle_time > idle_timeout:
+                    with _clip_lock:
+                        if _clip_model is not None:  # Double-check dentro del lock
+                            print(f"🧹 Liberando CLIP (idle {int(idle_time)}s > {idle_timeout}s)...")
+                            _clip_model = None
+                            _clip_processor = None
+
+                            # Force garbage collection
+                            import gc
+                            gc.collect()
+
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+
+                            print("✅ Memoria CLIP liberada (~500MB recuperados)")
+
+    _clip_cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
+    _clip_cleanup_thread.start()
+    print("🔧 Thread de auto-cleanup CLIP iniciado")
 
 def generate_clip_embedding(image_path, image_obj=None):
     """Generar embedding CLIP optimizado usando contexto del cliente y categoría"""
@@ -192,6 +268,9 @@ def generate_optimized_embedding(image_path_or_url, model, processor, context_in
 def generate_simple_embedding(image_path_or_url, model, processor):
     """Generar embedding simple (fallback)"""
 
+    # Lazy import torch (solo cuando se genera embedding)
+    import torch
+
     # Cargar y procesar imagen (local o URL)
     image = load_image_from_source(image_path_or_url)
 
@@ -219,6 +298,9 @@ def generate_simple_embedding(image_path_or_url, model, processor):
 
 def generate_image_only_embedding(image, model, processor):
     """Generar embedding solo de imagen"""
+
+    # Lazy import torch
+    import torch
 
     # Procesar imagen con manejo de errores
     try:
@@ -341,6 +423,12 @@ def fuse_embeddings_weighted(embeddings_list, context_info):
         for i in range(1, len(weights)):
             weights[i] *= 1.2
 
+def fuse_embeddings_weighted(embeddings_list, context_info):
+    """Fusionar múltiples embeddings con pesos"""
+
+    # Lazy import numpy
+    import numpy as np
+
     # Normalizar pesos
     total_weight = sum(weights)
     weights = [w / total_weight for w in weights]
@@ -353,6 +441,10 @@ def fuse_embeddings_weighted(embeddings_list, context_info):
 
 def normalize_embedding(embedding):
     """Normalizar embedding para comparación coseno"""
+
+    # Lazy import numpy
+    import numpy as np
+
     embedding_array = np.array(embedding)
     norm = np.linalg.norm(embedding_array)
     if norm > 0:
@@ -361,6 +453,9 @@ def normalize_embedding(embedding):
 
 def calculate_embedding_confidence(embeddings_list):
     """Calcular score de confianza basado en consistencia"""
+
+    # Lazy import numpy
+    import numpy as np
 
     if len(embeddings_list) < 2:
         return 1.0

@@ -432,7 +432,7 @@ def view(product_id):
         Image.is_primary.desc(),
         Image.created_at.asc()
     ).all()
-    
+
     # Verificar si hay imágenes procesadas
     any_processed = any(img.is_processed for img in images) if images else False
 

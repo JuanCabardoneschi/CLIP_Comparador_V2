@@ -4,6 +4,9 @@ Flask-SQLAlchemy==3.1.1
 Flask-Migrate==4.0.5
 Flask-CORS==4.0.0
 
+# Production WSGI Server
+gunicorn==21.2.0
+
 # Database
 SQLAlchemy==2.0.23
 alembic==1.12.1

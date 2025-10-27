@@ -1,10 +1,60 @@
 # BACKLOG DE MEJORAS Y PENDIENTES
 **Fecha de Creación**: 22 Octubre 2025
-**Última Actualización**: 24 Octubre 2025
+**Última Actualización**: 27 Octubre 2025
 
 ---
 
 ## ✅ COMPLETADO - Octubre 2025
+
+### ⚡ Optimización de Costos Railway (27 Oct 2025)
+**Estado**: ✅ COMPLETADO (Fase 1)
+**Complejidad**: Media
+**Impacto**: Crítico (reducción ~60% costos mensuales)
+
+**Problema Identificado**:
+- RAM usage constante >1GB en Railway (CLIP precargado 24/7)
+- Costos mensuales: $50+ USD/mes (excede Hobby Plan de $5/mes)
+- Flask development server sin optimizar
+
+**Implementado (Fase 1 - Quick Wins)**:
+
+1. **Lazy Loading de CLIP** (`app/blueprints/embeddings.py`):
+   - ✅ Modelo carga solo cuando se necesita (no al inicio)
+   - ✅ Auto-cleanup después de 5 min sin uso (configurable)
+   - ✅ Thread en background monitorea idle time
+   - ✅ Libera ~500-600MB RAM cuando está idle
+   - ✅ Lazy imports de torch/transformers/numpy
+
+2. **Gunicorn para Producción** (`Procfile`, `requirements.txt`):
+   - ✅ Reemplazado `python app.py` por Gunicorn
+   - ✅ 2 workers + 2 threads (optimizado Railway)
+   - ✅ Timeout 120s para búsquedas pesadas
+   - ✅ Logs a stdout/stderr
+
+3. **Variables de Entorno** (`.env.example`):
+   - ✅ `CLIP_PRELOAD=false` - Deshabilita precarga
+   - ✅ `CLIP_IDLE_TIMEOUT=300` - Tiempo antes de liberar (5 min default)
+
+**Reducción Esperada**:
+- RAM idle: 1000MB → 400-500MB (~60% reducción)
+- Costos: $50/mes → ~$15-20/mes (~70% ahorro)
+- RAM activo (búsquedas): Sin cambios (sigue usando CLIP cuando se necesita)
+
+**Archivos Modificados**:
+- `clip_admin_backend/app/blueprints/embeddings.py` (lazy loading + auto-cleanup)
+- `Procfile` (Gunicorn config)
+- `requirements.txt` (gunicorn==21.2.0)
+- `.env.example` (CLIP_PRELOAD, CLIP_IDLE_TIMEOUT)
+
+**Documentación**:
+- ✅ [docs/RAILWAY_COST_OPTIMIZATION.md](docs/RAILWAY_COST_OPTIMIZATION.md) - Plan completo 3 fases
+
+**Próximos Pasos (Opcional - Fases 2 y 3)**:
+- [ ] Cache embeddings en Redis (Fase 2)
+- [ ] Cuantización modelo CLIP int8 (Fase 2)
+- [ ] Arquitectura serverless CLIP worker (Fase 3)
+
+---
 
 ### 📦 Sistema de Gestión de Inventario (24 Oct 2025)
 **Estado**: ✅ COMPLETADO
@@ -53,6 +103,138 @@
 - [ ] Testing de endpoints en Railway
 - [ ] Agregar historial de cambios de stock (audit log)
 - [ ] Notificaciones cuando stock crítico (<5 unidades)
+
+---
+
+## 🏗️ ARQUITECTURA Y REFACTORIZACIÓN
+
+### 📊 Análisis y Modularización de app.py
+**Estado**: ✅ ANÁLISIS COMPLETO - Pendiente implementación
+**Complejidad**: Media-Alta
+**Impacto**: Alto (mantenibilidad, testabilidad, escalabilidad)
+**Prioridad**: Alta
+**Fecha agregada**: 24 Octubre 2025
+
+**Problema Actual**:
+- `app.py` monolítico con 408 líneas
+- Función `create_app` con 203 líneas (viola responsabilidad única)
+- Código repetitivo en registro de blueprints (123 líneas)
+- Logging excesivo en producción (impacto en rendimiento)
+- 3 elementos de código muerto detectados
+
+**Análisis Completo**:
+- 📄 Ver: [docs/APP_PY_ANALYSIS.md](docs/APP_PY_ANALYSIS.md)
+- 13 funciones inventariadas
+- 100% de funciones en uso (excepto código muerto)
+- Propuesta de refactorización en 5 fases
+- Reducción estimada: 408 líneas → ~250 líneas en 5 archivos
+
+**Hallazgos Críticos**:
+1. ⚠️ Código muerto:
+   - `datetime_format` filter (no usado en templates)
+   - `currency_format` filter (no usado en templates)
+   - `uploaded_file` route (directorio no existe, sistema usa Cloudinary)
+
+2. 🔴 Logging excesivo en `before_request`:
+   - Imprime headers, cookies, sesiones completas
+   - Impacto en rendimiento en Railway
+   - Exposición de datos sensibles en logs
+
+3. 🟡 Código repetitivo:
+   - 15 bloques try/except idénticos para blueprints
+   - Simplificable a loop de ~30 líneas
+
+**Propuesta de Refactorización**:
+```
+ANTES: app.py (408 líneas)
+
+DESPUÉS:
+├── app.py (50 líneas - solo entry point)
+├── app/__init__.py (60 líneas - factory limpia)
+└── app/core/
+    ├── extensions.py (50 líneas - init de extensiones)
+    ├── blueprints.py (40 líneas - registro simplificado)
+    ├── handlers.py (50 líneas - hooks + error handlers)
+    └── filters.py (10 líneas - template filters, OPCIONAL)
+```
+
+**Plan de Implementación** (5 Fases):
+- [ ] **Fase 1**: Crear módulo `app/core/extensions.py` (ahorro: ~60 líneas)
+- [ ] **Fase 2**: Crear módulo `app/core/blueprints.py` (ahorro: ~120 líneas)
+- [ ] **Fase 3**: Crear módulo `app/core/handlers.py` (ahorro: ~65 líneas)
+- [ ] **Fase 4**: Refactorizar `create_app` en `app/__init__.py`
+- [ ] **Fase 5**: Limpiar código muerto (eliminar 3 elementos)
+
+**Acciones Inmediatas** (antes de siguiente deploy):
+- [ ] Arreglar logging en producción (`print` → `app.logger.debug`)
+- [ ] Eliminar código muerto (filtros sin uso + ruta obsoleta)
+
+**Beneficios**:
+- ✅ 87% reducción en archivo principal
+- ✅ Funciones testeables individualmente
+- ✅ Mejor organización y mantenibilidad
+- ✅ Logging controlado por nivel
+- ✅ Elimina duplicación de código
+
+**Estimación**: 1 semana (5 fases + testing)
+**Siguiente paso**: Implementar Fase 1 (extensiones)
+
+---
+
+### Unificar Sistema de Identificación de Clientes
+**Estado**: 💡 Pendiente
+**Complejidad**: Media
+**Impacto**: Medio (simplificación del código, mejor mantenibilidad)
+**Prioridad**: Media
+**Fecha agregada**: 24 Octubre 2025
+
+**Problema Actual**:
+Actualmente tenemos 3 formas de referenciar a un cliente en la BD:
+- `id` (UUID): Identificador único técnico
+- `slug` (string): Usado para rutas de Cloudinary y organización de archivos
+- `name` (string): Nombre visible para usuarios
+
+**Análisis**:
+- **id**: Necesario (PK, relaciones FK, inmutable)
+- **slug**: Usado en rutas de Cloudinary (`clip_v2/{slug}/products/...`), identificador técnico legible
+- **name**: Solo UI/presentación, puede cambiar sin consecuencias técnicas
+
+**Propuesta de Mejora**:
+Reducir de 3 a 2 identificadores:
+
+**Opción 1 - Mantener ID + NAME (eliminar slug)**:
+- ❌ Requiere migración masiva de Cloudinary
+- ❌ URLs de imágenes se vuelven menos legibles (UUIDs)
+- ⚠️ Alto riesgo de rotura
+
+**Opción 2 - Mantener ID + SLUG (name como computed/virtual)**:
+- ✅ Slug sigue siendo inmutable (no rompe Cloudinary)
+- ✅ Name se deriva del slug (`demo_fashion_store` → "Demo Fashion Store")
+- ✅ UI puede formatear slug para mostrar
+- ⚠️ Requiere actualizar vistas/templates que usan `client.name`
+
+**Opción 3 - Mantener ID + NAME (slug derivado)**:
+- ✅ Name es editable (UX friendly)
+- ✅ Slug se auto-genera en save: `slugify(name)` con cache
+- ⚠️ Requiere validación de unicidad del slug generado
+- ⚠️ Migración one-time: renombrar carpetas Cloudinary
+
+**Recomendación**: Opción 2 (ID + SLUG)
+- Menor riesgo
+- Slug es inmutable por diseño (similar a username)
+- Name se calcula: `slug.replace('_', ' ').title()`
+
+**Tareas**:
+- [ ] Análisis de impacto en templates y vistas
+- [ ] Decision final: ¿Mantener qué dos campos?
+- [ ] Migration script si se elimina name
+- [ ] Actualizar validaciones y formularios
+- [ ] Testing exhaustivo
+
+**Referencias**:
+- Cloudinary Manager: `clip_admin_backend/app/services/cloudinary_manager.py`
+- Client Model: `clip_admin_backend/app/models/client.py`
+- Usos de client.name en templates: ~20 archivos
 
 ---
 
@@ -360,10 +542,43 @@ max_categories_per_search = Column(Integer, default=3)
 
 ## 🔧 PENDIENTES TÉCNICOS
 
-### 1. Migrar Templates de Atributos por Industria a Base de Datos
+### 1. Implementar SearchLog para Analytics
+**Estado**: 🚧 Modelo creado, sin uso
+**Complejidad**: Media
+**Impacto**: Alto (métricas de negocio)
+**Prioridad**: Alta
+
+**Problema**:
+- Modelo `SearchLog` existe pero no se está usando
+- No hay tracking de búsquedas, clicks, conversiones
+- Imposible medir calidad de resultados o ROI
+
+**Tareas**:
+- [ ] Activar logging en endpoint `/api/search`
+- [ ] Guardar: client_id, image_hash, query_embedding, results, timestamp
+- [ ] Implementar endpoint para tracking de clicks: `/api/search/click`
+- [ ] Implementar endpoint para tracking de conversiones: `/api/search/convert`
+- [ ] Dashboard en admin para ver métricas:
+  - Búsquedas por día/semana
+  - CTR (click-through rate)
+  - Conversion rate
+  - Productos más clickeados desde búsqueda
+  - Búsquedas sin clicks (0 relevancia)
+
+**Archivos a Crear/Modificar**:
+- Modificar: `app/blueprints/api.py` (agregar logging)
+- Nuevo: `app/blueprints/search_analytics.py`
+- Modificar: Widget JS para enviar eventos de click/conversión
+
+**Estimación**: 1 semana
+
+---
+
+### 2. Migrar Templates de Atributos por Industria a Base de Datos
 **Estado**: 📋 Backlog (Fase 2)
 **Complejidad**: Media
 **Impacto**: Alto para escalabilidad
+**Prioridad**: Media
 **Relacionado con**: Sistema de atributos dinámicos + SearchOptimizer metadata scoring
 
 **Contexto**:
@@ -435,48 +650,39 @@ ON attribute_templates(industry, key);
 
 ---
 
-### 2. Eliminar Métodos Deprecados de Image Managers
-**Estado**: ⏳ Programado para 10 Nov 2025
+## ✅ COMPLETADOS - Pendientes Técnicos
+
+### Eliminar Métodos Deprecados de Image Managers
+**Estado**: ✅ COMPLETADO (20 Oct 2025)
 **Complejidad**: Baja
 **Impacto**: Medio (limpieza de código)
 
-**Tareas**:
-- [ ] Verificar que no hay nuevos usos de `image_manager.get_image_url()`
-- [ ] Verificar que no hay nuevos usos de `cloudinary_manager.get_image_url()`
-- [ ] Confirmar que todo usa `image.display_url` / `image.thumbnail_url`
-- [ ] Eliminar métodos deprecados de `app/services/image_manager.py`
-- [ ] Eliminar métodos deprecados de `app/services/cloudinary_manager.py`
-- [ ] Actualizar tests si existen
-
-**Deadline**: 10 Noviembre 2025
-**Estimación**: 2 horas
+**Tareas Completadas**:
+- ✅ Verificado que no hay usos de `image_manager.get_image_url()`
+- ✅ Verificado que no hay usos de `cloudinary_manager.get_image_url()`
+- ✅ Confirmado que todo usa `image.display_url` / `image.thumbnail_url`
+- ✅ Eliminados métodos deprecados de `app/services/image_manager.py`
+- ✅ Eliminados métodos deprecados de `app/services/cloudinary_manager.py`
+- ✅ Documentado en `docs/IMAGE_HANDLING_GUIDE.md`
 
 ---
 
-### 3. Fix Duplicación de Paths en Cloudinary
-**Estado**: ✅ Código modificado, pendiente de deploy
+### Fix Duplicación de Paths en Cloudinary
+**Estado**: ✅ COMPLETADO (20 Oct 2025)
 **Complejidad**: Baja
 **Impacto**: Medio (organización)
 
-**Problema**:
-- Estructura actual: `clip_v2/eve-s-store/products/eve-s-store/products/...` (duplicado)
-- Estructura deseada: `clip_v2/eve-s-store/products/{product_id}/...`
+**Problema Resuelto**:
+- Estructura anterior: `clip_v2/eve-s-store/products/eve-s-store/products/...` (duplicado)
+- Estructura nueva: `clip_v2/eve-s-store/products/{product_id}/...`
 
 **Solución Implementada**:
-- Modificado `cloudinary_manager._generate_public_id()` para retornar solo path relativo
-- Cambio de: `f"clip_v2/{client_slug}/{product_id}/..."`
-- A: `f"products/{product_id}/..."`
+- ✅ Modificado `cloudinary_manager._generate_public_id()` para retornar solo path relativo
+- ✅ Verificado en producción (Railway)
+- ✅ Nuevas subidas usan estructura correcta
 
 **Archivos Modificados**:
 - `clip_admin_backend/app/services/cloudinary_manager.py`
-
-**Pendiente**:
-- [ ] Commit y push
-- [ ] Deploy a Railway
-- [ ] Verificar que nuevas subidas usan estructura correcta
-- [ ] Opcional: Script de migración para reorganizar imágenes existentes
-
-**Estimación**: 30 minutos (deploy + verificación)
 
 ---
 
@@ -758,6 +964,25 @@ ON attribute_templates(industry, key);
 
 ## 🔄 CHANGELOG
 
+**24 Oct 2025**:
+- ✅ Marcado como COMPLETADO: Sistema de Gestión de Inventario (API Externa + Panel Admin)
+- ✅ Marcado como COMPLETADO: Eliminar Métodos Deprecados de Image Managers
+- ✅ Marcado como COMPLETADO: Fix Duplicación de Paths en Cloudinary
+- ➕ Agregado item: Análisis y Modularización de app.py (Arquitectura)
+  - Análisis completo en `docs/APP_PY_ANALYSIS.md`
+  - 408 líneas → propuesta de ~250 líneas en 5 archivos
+  - Plan de refactorización en 5 fases
+  - Código muerto detectado (3 elementos)
+  - Acciones inmediatas identificadas
+- 📝 Reorganizada sección "PENDIENTES TÉCNICOS" (completados → sección separada)
+
+**23 Oct 2025**:
+- ➕ Agregado item #1 URGENTE: Detección Multi-Producto con CLIP (Zero-Shot Multi-Categoría)
+  - Pipeline completo diseñado
+  - Casos de uso identificados
+  - Estimación: 3-4 días
+  - Prioridad MÁXIMA
+
 **22 Oct 2025**:
 - Documento creado
 - Agregado item #1: Sistema de Aprendizaje Adaptativo (prioridad alta)
@@ -770,7 +995,12 @@ ON attribute_templates(industry, key);
 
 ## 📎 REFERENCIAS
 
-- `docs/IMAGE_HANDLING_GUIDE.md` - Métodos deprecados (#2)
+- `docs/APP_PY_ANALYSIS.md` - Análisis completo y plan de refactorización de app.py (#ARQUITECTURA)
+- `docs/IMAGE_HANDLING_GUIDE.md` - Métodos deprecados eliminados (#COMPLETADO)
 - `docs/CENTROID_MIGRATION.md` - Optimización de centroides
-- `app/models/search_log.py` - Modelo para analytics (#4)
+- `docs/API_INVENTARIO_EXTERNA.md` - API Externa de Inventario (#COMPLETADO)
+- `docs/TOOLS_REFERENCE.md` - Referencia de herramientas del proyecto
+- `app/models/search_log.py` - Modelo para analytics (#1 Pendientes Técnicos)
 - `REFACTOR_COMPLETE_20OCT2025.md` - Refactor reciente completado
+- `.github/copilot-instructions.md` - Guías de desarrollo del proyecto
+
