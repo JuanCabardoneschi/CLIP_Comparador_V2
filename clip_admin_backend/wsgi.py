@@ -387,14 +387,15 @@ if __name__ == "__main__":
     # Precarga condicional de CLIP: en Railway/producción se precarga; en local queda lazy
     try:
         from app.config import is_production
-        preload_env = os.getenv("CLIP_PRELOAD", "auto").lower()  # 'auto' | 'true' | 'false'
+        # 🔥 HARDCODED: Siempre precargar en producción - Railway no lee variables compartidas
+        preload_env = os.getenv("CLIP_PRELOAD", "true").lower()  # Default: true
         should_preload = (
             (preload_env == "true") or
             (preload_env == "auto" and is_production())
         )
 
         if should_preload:
-            print("⚡ Precargando modelo CLIP al iniciar (modo producción)")
+            print("⚡ Precargando modelo CLIP al iniciar (hardcoded: siempre en producción)")
             from app.blueprints.embeddings import get_clip_model
             get_clip_model()
             print("✅ CLIP precargado correctamente")
