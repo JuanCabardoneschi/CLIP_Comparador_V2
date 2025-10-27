@@ -166,9 +166,9 @@
 
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint and 'system_config' in request.endpoint %}active{% endif %}"
-                           href="#" onclick="alert('Configuración del Sistema - En desarrollo')">
+                           href="{{ url_for('system_config_admin.index') }}">
                             <i class="bi bi-gear me-2"></i>
-                            Configuración
+                            Configuración del Sistema
                         </a>
                     </li>
                 </div>

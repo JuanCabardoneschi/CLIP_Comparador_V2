@@ -1,0 +1,287 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Configuración del Sistema - CLIP Comparador V2{% endblock %}
+
+{% block page_title %}Configuración del Sistema{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item active">Configuración del Sistema</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 col-xl-8 mx-auto">
+        <!-- Alerta de Solo SuperAdmin -->
+        <div class="alert alert-warning border-warning mb-4">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-shield-lock-fill me-3 fs-3"></i>
+                <div>
+                    <strong>Panel de SuperAdmin</strong>
+                    <p class="mb-0 small">
+                        Los cambios aquí afectan a todo el sistema globalmente. 
+                        La configuración se aplica inmediatamente sin necesidad de reiniciar.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <form method="POST" action="{{ url_for('system_config_admin.update') }}">
+            <!-- Sección CLIP -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-gradient-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-cpu me-2"></i>
+                        Configuración de CLIP (Modelo IA)
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Preload CLIP -->
+                    <div class="mb-4 pb-3 border-bottom">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" 
+                                   type="checkbox" 
+                                   id="clip_preload" 
+                                   name="clip_preload"
+                                   {% if config.clip.preload %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="clip_preload">
+                                <i class="bi bi-lightning-charge text-warning me-2"></i>
+                                Precargar CLIP al Iniciar
+                            </label>
+                        </div>
+                        <small class="text-muted ms-4 d-block mt-2">
+                            Si está activado, el modelo CLIP se carga al arrancar la aplicación (útil en producción para primera búsqueda rápida). 
+                            Si está desactivado, se carga solo al primer uso (lazy loading).
+                        </small>
+                    </div>
+
+                    <!-- Idle Timeout -->
+                    <div class="mb-4 pb-3 border-bottom">
+                        <label for="clip_idle_timeout_minutes" class="form-label fw-bold">
+                            <i class="bi bi-hourglass-split text-info me-2"></i>
+                            Timeout de Inactividad (Minutos)
+                        </label>
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <input type="range" 
+                                       class="form-range" 
+                                       id="clip_idle_timeout_minutes" 
+                                       name="clip_idle_timeout_minutes"
+                                       min="5" 
+                                       max="480" 
+                                       step="5"
+                                       value="{{ config.clip.idle_timeout_minutes }}"
+                                       oninput="updateTimeoutDisplay(this.value)">
+                                <div class="d-flex justify-content-between text-muted small mt-1">
+                                    <span>5 min</span>
+                                    <span>1 hora</span>
+                                    <span>4 horas</span>
+                                    <span>8 horas</span>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="input-group">
+                                    <input type="number" 
+                                           class="form-control" 
+                                           id="timeout_display"
+                                           name="clip_idle_timeout_minutes_input"
+                                           min="5" 
+                                           max="1440"
+                                           value="{{ config.clip.idle_timeout_minutes }}"
+                                           onchange="updateTimeoutSlider(this.value)">
+                                    <span class="input-group-text">minutos</span>
+                                </div>
+                            </div>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            Tiempo de inactividad antes de descargar el modelo CLIP de memoria para liberar RAM. 
+                            Recomendado: 30-120 minutos según uso.
+                        </small>
+                    </div>
+
+                    <!-- Modelo CLIP -->
+                    <div class="mb-3">
+                        <label for="clip_model_name" class="form-label fw-bold">
+                            <i class="bi bi-diagram-3 text-primary me-2"></i>
+                            Modelo CLIP
+                        </label>
+                        <select class="form-select" id="clip_model_name" name="clip_model_name">
+                            <option value="openai/clip-vit-base-patch16" 
+                                    {% if config.clip.model_name == 'openai/clip-vit-base-patch16' %}selected{% endif %}>
+                                ViT-B/16 (Recomendado - Balance performance/calidad)
+                            </option>
+                            <option value="openai/clip-vit-base-patch32" 
+                                    {% if config.clip.model_name == 'openai/clip-vit-base-patch32' %}selected{% endif %}>
+                                ViT-B/32 (Más rápido, menos preciso)
+                            </option>
+                            <option value="openai/clip-vit-large-patch14" 
+                                    {% if config.clip.model_name == 'openai/clip-vit-large-patch14' %}selected{% endif %}>
+                                ViT-L/14 (Más preciso, requiere más RAM)
+                            </option>
+                        </select>
+                        <small class="text-muted d-block mt-2">
+                            <strong>Nota:</strong> Cambiar el modelo requiere reiniciar la aplicación.
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sección Búsqueda -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-gradient-success text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-search me-2"></i>
+                        Configuración de Búsqueda Visual
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Max Results -->
+                    <div class="mb-4 pb-3 border-bottom">
+                        <label for="search_max_results" class="form-label fw-bold">
+                            <i class="bi bi-list-ol text-primary me-2"></i>
+                            Máximo de Resultados por Búsqueda
+                        </label>
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                <input type="range" 
+                                       class="form-range" 
+                                       id="search_max_results" 
+                                       name="search_max_results"
+                                       min="10" 
+                                       max="200" 
+                                       step="10"
+                                       value="{{ config.search.max_results }}"
+                                       oninput="updateMaxResultsDisplay(this.value)">
+                                <div class="d-flex justify-content-between text-muted small mt-1">
+                                    <span>10</span>
+                                    <span>50</span>
+                                    <span>100</span>
+                                    <span>200</span>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <input type="number" 
+                                       class="form-control" 
+                                       id="max_results_display"
+                                       min="10" 
+                                       max="200"
+                                       value="{{ config.search.max_results }}"
+                                       onchange="updateMaxResultsSlider(this.value)">
+                            </div>
+                        </div>
+                        <small class="text-muted d-block mt-2">
+                            Número máximo de productos a devolver en cada búsqueda visual.
+                        </small>
+                    </div>
+
+                    <!-- Enable Category Detection -->
+                    <div class="mb-3 pb-3 border-bottom">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" 
+                                   type="checkbox" 
+                                   id="enable_category_detection" 
+                                   name="enable_category_detection"
+                                   {% if config.search.enable_category_detection %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="enable_category_detection">
+                                <i class="bi bi-tags text-info me-2"></i>
+                                Detección Automática de Categoría
+                            </label>
+                        </div>
+                        <small class="text-muted ms-4 d-block mt-2">
+                            Detectar automáticamente la categoría del producto en la imagen antes de buscar similares.
+                        </small>
+                    </div>
+
+                    <!-- Enable Visual Search -->
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" 
+                                   type="checkbox" 
+                                   id="enable_visual_search" 
+                                   name="enable_visual_search"
+                                   {% if config.search.enable_visual_search %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="enable_visual_search">
+                                <i class="bi bi-eye text-primary me-2"></i>
+                                Búsqueda Visual Habilitada
+                            </label>
+                        </div>
+                        <small class="text-muted ms-4 d-block mt-2">
+                            Habilitar/deshabilitar completamente la búsqueda visual por similitud.
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones de Acción -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="d-flex gap-3 justify-content-between">
+                        <button type="button" 
+                                class="btn btn-outline-danger"
+                                onclick="if(confirm('¿Restablecer configuración a valores por defecto?')) { window.location.href='{{ url_for('system_config_admin.reset') }}'; }">
+                            <i class="bi bi-arrow-counterclockwise me-2"></i>
+                            Restablecer por Defecto
+                        </button>
+                        <div class="d-flex gap-2">
+                            <a href="{{ url_for('dashboard.index') }}" class="btn btn-outline-secondary">
+                                <i class="bi bi-x-circle me-2"></i>
+                                Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle me-2"></i>
+                                Guardar Configuración
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <!-- Info Card -->
+        <div class="card border-info">
+            <div class="card-header bg-info bg-opacity-10 border-info">
+                <h6 class="mb-0 text-info">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Información del Sistema
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <small class="text-muted d-block mb-1">Archivo de configuración:</small>
+                        <code class="small">system_config.json</code>
+                    </div>
+                    <div class="col-md-6">
+                        <small class="text-muted d-block mb-1">Versión del sistema:</small>
+                        <strong>{{ config.system.version }}</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Sincronización Timeout CLIP
+function updateTimeoutDisplay(value) {
+    document.getElementById('timeout_display').value = value;
+}
+
+function updateTimeoutSlider(value) {
+    document.getElementById('clip_idle_timeout_minutes').value = value;
+}
+
+// Sincronización Max Results
+function updateMaxResultsDisplay(value) {
+    document.getElementById('max_results_display').value = value;
+}
+
+function updateMaxResultsSlider(value) {
+    document.getElementById('search_max_results').value = value;
+}
+</script>
+{% endblock %}

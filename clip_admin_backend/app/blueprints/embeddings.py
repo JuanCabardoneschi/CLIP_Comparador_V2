@@ -68,30 +68,18 @@ def _get_idle_timeout_seconds() -> int:
     """Obtiene el timeout de inactividad para descargar CLIP.
 
     Prioridad:
-    1) app.utils.system_config.system_config['clip']['idle_timeout_minutes'] (si existe)
+    1) app.utils.system_config.system_config.get('clip', 'idle_timeout_minutes')
     2) Env var CLIP_IDLE_TIMEOUT_MINUTES
     3) Env var CLIP_IDLE_TIMEOUT_SECONDS
     4) Default: 120 minutos
     """
-    # Intentar leer desde un sistema de configuración central (si existe en esta versión)
+    # Intentar leer desde sistema de configuración central
     try:
-        from app.utils import system_config  # type: ignore
-        # system_config es esperado como un dict o wrapper con .get(seccion, clave, default)
-        if hasattr(system_config, 'system_config'):
-            cfg = system_config.system_config
-            # Soportar acceso estilo cfg.get('clip', 'idle_timeout_minutes', 120)
-            try:
-                minutes = cfg.get('clip', 'idle_timeout_minutes', 120)
-                return int(minutes) * 60
-            except Exception:
-                pass
-        elif isinstance(system_config, dict):
-            minutes = (
-                system_config.get('clip', {}).get('idle_timeout_minutes', 120)
-            )
-            return int(minutes) * 60
+        from app.utils.system_config import system_config
+        minutes = system_config.get('clip', 'idle_timeout_minutes', 120)
+        return int(minutes) * 60
     except Exception:
-        # Ignorar: este módulo puede no existir en este commit
+        # Continuar con fallbacks si falla
         pass
 
     # Variables de entorno
