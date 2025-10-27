@@ -1786,9 +1786,9 @@ def visual_search():
         response_obj.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
         response_obj.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
 
-    # Marcar fin de la operación
-    print(f"🏁 [SEARCH T+{time.time() - start_time:.3f}s] FIN - Respuesta enviada ({len(results)} resultados)")
-    return response_obj
+        # Marcar fin de la operación
+        print(f"🏁 [SEARCH T+{time.time() - start_time:.3f}s] FIN - Respuesta enviada ({len(results)} resultados)")
+        return response_obj
 
     except Exception as e:
         processing_time = time.time() - start_time
