@@ -10,6 +10,7 @@ Optimización Railway:
 
 import os
 import ssl
+import time
 
 # Configurar SSL para descargas de modelos ANTES de importar transformers
 # Usar certificados del sistema en lugar de PostgreSQL
@@ -68,45 +69,87 @@ def get_clip_model():
     """
     global _clip_model, _clip_processor, _clip_last_used, _clip_cleanup_thread, _clip_lock
 
+    func_start = time.time()
+    print(f"⏱️  [CLIP T+0.000s] get_clip_model: INICIO")
+
     # Lazy imports (solo cargar cuando se necesita)
+    import_start = time.time()
     import torch
     from transformers import CLIPProcessor, CLIPModel
+    import_time = time.time() - import_start
+    print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Imports torch/transformers OK ({import_time:.3f}s)")
 
     # Inicializar lock si no existe (thread-safe)
     if _clip_lock is None:
+        print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Creando threading.Lock...")
         import threading
         _clip_lock = threading.Lock()
+        print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Lock creado")
 
+    print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Esperando lock...")
+    lock_start = time.time()
     with _clip_lock:
+        lock_time = time.time() - lock_start
+        print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Lock adquirido ({lock_time:.3f}s)")
+
+        # DEBUG: Inspeccionar variables de entorno relevantes
+        try:
+            import json as _json
+            _clip_env_val = os.getenv('CLIP_IDLE_TIMEOUT')
+            _clip_env_keys = [k for k in os.environ.keys() if k.startswith('CLIP_')]
+            print(f"🧪 ENV DEBUG: CLIP_IDLE_TIMEOUT={_clip_env_val!r} | keys={_clip_env_keys}")
+        except Exception as _e:
+            print(f"🧪 ENV DEBUG: error leyendo env vars: {_e}")
+
         # Cargar modelo solo si no existe (lazy loading)
         if _clip_model is None:
-            print("🔄 Cargando modelo CLIP ViT-B/16 (lazy loading)...")
+            print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Modelo no cargado, iniciando carga...")
             try:
+                load_start = time.time()
+                print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] CLIPModel.from_pretrained()...")
                 _clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
+                model_load_time = time.time() - load_start
+                print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Modelo cargado ({model_load_time:.3f}s)")
+
+                proc_start = time.time()
+                print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] CLIPProcessor.from_pretrained()...")
                 _clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
+                proc_load_time = time.time() - proc_start
+                print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Processor cargado ({proc_load_time:.3f}s)")
 
                 # Configurar para CPU
+                print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Configurando modelo...")
                 _clip_model.eval()
                 if torch.cuda.is_available():
-                    print("🔥 GPU disponible, usando CUDA")
+                    print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] GPU disponible, moviendo a CUDA...")
+                    cuda_start = time.time()
                     _clip_model = _clip_model.cuda()
+                    cuda_time = time.time() - cuda_start
+                    print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Modelo en CUDA ({cuda_time:.3f}s)")
                 else:
-                    print("💻 Usando CPU para CLIP")
+                    print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Usando CPU (no GPU disponible)")
 
-                print("✅ Modelo CLIP cargado exitosamente")
+                total_load_time = time.time() - load_start
+                print(f"✅ [CLIP T+{time.time() - func_start:.3f}s] CLIP cargado completamente ({total_load_time:.3f}s)")
 
                 # Iniciar thread de cleanup si no existe
                 if _clip_cleanup_thread is None:
+                    print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Iniciando cleanup thread...")
                     _start_clip_cleanup_thread()
 
             except Exception as e:
-                print(f"❌ Error cargando CLIP: {e}")
+                print(f"❌ [CLIP T+{time.time() - func_start:.3f}s] Error cargando CLIP: {e}")
                 raise
+        else:
+            print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Modelo ya en memoria (cache hit)")
 
         # Actualizar timestamp de último uso
-        import time
-        _clip_last_used = time.time()
+        import time as time_module
+        _clip_last_used = time_module.time()
+        print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Timestamp actualizado")
 
+    total_time = time.time() - func_start
+    print(f"⏱️  [CLIP T+{total_time:.3f}s] get_clip_model: RETORNANDO (total: {total_time:.3f}s)")
     return _clip_model, _clip_processor
 
 
@@ -129,7 +172,7 @@ def _start_clip_cleanup_thread():
             print("⚠️  Auto-cleanup de CLIP DESACTIVADO - Memoria no se liberará automáticamente")
             print("💡 Configura CLIP_IDLE_TIMEOUT en Railway (recomendado: 1800 para 30 min)")
             return  # Terminar el worker sin hacer cleanup
-        
+
         try:
             idle_timeout = int(idle_timeout_str)
             print(f"⚙️  CLIP auto-cleanup configurado: {idle_timeout}s ({idle_timeout//60} minutos)")

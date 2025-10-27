@@ -210,4 +210,17 @@ def print_environment_info():
     else:
         print(f"💻 Local Development: PostgreSQL required")
 
+    # Debug ligero de variables CLIP para diagnósticos de tiempo de inactividad
+    try:
+        clip_vars = {k: v for k, v in os.environ.items() if k.startswith('CLIP_')}
+        if clip_vars:
+                items = [f"{k}='{clip_vars[k]}'" for k in sorted(clip_vars.keys())]
+                print("🧪 CLIP env: " + ", ".join(items))
+        else:
+            print("🧪 CLIP env: (sin variables CLIP_ detectadas)")
+        # Resaltar explícitamente el timeout
+        print(f"⏱️  CLIP_IDLE_TIMEOUT: {os.environ.get('CLIP_IDLE_TIMEOUT', 'NO SET')}")
+    except Exception as _e:
+        print(f"🧪 CLIP env: error leyendo variables - {_e}")
+
     print("="*60 + "\n")

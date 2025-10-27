@@ -472,58 +472,70 @@ def verify_api_key():
 def process_image_for_search(image_data):
     """Procesar imagen y generar embedding para búsqueda"""
     try:
-        print("🔧 DEBUG: Iniciando procesamiento de imagen")
+        func_start = time.time()
+        print(f"⏱️  [T+0.000s] process_image_for_search: INICIO (imagen: {len(image_data)} bytes)")
 
         # Importar PIL con alias para evitar conflictos
+        import_start = time.time()
         from PIL import Image as PILImage
         import io
-        print("🔧 DEBUG: Importaciones exitosas")
+        import_time = time.time() - import_start
+        print(f"⏱️  [T+{time.time() - func_start:.3f}s] Importaciones PIL completadas ({import_time:.3f}s)")
 
-        # Convertir bytes a imagen PIL
+        # Convertir bytes a imagen PIL (sin redimensionar)
+        pil_start = time.time()
         pil_image = PILImage.open(io.BytesIO(image_data))
-        original_size = pil_image.size
-        print(f"🔧 DEBUG: Imagen PIL creada: {original_size}")
-        
-        # OPTIMIZACIÓN CRÍTICA: Redimensionar antes de CLIP para acelerar procesamiento en CPU
-        # CLIP internamente redimensiona a 224x224, procesar imágenes grandes ralentiza innecesariamente
-        # En CPU sin GPU, esto reduce el tiempo de ~14s a ~2-3s
-        max_size = 384  # Tamaño óptimo: más que suficiente para CLIP sin pérdida de calidad
-        if pil_image.size[0] > max_size or pil_image.size[1] > max_size:
-            pil_image.thumbnail((max_size, max_size), PILImage.Resampling.LANCZOS)
-            print(f"⚡ OPTIMIZACIÓN: Imagen redimensionada {original_size} → {pil_image.size} (acelera ~5x en CPU)")
+        pil_time = time.time() - pil_start
+        print(f"⏱️  [T+{time.time() - func_start:.3f}s] Imagen PIL creada: {pil_image.size} ({pil_time:.3f}s)")
 
         # Obtener modelo CLIP directamente
+        print(f"⏱️  [T+{time.time() - func_start:.3f}s] Iniciando get_clip_model()...")
         start_clip_time = time.time()
         model, processor = get_clip_model()
         clip_load_time = time.time() - start_clip_time
-        print(f"� CLIP MODEL: Obtenido en {clip_load_time:.3f}s")
+        print(f"⏱️  [T+{time.time() - func_start:.3f}s] CLIP MODEL obtenido ({clip_load_time:.3f}s)")
 
         # Generar embedding usando solo argumentos necesarios
-        print("🔧 DEBUG: Llamando al procesador CLIP...")
+        print(f"⏱️  [T+{time.time() - func_start:.3f}s] Iniciando procesamiento CLIP...")
         start_process_time = time.time()
 
         # Llamada simplificada al procesador
         with torch.no_grad():
+            print(f"⏱️  [T+{time.time() - func_start:.3f}s] Llamando processor(images=...)...")
+            processor_start = time.time()
             inputs = processor(
                 images=pil_image,
                 return_tensors="pt"
             )
-            print("🔧 DEBUG: Inputs del procesador creados exitosamente")
+            processor_time = time.time() - processor_start
+            print(f"⏱️  [T+{time.time() - func_start:.3f}s] Processor completado ({processor_time:.3f}s)")
 
             # Generar features de imagen
+            print(f"⏱️  [T+{time.time() - func_start:.3f}s] Generando image features...")
+            features_start = time.time()
             image_features = model.get_image_features(**inputs)
-            print(f"🔧 DEBUG: Image features generadas: {image_features.shape}")
+            features_time = time.time() - features_start
+            print(f"⏱️  [T+{time.time() - func_start:.3f}s] Image features OK: shape={image_features.shape} ({features_time:.3f}s)")
 
             # Normalizar embedding
+            print(f"⏱️  [T+{time.time() - func_start:.3f}s] Normalizando embedding...")
+            norm_start = time.time()
             embedding = image_features / image_features.norm(dim=-1, keepdim=True)
+            norm_time = time.time() - norm_start
+            print(f"⏱️  [T+{time.time() - func_start:.3f}s] Normalización OK ({norm_time:.3f}s)")
 
             # Convertir a lista de Python
+            print(f"⏱️  [T+{time.time() - func_start:.3f}s] Convirtiendo a lista Python...")
+            convert_start = time.time()
             embedding_list = embedding.squeeze().cpu().numpy().tolist()
+            convert_time = time.time() - convert_start
+            print(f"⏱️  [T+{time.time() - func_start:.3f}s] Conversión OK ({convert_time:.3f}s)")
 
             process_time = time.time() - start_process_time
-            print(f"⚡ CLIP PROCESSING: Completado en {process_time:.3f}s")
+            total_time = time.time() - func_start
+            print(f"⏱️  [T+{total_time:.3f}s] CLIP PROCESSING TOTAL: {process_time:.3f}s | FUNCIÓN COMPLETA: {total_time:.3f}s")
 
-        print(f"🔧 DEBUG: Embedding generado exitosamente: {len(embedding_list)} dimensiones")
+        print(f"✅ Embedding generado: {len(embedding_list)} dimensiones")
         return embedding_list, None
 
     except Exception as e:
@@ -598,26 +610,34 @@ def _process_image_data(image_file):
     return image_data, limit, threshold, None, None
 
 
-def _generate_query_embedding(image_data):
+def _generate_query_embedding(image_data, start_time=None):
     """Genera el embedding de la imagen de consulta"""
-    print(f"📷 DEBUG: Procesando imagen de {len(image_data)} bytes")
+    if start_time is None:
+        start_time = time.time()
+
+    func_start = time.time()
+    print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] _generate_query_embedding: Iniciando ({len(image_data)} bytes)")
+
+    embedding_start = time.time()
     query_embedding, error = process_image_for_search(image_data)
+    embedding_time = time.time() - embedding_start
+    print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] process_image_for_search completado ({embedding_time:.3f}s)")
+
     if error:
-        print(f"❌ DEBUG: Error en procesamiento: {error}")
+        print(f"❌ [SEARCH T+{time.time() - start_time:.3f}s] Error: {error}")
         return None, jsonify({
             "error": "processing_failed",
             "message": error
         }), 500
 
     if query_embedding is None:
-        print("❌ DEBUG: query_embedding es None")
+        print(f"❌ [SEARCH T+{time.time() - start_time:.3f}s] query_embedding es None")
         return None, jsonify({
             "error": "processing_failed",
             "message": "No se pudo generar embedding de la imagen"
         }), 500
 
-    print(f"🧠 DEBUG: Embedding generado - dimensiones: {len(query_embedding)}")
-    print(f"🧠 DEBUG: Primeros 5 valores: {query_embedding[:5]}")
+    print(f"✅ [SEARCH T+{time.time() - start_time:.3f}s] Embedding OK - {len(query_embedding)} dims (primeros 5: {query_embedding[:5]})")
 
     return query_embedding, None, None
 
@@ -1490,21 +1510,33 @@ def visual_search():
         return response
 
     start_time = time.time()
+    print(f"\n{'='*80}")
+    print(f"🔍 [SEARCH T+0.000s] POST /api/search - INICIO")
+    print(f"{'='*80}")
 
     try:
         # Validar request
+        print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Validando request...")
+        validate_start = time.time()
         client, image_file, error_response = _validate_visual_search_request()
+        validate_time = time.time() - validate_start
+        print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Validación OK ({validate_time:.3f}s)")
         if error_response:
             return error_response
 
         # Procesar datos de imagen
+        print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Procesando datos de imagen...")
+        process_start = time.time()
         image_data, limit, _, error_response, status_code = _process_image_data(image_file)
+        process_time = time.time() - process_start
+        print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Datos procesados ({process_time:.3f}s) - {len(image_data)} bytes")
         if error_response:
             return error_response, status_code
 
         # Sensibilidad personalizada por cliente
         category_confidence_threshold = (getattr(client, 'category_confidence_threshold', 70) or 70) / 100.0
         product_similarity_threshold = (getattr(client, 'product_similarity_threshold', 30) or 30) / 100.0
+        print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Thresholds: category={category_confidence_threshold:.2f}, product={product_similarity_threshold:.2f}")
 
         # 🚀 FASE 3: Cargar configuración de SearchOptimizer (si existe)
         use_optimizer = request.form.get('use_optimizer', 'true').lower() == 'true'  # Feature flag
@@ -1512,20 +1544,21 @@ def visual_search():
         search_optimizer = None
 
         if use_optimizer:
+            print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Cargando SearchOptimizer config...")
             try:
                 store_config = StoreSearchConfig.query.get(client.id)
                 if store_config:
                     search_optimizer = SearchOptimizer(store_config)
-                    print(f"🎯 OPTIMIZER: Activado para {client.name} (v={store_config.visual_weight}, m={store_config.metadata_weight}, b={store_config.business_weight})")
+                    print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Optimizer activado (v={store_config.visual_weight}, m={store_config.metadata_weight}, b={store_config.business_weight})")
                 else:
-                    print(f"⚠️ OPTIMIZER: No config found for client {client.id}, usando búsqueda tradicional")
+                    print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] No config, usando búsqueda tradicional")
             except Exception as e:
-                print(f"❌ OPTIMIZER: Error cargando config: {e}")
-                # Si falla, continuar sin optimizer
+                print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Error cargando optimizer: {e}")
                 search_optimizer = None
 
         # ===== PASO 1: DETECCIÓN DE CATEGORÍA ESPECÍFICA =====
-        print(f"🚀 RAILWAY LOG: INICIANDO DETECCIÓN DE CATEGORÍA ESPECÍFICA")
+        print(f"\n⏱️  [SEARCH T+{time.time() - start_time:.3f}s] ===== PASO 1: DETECCIÓN DE CATEGORÍA =====")
+        category_start = time.time()
 
         detected_category, category_confidence = detect_image_category_with_centroids(
             image_data,
@@ -1533,7 +1566,9 @@ def visual_search():
             confidence_threshold=category_confidence_threshold  # Sensibilidad por cliente
         )
 
-        print(f"🎯 RAILWAY LOG: Resultado detección = {detected_category.name if detected_category else 'NULL'} (conf: {category_confidence:.3f})")
+        category_time = time.time() - category_start
+        print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Detección categoría completada ({category_time:.3f}s)")
+        print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Resultado: {detected_category.name if detected_category else 'NULL'} (conf: {category_confidence:.3f})")
 
         if detected_category is None:
             # No se pudo detectar una categoría válida
@@ -1578,13 +1613,19 @@ def visual_search():
             print("⚠️ RAILWAY LOG: Categoría sin colores definidos; se omite boost/metadata por color")
 
         # ===== GENERAR EMBEDDING DE LA IMAGEN =====
-        query_embedding, error_response, status_code = _generate_query_embedding(image_data)
+        print(f"\n⏱️  [SEARCH T+{time.time() - start_time:.3f}s] ===== PASO 2: GENERACIÓN EMBEDDING =====")
+        embedding_step_start = time.time()
+        query_embedding, error_response, status_code = _generate_query_embedding(image_data, start_time)
+        embedding_step_time = time.time() - embedding_step_start
+        print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Embedding step completado ({embedding_step_time:.3f}s)")
         if error_response:
-            print(f"❌ RAILWAY LOG: Error generando embedding")
+            print(f"❌ [SEARCH T+{time.time() - start_time:.3f}s] Error generando embedding")
             return error_response, status_code
 
         # ===== BUSCAR SOLO EN LA CATEGORÍA DETECTADA =====
-        print(f"🔍 RAILWAY LOG: Buscando productos en {detected_category.name}")
+        print(f"\n⏱️  [SEARCH T+{time.time() - start_time:.3f}s] ===== PASO 3: BÚSQUEDA EN CATEGORÍA =====")
+        search_start = time.time()
+        print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Buscando productos en categoría: {detected_category.name}")
 
         # Modificar la búsqueda para filtrar por categoría detectada
         product_best_match = _find_similar_products_in_category(
