@@ -1,8 +1,8 @@
 {
   "clip": {
-    "idle_timeout": 1800,
+    "idle_timeout": 7200,
     "preload": false,
-    "description": "Configuración del modelo CLIP para búsqueda visual"
+    "description": "Configuración del modelo CLIP para búsqueda visual. idle_timeout aumentado a 2 horas para evitar recargas frecuentes durante pruebas."
   },
   "search": {
     "max_results": 10,

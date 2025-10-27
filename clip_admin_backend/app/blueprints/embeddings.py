@@ -103,7 +103,10 @@ def get_clip_model():
 
         # Cargar modelo solo si no existe (lazy loading)
         if _clip_model is None:
-            print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Modelo no cargado, iniciando carga...")
+            print(f"\n{'='*80}")
+            print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] 🔴 MODELO NO EN MEMORIA - INICIANDO CARGA COMPLETA")
+            print(f"🔴 Esto tomará ~60 segundos (descarga + configuración)")
+            print(f"{'='*80}\n")
             try:
                 load_start = time.time()
                 print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] CLIPModel.from_pretrained()...")
@@ -130,7 +133,9 @@ def get_clip_model():
                     print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Usando CPU (no GPU disponible)")
 
                 total_load_time = time.time() - load_start
-                print(f"✅ [CLIP T+{time.time() - func_start:.3f}s] CLIP cargado completamente ({total_load_time:.3f}s)")
+                print(f"\n{'='*80}")
+                print(f"✅ [CLIP T+{time.time() - func_start:.3f}s] 🟢 CLIP CARGADO COMPLETAMENTE ({total_load_time:.3f}s)")
+                print(f"{'='*80}\n")
 
                 # Iniciar thread de cleanup si no existe
                 if _clip_cleanup_thread is None:
@@ -141,7 +146,7 @@ def get_clip_model():
                 print(f"❌ [CLIP T+{time.time() - func_start:.3f}s] Error cargando CLIP: {e}")
                 raise
         else:
-            print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] Modelo ya en memoria (cache hit)")
+            print(f"⏱️  [CLIP T+{time.time() - func_start:.3f}s] 🟢 Modelo ya en memoria (CACHE HIT - rápido)")
 
         # Actualizar timestamp de último uso
         import time as time_module
@@ -165,18 +170,28 @@ def _start_clip_cleanup_thread():
         """Worker que revisa periódicamente si CLIP está idle y lo libera"""
         global _clip_model, _clip_processor, _clip_last_used
 
-        # Leer timeout desde configuración del sistema
+        # Leer timeout DIRECTAMENTE del JSON (no depender del singleton que puede fallar)
+        idle_timeout = 7200  # Default: 2 horas
         try:
-            from app.utils.system_config import system_config
-            idle_timeout = system_config.get('clip', 'idle_timeout', 1800)
-            print(f"⚙️  CLIP Cleanup: Timeout configurado en {idle_timeout}s ({idle_timeout//60} minutos)")
+            import json
+            config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'system_config.json')
+            config_path = os.path.abspath(config_path)
+            
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    idle_timeout = config.get('clip', {}).get('idle_timeout', 7200)
+                print(f"✅ CLIP Cleanup: Timeout leído del JSON: {idle_timeout}s ({idle_timeout//60} minutos) desde {config_path}")
+            else:
+                print(f"⚠️  CLIP Cleanup: JSON no encontrado en {config_path}, usando default {idle_timeout}s")
         except Exception as e:
-            print(f"⚠️  Error leyendo configuración, usando default 1800s: {e}")
-            idle_timeout = 1800
+            print(f"⚠️  CLIP Cleanup: Error leyendo JSON, usando default {idle_timeout}s: {e}")
 
-        if not isinstance(idle_timeout, int) or idle_timeout <= 0:
-            print(f"❌ ERROR: idle_timeout inválido ({idle_timeout}), usando 1800s")
-            idle_timeout = 1800
+        if not isinstance(idle_timeout, (int, float)) or idle_timeout <= 0:
+            print(f"❌ CLIP Cleanup: idle_timeout inválido ({idle_timeout}), forzando 7200s")
+            idle_timeout = 7200
+
+        print(f"🔧 CLIP Cleanup Worker: CONFIGURADO con timeout={idle_timeout}s ({idle_timeout//60} min)")
 
         while True:
             time.sleep(60)  # Revisar cada minuto
@@ -184,10 +199,18 @@ def _start_clip_cleanup_thread():
             if _clip_model is not None and _clip_last_used is not None:
                 idle_time = time.time() - _clip_last_used
 
+                # 🔊 LOG CRÍTICO: Mostrar estado cada 5 minutos para diagnóstico
+                if int(idle_time) % 300 < 60:  # Cada ~5 min
+                    remaining = idle_timeout - idle_time
+                    print(f"⏰ CLIP Status: idle {int(idle_time)}s / {idle_timeout}s (quedan {int(remaining)}s para cleanup)")
+
                 if idle_time > idle_timeout:
                     with _clip_lock:
                         if _clip_model is not None:  # Double-check dentro del lock
-                            print(f"🧹 Liberando CLIP (idle {int(idle_time)}s > {idle_timeout}s)...")
+                            print(f"\n{'='*80}")
+                            print(f"🧹 🔴 LIBERANDO CLIP (idle {int(idle_time)}s > {idle_timeout}s)")
+                            print(f"🔴 MODELO DESCARGADO DE MEMORIA - Próximo request tardará ~60s en recargarlo")
+                            print(f"{'='*80}\n")
                             _clip_model = None
                             _clip_processor = None
 
