@@ -164,7 +164,6 @@
                         </a>
                     </li>
 
-                    {# Temporalmente deshabilitado - revisar registro de blueprint
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint and 'system_config' in request.endpoint %}active{% endif %}"
                            href="{{ url_for('system_config_admin.index') }}">
@@ -172,7 +171,7 @@
                             Configuración del Sistema
                         </a>
                     </li>
-                    #}
+
                 </div>
 
                 {% elif current_user.role == 'STORE_ADMIN' %}

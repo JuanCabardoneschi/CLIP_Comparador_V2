@@ -163,11 +163,11 @@ def create_app(config_name=None):
         """Log de requests para debug + timing crítico para /api/search"""
         # ⏱️ TIMING CRÍTICO: Capturar timestamp en el punto más temprano posible
         request._wsgi_entry_time = time.time()
-        
+
         # Solo mostrar timing para /api/search
         if '/api/search' in request.path:
             print(f"\n⏰ [WSGI BEFORE_REQUEST T+0.000s] {request.method} {request.path} - Request recibido por Flask")
-        
+
         # print(f"🌐 REQUEST: {request.method} {request.path}")
         # print(f"🍪 COOKIES: {dict(request.cookies)}")
         # if hasattr(current_user, 'is_authenticated'):

@@ -1,0 +1,16 @@
+{
+  "clip": {
+    "preload": false,
+    "idle_timeout_minutes": 120,
+    "model_name": "openai/clip-vit-base-patch16"
+  },
+  "search": {
+    "max_results": 50,
+    "enable_category_detection": true,
+    "enable_visual_search": true
+  },
+  "system": {
+    "environment": "production",
+    "version": "2.0.0"
+  }
+}
