@@ -1256,7 +1256,8 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         confidence_threshold: Umbral mínimo de confianza para detección
 
     Returns:
-        tuple: (categoria_detectada, confidence_score) o (None, 0) si no detecta
+        tuple: (categoria_detectada, confidence_score, embedding) o (None, 0, None) si no detecta
+              embedding es la lista Python del embedding generado (para reutilizar)
     """
     try:
         # print(f"🚀 RAILWAY LOG: Iniciando detección centroides para cliente {client_id}")
@@ -1269,7 +1270,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
 
         if not categories:
             # print(f"❌ RAILWAY LOG: No categorías para cliente {client_id}")
-            return None, 0
+            return None, 0, None
 
         # print(f"📋 RAILWAY LOG: {len(categories)} categorías encontradas")
 
@@ -1292,6 +1293,8 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
             image_features = model.get_image_features(**image_inputs)
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
             new_embedding = image_features.squeeze(0).numpy()
+            # Convertir a lista Python para poder retornar y reutilizar
+            new_embedding_list = new_embedding.tolist()
 
         # 🔕 LOG SILENCIADO: detalles de embedding generado
 
@@ -1317,7 +1320,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
 
         if not category_similarities:
             # print(f"❌ RAILWAY LOG: NO HAY SIMILITUDES - sin centroides válidos")
-            return None, 0
+            return None, 0, None
 
         # 6. Encontrar la mejor coincidencia con margen de victoria y desempate
         # Ordenar por similitud descendente
@@ -1375,16 +1378,16 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         # 7. Verificar umbral de confianza
         if best_score >= confidence_threshold:
             # print(f"✅ RAILWAY LOG: DETECTADO - {best_category.name} (conf: {best_score:.4f})")
-            return best_category, best_score
+            return best_category, best_score, new_embedding_list
         else:
             # print(f"❌ RAILWAY LOG: RECHAZADO - {best_score:.4f} < {confidence_threshold}")
-            return None, best_score
+            return None, best_score, None
 
     except Exception as e:
         print(f"❌ ERROR en detección por centroides: {e}")
         import traceback
         traceback.print_exc()
-        return None, 0
+        return None, 0, None
 
 
 def detect_image_category(image_data, client_id, confidence_threshold=0.2):
@@ -1580,7 +1583,7 @@ def visual_search():
         print(f"\n⏱️  [SEARCH T+{time.time() - start_time:.3f}s] ===== PASO 1: DETECCIÓN DE CATEGORÍA =====")
         category_start = time.time()
 
-        detected_category, category_confidence = detect_image_category_with_centroids(
+        detected_category, category_confidence, query_embedding = detect_image_category_with_centroids(
             image_data,
             client.id,
             confidence_threshold=category_confidence_threshold  # Sensibilidad por cliente
@@ -1589,6 +1592,8 @@ def visual_search():
         category_time = time.time() - category_start
         print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Detección categoría completada ({category_time:.3f}s)")
         print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Resultado: {detected_category.name if detected_category else 'NULL'} (conf: {category_confidence:.3f})")
+        if query_embedding:
+            print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] ✅ Embedding reutilizable generado ({len(query_embedding)} dims)")
 
         if detected_category is None:
             # No se pudo detectar una categoría válida
@@ -1634,11 +1639,16 @@ def visual_search():
 
         # ===== GENERAR EMBEDDING DE LA IMAGEN =====
         print(f"\n⏱️  [SEARCH T+{time.time() - start_time:.3f}s] ===== PASO 2: GENERACIÓN EMBEDDING =====")
-        embedding_step_start = time.time()
-        # _generate_query_embedding ahora hace raise en caso de error (no devuelve error_response)
-        query_embedding = _generate_query_embedding(image_data, start_time)
-        embedding_step_time = time.time() - embedding_step_start
-        print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Embedding step completado ({embedding_step_time:.3f}s)")
+        
+        # OPTIMIZACIÓN: Reutilizar embedding si ya fue generado en detección de categoría
+        if query_embedding is None:
+            print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Embedding no disponible, generando...")
+            embedding_step_start = time.time()
+            query_embedding = _generate_query_embedding(image_data, start_time)
+            embedding_step_time = time.time() - embedding_step_start
+            print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Embedding step completado ({embedding_step_time:.3f}s)")
+        else:
+            print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] ✅ REUTILIZANDO embedding de paso 1 (0.000s)")
 
         # ===== BUSCAR SOLO EN LA CATEGORÍA DETECTADA =====
         print(f"\n⏱️  [SEARCH T+{time.time() - start_time:.3f}s] ===== PASO 3: BÚSQUEDA EN CATEGORÍA =====")
