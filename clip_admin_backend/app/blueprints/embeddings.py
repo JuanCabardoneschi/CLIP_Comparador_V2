@@ -4,7 +4,7 @@ Administración y generación de embeddings para búsqueda visual
 
 Optimización Railway:
 - Lazy loading de CLIP (carga solo cuando se necesita)
-- Auto-cleanup después de CLIP_IDLE_TIMEOUT segundos sin uso
+- Auto-cleanup después de CLIP_IDLE_TIMEOUT segundos sin uso (variable REQUERIDA en Railway)
 - Imports condicionales para reducir memoria inicial
 """
 
@@ -63,7 +63,8 @@ def get_clip_model():
     Optimización Railway:
     - Carga el modelo solo cuando se necesita (lazy loading)
     - Libera memoria automáticamente después de CLIP_IDLE_TIMEOUT segundos sin uso
-    - Reduce consumo de RAM de ~600MB a 0MB cuando está idle
+    - CLIP_IDLE_TIMEOUT es REQUERIDO en variables de entorno (si no existe, no hay auto-cleanup)
+    - Recarga toma ~60s, recomendado: 1800s (30 min) para evitar recargas frecuentes
     """
     global _clip_model, _clip_processor, _clip_last_used, _clip_cleanup_thread, _clip_lock
 
@@ -121,8 +122,21 @@ def _start_clip_cleanup_thread():
         """Worker que revisa periódicamente si CLIP está idle y lo libera"""
         global _clip_model, _clip_processor, _clip_last_used
 
-        # Timeout configurable (default 5 minutos)
-        idle_timeout = int(os.getenv('CLIP_IDLE_TIMEOUT', '300'))  # segundos
+        # Timeout DEBE configurarse en Railway via variable de entorno
+        idle_timeout_str = os.getenv('CLIP_IDLE_TIMEOUT')
+        if not idle_timeout_str:
+            print("❌ ERROR: CLIP_IDLE_TIMEOUT no está configurado en variables de entorno")
+            print("⚠️  Auto-cleanup de CLIP DESACTIVADO - Memoria no se liberará automáticamente")
+            print("💡 Configura CLIP_IDLE_TIMEOUT en Railway (recomendado: 1800 para 30 min)")
+            return  # Terminar el worker sin hacer cleanup
+        
+        try:
+            idle_timeout = int(idle_timeout_str)
+            print(f"⚙️  CLIP auto-cleanup configurado: {idle_timeout}s ({idle_timeout//60} minutos)")
+        except ValueError:
+            print(f"❌ ERROR: CLIP_IDLE_TIMEOUT='{idle_timeout_str}' no es un número válido")
+            print("⚠️  Auto-cleanup de CLIP DESACTIVADO")
+            return
 
         while True:
             time.sleep(60)  # Revisar cada minuto
