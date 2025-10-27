@@ -220,12 +220,14 @@
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
                     <div class="d-flex gap-3 justify-content-between">
-                        <button type="button" 
-                                class="btn btn-outline-danger"
-                                onclick="if(confirm('¿Restablecer configuración a valores por defecto?')) { window.location.href='{{ url_for('system_config_admin.reset') }}'; }">
-                            <i class="bi bi-arrow-counterclockwise me-2"></i>
-                            Restablecer por Defecto
-                        </button>
+                        <form method="POST" action="{{ url_for('system_config_admin.reset') }}" style="display: inline;">
+                            <button type="submit" 
+                                    class="btn btn-outline-danger"
+                                    onclick="return confirm('¿Restablecer configuración a valores por defecto?');">
+                                <i class="bi bi-arrow-counterclockwise me-2"></i>
+                                Restablecer por Defecto
+                            </button>
+                        </form>
                         <div class="d-flex gap-2">
                             <a href="{{ url_for('dashboard.index') }}" class="btn btn-outline-secondary">
                                 <i class="bi bi-x-circle me-2"></i>
