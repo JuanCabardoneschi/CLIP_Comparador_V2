@@ -38,22 +38,22 @@ def update_config():
     """Actualizar configuración del sistema"""
     try:
         data = request.get_json()
-        
+
         if not data:
             return jsonify({
                 'success': False,
                 'message': 'No se recibieron datos'
             }), 400
-        
+
         section = data.get('section')
         values = data.get('values')
-        
+
         if not section or not values:
             return jsonify({
                 'success': False,
                 'message': 'Sección y valores son requeridos'
             }), 400
-        
+
         # Validaciones específicas
         if section == 'clip':
             if 'idle_timeout' in values:
@@ -63,17 +63,17 @@ def update_config():
                         'success': False,
                         'message': 'idle_timeout debe ser un entero >= 60 segundos'
                     }), 400
-            
+
             if 'preload' in values:
                 if not isinstance(values['preload'], bool):
                     return jsonify({
                         'success': False,
                         'message': 'preload debe ser true o false'
                     }), 400
-        
+
         # Actualizar configuración
         success = system_config.update_section(section, values)
-        
+
         if success:
             return jsonify({
                 'success': True,
@@ -85,7 +85,7 @@ def update_config():
                 'success': False,
                 'message': 'Error guardando configuración'
             }), 500
-            
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -120,7 +120,7 @@ def reset_config():
     try:
         system_config._config = system_config._get_default_config()
         success = system_config.save_config()
-        
+
         if success:
             return jsonify({
                 'success': True,
@@ -132,7 +132,7 @@ def reset_config():
                 'success': False,
                 'message': 'Error guardando configuración'
             }), 500
-            
+
     except Exception as e:
         return jsonify({
             'success': False,

@@ -173,7 +173,7 @@ def _start_clip_cleanup_thread():
         except Exception as e:
             print(f"⚠️  Error leyendo configuración, usando default 1800s: {e}")
             idle_timeout = 1800
-        
+
         if not isinstance(idle_timeout, int) or idle_timeout <= 0:
             print(f"❌ ERROR: idle_timeout inválido ({idle_timeout}), usando 1800s")
             idle_timeout = 1800

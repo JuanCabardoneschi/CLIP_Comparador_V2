@@ -42,7 +42,7 @@ redis_client = None
 
 def create_app(config_name=None):
     """Factory pattern para crear la aplicación Flask"""
-    
+
     # Importar extensiones DENTRO de create_app para evitar imports circulares
     from app import db, migrate, login_manager, jwt
 
@@ -399,7 +399,7 @@ if __name__ == "__main__":
         try:
             from app.utils.system_config import system_config
             should_preload = system_config.get('clip', 'preload', False)
-            
+
             if should_preload:
                 print("⚡ Precargando modelo CLIP al iniciar (configurado en system_config.json)")
                 from app.blueprints.embeddings import get_clip_model
