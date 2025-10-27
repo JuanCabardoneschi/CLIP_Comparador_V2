@@ -1432,12 +1432,12 @@ def detect_image_category(image_data, client_id, confidence_threshold=0.2):
         # 2. Preparar imagen para CLIP
         from PIL import Image as PILImage
         import io
-    pil_image = PILImage.open(io.BytesIO(image_data))
-    # 🔕 LOG SILENCIADO: detalles de imagen preparada
+        pil_image = PILImage.open(io.BytesIO(image_data))
+        # 🔕 LOG SILENCIADO: detalles de imagen preparada
 
         # 3. Obtener modelo CLIP
-    model, processor = get_clip_model()
-    # 🔕 LOG SILENCIADO: confirmación de modelo obtenido
+        model, processor = get_clip_model()
+        # 🔕 LOG SILENCIADO: confirmación de modelo obtenido
 
         # 4. Preparar prompts de categorías
         category_prompts = []
@@ -1486,7 +1486,7 @@ def detect_image_category(image_data, client_id, confidence_threshold=0.2):
         best_score = similarities[best_idx].item()
         best_category = category_objects[best_idx]
 
-    # 🔕 LOG SILENCIADO: mejor coincidencia
+        # 🔕 LOG SILENCIADO: mejor coincidencia
 
         # 7. Verificar umbral de confianza
         if best_score >= confidence_threshold:
