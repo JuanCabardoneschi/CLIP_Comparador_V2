@@ -371,6 +371,14 @@ def register_blueprints(app):
     except ImportError as e:
         print(f"✗ Error importando external_inventory blueprint: {e}")
 
+    # Blueprint de configuración del sistema (SuperAdmin)
+    try:
+        from app.blueprints.system_config_admin import bp as system_config_bp
+        app.register_blueprint(system_config_bp, url_prefix="/admin/system-config")
+        print("✓ Blueprint system_config registrado")
+    except ImportError as e:
+        print(f"✗ Error importando system_config blueprint: {e}")
+
 
 # Crear instancia de la aplicación
 app = create_app()
@@ -387,23 +395,22 @@ if __name__ == "__main__":
     # Precarga condicional de CLIP: en Railway/producción se precarga; en local queda lazy
     try:
         from app.config import is_production
-        # 🔥 HARDCODED: Siempre precargar en producción - Railway no lee variables compartidas
-        preload_env = os.getenv("CLIP_PRELOAD", "true").lower()  # Default: true
-        should_preload = (
-            (preload_env == "true") or
-            (preload_env == "auto" and is_production())
-        )
-
-        if should_preload:
-            print("⚡ Precargando modelo CLIP al iniciar (hardcoded: siempre en producción)")
-            from app.blueprints.embeddings import get_clip_model
-            get_clip_model()
-            print("✅ CLIP precargado correctamente")
-        else:
-            # Lazy load en desarrollo
-            print("⚡ CLIP se cargará al primer uso (lazy loading)")
+        # Leer configuración desde JSON del sistema
+        try:
+            from app.utils.system_config import system_config
+            should_preload = system_config.get('clip', 'preload', False)
+            
+            if should_preload:
+                print("⚡ Precargando modelo CLIP al iniciar (configurado en system_config.json)")
+                from app.blueprints.embeddings import get_clip_model
+                get_clip_model()
+                print("✅ CLIP precargado correctamente")
+            else:
+                print("⚡ CLIP se cargará al primer uso (lazy loading configurado)")
+        except Exception as e:
+            # En caso de fallo de precarga, continuar para no bloquear el arranque
+            print(f"❌ Error con configuración CLIP (continuando con lazy load): {e}")
     except Exception as e:
-        # En caso de fallo de precarga, continuar para no bloquear el arranque
-        print(f"❌ Error precargando CLIP (continuando con lazy load): {e}")
+        print(f"⚠️  Error general en precarga CLIP: {e}")
 
     app.run(host="0.0.0.0", port=port, debug=debug)

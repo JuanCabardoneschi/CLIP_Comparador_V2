@@ -1,0 +1,328 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Configuración del Sistema{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="h3 mb-3">
+                <i class="fas fa-cog"></i> Configuración del Sistema
+            </h1>
+            <p class="text-muted">
+                Gestión de configuraciones globales del sistema (Solo SuperAdmin)
+            </p>
+        </div>
+    </div>
+
+    <!-- Alertas -->
+    <div id="alertContainer"></div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-4" id="configTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="clip-tab" data-bs-toggle="tab" data-bs-target="#clip" type="button">
+                <i class="fas fa-brain"></i> CLIP
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="search-tab" data-bs-toggle="tab" data-bs-target="#search" type="button">
+                <i class="fas fa-search"></i> Búsqueda
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="system-tab" data-bs-toggle="tab" data-bs-target="#system" type="button">
+                <i class="fas fa-server"></i> Sistema
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content" id="configTabContent">
+        
+        <!-- CLIP Config -->
+        <div class="tab-pane fade show active" id="clip" role="tabpanel">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Configuración del Modelo CLIP</h5>
+                </div>
+                <div class="card-body">
+                    <form id="clipForm">
+                        <div class="mb-3">
+                            <label for="idle_timeout" class="form-label">
+                                Timeout de Inactividad (segundos)
+                                <i class="fas fa-info-circle text-muted" data-bs-toggle="tooltip" 
+                                   title="Tiempo sin uso antes de liberar CLIP de memoria (mínimo 60s)"></i>
+                            </label>
+                            <input type="number" class="form-control" id="idle_timeout" 
+                                   value="{{ config.clip.idle_timeout }}" min="60" required>
+                            <div class="form-text">
+                                Valor actual: <strong>{{ config.clip.idle_timeout }}s</strong> ({{ (config.clip.idle_timeout / 60)|int }} minutos)
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="preload" 
+                                       {% if config.clip.preload %}checked{% endif %}>
+                                <label class="form-check-label" for="preload">
+                                    Precargar CLIP al Iniciar
+                                    <i class="fas fa-info-circle text-muted" data-bs-toggle="tooltip" 
+                                       title="Si está activado, CLIP se carga al arranque (~60s). Si no, se carga en la primera búsqueda."></i>
+                                </label>
+                            </div>
+                            <div class="form-text">
+                                <strong>Recomendado:</strong> Desactivado (lazy loading) para ahorrar RAM en Railway
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <i class="fas fa-lightbulb"></i> 
+                            <strong>Nota:</strong> Los cambios requieren reiniciar la aplicación para aplicarse completamente.
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Guardar Configuración CLIP
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Config -->
+        <div class="tab-pane fade" id="search" role="tabpanel">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Configuración de Búsqueda</h5>
+                </div>
+                <div class="card-body">
+                    <form id="searchForm">
+                        <div class="mb-3">
+                            <label for="max_results" class="form-label">Máximo de Resultados</label>
+                            <input type="number" class="form-control" id="max_results" 
+                                   value="{{ config.search.max_results }}" min="1" max="50" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="default_threshold" class="form-label">Umbral de Similitud por Defecto</label>
+                            <input type="number" step="0.01" class="form-control" id="default_threshold" 
+                                   value="{{ config.search.default_threshold }}" min="0" max="1" required>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Guardar Configuración de Búsqueda
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Config -->
+        <div class="tab-pane fade" id="system" role="tabpanel">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Configuración General del Sistema</h5>
+                </div>
+                <div class="card-body">
+                    <form id="systemForm">
+                        <div class="mb-3">
+                            <label for="session_timeout" class="form-label">Timeout de Sesión (segundos)</label>
+                            <input type="number" class="form-control" id="session_timeout" 
+                                   value="{{ config.system.session_timeout }}" min="300" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="max_upload_size_mb" class="form-label">Tamaño Máximo de Subida (MB)</label>
+                            <input type="number" class="form-control" id="max_upload_size_mb" 
+                                   value="{{ config.system.max_upload_size_mb }}" min="1" max="100" required>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Guardar Configuración del Sistema
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Acciones Globales -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Acciones Globales</h5>
+                </div>
+                <div class="card-body">
+                    <button class="btn btn-warning" onclick="reloadConfig()">
+                        <i class="fas fa-sync"></i> Recargar desde Disco
+                    </button>
+                    <button class="btn btn-danger" onclick="resetConfig()">
+                        <i class="fas fa-undo"></i> Restaurar Valores por Defecto
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Inicializar tooltips
+var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl)
+})
+
+// Función para mostrar alertas
+function showAlert(message, type = 'success') {
+    const alert = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    document.getElementById('alertContainer').innerHTML = alert;
+    
+    // Auto-cerrar después de 5 segundos
+    setTimeout(() => {
+        const alertEl = document.querySelector('.alert');
+        if (alertEl) {
+            alertEl.remove();
+        }
+    }, 5000);
+}
+
+// Guardar configuración CLIP
+document.getElementById('clipForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const values = {
+        idle_timeout: parseInt(document.getElementById('idle_timeout').value),
+        preload: document.getElementById('preload').checked
+    };
+    
+    try {
+        const response = await fetch('{{ url_for("system_config_bp.update_config") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ section: 'clip', values })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showAlert(data.message, 'success');
+        } else {
+            showAlert(data.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error guardando configuración: ' + error.message, 'danger');
+    }
+});
+
+// Guardar configuración de Búsqueda
+document.getElementById('searchForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const values = {
+        max_results: parseInt(document.getElementById('max_results').value),
+        default_threshold: parseFloat(document.getElementById('default_threshold').value)
+    };
+    
+    try {
+        const response = await fetch('{{ url_for("system_config_bp.update_config") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ section: 'search', values })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showAlert(data.message, 'success');
+        } else {
+            showAlert(data.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error guardando configuración: ' + error.message, 'danger');
+    }
+});
+
+// Guardar configuración del Sistema
+document.getElementById('systemForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const values = {
+        session_timeout: parseInt(document.getElementById('session_timeout').value),
+        max_upload_size_mb: parseInt(document.getElementById('max_upload_size_mb').value)
+    };
+    
+    try {
+        const response = await fetch('{{ url_for("system_config_bp.update_config") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ section: 'system', values })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showAlert(data.message, 'success');
+        } else {
+            showAlert(data.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error guardando configuración: ' + error.message, 'danger');
+    }
+});
+
+// Recargar configuración
+async function reloadConfig() {
+    if (!confirm('¿Recargar configuración desde disco? Los cambios no guardados se perderán.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('{{ url_for("system_config_bp.reload_config") }}', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showAlert(data.message, 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showAlert(data.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error recargando configuración: ' + error.message, 'danger');
+    }
+}
+
+// Restaurar valores por defecto
+async function resetConfig() {
+    if (!confirm('¿Restaurar configuración a valores por defecto? Esta acción no se puede deshacer.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('{{ url_for("system_config_bp.reset_config") }}', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showAlert(data.message, 'warning');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showAlert(data.message, 'danger');
+        }
+    } catch (error) {
+        showAlert('Error restaurando configuración: ' + error.message, 'danger');
+    }
+}
+</script>
+{% endblock %}

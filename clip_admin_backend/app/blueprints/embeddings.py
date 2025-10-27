@@ -165,16 +165,17 @@ def _start_clip_cleanup_thread():
         """Worker que revisa periódicamente si CLIP está idle y lo libera"""
         global _clip_model, _clip_processor, _clip_last_used
 
-        # 🔥 HARDCODED: 1800 segundos (30 minutos) - Railway no lee variables compartidas
-        idle_timeout_str = os.getenv('CLIP_IDLE_TIMEOUT', '1800')  # Default 30 min
-        print(f"⚙️  CLIP Cleanup: Usando timeout de {idle_timeout_str}s (30 minutos)")
-        
+        # Leer timeout desde configuración del sistema
         try:
-            idle_timeout = int(idle_timeout_str)
-            print(f"⚙️  CLIP auto-cleanup configurado: {idle_timeout}s ({idle_timeout//60} minutos)")
-        except ValueError:
-            print(f"❌ ERROR: CLIP_IDLE_TIMEOUT='{idle_timeout_str}' no es un número válido")
-            print(f"⚙️  Usando default: 1800s (30 minutos)")
+            from app.utils.system_config import system_config
+            idle_timeout = system_config.get('clip', 'idle_timeout', 1800)
+            print(f"⚙️  CLIP Cleanup: Timeout configurado en {idle_timeout}s ({idle_timeout//60} minutos)")
+        except Exception as e:
+            print(f"⚠️  Error leyendo configuración, usando default 1800s: {e}")
+            idle_timeout = 1800
+        
+        if not isinstance(idle_timeout, int) or idle_timeout <= 0:
+            print(f"❌ ERROR: idle_timeout inválido ({idle_timeout}), usando 1800s")
             idle_timeout = 1800
 
         while True:

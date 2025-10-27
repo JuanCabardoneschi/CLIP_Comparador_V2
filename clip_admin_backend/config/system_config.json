@@ -1,0 +1,17 @@
+{
+  "clip": {
+    "idle_timeout": 1800,
+    "preload": false,
+    "description": "Configuración del modelo CLIP para búsqueda visual"
+  },
+  "search": {
+    "max_results": 10,
+    "default_threshold": 0.1,
+    "description": "Configuración por defecto para búsquedas visuales"
+  },
+  "system": {
+    "session_timeout": 7200,
+    "max_upload_size_mb": 50,
+    "description": "Configuración general del sistema"
+  }
+}
