@@ -40,10 +40,11 @@ else:
 # Cliente Redis global
 redis_client = None
 
-# Importar extensiones y modelos del paquete app
-from app import db, migrate, login_manager, jwt
 def create_app(config_name=None):
     """Factory pattern para crear la aplicación Flask"""
+    
+    # Importar extensiones DENTRO de create_app para evitar imports circulares
+    from app import db, migrate, login_manager, jwt
 
     # Configurar paths absolutos para templates y static
     template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app', 'templates'))

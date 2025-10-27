@@ -3,4 +3,4 @@
 
 & C:\Personal\CLIP_Comparador_V2\venv\Scripts\Activate.ps1
 cd C:\Personal\CLIP_Comparador_V2\clip_admin_backend
-python app.py
+python wsgi.py

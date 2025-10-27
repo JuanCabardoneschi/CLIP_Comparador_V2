@@ -38,4 +38,4 @@ Write-Host ""
 
 # Iniciar Flask
 Set-Location "$rootDir\clip_admin_backend"
-python app.py
+python wsgi.py

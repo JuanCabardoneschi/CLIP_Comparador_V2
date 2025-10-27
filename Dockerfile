@@ -23,7 +23,7 @@ COPY shared/ ./shared/
 WORKDIR /app/clip_admin_backend
 
 # Variables de entorno por defecto
-ENV FLASK_APP=app.py
+ENV FLASK_APP=wsgi.py
 ENV FLASK_ENV=production
 ENV PYTHONPATH=/app
 ENV PORT=5000
@@ -35,4 +35,5 @@ RUN mkdir -p instance
 EXPOSE $PORT
 
 # Comando de inicio - Gunicorn (producción, shell para expansión de ${PORT})
-CMD gunicorn --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:${PORT} --access-logfile - --error-logfile - "app:app"
+# Primero verificar que la app se puede importar, luego iniciar Gunicorn
+CMD python verify_app.py && gunicorn --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:${PORT} --access-logfile - --error-logfile - --log-level debug wsgi:app
