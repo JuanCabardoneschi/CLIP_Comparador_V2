@@ -136,7 +136,7 @@ class Category(db.Model):
         if self.centroid_embedding:
             try:
                 centroid_array = np.array(json.loads(self.centroid_embedding))
-                print(f"⚡ Centroide cargado desde BD para {self.name} ({self.centroid_image_count} imágenes)")
+                # print(f"⚡ Centroide cargado desde BD para {self.name} ({self.centroid_image_count} imágenes)")
                 return centroid_array
             except Exception as e:
                 print(f"⚠️ Error deserializando centroide para {self.name}: {e}")
@@ -147,13 +147,13 @@ class Category(db.Model):
 
         # Si no existe y auto_calculate está habilitado, calcularlo
         if auto_calculate:
-            print(f"🔄 Centroide no existe para {self.name}, calculando...")
+            # print(f"🔄 Centroide no existe para {self.name}, calculando...")
             if self.update_centroid_embedding():
                 # Commit inmediato para persistir en BD
                 from .. import db
                 try:
                     db.session.commit()
-                    print(f"💾 Centroide guardado en BD para {self.name}")
+                    # print(f"💾 Centroide guardado en BD para {self.name}")
                 except Exception as e:
                     print(f"⚠️ Error guardando centroide en BD: {e}")
                     db.session.rollback()

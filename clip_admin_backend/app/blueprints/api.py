@@ -650,7 +650,8 @@ def _find_similar_products(client, query_embedding, threshold):
         is_processed=True
     ).filter(Image.clip_embedding.isnot(None)).all()
 
-    print(f"🔍 DEBUG: Encontradas {len(images)} imágenes para comparar")
+    # 🔕 LOG SILENCIADO: detalle de conteo de imágenes
+    # print(f"🔍 DEBUG: Encontradas {len(images)} imágenes para comparar")
 
     # Calcular similitudes y agrupar por producto
     product_best_match = {}  # Dict para almacenar la mejor imagen de cada producto
@@ -661,7 +662,8 @@ def _find_similar_products(client, query_embedding, threshold):
             similarity = calculate_similarity(query_embedding, img.clip_embedding)
             category_name = img.product.category.name if img.product.category else "Sin categoría"
 
-            print(f"🔍 DEBUG: Similitud con {img.product.name[:30]} ({category_name}): {similarity:.4f}")
+            # 🔕 LOG SILENCIADO: similitud por imagen/producto
+            # print(f"🔍 DEBUG: Similitud con {img.product.name[:30]} ({category_name}): {similarity:.4f}")
 
             # Recopilar estadísticas por categoría
             if category_name not in category_similarities:
@@ -679,14 +681,16 @@ def _find_similar_products(client, query_embedding, threshold):
                         'product': img.product,
                         'category': category_name
                     }
-                    print(f"✅ DEBUG: Mejor imagen para {img.product.name}: {similarity:.4f}")
+                    # 🔕 LOG SILENCIADO: mejor imagen por producto
+                    # print(f"✅ DEBUG: Mejor imagen para {img.product.name}: {similarity:.4f}")
 
         except Exception as e:
             print(f"❌ Error calculando similitud para imagen {img.id}: {e}")
             continue
 
     # Determinar categoría más probable basada en mayor similitud promedio
-    print(f"\n📊 DEBUG: Análisis por categorías:")
+    # 🔕 LOG SILENCIADO: análisis por categorías detallado
+    # print(f"\n📊 DEBUG: Análisis por categorías:")
     best_category = None
     best_avg_similarity = 0
 
@@ -694,13 +698,13 @@ def _find_similar_products(client, query_embedding, threshold):
         avg_sim = sum(similarities) / len(similarities)
         max_sim = max(similarities)
         count = len(similarities)
-        print(f"   📂 {category}: {count} productos, promedio: {avg_sim:.4f}, máximo: {max_sim:.4f}")
+    # print(f"   📂 {category}: {count} productos, promedio: {avg_sim:.4f}, máximo: {max_sim:.4f}")
 
         if max_sim > best_avg_similarity:  # Usar máximo en lugar de promedio para detectar categoría objetivo
             best_avg_similarity = max_sim
             best_category = category
 
-    print(f"🎯 DEBUG: Categoría más probable: '{best_category}' (similitud máxima: {best_avg_similarity:.4f})")
+    # print(f"🎯 DEBUG: Categoría más probable: '{best_category}' (similitud máxima: {best_avg_similarity:.4f})")
 
     # Aplicar boost de categoría: aumentar similitud para productos de la categoría más probable
     if best_category and best_category != "Sin categoría":
@@ -712,11 +716,11 @@ def _find_similar_products(client, query_embedding, threshold):
                 boosted_similarity = min(1.0, original_similarity * 1.15)
                 match_data['similarity'] = boosted_similarity
                 match_data['category_boost'] = True
-                print(f"🚀 DEBUG: Boost aplicado a {match_data['product'].name}: {original_similarity:.4f} → {boosted_similarity:.4f}")
+                # print(f"🚀 DEBUG: Boost aplicado a {match_data['product'].name}: {original_similarity:.4f} → {boosted_similarity:.4f}")
             else:
                 match_data['category_boost'] = False
 
-    print(f"🎯 DEBUG: Productos únicos encontrados: {len(product_best_match)}")
+    # print(f"🎯 DEBUG: Productos únicos encontrados: {len(product_best_match)}")
     return product_best_match
 
 
@@ -743,7 +747,8 @@ def _find_similar_products_in_category(client, query_embedding, threshold, categ
                   Product.category_id == category_id
               ).all())
 
-    print(f"🔍 DEBUG: Encontradas {len(images)} imágenes en la categoría específica")
+    # 🔕 LOG SILENCIADO: conteo de imágenes por categoría específica
+    # print(f"🔍 DEBUG: Encontradas {len(images)} imágenes en la categoría específica")
 
     # Calcular similitudes y agrupar por producto
     product_best_match = {}  # Dict para almacenar la mejor imagen de cada producto
@@ -753,7 +758,7 @@ def _find_similar_products_in_category(client, query_embedding, threshold, categ
             similarity = calculate_similarity(query_embedding, img.clip_embedding)
             category_name = img.product.category.name if img.product.category else "Sin categoría"
 
-            print(f"🔍 DEBUG: Similitud con {img.product.name[:30]} ({category_name}): {similarity:.4f}")
+            # print(f"🔍 DEBUG: Similitud con {img.product.name[:30]} ({category_name}): {similarity:.4f}")
 
             if similarity >= threshold:
                 product_id = img.product.id
@@ -767,13 +772,13 @@ def _find_similar_products_in_category(client, query_embedding, threshold, categ
                         'category': category_name,
                         'category_filtered': True  # Indicador de que se filtró por categoría
                     }
-                    print(f"✅ DEBUG: Mejor imagen para {img.product.name}: {similarity:.4f}")
+                    # print(f"✅ DEBUG: Mejor imagen para {img.product.name}: {similarity:.4f}")
 
         except Exception as e:
             print(f"❌ Error calculando similitud para imagen {img.id}: {e}")
             continue
 
-    print(f"🎯 DEBUG: Total productos únicos encontrados en categoría: {len(product_best_match)}")
+    # print(f"🎯 DEBUG: Total productos únicos encontrados en categoría: {len(product_best_match)}")
     return product_best_match
 
 
@@ -781,7 +786,7 @@ def _apply_category_filter(product_best_match, limit):
     """Aplica filtrado inteligente por categoría si es necesario"""
     # Filtrado inteligente por categoría (solo si hay suficientes productos)
     if len(product_best_match) <= limit * 2:  # Solo filtrar si hay muchos productos
-        print(f"🎯 DEBUG: Pocos productos encontrados ({len(product_best_match)}), no se aplica filtro de categoría")
+    # print(f"🎯 DEBUG: Pocos productos encontrados ({len(product_best_match)}), no se aplica filtro de categoría")
         return product_best_match
 
     # Obtener las categorías de los productos con mayor similitud
@@ -803,7 +808,7 @@ def _apply_category_filter(product_best_match, limit):
 
     for category, similarities in top_categories.items():
         avg_similarity = sum(similarities) / len(similarities)
-        print(f"📂 DEBUG: Categoría '{category}': {len(similarities)} productos, similitud promedio: {avg_similarity:.4f}")
+    # print(f"📂 DEBUG: Categoría '{category}': {len(similarities)} productos, similitud promedio: {avg_similarity:.4f}")
 
         if avg_similarity > best_avg_similarity:
             best_avg_similarity = avg_similarity
@@ -811,10 +816,10 @@ def _apply_category_filter(product_best_match, limit):
 
     # Solo aplicar filtro si la categoría dominante es muy clara (>60% similitud promedio)
     if not (best_category and best_avg_similarity > 0.6):
-        print(f"🎯 DEBUG: No se aplicó filtro de categoría (similitud promedio: {best_avg_similarity:.4f})")
+    # print(f"🎯 DEBUG: No se aplicó filtro de categoría (similitud promedio: {best_avg_similarity:.4f})")
         return product_best_match
 
-    print(f"🎯 DEBUG: Categoría dominante detectada: '{best_category}' (similitud promedio: {best_avg_similarity:.4f})")
+    # print(f"🎯 DEBUG: Categoría dominante detectada: '{best_category}' (similitud promedio: {best_avg_similarity:.4f})")
 
     # Filtrar solo productos de la categoría dominante
     filtered_matches = {}
@@ -824,16 +829,17 @@ def _apply_category_filter(product_best_match, limit):
         # Incluir productos de la categoría dominante
         if product_category == best_category:
             filtered_matches[product_id] = match_data
-            print(f"✅ DEBUG: Incluido por categoría exacta: {match_data['product'].name} ({product_category})")
+            # print(f"✅ DEBUG: Incluido por categoría exacta: {match_data['product'].name} ({product_category})")
         else:
-            print(f"❌ DEBUG: Excluido por categoría: {match_data['product'].name} ({product_category} != {best_category})")
+            # print(f"❌ DEBUG: Excluido por categoría: {match_data['product'].name} ({product_category} != {best_category})")
+            pass
 
     # Solo usar el filtro si queda al menos el mínimo de productos
     if len(filtered_matches) >= limit:
-        print(f"🎯 DEBUG: Productos después del filtro de categoría: {len(filtered_matches)}")
+        # print(f"🎯 DEBUG: Productos después del filtro de categoría: {len(filtered_matches)}")
         return filtered_matches
     else:
-        print("⚠️ DEBUG: El filtro de categoría eliminó demasiados productos, manteniendo los originales")
+        # print("⚠️ DEBUG: El filtro de categoría eliminó demasiados productos, manteniendo los originales")
         return product_best_match
 
 
@@ -842,12 +848,12 @@ def _build_search_results(product_best_match, limit):
     results = []
 
     # 🔍 DEBUG: Verificar contenido del dict recibido
-    print(f"🔍 DEBUG _build_search_results: Recibido dict con {len(product_best_match)} productos")
+    # print(f"🔍 DEBUG _build_search_results: Recibido dict con {len(product_best_match)} productos")
     if product_best_match:
         sample_id = list(product_best_match.keys())[0]
         sample_match = product_best_match[sample_id]
-        print(f"🔍 DEBUG _build_search_results: Claves en sample_match: {list(sample_match.keys())}")
-        print(f"🔍 DEBUG _build_search_results: Tiene optimizer_scores: {'optimizer_scores' in sample_match}")
+        # print(f"🔍 DEBUG _build_search_results: Claves en sample_match: {list(sample_match.keys())}")
+        # print(f"🔍 DEBUG _build_search_results: Tiene optimizer_scores: {'optimizer_scores' in sample_match}")
 
     # Intentar obtener configuración de atributos a exponer (si existe la tabla)
     exposed_keys_cache = None  # cache por request
@@ -958,8 +964,8 @@ def _build_search_results(product_best_match, limit):
         optimizer_scores = best_match.get('optimizer_scores')
 
         result = {
-            "product_id": product.id,
-            "name": product.name,
+                # print(f"✅ OPTIMIZER: Ranking completado. Top 3 scores: " +
+                #       ", ".join([f"{r.final_score:.3f}" for r in ranked[:3]]))
             "description": product.description or "Sin descripción",
             "image_url": image_url,
             "similarity": round(similarity, 4),
@@ -1105,7 +1111,7 @@ def detect_dominant_color_from_palette(image_data, colors_list):
             print("⚠️ Paleta de colores vacía para la categoría")
             return "unknown", 0.0
 
-        print(f"🎨 Paleta de colores (categoría): {unique_colors}")
+    # print(f"🎨 Paleta de colores (categoría): {unique_colors}")
 
         # Crear prompts dinámicos basados en los colores de la categoría
         color_prompts = [f"a photo of {color.lower()} product" for color in unique_colors]
@@ -1248,7 +1254,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         tuple: (categoria_detectada, confidence_score) o (None, 0) si no detecta
     """
     try:
-        print(f"🚀 RAILWAY LOG: Iniciando detección centroides para cliente {client_id}")
+    # print(f"🚀 RAILWAY LOG: Iniciando detección centroides para cliente {client_id}")
 
         # 1. Obtener categorías activas del cliente
         categories = Category.query.filter_by(
@@ -1257,10 +1263,10 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         ).all()
 
         if not categories:
-            print(f"❌ RAILWAY LOG: No categorías para cliente {client_id}")
+            # print(f"❌ RAILWAY LOG: No categorías para cliente {client_id}")
             return None, 0
 
-        print(f"📋 RAILWAY LOG: {len(categories)} categorías encontradas")
+    # print(f"📋 RAILWAY LOG: {len(categories)} categorías encontradas")
 
         # 2. Generar embedding de la imagen nueva
         from PIL import Image as PILImage
@@ -1290,7 +1296,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         for category in categories:
             # 🚀 USAR CENTROIDE DE BD DIRECTAMENTE
             centroid = category.get_centroid_embedding(auto_calculate=False)
-            print(f"🔍 RAILWAY LOG: {category.name} - centroide {'OK' if centroid is not None else 'NULL'}")
+            # print(f"🔍 RAILWAY LOG: {category.name} - centroide {'OK' if centroid is not None else 'NULL'}")
 
             if centroid is not None:
                 # Calcular similitud coseno
@@ -1299,12 +1305,13 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
                     'category': category,
                     'similarity': float(similarity)
                 })
-                print(f"📊 RAILWAY LOG: {category.name}: similitud {similarity:.4f}")
+                # print(f"📊 RAILWAY LOG: {category.name}: similitud {similarity:.4f}")
             else:
-                print(f"⚠️ RAILWAY LOG: {category.name} SIN CENTROIDE en BD")
+                # print(f"⚠️ RAILWAY LOG: {category.name} SIN CENTROIDE en BD")
+                pass
 
         if not category_similarities:
-            print(f"❌ RAILWAY LOG: NO HAY SIMILITUDES - sin centroides válidos")
+            # print(f"❌ RAILWAY LOG: NO HAY SIMILITUDES - sin centroides válidos")
             return None, 0
 
         # 6. Encontrar la mejor coincidencia con margen de victoria y desempate
@@ -1315,17 +1322,17 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         best_score = best_match['similarity']
         second_score = category_similarities[1]['similarity'] if len(category_similarities) > 1 else -1.0
 
-        print(f"🎯 RAILWAY LOG: MEJOR: {best_category.name} = {best_score:.4f} | SEGUNDO = {second_score:.4f}")
+    # print(f"🎯 RAILWAY LOG: MEJOR: {best_category.name} = {best_score:.4f} | SEGUNDO = {second_score:.4f}")
 
         # Margen de victoria mínimo para aceptar directamente la categoría ganadora
         MARGIN_DELTA = 0.03  # 3 puntos de similitud coseno
 
         # Si el margen es muy chico, usamos un desempate con la detección general
         if second_score >= 0 and (best_score - second_score) < MARGIN_DELTA:
-            print(f"⚖️  RAILWAY LOG: MARGEN PEQUEÑO ({best_score - second_score:.4f} < {MARGIN_DELTA}), aplicando desempate por objeto general")
+            # print(f"⚖️  RAILWAY LOG: MARGEN PEQUEÑO ({best_score - second_score:.4f} < {MARGIN_DELTA}), aplicando desempate por objeto general")
             try:
                 detected_object, object_confidence = detect_general_object(image_data, client_id)
-                print(f"🔍 RAILWAY LOG: OBJETO GENERAL = {detected_object} (conf {object_confidence:.3f})")
+                # print(f"🔍 RAILWAY LOG: OBJETO GENERAL = {detected_object} (conf {object_confidence:.3f})")
 
                 if object_confidence >= 0.20:  # usar con umbral bajo, solo como desempate
                     # Comparar el objeto detectado con los nombres de las categorías (name y name_en)
@@ -1347,22 +1354,25 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
 
                     if not best_matches and second_matches:
                         # Elegir la segunda si está en el grupo preferido
-                        print(f"✅ RAILWAY LOG: DESEMPATE → Preferimos '{second_cat.name}' por concordar con objeto '{detected_object}'")
+                        # print(f"✅ RAILWAY LOG: DESEMPATE → Preferimos '{second_cat.name}' por concordar con objeto '{detected_object}'")
                         best_category = second_cat
                         best_score = top2[1]['similarity']
                     else:
-                        print(f"ℹ️  RAILWAY LOG: Desempate mantiene categoría original (best={best_matches}, second={second_matches})")
+                        # print(f"ℹ️  RAILWAY LOG: Desempate mantiene categoría original (best={best_matches}, second={second_matches})")
+                        pass
                 else:
-                    print("ℹ️  RAILWAY LOG: Desempate no aplicado (baja confianza del objeto)")
+                    # print("ℹ️  RAILWAY LOG: Desempate no aplicado (baja confianza del objeto)")
+                    pass
             except Exception as e:
-                print(f"⚠️ RAILWAY LOG: Error en desempate por objeto general: {e}")
+                # print(f"⚠️ RAILWAY LOG: Error en desempate por objeto general: {e}")
+                pass
 
         # 7. Verificar umbral de confianza
         if best_score >= confidence_threshold:
-            print(f"✅ RAILWAY LOG: DETECTADO - {best_category.name} (conf: {best_score:.4f})")
+            # print(f"✅ RAILWAY LOG: DETECTADO - {best_category.name} (conf: {best_score:.4f})")
             return best_category, best_score
         else:
-            print(f"❌ RAILWAY LOG: RECHAZADO - {best_score:.4f} < {confidence_threshold}")
+            # print(f"❌ RAILWAY LOG: RECHAZADO - {best_score:.4f} < {confidence_threshold}")
             return None, best_score
 
     except Exception as e:
@@ -1572,7 +1582,7 @@ def visual_search():
 
         if detected_category is None:
             # No se pudo detectar una categoría válida
-            print(f"❌ RAILWAY LOG: CATEGORÍA NO DETECTADA - devolviendo error")
+            # print(f"❌ RAILWAY LOG: CATEGORÍA NO DETECTADA - devolviendo error")
             return jsonify({
                 "success": False,
                 "error": "category_not_detected",
@@ -1582,10 +1592,10 @@ def visual_search():
                 "processing_time": round(time.time() - start_time, 3)
             }), 400
 
-        print(f"✅ RAILWAY LOG: CATEGORÍA OK: {detected_category.name} - procediendo a búsqueda")
+    # print(f"✅ RAILWAY LOG: CATEGORÍA OK: {detected_category.name} - procediendo a búsqueda")
 
         # ===== PASO 2: DETECCIÓN DE COLOR RESTRINGIDO A LA CATEGORÍA =====
-        print(f"🎨 RAILWAY LOG: IDENTIFICANDO COLOR DOMINANTE (por categoría)...")
+    # print(f"🎨 RAILWAY LOG: IDENTIFICANDO COLOR DOMINANTE (por categoría)...")
 
         # Construir paleta de colores solo con los productos de la categoría
         # Preferir colores desde JSONB attributes->>'color' para la categoría
@@ -1607,10 +1617,10 @@ def visual_search():
 
         if category_colors:
             detected_color, color_confidence = detect_dominant_color_from_palette(image_data, category_colors)
-            print(f"🎨 RAILWAY LOG: COLOR DETECTADO (cat) = {detected_color} (confianza: {color_confidence:.3f})")
+            # print(f"🎨 RAILWAY LOG: COLOR DETECTADO (cat) = {detected_color} (confianza: {color_confidence:.3f})")
         else:
             detected_color, color_confidence = ("unknown", 0.0)
-            print("⚠️ RAILWAY LOG: Categoría sin colores definidos; se omite boost/metadata por color")
+            # print("⚠️ RAILWAY LOG: Categoría sin colores definidos; se omite boost/metadata por color")
 
         # ===== GENERAR EMBEDDING DE LA IMAGEN =====
         print(f"\n⏱️  [SEARCH T+{time.time() - start_time:.3f}s] ===== PASO 2: GENERACIÓN EMBEDDING =====")
@@ -1664,23 +1674,24 @@ def visual_search():
                     boosted_similarity = min(1.0, original_similarity * 1.12)  # Boost del 12%
                     match_data['similarity'] = boosted_similarity
                     match_data['color_boost'] = True
-                    print(f"🎨 COLOR BOOST: {product.name} ({product_color_norm}) {original_similarity:.4f} → {boosted_similarity:.4f}")
+                    # print(f"🎨 COLOR BOOST: {product.name} ({product_color_norm}) {original_similarity:.4f} → {boosted_similarity:.4f}")
                 else:
                     match_data['color_boost'] = False
 
         # 🚀 FASE 3: APLICAR SEARCH OPTIMIZER (si está activado)
         if search_optimizer and len(product_best_match) > 0:
-            print(f"🎯 OPTIMIZER: Aplicando ranking avanzado a {len(product_best_match)} productos")
+            # print(f"🎯 OPTIMIZER: Aplicando ranking avanzado a {len(product_best_match)} productos")
 
             # Preparar atributos detectados para metadata scoring
             detected_attributes = {}
             # Solo usar el color detectado si la confianza es suficiente (>= 0.30)
             if detected_color and detected_color != "unknown" and color_confidence >= 0.30:
                 detected_attributes['color'] = detected_color
-                print(f"🔍 DEBUG: Atributos detectados para metadata scoring: {detected_attributes}")
+                # print(f"🔍 DEBUG: Atributos detectados para metadata scoring: {detected_attributes}")
             else:
                 if detected_color and detected_color != "unknown":
-                    print(f"ℹ️ DEBUG: Color detectado '{detected_color}' omitido para metadata (confianza {color_confidence:.2f} < 0.30)")
+                    # print(f"ℹ️ DEBUG: Color detectado '{detected_color}' omitido para metadata (confianza {color_confidence:.2f} < 0.30)")
+                    pass
 
             # Convertir product_best_match a formato esperado por optimizer
             raw_results = [
@@ -1722,7 +1733,7 @@ def visual_search():
                 sample_id = list(product_best_match.keys())[0] if product_best_match else None
                 if sample_id:
                     has_optimizer = 'optimizer_scores' in product_best_match[sample_id]
-                    print(f"🔍 DEBUG: Primer producto tiene optimizer_scores: {has_optimizer}")
+                    # print(f"🔍 DEBUG: Primer producto tiene optimizer_scores: {has_optimizer}")
 
             except Exception as e:
                 print(f"❌ OPTIMIZER: Error durante ranking: {e}")
