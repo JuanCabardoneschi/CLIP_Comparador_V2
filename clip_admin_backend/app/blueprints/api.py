@@ -550,10 +550,12 @@ def process_image_for_search(image_data):
         return embedding_list, None
 
     except Exception as e:
-        print(f"❌ DEBUG: Error en process_image_for_search: {str(e)}")
+        error_msg = f"❌ FATAL: Error en process_image_for_search: {str(e)}"
+        print(error_msg)
         import traceback
         traceback.print_exc()
-        return None, f"Error procesando imagen: {str(e)}"
+        # NO devolver error silencioso - hacer raise para que el request falle explícitamente
+        raise RuntimeError(error_msg) from e
 
 
 def calculate_similarity(embedding1, embedding2):
@@ -622,7 +624,7 @@ def _process_image_data(image_file):
 
 
 def _generate_query_embedding(image_data, start_time=None):
-    """Genera el embedding de la imagen de consulta"""
+    """Genera el embedding de la imagen de consulta - LANZA EXCEPCIÓN SI FALLA"""
     if start_time is None:
         start_time = time.time()
 
@@ -630,27 +632,19 @@ def _generate_query_embedding(image_data, start_time=None):
     print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] _generate_query_embedding: Iniciando ({len(image_data)} bytes)")
 
     embedding_start = time.time()
-    query_embedding, error = process_image_for_search(image_data)
+    # process_image_for_search ahora hace raise en caso de error (no devuelve None, error)
+    query_embedding = process_image_for_search(image_data)
     embedding_time = time.time() - embedding_start
     print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] process_image_for_search completado ({embedding_time:.3f}s)")
 
-    if error:
-        print(f"❌ [SEARCH T+{time.time() - start_time:.3f}s] Error: {error}")
-        return None, jsonify({
-            "error": "processing_failed",
-            "message": error
-        }), 500
-
     if query_embedding is None:
-        print(f"❌ [SEARCH T+{time.time() - start_time:.3f}s] query_embedding es None")
-        return None, jsonify({
-            "error": "processing_failed",
-            "message": "No se pudo generar embedding de la imagen"
-        }), 500
+        error_msg = f"❌ FATAL: query_embedding es None después de process_image_for_search"
+        print(f"❌ [SEARCH T+{time.time() - start_time:.3f}s] {error_msg}")
+        raise RuntimeError(error_msg)
 
     print(f"✅ [SEARCH T+{time.time() - start_time:.3f}s] Embedding OK - {len(query_embedding)} dims (primeros 5: {query_embedding[:5]})")
 
-    return query_embedding, None, None
+    return query_embedding
 
 
 def _find_similar_products(client, query_embedding, threshold):
@@ -1265,7 +1259,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         tuple: (categoria_detectada, confidence_score) o (None, 0) si no detecta
     """
     try:
-    # print(f"🚀 RAILWAY LOG: Iniciando detección centroides para cliente {client_id}")
+        # print(f"🚀 RAILWAY LOG: Iniciando detección centroides para cliente {client_id}")
 
         # 1. Obtener categorías activas del cliente
         categories = Category.query.filter_by(
@@ -1277,17 +1271,17 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
             # print(f"❌ RAILWAY LOG: No categorías para cliente {client_id}")
             return None, 0
 
-    # print(f"📋 RAILWAY LOG: {len(categories)} categorías encontradas")
+        # print(f"📋 RAILWAY LOG: {len(categories)} categorías encontradas")
 
         # 2. Generar embedding de la imagen nueva
         from PIL import Image as PILImage
         import io
-    pil_image = PILImage.open(io.BytesIO(image_data))
-    # 🔕 LOG SILENCIADO: detalles de imagen preparada
+        pil_image = PILImage.open(io.BytesIO(image_data))
+        # 🔕 LOG SILENCIADO: detalles de imagen preparada
 
         # 3. Obtener modelo CLIP
-    model, processor = get_clip_model()
-    # 🔕 LOG SILENCIADO: confirmación de modelo obtenido
+        model, processor = get_clip_model()
+        # 🔕 LOG SILENCIADO: confirmación de modelo obtenido
 
         # 4. Generar embedding de imagen nueva
         with torch.no_grad():
@@ -1299,7 +1293,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
             new_embedding = image_features.squeeze(0).numpy()
 
-    # 🔕 LOG SILENCIADO: detalles de embedding generado
+        # 🔕 LOG SILENCIADO: detalles de embedding generado
 
         # 5. Calcular similitudes contra centroides de cada categoría
         category_similarities = []
@@ -1333,7 +1327,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         best_score = best_match['similarity']
         second_score = category_similarities[1]['similarity'] if len(category_similarities) > 1 else -1.0
 
-    # print(f"🎯 RAILWAY LOG: MEJOR: {best_category.name} = {best_score:.4f} | SEGUNDO = {second_score:.4f}")
+        # print(f"🎯 RAILWAY LOG: MEJOR: {best_category.name} = {best_score:.4f} | SEGUNDO = {second_score:.4f}")
 
         # Margen de victoria mínimo para aceptar directamente la categoría ganadora
         MARGIN_DELTA = 0.03  # 3 puntos de similitud coseno
@@ -1641,18 +1635,16 @@ def visual_search():
         # ===== GENERAR EMBEDDING DE LA IMAGEN =====
         print(f"\n⏱️  [SEARCH T+{time.time() - start_time:.3f}s] ===== PASO 2: GENERACIÓN EMBEDDING =====")
         embedding_step_start = time.time()
-        query_embedding, error_response, status_code = _generate_query_embedding(image_data, start_time)
+        # _generate_query_embedding ahora hace raise en caso de error (no devuelve error_response)
+        query_embedding = _generate_query_embedding(image_data, start_time)
         embedding_step_time = time.time() - embedding_step_start
         print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Embedding step completado ({embedding_step_time:.3f}s)")
-        if error_response:
-            print(f"❌ [SEARCH T+{time.time() - start_time:.3f}s] Error generando embedding")
-            return error_response, status_code
 
         # ===== BUSCAR SOLO EN LA CATEGORÍA DETECTADA =====
         print(f"\n⏱️  [SEARCH T+{time.time() - start_time:.3f}s] ===== PASO 3: BÚSQUEDA EN CATEGORÍA =====")
         search_start = time.time()
-    # 🔎 INFO: contexto de búsqueda por categoría específica
-    print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Buscando en categoría: {detected_category.name}")
+        # 🔎 INFO: contexto de búsqueda por categoría específica
+        print(f"⏱️  [SEARCH T+{time.time() - start_time:.3f}s] Buscando en categoría: {detected_category.name}")
 
         # Modificar la búsqueda para filtrar por categoría detectada
         product_best_match = _find_similar_products_in_category(

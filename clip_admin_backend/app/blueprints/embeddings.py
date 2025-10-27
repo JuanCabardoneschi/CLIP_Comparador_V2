@@ -170,28 +170,43 @@ def _start_clip_cleanup_thread():
         """Worker que revisa periódicamente si CLIP está idle y lo libera"""
         global _clip_model, _clip_processor, _clip_last_used
 
-        # Leer timeout DIRECTAMENTE del JSON (no depender del singleton que puede fallar)
-        idle_timeout = 7200  # Default: 2 horas
+        # Leer timeout DIRECTAMENTE del JSON - SIN FALLBACKS, SI FALLA = CRASH
+        import json
+        config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'system_config.json')
+        config_path = os.path.abspath(config_path)
+        
+        if not os.path.exists(config_path):
+            error_msg = f"❌ FATAL: system_config.json NO ENCONTRADO en {config_path}"
+            print(error_msg)
+            raise FileNotFoundError(error_msg)
+        
         try:
-            import json
-            config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'system_config.json')
-            config_path = os.path.abspath(config_path)
-            
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                    idle_timeout = config.get('clip', {}).get('idle_timeout', 7200)
-                print(f"✅ CLIP Cleanup: Timeout leído del JSON: {idle_timeout}s ({idle_timeout//60} minutos) desde {config_path}")
-            else:
-                print(f"⚠️  CLIP Cleanup: JSON no encontrado en {config_path}, usando default {idle_timeout}s")
+            with open(config_path, 'r') as f:
+                config = json.load(f)
         except Exception as e:
-            print(f"⚠️  CLIP Cleanup: Error leyendo JSON, usando default {idle_timeout}s: {e}")
-
+            error_msg = f"❌ FATAL: Error leyendo system_config.json: {e}"
+            print(error_msg)
+            raise RuntimeError(error_msg) from e
+        
+        if 'clip' not in config:
+            error_msg = f"❌ FATAL: Sección 'clip' no encontrada en system_config.json"
+            print(error_msg)
+            raise KeyError(error_msg)
+        
+        if 'idle_timeout' not in config['clip']:
+            error_msg = f"❌ FATAL: 'idle_timeout' no definido en clip config"
+            print(error_msg)
+            raise KeyError(error_msg)
+        
+        idle_timeout = config['clip']['idle_timeout']
+        
         if not isinstance(idle_timeout, (int, float)) or idle_timeout <= 0:
-            print(f"❌ CLIP Cleanup: idle_timeout inválido ({idle_timeout}), forzando 7200s")
-            idle_timeout = 7200
+            error_msg = f"❌ FATAL: idle_timeout inválido: {idle_timeout} (tipo: {type(idle_timeout)}). Debe ser int/float > 0"
+            print(error_msg)
+            raise ValueError(error_msg)
 
-        print(f"🔧 CLIP Cleanup Worker: CONFIGURADO con timeout={idle_timeout}s ({idle_timeout//60} min)")
+        print(f"✅ CLIP Cleanup: Timeout leído del JSON: {idle_timeout}s ({idle_timeout//60} minutos) desde {config_path}")
+        print(f"🔧 CLIP Cleanup Worker: INICIADO con timeout={idle_timeout}s ({idle_timeout//60} min)")
 
         while True:
             time.sleep(60)  # Revisar cada minuto
