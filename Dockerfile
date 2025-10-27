@@ -34,5 +34,5 @@ RUN mkdir -p instance
 # Exponer puerto
 EXPOSE $PORT
 
-# Comando de inicio - Gunicorn (producción)
-CMD ["gunicorn", "--workers", "1", "--threads", "4", "--timeout", "120", "--bind", "0.0.0.0:$PORT", "--access-logfile", "-", "--error-logfile", "-", "app:create_app()"]
+# Comando de inicio - Gunicorn (producción, shell para expansión de ${PORT})
+CMD gunicorn --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:${PORT} --access-logfile - --error-logfile - "app:create_app()"
