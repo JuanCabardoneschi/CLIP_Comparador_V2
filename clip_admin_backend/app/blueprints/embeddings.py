@@ -135,19 +135,56 @@ def _start_cleanup_thread_once():
 
     def _worker():
         global _clip_model, _clip_processor, _clip_last_used_ts
-
-                logging.getLogger("clip_model").info(f"[CLIP] Estado: check_every={check_every}, idle_timeout={idle_timeout}")
         while True:
             try:
                 idle_timeout = _get_idle_timeout_seconds()
-                        logging.getLogger("clip_model").info("[CLIP] Modelo ya descargado (None)")
                 check_every = min(60, max(10, idle_timeout // 6))
+                logging.getLogger("clip_model").info(f"[CLIP] Estado: check_every={check_every}, idle_timeout={idle_timeout}")
                 time.sleep(check_every)
                 with _clip_lock:
-                        logging.getLogger("clip_model").info("[CLIP] Nunca usado: verificando descarga por arranque")
                     if _clip_model is None:
+                        logging.getLogger("clip_model").info("[CLIP] Modelo ya descargado (None)")
                         continue
                     now = _now_ts()
+                    if _clip_last_used_ts is None:
+                        logging.getLogger("clip_model").info("[CLIP] Nunca usado: verificando descarga por arranque")
+                        # Nunca usado: descargar si pasó el timeout desde arranque
+                        if hasattr(_clip_model, 'loaded_at'):
+                            idle_for = now - _clip_model.loaded_at
+                        else:
+                            idle_for = idle_timeout + 1  # Forzar si no hay timestamp
+                        if idle_for >= idle_timeout:
+                            try:
+                                if torch.cuda.is_available():
+                                    torch.cuda.empty_cache()
+                            except Exception:
+                                pass
+                            _clip_model = None
+                            _clip_processor = None
+                            _clip_current_model_name = None
+                            print(f"🧹 CLIP descargado por inactividad tras arranque (sin uso, timeout {idle_timeout}s)")
+                            logging.getLogger("clip_model").info(f"[CLIP] Modelo descargado de memoria por inactividad tras arranque (timeout {idle_timeout}s)")
+                        else:
+                            logging.getLogger("clip_model").info(f"[CLIP] No se descarga: idle_for={idle_for}, idle_timeout={idle_timeout}")
+                        continue
+                    idle_for = now - _clip_last_used_ts
+                    logging.getLogger("clip_model").info(f"[CLIP] Estado: idle_for={idle_for}, idle_timeout={idle_timeout}")
+                    if idle_for >= idle_timeout:
+                        try:
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                        except Exception:
+                            pass
+                        _clip_model = None
+                        _clip_processor = None
+                        _clip_current_model_name = None
+                        print(f"🧹 CLIP descargado por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
+                        logging.getLogger("clip_model").info(f"[CLIP] Modelo descargado de memoria por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
+                    else:
+                        logging.getLogger("clip_model").info(f"[CLIP] No se descarga: idle_for={idle_for}, idle_timeout={idle_timeout}")
+            except Exception as _e:
+                logging.getLogger("clip_model").error(f"[CLIP] Error en hilo de limpieza: {_e}")
+                continue
                     if _clip_last_used_ts is None:
                         # Nunca usado: descargar si pasó el timeout desde arranque
                         if hasattr(_clip_model, 'loaded_at'):
