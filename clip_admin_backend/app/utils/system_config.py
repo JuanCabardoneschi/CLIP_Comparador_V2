@@ -36,11 +36,11 @@ class SystemConfig:
             default_config = {
                 "clip": {
                     "preload": False,
-                    "idle_timeout_minutes": 120,
+                    "idle_timeout_minutes": 30,
                     "model_name": "openai/clip-vit-base-patch16"
                 },
                 "search": {
-                    "max_results": 50,
+                    "max_results": 3,
                     "enable_category_detection": True,
                     "enable_visual_search": True
                 },
@@ -82,18 +82,19 @@ class SystemConfig:
         Args:
             section: Sección de configuración (ej: 'clip', 'search')
             key: Clave dentro de la sección
-            default: Valor por defecto si no existe
+            default: Valor por defecto si no existe (NO USAR para valores críticos)
 
         Returns:
-            Valor configurado o default
+            Valor configurado
+
+        Raises:
+            KeyError: Si el valor no existe en la configuración
         """
         with self._lock:
             config = self._read_config()
-            if section == 'clip' and key == 'idle_timeout_minutes':
-                return config.get(section, {}).get(key, default if default is not None else 30)
-            if section == 'search' and key == 'max_results':
-                return config.get(section, {}).get(key, default if default is not None else 3)
-            return config.get(section, {}).get(key, default)
+            if section not in config or key not in config[section]:
+                raise KeyError(f"Config value missing: [{section}][{key}]")
+            return config[section][key]
 
     def set(self, section: str, key: str, value: Any):
         """
