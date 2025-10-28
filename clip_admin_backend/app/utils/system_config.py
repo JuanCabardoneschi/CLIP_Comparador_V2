@@ -50,7 +50,8 @@ class SystemConfig:
                 }
             }
             self._write_config(default_config)
-            print(f"✅ Configuración del sistema creada en: {self.config_path}")
+            import logging
+            logging.getLogger("system_config").info(f"✅ Configuración del sistema creada en: {self.config_path}")
 
     def _read_config(self) -> dict:
         """Leer configuración desde archivo JSON"""
@@ -58,7 +59,8 @@ class SystemConfig:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
-            print(f"❌ Error leyendo configuración: {e}")
+            import logging
+            logging.getLogger("system_config").error(f"❌ Error leyendo configuración: {e}")
             return {}
 
     def _write_config(self, config: dict):
@@ -69,7 +71,8 @@ class SystemConfig:
             # Invalidar caché
             self._config_cache = None
         except Exception as e:
-            print(f"❌ Error escribiendo configuración: {e}")
+            import logging
+            logging.getLogger("system_config").error(f"❌ Error escribiendo configuración: {e}")
             raise
 
     def get(self, section: str, key: str, default: Any = None) -> Any:

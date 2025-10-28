@@ -38,14 +38,17 @@ bp = Blueprint('embeddings', __name__)
 def load_image_from_source(source):
     """Cargar imagen desde URL de Cloudinary"""
     try:
-        print(f"🌐 Descargando imagen desde Cloudinary: {source[:80]}...")
+    import logging
+    logging.getLogger("clip_model").info(f"🌐 Descargando imagen desde Cloudinary: {source[:80]}...")
         response = requests.get(source, timeout=30)
         response.raise_for_status()
         image = PILImage.open(BytesIO(response.content)).convert('RGB')
-        print(f"✅ Imagen descargada exitosamente desde Cloudinary")
+    import logging
+    logging.getLogger("clip_model").info(f"✅ Imagen descargada exitosamente desde Cloudinary")
         return image
     except Exception as e:
-        print(f"❌ Error cargando imagen desde Cloudinary {source}: {e}")
+    import logging
+    logging.getLogger("clip_model").error(f"❌ Error cargando imagen desde Cloudinary {source}: {e}")
         raise
 
 # Variables globales para el modelo CLIP
@@ -72,7 +75,8 @@ def reload_clip_config():
         _clip_idle_timeout_cache = None
         from app.utils.system_config import system_config
         minutes = system_config.get('clip', 'idle_timeout_minutes', 120)
-        print(f"🔄 Configuración CLIP recargada | Nuevo timeout: {minutes} minutos")
+    import logging
+    logging.getLogger("clip_model").info(f"🔄 Configuración CLIP recargada | Nuevo timeout: {minutes} minutos")
 
 
 def _now_ts() -> float:
