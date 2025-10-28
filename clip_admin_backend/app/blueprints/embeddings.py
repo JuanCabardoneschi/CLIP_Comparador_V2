@@ -38,17 +38,16 @@ bp = Blueprint('embeddings', __name__)
 def load_image_from_source(source):
     """Cargar imagen desde URL de Cloudinary"""
     try:
-    import logging
-    logging.getLogger("clip_model").info(f"🌐 Descargando imagen desde Cloudinary: {source[:80]}...")
+        import logging
+        logging.getLogger("clip_model").info(f"🌐 Descargando imagen desde Cloudinary: {source[:80]}...")
         response = requests.get(source, timeout=30)
         response.raise_for_status()
         image = PILImage.open(BytesIO(response.content)).convert('RGB')
-    import logging
-    logging.getLogger("clip_model").info(f"✅ Imagen descargada exitosamente desde Cloudinary")
+        logging.getLogger("clip_model").info(f"✅ Imagen descargada exitosamente desde Cloudinary")
         return image
     except Exception as e:
-    import logging
-    logging.getLogger("clip_model").error(f"❌ Error cargando imagen desde Cloudinary {source}: {e}")
+        import logging
+        logging.getLogger("clip_model").error(f"❌ Error cargando imagen desde Cloudinary {source}: {e}")
         raise
 
 # Variables globales para el modelo CLIP
