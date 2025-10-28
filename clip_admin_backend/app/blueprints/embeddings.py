@@ -131,36 +131,45 @@ def _start_cleanup_thread_once():
 
     def _worker():
         global _clip_model, _clip_processor, _clip_last_used_ts
+
         while True:
             try:
-                # Leer timeout (usa cache, solo lee JSON si fue invalidado)
                 idle_timeout = _get_idle_timeout_seconds()
-                check_every = min(60, max(10, idle_timeout // 6))  # entre 10s y 60s
-
+                check_every = min(60, max(10, idle_timeout // 6))
                 time.sleep(check_every)
                 with _clip_lock:
                     if _clip_model is None:
                         continue
+                    now = _now_ts()
                     if _clip_last_used_ts is None:
-                        # Nunca usado: considerar descargar si pasó el timeout desde arranque
-                        # Por simplicidad, sólo si el timeout es corto; de lo contrario esperar uso
+                        # Nunca usado: descargar si pasó el timeout desde arranque
+                        if hasattr(_clip_model, 'loaded_at'):
+                            idle_for = now - _clip_model.loaded_at
+                        else:
+                            idle_for = idle_timeout + 1  # Forzar si no hay timestamp
+                        if idle_for >= idle_timeout:
+                            try:
+                                if torch.cuda.is_available():
+                                    torch.cuda.empty_cache()
+                            except Exception:
+                                pass
+                            _clip_model = None
+                            _clip_processor = None
+                            _clip_current_model_name = None
+                            print(f"🧹 CLIP descargado por inactividad tras arranque (sin uso, timeout {idle_timeout}s)")
                         continue
-                    idle_for = _now_ts() - _clip_last_used_ts
+                    idle_for = now - _clip_last_used_ts
                     if idle_for >= idle_timeout:
-                        # Descargar modelo para liberar RAM
                         try:
                             if torch.cuda.is_available():
                                 torch.cuda.empty_cache()
                         except Exception:
                             pass
-                        # Resetear referencias
                         _clip_model = None
                         _clip_processor = None
                         _clip_current_model_name = None
-                        # Mantener last_used; se actualizará en el próximo get_clip_model
                         print(f"🧹 CLIP descargado por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
             except Exception as _e:
-                # No matar el hilo por errores transitorios
                 continue
 
     t = threading.Thread(target=_worker, name="clip-idle-cleanup", daemon=True)
