@@ -70,7 +70,9 @@ def reload_clip_config():
     global _clip_idle_timeout_cache
     with _clip_lock:
         _clip_idle_timeout_cache = None
-        print("🔄 Configuración CLIP recargada")
+        from app.utils.system_config import system_config
+        minutes = system_config.get('clip', 'idle_timeout_minutes', 120)
+        print(f"🔄 Configuración CLIP recargada | Nuevo timeout: {minutes} minutos")
 
 
 def _now_ts() -> float:
