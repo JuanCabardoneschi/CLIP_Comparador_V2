@@ -60,6 +60,13 @@ def update():
 
         system_config.update_multiple(updates)
 
+        # 🔄 Invalidar cache de CLIP para que lea la nueva configuración
+        try:
+            from app.blueprints.embeddings import reload_clip_config
+            reload_clip_config()
+        except Exception as e:
+            print(f"⚠️ No se pudo recargar config de CLIP: {e}")
+
         flash('✅ Configuración actualizada correctamente', 'success')
         return redirect(url_for('system_config_admin.index'))
 
@@ -104,6 +111,13 @@ def update_config_api():
 
         system_config.update_multiple(data)
 
+        # 🔄 Invalidar cache de CLIP
+        try:
+            from app.blueprints.embeddings import reload_clip_config
+            reload_clip_config()
+        except Exception as e:
+            print(f"⚠️ No se pudo recargar config de CLIP: {e}")
+
         return jsonify({
             'success': True,
             'message': 'Configuración actualizada correctamente'
@@ -144,6 +158,13 @@ def reset():
         config_path = Path(system_config.config_path)
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(default_config, f, indent=2, ensure_ascii=False)
+
+        # 🔄 Invalidar cache de CLIP
+        try:
+            from app.blueprints.embeddings import reload_clip_config
+            reload_clip_config()
+        except Exception as e:
+            print(f"⚠️ No se pudo recargar config de CLIP: {e}")
 
         flash('✅ Configuración restablecida a valores por defecto', 'success')
         return redirect(url_for('system_config_admin.index'))

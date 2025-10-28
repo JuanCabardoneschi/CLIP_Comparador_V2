@@ -28,6 +28,7 @@ from flask import Blueprint, render_template, request, jsonify, flash, redirect,
 from flask_login import login_required, current_user
 from app import db
 from app.models.image import Image
+from app.utils.system_config import system_config
 from app.models.product import Product
 from app.models.client import Client
 from app.utils.permissions import requires_role, requires_client_scope, filter_by_client_scope
@@ -50,9 +51,26 @@ def load_image_from_source(source):
 # Variables globales para el modelo CLIP
 _clip_model = None
 _clip_processor = None
+_clip_current_model_name = None  # Rastrear qué modelo está cargado
 _clip_last_used_ts = None  # epoch seconds de último uso
 _clip_cleanup_thread_started = False
 _clip_lock = threading.Lock()
+_clip_idle_timeout_cache = None  # Cache del timeout en segundos
+
+# Mapeo de nombres de modelo amigables a identificadores HuggingFace
+CLIP_MODEL_MAP = {
+    "ViT-B/16": "openai/clip-vit-base-patch16",
+    "ViT-B/32": "openai/clip-vit-base-patch32",
+    "ViT-L/14": "openai/clip-vit-large-patch14"
+}
+
+
+def reload_clip_config():
+    """Fuerza recarga de configuración de CLIP (llamado desde system_config_admin al guardar)."""
+    global _clip_idle_timeout_cache
+    with _clip_lock:
+        _clip_idle_timeout_cache = None
+        print("🔄 Configuración CLIP recargada")
 
 
 def _now_ts() -> float:
@@ -68,16 +86,24 @@ def _get_idle_timeout_seconds() -> int:
     """Obtiene el timeout de inactividad para descargar CLIP.
 
     Prioridad:
-    1) app.utils.system_config.system_config.get('clip', 'idle_timeout_minutes')
-    2) Env var CLIP_IDLE_TIMEOUT_MINUTES
-    3) Env var CLIP_IDLE_TIMEOUT_SECONDS
-    4) Default: 120 minutos
+    1) Cache global (si fue invalidado por reload_clip_config)
+    2) app.utils.system_config.system_config.get('clip', 'idle_timeout_minutes')
+    3) Env var CLIP_IDLE_TIMEOUT_MINUTES
+    4) Env var CLIP_IDLE_TIMEOUT_SECONDS
+    5) Default: 120 minutos
     """
+    global _clip_idle_timeout_cache
+
+    # Si hay cache válido, usarlo
+    if _clip_idle_timeout_cache is not None:
+        return _clip_idle_timeout_cache
+
     # Intentar leer desde sistema de configuración central
     try:
         from app.utils.system_config import system_config
         minutes = system_config.get('clip', 'idle_timeout_minutes', 120)
-        return int(minutes) * 60
+        _clip_idle_timeout_cache = int(minutes) * 60
+        return _clip_idle_timeout_cache
     except Exception:
         # Continuar con fallbacks si falla
         pass
@@ -102,13 +128,15 @@ def _start_cleanup_thread_once():
         return
 
     _clip_cleanup_thread_started = True
-    idle_timeout = _get_idle_timeout_seconds()
 
     def _worker():
         global _clip_model, _clip_processor, _clip_last_used_ts
-        check_every = min(60, max(10, idle_timeout // 6))  # entre 10s y 60s
         while True:
             try:
+                # Leer timeout (usa cache, solo lee JSON si fue invalidado)
+                idle_timeout = _get_idle_timeout_seconds()
+                check_every = min(60, max(10, idle_timeout // 6))  # entre 10s y 60s
+
                 time.sleep(check_every)
                 with _clip_lock:
                     if _clip_model is None:
@@ -128,6 +156,7 @@ def _start_cleanup_thread_once():
                         # Resetear referencias
                         _clip_model = None
                         _clip_processor = None
+                        _clip_current_model_name = None
                         # Mantener last_used; se actualizará en el próximo get_clip_model
                         print(f"🧹 CLIP descargado por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
             except Exception as _e:
@@ -139,17 +168,32 @@ def _start_cleanup_thread_once():
 
 def get_clip_model():
     """Cargar modelo CLIP una sola vez (singleton con auto-descarga por inactividad)."""
-    global _clip_model, _clip_processor
+    global _clip_model, _clip_processor, _clip_current_model_name
 
     # Asegurar hilo de limpieza iniciado una vez
     _start_cleanup_thread_once()
 
     with _clip_lock:
+        # Obtener modelo desde configuración
+        model_name = system_config.get('clip', 'model_name', 'ViT-B/16')
+        model_id = CLIP_MODEL_MAP.get(model_name, CLIP_MODEL_MAP['ViT-B/16'])
+
+        # Si el modelo cambió en la configuración, descargar el actual y cargar el nuevo
+        if _clip_model is not None and _clip_current_model_name != model_name:
+            print(f"⚠️ Modelo cambió de {_clip_current_model_name} a {model_name}. Recargando...")
+            _clip_model = None
+            _clip_processor = None
+            _clip_current_model_name = None
+            # Limpiar GPU si estaba en uso
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
         if _clip_model is None:
-            print("🔄 Cargando modelo CLIP ViT-B/16...")
+            print(f"🔄 Cargando modelo CLIP {model_name} ({model_id})...")
             try:
-                _clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
-                _clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
+                _clip_model = CLIPModel.from_pretrained(model_id)
+                _clip_processor = CLIPProcessor.from_pretrained(model_id)
+                _clip_current_model_name = model_name
 
                 # Configurar para CPU/GPU
                 _clip_model.eval()
@@ -159,7 +203,7 @@ def get_clip_model():
                 else:
                     print("💻 Usando CPU para CLIP")
 
-                print("✅ Modelo CLIP cargado exitosamente")
+                print(f"✅ Modelo CLIP {model_name} cargado exitosamente")
             except Exception as e:
                 print(f"❌ Error cargando CLIP: {e}")
                 raise
