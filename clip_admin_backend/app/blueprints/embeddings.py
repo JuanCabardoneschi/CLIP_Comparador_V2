@@ -185,46 +185,6 @@ def _start_cleanup_thread_once():
             except Exception as _e:
                 logging.getLogger("clip_model").error(f"[CLIP] Error en hilo de limpieza: {_e}")
                 continue
-                    if _clip_last_used_ts is None:
-                        # Nunca usado: descargar si pasó el timeout desde arranque
-                        if hasattr(_clip_model, 'loaded_at'):
-                            idle_for = now - _clip_model.loaded_at
-                        else:
-                            idle_for = idle_timeout + 1  # Forzar si no hay timestamp
-                        if idle_for >= idle_timeout:
-                            try:
-                                if torch.cuda.is_available():
-                                    torch.cuda.empty_cache()
-                            except Exception:
-                                pass
-                            _clip_model = None
-                        else:
-                            logging.getLogger("clip_model").info(f"[CLIP] No se descarga: idle_for={idle_for}, idle_timeout={idle_timeout}")
-                            _clip_processor = None
-                            _clip_current_model_name = None
-                    logging.getLogger("clip_model").info(f"[CLIP] Estado: idle_for={idle_for}, idle_timeout={idle_timeout}")
-                            print(f"🧹 CLIP descargado por inactividad tras arranque (sin uso, timeout {idle_timeout}s)")
-                            import logging
-                            logging.getLogger("clip_model").info(f"[CLIP] Modelo descargado de memoria por inactividad tras arranque (timeout {idle_timeout}s)")
-                        continue
-                    idle_for = now - _clip_last_used_ts
-                    if idle_for >= idle_timeout:
-                        try:
-                            if torch.cuda.is_available():
-                                torch.cuda.empty_cache()
-                        except Exception:
-                            pass
-                    else:
-                        logging.getLogger("clip_model").info(f"[CLIP] No se descarga: idle_for={idle_for}, idle_timeout={idle_timeout}")
-                        _clip_model = None
-                logging.getLogger("clip_model").error(f"[CLIP] Error en hilo de limpieza: {_e}")
-                        _clip_processor = None
-                        _clip_current_model_name = None
-                        print(f"🧹 CLIP descargado por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
-                        import logging
-                        logging.getLogger("clip_model").info(f"[CLIP] Modelo descargado de memoria por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
-            except Exception as _e:
-                continue
 
     t = threading.Thread(target=_worker, name="clip-idle-cleanup", daemon=True)
     t.start()
