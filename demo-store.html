@@ -511,7 +511,14 @@
             }
 
             .nav-links {
-                display: none;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+            .ai-search-btn {
+                display: block;
+                width: 100%;
+                margin: 10px 0;
             }
         }
     </style>
@@ -633,6 +640,8 @@
 
             <!-- Upload Area -->
             <div id="clip-widget"></div>
+            <!-- Input para cámara móvil (oculto, solo para widget) -->
+            <input type="file" id="clip-widget-mobile-upload" accept="image/*" capture="environment" style="display:none;" />
 
             <!-- Error Message -->
             <div class="error-message" id="errorMessage" style="display:none;">
