@@ -40,8 +40,8 @@ def update():
             flash('El timeout de CLIP debe estar entre 1 y 1440 minutos', 'danger')
             return redirect(url_for('system_config_admin.index'))
 
-        if max_results < 1 or max_results > 200:
-            flash('El máximo de resultados debe estar entre 1 y 200', 'danger')
+        if max_results < 1 or max_results > 10:
+            flash('El máximo de resultados debe estar entre 1 y 10', 'danger')
             return redirect(url_for('system_config_admin.index'))
 
         # Actualizar configuración

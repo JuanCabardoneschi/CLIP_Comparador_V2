@@ -151,9 +151,9 @@
                                        class="form-range"
                                        id="search_max_results"
                                        name="search_max_results"
-                                       min="10"
-                                       max="200"
-                                       step="10"
+                                       min="1"
+                                       max="10"
+                                       step="1"
                                        value="{{ config.search.max_results }}"
                                        oninput="updateMaxResultsDisplay(this.value)">
                                 <div class="d-flex justify-content-between text-muted small mt-1">
@@ -167,8 +167,8 @@
                                 <input type="number"
                                        class="form-control"
                                        id="max_results_display"
-                                       min="10"
-                                       max="200"
+                                       min="1"
+                                       max="10"
                                        value="{{ config.search.max_results }}"
                                        onchange="updateMaxResultsSlider(this.value)">
                             </div>
