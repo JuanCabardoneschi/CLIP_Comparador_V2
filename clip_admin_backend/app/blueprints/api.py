@@ -473,6 +473,11 @@ def verify_api_key():
 def process_image_for_search(image_data):
     """Procesar imagen y generar embedding para búsqueda"""
     try:
+        import logging
+        from datetime import datetime
+        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        logging.getLogger("clip_model").info(f"[REQUEST] Comparación recibida | Fecha y hora: {now_str}")
+
         print("🔧 DEBUG: Iniciando procesamiento de imagen")
 
         # Importar PIL con alias para evitar conflictos
