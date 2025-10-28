@@ -253,6 +253,11 @@ def get_clip_model():
 def generate_clip_embedding(image_path, image_obj=None):
     """Generar embedding CLIP optimizado usando contexto del cliente y categoría"""
     try:
+        import logging
+        from datetime import datetime
+        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        logging.getLogger("clip_model").info(f"[REQUEST] Comparación recibida | Fecha y hora: {now_str}")
+
         model, processor = get_clip_model()
         _touch_clip_last_used()
 
