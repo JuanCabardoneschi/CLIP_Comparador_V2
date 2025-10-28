@@ -1499,6 +1499,12 @@ def visual_search():
 
         # Procesar datos de imagen
         image_data, limit, _, error_response, status_code = _process_image_data(image_file)
+        # Obtener configuración real del panel
+        timeout_minutes = system_config.get('clip', 'idle_timeout_minutes', 120)
+        max_results = system_config.get('visual_search', 'max_results', 3)
+        # Si el parámetro limit no está en el request, usar el del panel
+        if not limit:
+            limit = max_results
         if error_response:
             return error_response, status_code
 
@@ -1694,7 +1700,7 @@ def visual_search():
 
         processing_time = time.time() - start_time
 
-        # Respuesta con información de categoría detectada
+        # Respuesta con información de categoría detectada y config real
         response = {
             "success": True,
             "query_type": "image_with_category_detection",
@@ -1716,7 +1722,9 @@ def visual_search():
             "client_id": client.id,
             "client_name": client.name,
             "search_method": "category_filtered",
-            "timestamp": time.time()
+            "timestamp": time.time(),
+            "timeout_minutes": timeout_minutes,
+            "max_results_config": max_results
         }
 
         # Headers CORS para widget
