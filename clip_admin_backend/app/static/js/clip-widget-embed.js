@@ -388,7 +388,7 @@
         try {
             const formData = new FormData();
             formData.append('image', selectedFile);
-            formData.append('max_results', config.maxResults);
+            formData.append('limit', config.maxResults);
 
             const response = await fetch(`${config.serverUrl}/api/search`, {
                 method: 'POST',
