@@ -1,3 +1,12 @@
+import logging
+# Configuración explícita del logger 'clip_model' para que los logs salgan por consola (Railway)
+clip_logger = logging.getLogger("clip_model")
+clip_logger.setLevel(logging.INFO)
+if not clip_logger.hasHandlers():
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s')
+    handler.setFormatter(formatter)
+    clip_logger.addHandler(handler)
 """
 Blueprint de Embeddings CLIP
 Administración y generación de embeddings para búsqueda visual
