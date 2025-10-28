@@ -509,9 +509,9 @@
                 grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
                 gap: 1rem;
             }
-            /* Ensure the AI search button remains visible on mobile */
+
             .nav-links {
-                display: block;
+                display: none;
             }
         }
     </style>
@@ -632,40 +632,23 @@
             </div>
 
             <!-- Upload Area -->
-            <div class="upload-area" id="uploadArea">
-                <div class="upload-icon">📸</div>
-                <div class="upload-text">Arrastra una imagen aquí o haz clic para seleccionar</div>
-                <div class="upload-hint">Formatos soportados: JPG, PNG, WEBP (máx. 10MB)</div>
-                <input type="file" id="fileInput" class="file-input" accept="image/jpeg,image/png,image/webp">
-            </div>
-
-            <!-- Preview Area -->
-            <div class="preview-area" id="previewArea">
-                <img id="previewImage" class="preview-image" alt="Vista previa">
-                <br>
-                <button class="search-btn" id="searchBtn">
-                    🔍 Buscar Productos Similares
-                </button>
-                <button class="search-btn" id="resetBtn" style="background: #6b7280; margin-left: 1rem;">
-                    🔄 Cambiar Imagen
-                </button>
-            </div>
+            <div id="clip-widget"></div>
 
             <!-- Error Message -->
-            <div class="error-message" id="errorMessage">
+            <div class="error-message" id="errorMessage" style="display:none;">
                 <div class="error-title">❌ Error en la búsqueda</div>
                 <div class="error-text" id="errorText"></div>
             </div>
         </div>
 
         <!-- Loading -->
-        <div class="loading" id="loading">
+        <div class="loading" id="loading" style="display:none;">
             <div class="spinner"></div>
             <div class="loading-text">Analizando imagen con inteligencia artificial...</div>
         </div>
 
         <!-- Results Section -->
-        <div class="results-section" id="resultsSection">
+        <div class="results-section" id="resultsSection" style="display:none;">
             <div class="results-header">
                 <h2 class="results-title">✨ Productos Similares Encontrados</h2>
                 <div class="results-count" id="resultsCount"></div>
@@ -674,436 +657,28 @@
         </div>
     </div>
 
+    <!-- Widget embed -->
     <script>
-        const API_URL = 'https://clipcomparadorv2-production.up.railway.app/api/search';
-        const API_KEY = 'test-api-key-demo-fashion-store-2024';
+        window.CLIPWidget = {
+            apiKey: 'test-api-key-demo-fashion-store-2024',
+            serverUrl: 'https://clipcomparadorv2-production.up.railway.app'
+        };
+    </script>
+    <script src="/static/js/clip-widget-embed.js"></script>
 
-        let selectedFile = null;
-
-        // Elements
-        const storeView = document.getElementById('storeView');
-        const searchView = document.getElementById('searchView');
-        const aiSearchToggle = document.getElementById('aiSearchToggle');
-        const backToStore = document.getElementById('backToStore');
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('fileInput');
-        const previewArea = document.getElementById('previewArea');
-        const previewImage = document.getElementById('previewImage');
-        const searchBtn = document.getElementById('searchBtn');
-        const resetBtn = document.getElementById('resetBtn');
-        const loading = document.getElementById('loading');
-        const resultsSection = document.getElementById('resultsSection');
-        const resultsGrid = document.getElementById('resultsGrid');
-        const resultsCount = document.getElementById('resultsCount');
-        const errorMessage = document.getElementById('errorMessage');
-        const errorText = document.getElementById('errorText');
-
-        // Toggle between store and search views
-        aiSearchToggle.addEventListener('click', (e) => {
+    <!-- Toggle de vistas -->
+    <script>
+        document.getElementById('aiSearchToggle').addEventListener('click', function(e) {
             e.preventDefault();
-            storeView.classList.add('hidden');
-            searchView.classList.add('active');
+            document.getElementById('storeView').classList.add('hidden');
+            document.getElementById('searchView').classList.add('active');
         });
 
-        backToStore.addEventListener('click', () => {
-            searchView.classList.remove('active');
-            storeView.classList.remove('hidden');
-            resetSearch();
+        document.getElementById('backToStore').addEventListener('click', function() {
+            document.getElementById('searchView').classList.remove('active');
+            document.getElementById('storeView').classList.remove('hidden');
         });
-
-        // Upload area click
-        uploadArea.addEventListener('click', () => fileInput.click());
-
-        // File input change
-        fileInput.addEventListener('change', handleFileSelect);
-
-        // Drag and drop
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
-
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
-
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            const file = e.dataTransfer.files[0];
-            if (file && file.type.startsWith('image/')) {
-                handleFile(file);
-            }
-        });
-
-        function handleFileSelect(e) {
-            const file = e.target.files[0];
-            if (file) {
-                handleFile(file);
-            }
-        }
-
-        function handleFile(file) {
-            if (file.size > 10 * 1024 * 1024) {
-                showError('El archivo es demasiado grande. Máximo 10MB.');
-                return;
-            }
-
-            selectedFile = file;
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                previewImage.src = e.target.result;
-                uploadArea.style.display = 'none';
-                previewArea.classList.add('active');
-                errorMessage.classList.remove('active');
-            };
-            reader.readAsDataURL(file);
-        }
-
-        // Reset button
-        resetBtn.addEventListener('click', () => {
-            selectedFile = null;
-            fileInput.value = '';
-            uploadArea.style.display = 'block';
-            previewArea.classList.remove('active');
-            resultsSection.classList.remove('active');
-            errorMessage.classList.remove('active');
-        });
-
-        function resetSearch() {
-            selectedFile = null;
-            fileInput.value = '';
-            uploadArea.style.display = 'block';
-            previewArea.classList.remove('active');
-            resultsSection.classList.remove('active');
-            errorMessage.classList.remove('active');
-            loading.classList.remove('active');
-        }
-
-        // Search button
-        searchBtn.addEventListener('click', async () => {
-            if (!selectedFile) return;
-
-            loading.classList.add('active');
-            resultsSection.classList.remove('active');
-            errorMessage.classList.remove('active');
-            searchBtn.disabled = true;
-
-            try {
-                const formData = new FormData();
-                formData.append('image', selectedFile);
-
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'X-API-Key': API_KEY
-                    },
-                    body: formData
-                });
-
-                // Manejo de respuestas: mostrar mensaje detallado si viene error JSON
-                if (!response.ok) {
-                    try {
-                        const err = await response.json();
-                        let msg = err?.message || err?.error || `${response.status} ${response.statusText}`;
-                        // Mensaje específico cuando no se detecta categoría
-                        if (err?.error === 'category_not_detected' && err?.available_categories?.length) {
-                            msg += `\n\nSugerencia: usa una foto del producto sobre fondo simple y bien centrado. Categorías disponibles: ${err.available_categories.join(', ')}`;
-                        }
-                        throw new Error(msg);
-                    } catch (_) {
-                        // Si no es JSON, lanzar genérico
-                        throw new Error(`Error ${response.status}: ${response.statusText}`);
-                    }
-                }
-
-                const data = await response.json();
-                displayResults(data);
-
-            } catch (error) {
-                console.error('Search error:', error);
-                showError(`Error al realizar la búsqueda: ${error.message}`);
-            } finally {
-                loading.classList.remove('active');
-                searchBtn.disabled = false;
-            }
-        });
-
-        function displayResults(data) {
-  if (!data || data.success === false) {
-    showError(data || 'Respuesta inválida');
-    return;
-  }
-            resultsGrid.innerHTML = '';
-
-            if (!data.results || data.results.length === 0) {
-                showError('No se encontraron productos similares. Intenta con otra imagen.');
-                return;
-            }
-
-            resultsCount.textContent = `${data.results.length} productos encontrados • Tiempo: ${data.processing_time}`;
-            resultsSection.classList.add('active');
-
-            data.results.forEach(product => {
-                const card = createProductCard(product);
-                resultsGrid.appendChild(card);
-            });
-
-            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        function createProductCard(product) {
-            const card = document.createElement('div');
-            card.className = 'product-card';
-
-            const similarity = Math.round(product.similarity * 100);
-            const price = product.price ? `$${product.price.toFixed(2)}` : 'Consultar';
-            const stock = product.stock || 0;
-            const stockText = stock > 10 ? 'En stock' : stock > 0 ? `Quedan ${stock}` : 'Sin stock';
-            const stockClass = stock > 10 ? 'in-stock' : stock > 0 ? 'low-stock' : '';
-
-            // Build attributes HTML
-            let attributesHTML = '';
-            if (product.attributes && Object.keys(product.attributes).length > 0) {
-                attributesHTML = '<div class="product-attributes">';
-                for (const [key, value] of Object.entries(product.attributes)) {
-                    // Skip null/undefined values
-                    if (value === null || value === undefined) continue;
-
-                    const label = formatAttributeLabel(key);
-                    const formattedValue = formatAttributeValue(key, value);
-
-                    attributesHTML += `
-                        <div class="attribute-item">
-                            <span class="attribute-label">${label}:</span>
-                            <span class="attribute-value">${formattedValue}</span>
-                        </div>
-                    `;
-                }
-                attributesHTML += '</div>';
-            }
-
-            // Crear botón de compra solo si hay stock
-            // Priorizar SKU (más genérico) sobre ID
-            console.log('Product data for buy button:', { id: product.id, sku: product.sku, name: product.name });
-
-            const buyButtonHTML = stock > 0 ? `
-                <button class="buy-btn" onclick="handlePurchase('${product.sku || ''}', '${product.name}', ${stock})">
-                    🛒 Comprar
-                </button>
-            ` : `
-                <button class="buy-btn disabled" disabled>
-                    Sin stock
-                </button>
-            `;
-
-            card.innerHTML = `
-                <div class="product-image-container">
-                    <img src="${product.image_url}" alt="${product.name}" class="product-image"
-                         onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22300%22 height=%22400%22%3E%3Crect fill=%22%23f1f5f9%22 width=%22300%22 height=%22400%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 fill=%22%2394a3b8%22 font-size=%2220%22%3ESin imagen%3C/text%3E%3C/svg%3E'">
-                    <div class="similarity-badge">${similarity}% similar</div>
-                </div>
-                <div class="product-info">
-                    <div class="product-category">${product.category}</div>
-                    <div class="product-name">${product.name}</div>
-                    <div class="product-price">${price}</div>
-                    <div class="product-stock ${stockClass}" id="stock-${product.id}">${stockText}</div>
-                    ${attributesHTML}
-                    ${buyButtonHTML}
-                </div>
-            `;
-
-            return card;
-        }
-
-        function formatAttributeLabel(key) {
-            const labels = {
-                'material': 'Material',
-                'talla': 'Talla',
-                'color': 'Color',
-                'marca': 'Marca',
-                'url_producto': 'Más info'
-            };
-            return labels[key] || key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
-        }
-
-        function formatAttributeValue(key, value) {
-            // If it's a URL attribute and has a value, make it a link
-            if (key === 'url_producto' && value) {
-                return `<a href="${value}" target="_blank" class="attribute-link">Ver producto</a>`;
-            }
-
-            // If it's an array (multi-select), join with commas
-            if (Array.isArray(value)) {
-                return value.join(', ');
-            }
-
-            return value;
-        }
-
-        // Handle purchase function
-        async function handlePurchase(sku, productName, currentStock) {
-            const INVENTORY_API_URL = 'https://clipcomparadorv2-production.up.railway.app/api/external/inventory/reduce-stock';
-
-            console.log('handlePurchase called with:', { sku, productName, currentStock });
-
-            // Validar que tenemos SKU
-            if (!sku || sku === 'undefined' || sku === '') {
-                const errorMsg = `Error: No se puede identificar el producto.\nSKU: ${sku}`;
-                console.error(errorMsg);
-                showCopyableError(errorMsg);
-                return;
-            }
-
-            // Confirmar compra
-            if (!confirm(`¿Confirmar compra de "${productName}"?`)) {
-                return;
-            }
-
-            // Deshabilitar botón mientras se procesa
-            const buttons = document.querySelectorAll(`button[onclick*="${sku}"]`);
-            buttons.forEach(btn => {
-                btn.disabled = true;
-                btn.textContent = '⏳ Procesando...';
-            });
-
-            try {
-                const requestBody = {
-                    sku: sku,
-                    quantity: 1,
-                    reason: 'Compra desde demo-store'
-                };
-
-                console.log('Sending request:', requestBody);
-
-                const response = await fetch(INVENTORY_API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-API-Key': API_KEY
-                    },
-                    body: JSON.stringify(requestBody)
-                });
-
-                const data = await response.json();
-                console.log('Response:', data);
-
-                if (data.success) {
-                    // Actualizar stock en la UI
-                    const newStock = data.new_stock;
-                    const productId = data.product_id; // Obtener ID real de la respuesta
-                    const stockElement = document.getElementById(`stock-${productId}`);
-
-                    if (stockElement) {
-                        const stockText = newStock > 10 ? 'En stock' : newStock > 0 ? `Quedan ${newStock}` : 'Sin stock';
-                        const stockClass = newStock > 10 ? 'in-stock' : newStock > 0 ? 'low-stock' : '';
-
-                        stockElement.textContent = stockText;
-                        stockElement.className = `product-stock ${stockClass}`;
-                    }
-
-                    // Actualizar o deshabilitar botón
-                    buttons.forEach(btn => {
-                        if (newStock > 0) {
-                            btn.disabled = false;
-                            btn.textContent = '🛒 Comprar';
-                            btn.onclick = () => handlePurchase(sku, productName, newStock);
-                        } else {
-                            btn.disabled = true;
-                            btn.textContent = 'Sin stock';
-                            btn.className = 'buy-btn disabled';
-                        }
-                    });
-
-                    // Mostrar mensaje de éxito
-                    alert(`✅ ¡Compra exitosa!\n\n${productName}\nSKU: ${sku}\nStock anterior: ${data.old_stock}\nStock actual: ${data.new_stock}`);
-                } else {
-                    throw new Error(data.error || 'Error en la compra');
-                }
-            } catch (error) {
-                console.error('Purchase error:', error);
-
-                // Mostrar error copiable
-                const errorDetails = `Error en la compra:
-Producto: ${productName}
-SKU: ${sku}
-Error: ${error.message}
-Stack: ${error.stack || 'N/A'}`;
-
-                showCopyableError(errorDetails);
-
-                // Restaurar botones
-                buttons.forEach(btn => {
-                    btn.disabled = false;
-                    btn.textContent = '🛒 Comprar';
-                });
-            }
-        }
-
-        // Función para mostrar errores copiables
-        function showCopyableError(errorMsg) {
-            const errorDiv = document.createElement('div');
-            errorDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border:2px solid #dc3545;z-index:10000;max-width:90%;max-height:80vh;overflow:auto;box-shadow:0 4px 20px rgba(0,0,0,0.3);border-radius:8px;';
-            errorDiv.innerHTML = `
-                <h3 style="color:#dc3545;margin-top:0;">❌ Error</h3>
-                <pre style="background:#f8f9fa;padding:15px;overflow:auto;user-select:all;cursor:text;border:1px solid #dee2e6;border-radius:4px;font-family:monospace;font-size:12px;white-space:pre-wrap;word-wrap:break-word;">${errorMsg}</pre>
-                <button onclick="navigator.clipboard.writeText(\`${errorMsg.replace(/`/g, '\\`')}\`).then(() => alert('Copiado al portapapeles'))" style="margin-top:10px;padding:10px 20px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;margin-right:10px;">📋 Copiar</button>
-                <button onclick="this.parentElement.remove()" style="margin-top:10px;padding:10px 20px;background:#6c757d;color:white;border:none;border-radius:4px;cursor:pointer;">Cerrar</button>
-            `;
-            document.body.appendChild(errorDiv);
-        }
-
-
-        </script>
-
-
-
-
-<!-- DEMO-STORE ERROR HANDLING OVERRIDE -->
-
-
-
-
-<!-- DEMO-STORE: ERROR HANDLING OVERRIDE -->
-<script>
-(function() {
-  // Override de showError para mostrar mensajes detallados del backend
-  window.showError = function(err) {
-    var msg = '';
-
-    if (err && typeof err === 'object') {
-      if (err.message) {
-        msg += err.message + '\n';
-      }
-      if (err.details) {
-        msg += err.details + '\n';
-      }
-      if (Array.isArray(err.available_categories) && err.available_categories.length > 0) {
-        msg += '\nCategorías disponibles:\n- ' + err.available_categories.join('\n- ');
-      }
-    } else {
-      msg = String(err || 'Error desconocido');
-    }
-
-    var errorText = document.getElementById('errorText');
-    var errorMessage = document.getElementById('errorMessage');
-    var resultsSection = document.getElementById('resultsSection');
-
-    if (errorText) {
-      errorText.textContent = msg.trim();
-    }
-    if (errorMessage) {
-      errorMessage.classList.add('active');
-    }
-    if (resultsSection) {
-      resultsSection.classList.remove('active');
-    }
-  };
-
-  console.log('✅ Error handler override instalado');
-})();
-</script>
+    </script>
 
 </body>
 </html>
