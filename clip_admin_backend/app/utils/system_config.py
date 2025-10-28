@@ -89,6 +89,10 @@ class SystemConfig:
         """
         with self._lock:
             config = self._read_config()
+            if section == 'clip' and key == 'idle_timeout_minutes':
+                return config.get(section, {}).get(key, default if default is not None else 30)
+            if section == 'search' and key == 'max_results':
+                return config.get(section, {}).get(key, default if default is not None else 3)
             return config.get(section, {}).get(key, default)
 
     def set(self, section: str, key: str, value: Any):
