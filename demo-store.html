@@ -509,9 +509,9 @@
                 grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
                 gap: 1rem;
             }
-
+            /* Ensure the AI search button remains visible on mobile */
             .nav-links {
-                display: none;
+                display: block;
             }
         }
     </style>
@@ -802,8 +802,20 @@
                     body: formData
                 });
 
+                // Manejo de respuestas: mostrar mensaje detallado si viene error JSON
                 if (!response.ok) {
-                    throw new Error(`Error ${response.status}: ${response.statusText}`);
+                    try {
+                        const err = await response.json();
+                        let msg = err?.message || err?.error || `${response.status} ${response.statusText}`;
+                        // Mensaje específico cuando no se detecta categoría
+                        if (err?.error === 'category_not_detected' && err?.available_categories?.length) {
+                            msg += `\n\nSugerencia: usa una foto del producto sobre fondo simple y bien centrado. Categorías disponibles: ${err.available_categories.join(', ')}`;
+                        }
+                        throw new Error(msg);
+                    } catch (_) {
+                        // Si no es JSON, lanzar genérico
+                        throw new Error(`Error ${response.status}: ${response.statusText}`);
+                    }
                 }
 
                 const data = await response.json();
