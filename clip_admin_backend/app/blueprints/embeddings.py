@@ -157,6 +157,8 @@ def _start_cleanup_thread_once():
                             _clip_processor = None
                             _clip_current_model_name = None
                             print(f"🧹 CLIP descargado por inactividad tras arranque (sin uso, timeout {idle_timeout}s)")
+                            import logging
+                            logging.getLogger("clip_model").info(f"[CLIP] Modelo descargado de memoria por inactividad tras arranque (timeout {idle_timeout}s)")
                         continue
                     idle_for = now - _clip_last_used_ts
                     if idle_for >= idle_timeout:
@@ -169,6 +171,8 @@ def _start_cleanup_thread_once():
                         _clip_processor = None
                         _clip_current_model_name = None
                         print(f"🧹 CLIP descargado por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
+                        import logging
+                        logging.getLogger("clip_model").info(f"[CLIP] Modelo descargado de memoria por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
             except Exception as _e:
                 continue
 
@@ -201,6 +205,7 @@ def get_clip_model():
             print(f"🔄 Cargando modelo CLIP {model_name} ({model_id})...")
             try:
                 _clip_model = CLIPModel.from_pretrained(model_id)
+                _clip_model.loaded_at = time.time()
                 _clip_processor = CLIPProcessor.from_pretrained(model_id)
                 _clip_current_model_name = model_name
 

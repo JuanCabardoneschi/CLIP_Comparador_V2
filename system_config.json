@@ -1,7 +1,7 @@
 {
   "clip": {
     "preload": false,
-    "idle_timeout_minutes": 30,
+    "idle_timeout_minutes": 5,
     "model_name": "openai/clip-vit-base-patch16"
   },
   "search": {
