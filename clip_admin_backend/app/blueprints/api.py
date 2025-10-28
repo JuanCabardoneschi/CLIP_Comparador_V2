@@ -20,6 +20,7 @@ from app.models.search_log import SearchLog
 from app.models.store_search_config import StoreSearchConfig
 from app.services.image_manager import image_manager
 from app.core.search_optimizer import SearchOptimizer
+from app.utils.system_config import system_config
 from sqlalchemy import func, or_, text
 from googletrans import Translator
 
@@ -572,8 +573,11 @@ def _validate_visual_search_request():
 
 def _process_image_data(image_file):
     """Procesa y valida los datos de la imagen"""
-    # Parámetros
-    limit = min(int(request.form.get('limit', 3)), 10)
+    # Obtener configuración del sistema
+    default_max_results = system_config.get('search', 'max_results', 10)
+
+    # Parámetros (usar configuración como default y máximo)
+    limit = min(int(request.form.get('limit', default_max_results)), default_max_results)
     threshold = float(request.form.get('threshold', 0.1))
 
     # Leer imagen
