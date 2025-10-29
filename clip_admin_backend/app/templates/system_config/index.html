@@ -71,9 +71,9 @@
                                        class="form-range"
                                        id="clip_idle_timeout_minutes"
                                        name="clip_idle_timeout_minutes"
-                                       min="5"
-                                       max="480"
-                                       step="5"
+                                       min="1"
+                                       max="1440"
+                                       step="1"
                                        value="{{ config.clip.idle_timeout_minutes }}"
                                        oninput="updateTimeoutDisplay(this.value)">
                                 <div class="d-flex justify-content-between text-muted small mt-1">
@@ -89,7 +89,7 @@
                                            class="form-control"
                                            id="timeout_display"
                                            name="clip_idle_timeout_minutes_input"
-                                           min="5"
+                                           min="1"
                                            max="1440"
                                            value="{{ config.clip.idle_timeout_minutes }}"
                                            onchange="updateTimeoutSlider(this.value)">
