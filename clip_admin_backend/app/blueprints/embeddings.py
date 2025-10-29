@@ -94,8 +94,7 @@ def _now_ts() -> float:
 def _touch_clip_last_used():
     global _clip_last_used_ts
     _clip_last_used_ts = _now_ts()
-    import logging
-    logging.getLogger("clip_model").info(f"[CLIP] touch_clip_last_used: ts={_clip_last_used_ts}")
+    # logging eliminado por requerimiento
 
 
 def _get_idle_timeout_seconds() -> int:
@@ -245,10 +244,8 @@ def get_clip_model():
 def generate_clip_embedding(image_path, image_obj=None):
     """Generar embedding CLIP optimizado usando contexto del cliente y categoría"""
     try:
-        import logging
-        from datetime import datetime
-        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        logging.getLogger("clip_model").info(f"[REQUEST] Comparación recibida | Fecha y hora: {now_str}")
+    import logging
+    logging.getLogger("clip_model").info(f"[REQUEST] Comparación recibida")
 
         model, processor = get_clip_model()
         _touch_clip_last_used()

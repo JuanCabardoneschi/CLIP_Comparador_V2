@@ -476,7 +476,7 @@ def process_image_for_search(image_data):
         import logging
         from datetime import datetime
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        logging.getLogger("clip_model").info(f"[REQUEST] Comparación recibida | Fecha y hora: {now_str}")
+        logging.getLogger("clip_model").info(f"[REQUEST] Comparación recibida")
 
         print("🔧 DEBUG: Iniciando procesamiento de imagen")
 
