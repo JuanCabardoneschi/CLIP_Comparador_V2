@@ -1501,7 +1501,7 @@ def visual_search():
         image_data, limit, _, error_response, status_code = _process_image_data(image_file)
         # Obtener configuración real del panel
         timeout_minutes = system_config.get('clip', 'idle_timeout_minutes', 120)
-        max_results = system_config.get('visual_search', 'max_results', 3)
+        max_results = system_config.get('search', 'max_results')
         # Si el parámetro limit no está en el request, usar el del panel
         if not limit:
             limit = max_results
