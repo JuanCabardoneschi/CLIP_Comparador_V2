@@ -1723,7 +1723,7 @@ def visual_search():
             "client_name": client.name,
             "search_method": "category_filtered",
             "timestamp": time.time(),
-            "timeout_minutes": timeout_minutes,
+            "timeout_minutes": _get_idle_timeout_seconds() // 60,
             "max_results_config": max_results
         }
 
