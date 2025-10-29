@@ -4,6 +4,7 @@ Endpoints internos para el admin panel y búsqueda visual
 """
 
 import time
+from app.blueprints.embeddings import _get_idle_timeout_seconds
 import hashlib
 import numpy as np
 import torch
@@ -1723,7 +1724,7 @@ def visual_search():
             "client_name": client.name,
             "search_method": "category_filtered",
             "timestamp": time.time(),
-            "timeout_minutes": _get_idle_timeout_seconds() // 60,
+            "timeout_minutes": round(_get_idle_timeout_seconds() / 60, 2),
             "max_results_config": max_results
         }
 
