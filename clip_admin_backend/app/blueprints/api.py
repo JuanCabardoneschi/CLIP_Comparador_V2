@@ -1497,11 +1497,11 @@ def visual_search():
         if error_response:
             return error_response
 
-        # Procesar datos de imagen
-        image_data, limit, _, error_response, status_code = _process_image_data(image_file)
-        # Obtener configuración real del panel
-                    print(f"❌ DEBUG: No hay categorías activas para el cliente {client_id}")
-        max_results = system_config.get('search', 'max_results')
+    # Procesar datos de imagen
+    image_data, limit, _, error_response, status_code = _process_image_data(image_file)
+    # Obtener configuración real del panel
+    print(f"❌ DEBUG: No hay categorías activas para el cliente {client_id}")
+    max_results = system_config.get('search', 'max_results')
         # Si el parámetro limit no está en el request, usar el del panel
         if not limit:
             limit = max_results
