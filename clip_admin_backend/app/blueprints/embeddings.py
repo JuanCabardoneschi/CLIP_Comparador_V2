@@ -187,6 +187,8 @@ def _start_cleanup_thread_once():
                         _clip_current_model_name = None
                         print(f"🧹 CLIP descargado por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
                         logging.getLogger("clip_model").info(f"[CLIP] Modelo descargado de memoria por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
+                    else:
+                        print(f"[CLIP] Model NOT unloaded: inactivity {int(idle_for)}s < {idle_timeout}s threshold.")
             except Exception as _e:
                 logging.getLogger("clip_model").error(f"[CLIP] Error en hilo de limpieza: {_e}")
                 continue
