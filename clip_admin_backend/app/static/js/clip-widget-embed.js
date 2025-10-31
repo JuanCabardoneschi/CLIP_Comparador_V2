@@ -280,36 +280,7 @@
                 color: #94a3b8;
             }
 
-            .clip-examples {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.75rem;
-                margin-top: 1.5rem;
-            }
-
-            .clip-examples-label {
-                width: 100%;
-                color: #64748b;
-                font-size: 0.9rem;
-                margin-bottom: 0.5rem;
-            }
-
-            .clip-example-tag {
-                background: #f1f5f9;
-                color: #475569;
-                padding: 0.5rem 1rem;
-                border-radius: 20px;
-                font-size: 0.9rem;
-                cursor: pointer;
-                transition: all 0.2s;
-                border: 2px solid transparent;
-            }
-
-            .clip-example-tag:hover {
-                background: #e0e7ff;
-                color: #667eea;
-                border-color: #c7d2fe;
-            }
+            /* REMOVIDO: Estilos de ejemplos populares ya no se usan */
 
             /* Loading */
             .clip-loading {
@@ -688,18 +659,9 @@
                         <div class="clip-input-wrap">
                             <span class="clip-input-icon">${icons.search}</span>
                             <input type="text" class="clip-input" id="clip-text-input"
-                                   placeholder="Ej: camisa blanca, delantal marrón, camisa casual...">
+                                   placeholder="Ej: camisa blanca, remera azul, pantalón negro...">
                         </div>
                         <button class="clip-search-btn" id="clip-text-search-btn">Buscar productos</button>
-
-                        <div class="clip-examples">
-                            <div class="clip-examples-label">Ejemplos populares:</div>
-                            <span class="clip-example-tag" data-query="delantal azul">delantal azul</span>
-                            <span class="clip-example-tag" data-query="camisa clara">camisa clara</span>
-                            <span class="clip-example-tag" data-query="delantal marrón">delantal marrón</span>
-                            <span class="clip-example-tag" data-query="camisa casual">camisa casual</span>
-                            <span class="clip-example-tag" data-query="delantal negro">delantal negro</span>
-                        </div>
                     </div>
 
                     <!-- Overlay de procesamiento (text) -->
@@ -822,14 +784,14 @@
             if (e.key === 'Enter' && !isProcessing) textSearchBtn.click();
         });
 
-        // Example tags
-        container.querySelectorAll('.clip-example-tag').forEach(tag => {
-            tag.addEventListener('click', function() {
-                const query = this.dataset.query;
-                textInput.value = query;
-                textSearchBtn.click();
-            });
-        });
+        // Example tags (REMOVIDO: ya no se usan ejemplos hardcodeados)
+        // container.querySelectorAll('.clip-example-tag').forEach(tag => {
+        //     tag.addEventListener('click', function() {
+        //         const query = this.dataset.query;
+        //         textInput.value = query;
+        //         textSearchBtn.click();
+        //     });
+        // });
 
         // Visual search API
         function beginProcessing(scope) {
