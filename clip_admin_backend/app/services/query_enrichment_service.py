@@ -3,7 +3,6 @@ Servicio para enriquecer queries de búsqueda con tags inferidos usando CLIP
 Genera embeddings fusionados y tags semánticos desde texto e imagen opcional
 """
 import torch
-from transformers import CLIPProcessor, CLIPModel
 from PIL import Image
 import requests
 from io import BytesIO
@@ -11,6 +10,7 @@ import hashlib
 import json
 from typing import Dict, List, Tuple, Optional
 from functools import lru_cache
+from app.blueprints.embeddings import get_clip_model  # Reutilizar modelo compartido
 
 # Tags genéricos detectables por contexto visual/textual
 INFERENCE_TAG_OPTIONS = [
@@ -32,21 +32,13 @@ TAG_PROMPT_TEMPLATES = {
 class QueryEnrichmentService:
     """Servicio para enriquecer búsquedas con tags inferidos y fusión de embeddings"""
 
-    _model = None
-    _processor = None
-    _device = None
     _cache = {}  # Cache simple en memoria {hash: result}
 
     @classmethod
     def _ensure_model_loaded(cls):
-        """Carga el modelo CLIP si aún no está cargado (lazy loading)"""
-        if cls._model is None:
-            print("🔮 Cargando modelo CLIP para QueryEnrichment...")
-            cls._device = "cuda" if torch.cuda.is_available() else "cpu"
-            model_name = "openai/clip-vit-base-patch16"
-            cls._model = CLIPModel.from_pretrained(model_name).to(cls._device)
-            cls._processor = CLIPProcessor.from_pretrained(model_name)
-            print(f"✅ Modelo CLIP para enrichment cargado en {cls._device}")
+        """Obtiene el modelo CLIP compartido del sistema (sin duplicar carga)"""
+        # Usar el modelo compartido del sistema en lugar de cargar uno propio
+        return get_clip_model()
 
     @classmethod
     def _download_image(cls, url: str) -> Optional[Image.Image]:
@@ -75,22 +67,23 @@ class QueryEnrichmentService:
         Returns:
             Lista de tuplas (tag, confianza) ordenadas por confianza descendente
         """
-        cls._ensure_model_loaded()
+        model, processor = cls._ensure_model_loaded()
+        device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # Crear prompts textuales para cada tag
         text_prompts = [f"a {tag} style {category_context}" for tag in tag_options]
 
         # Preprocesar imagen y textos
-        inputs = cls._processor(
+        inputs = processor(
             text=text_prompts,
             images=image,
             return_tensors="pt",
             padding=True
-        ).to(cls._device)
+        ).to(device)
 
         # Generar embeddings
         with torch.no_grad():
-            outputs = cls._model(**inputs)
+            outputs = model(**inputs)
 
             # Normalizar embeddings
             image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)

@@ -1951,12 +1951,45 @@ def text_search():
                     toks |= tokenize(term.strip())
             cat_tokens_list.append((category, toks))
 
-        # Detección: si hay intersección con alguna categoría, elegirla
-        for category, toks in cat_tokens_list:
-            if query_tokens & toks:
+        # Detección mejorada: evaluar TODAS las categorías y elegir la mejor coincidencia
+        # Buscar primero coincidencia exacta de frase completa (ej: "tiro bajo" completo)
+        best_category = None
+        best_score = 0
+        
+        # 1. Prioridad: Buscar coincidencia de frase completa en alternative_terms o nombre
+        query_normalized = expanded_query.lower().strip()
+        for category in categories:
+            # Verificar en nombre
+            if query_normalized in category.name.lower():
                 detected_category = category
-                print(f"📁 Categoría detectada por tokens: {category.name}")
+                print(f"📁 Categoría detectada por nombre exacto: {category.name}")
                 break
+            # Verificar en alternative_terms
+            alt = getattr(category, 'alternative_terms', None)
+            if alt:
+                alt_terms = [t.strip().lower() for t in str(alt).split(',')]
+                if query_normalized in alt_terms:
+                    detected_category = category
+                    print(f"📁 Categoría detectada por alternative_term exacto: {category.name}")
+                    break
+        
+        # 2. Si no hay coincidencia exacta, usar scoring de tokens (máxima superposición)
+        if not detected_category:
+            for category, toks in cat_tokens_list:
+                # Calcular intersección (tokens en común)
+                intersection = query_tokens & toks
+                if intersection:
+                    # Score basado en: cantidad de tokens coincidentes / total tokens del query
+                    # Esto favorece coincidencias más completas
+                    score = len(intersection) / max(len(query_tokens), 1)
+                    if score > best_score:
+                        best_score = score
+                        best_category = category
+            
+            if best_category and best_score > 0:
+                detected_category = best_category
+                print(f"📁 Categoría detectada por tokens (score={best_score:.2f}): {detected_category.name}")
+
 
         # Si NO detectamos categoría: decidir si es fuera de catálogo o si permitimos búsqueda global
         if not detected_category:

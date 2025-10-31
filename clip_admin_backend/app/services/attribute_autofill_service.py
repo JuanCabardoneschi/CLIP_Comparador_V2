@@ -3,7 +3,6 @@ Servicio para auto-completar atributos de productos usando CLIP
 Analiza las imágenes y detecta atributos visuales automáticamente
 """
 import torch
-from transformers import CLIPProcessor, CLIPModel
 from PIL import Image
 import requests
 from io import BytesIO
@@ -12,6 +11,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional
 from app.models import Product, Image as ProductImage, ProductAttributeConfig
 from app import db
+from app.blueprints.embeddings import get_clip_model  # Reutilizar modelo compartido
 
 # Tags contextuales expandidos para búsquedas conceptuales
 # Categorizados por ocasión, funcionalidad y características visuales
@@ -71,20 +71,11 @@ ATTRIBUTE_PROMPT_TEMPLATES = {
 class AttributeAutofillService:
     """Servicio para auto-completar atributos usando análisis CLIP"""
 
-    _model = None
-    _processor = None
-    _device = None
-
     @classmethod
     def _ensure_model_loaded(cls):
-        """Carga el modelo CLIP si aún no está cargado (lazy loading)"""
-        if cls._model is None:
-            print("🤖 Cargando modelo CLIP para autofill de atributos...")
-            cls._device = "cuda" if torch.cuda.is_available() else "cpu"
-            model_name = "openai/clip-vit-base-patch16"
-            cls._model = CLIPModel.from_pretrained(model_name).to(cls._device)
-            cls._processor = CLIPProcessor.from_pretrained(model_name)
-            print(f"✅ Modelo CLIP cargado en {cls._device}")
+        """Obtiene el modelo CLIP compartido del sistema (sin duplicar carga)"""
+        # Usar el modelo compartido del sistema en lugar de cargar uno propio
+        return get_clip_model()
 
     @classmethod
     def _get_prompt_template(cls, attribute_key: str) -> str:
@@ -107,7 +98,8 @@ class AttributeAutofillService:
         Returns:
             Tupla (mejor_opción, confianza)
         """
-        cls._ensure_model_loaded()
+        model, processor = cls._ensure_model_loaded()
+        device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # Obtener template de prompt adecuado
         prompt_template = cls._get_prompt_template(attribute_name)
@@ -119,16 +111,16 @@ class AttributeAutofillService:
         ]
 
         # Preprocesar imagen y textos
-        inputs = cls._processor(
+        inputs = processor(
             text=text_prompts,
             images=image,
             return_tensors="pt",
             padding=True
-        ).to(cls._device)
+        ).to(device)
 
         # Generar embeddings
         with torch.no_grad():
-            outputs = cls._model(**inputs)
+            outputs = model(**inputs)
 
             # Normalizar embeddings
             image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
@@ -153,22 +145,23 @@ class AttributeAutofillService:
         Returns:
             Lista de tuplas (tag, confianza) con confianza superior al umbral
         """
-        cls._ensure_model_loaded()
+        model, processor = cls._ensure_model_loaded()
+        device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # Crear prompts textuales para cada tag
         text_prompts = [f"a {tag} style {category_context}" for tag in tag_options]
 
         # Preprocesar imagen y textos
-        inputs = cls._processor(
+        inputs = processor(
             text=text_prompts,
             images=image,
             return_tensors="pt",
             padding=True
-        ).to(cls._device)
+        ).to(device)
 
         # Generar embeddings
         with torch.no_grad():
-            outputs = cls._model(**inputs)
+            outputs = model(**inputs)
 
             # Normalizar embeddings
             image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
