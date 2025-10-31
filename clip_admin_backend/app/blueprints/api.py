@@ -1908,6 +1908,44 @@ def text_search():
             # Si hay alguna coincidencia débil (e.g., tokens genéricos), continuar sin filtrar por categoría
             print("ℹ️ TEXT SEARCH: Sin categoría inequívoca, continuando sin filtro por categoría")
 
+        # --- Enriquecimiento opcional de query con tags inferidos (feature flag) ---
+        try:
+            fusion_enabled = system_config.get('search', 'enable_inferred_tags', False)
+            if fusion_enabled:
+                fusion_cfg = system_config.get('search', 'clip_fusion', {}) or {}
+                alpha = float(fusion_cfg.get('alpha', 1.0))
+                beta_tag = float(fusion_cfg.get('beta_tag', 0.5))
+
+                category_ctx = detected_category.name.lower() if detected_category else "product"
+                tag_phrases = []
+                if detected_color:
+                    tag_phrases.append(f"a {detected_color} colored {category_ctx}")
+                ctx_list = llm_norm.get('contexto') or []
+                for ctx in ctx_list:
+                    try:
+                        term = str(ctx).strip().lower()
+                        if term:
+                            tag_phrases.append(f"a {term} style {category_ctx}")
+                    except Exception:
+                        pass
+
+                if tag_phrases:
+                    with torch.no_grad():
+                        tag_inputs = processor(text=tag_phrases, return_tensors="pt", padding=True)
+                        tag_feats = model.get_text_features(**tag_inputs)
+                        tag_feats = tag_feats / tag_feats.norm(dim=-1, keepdim=True)
+                        tag_mean = tag_feats.mean(dim=0)
+
+                        q = torch.tensor(query_embedding, dtype=torch.float32)
+                        q = q / q.norm()
+                        fused = alpha * q + beta_tag * tag_mean
+                        fused = fused / fused.norm()
+                        query_embedding = fused.cpu().numpy()
+                    print(f"🧪 FUSION: alpha={alpha} beta_tag={beta_tag} tags={tag_phrases}")
+        except Exception as _e:
+            # Fallback silencioso: si algo falla seguimos con embedding original
+            print(f"⚠️ FUSION skip: {_e}")
+
         # Consultar productos con embeddings (de imágenes principales), atributos y tags
         products_query = db.session.query(
             Product.id,
