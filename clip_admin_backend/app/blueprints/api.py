@@ -1912,23 +1912,25 @@ def text_search():
         try:
             fusion_enabled = system_config.get('search', 'enable_inferred_tags', False)
             if fusion_enabled:
+                from app.services.query_enrichment_service import QueryEnrichmentService
+                
                 fusion_cfg = system_config.get('search', 'clip_fusion', {}) or {}
                 alpha = float(fusion_cfg.get('alpha', 1.0))
                 beta_tag = float(fusion_cfg.get('beta_tag', 0.5))
 
-                category_ctx = detected_category.name.lower() if detected_category else "product"
-                tag_phrases = []
-                if detected_color:
-                    tag_phrases.append(f"a {detected_color} colored {category_ctx}")
-                ctx_list = llm_norm.get('contexto') or []
-                for ctx in ctx_list:
-                    try:
-                        term = str(ctx).strip().lower()
-                        if term:
-                            tag_phrases.append(f"a {term} style {category_ctx}")
-                    except Exception:
-                        pass
+                # Usar servicio de enriquecimiento
+                enrichment = QueryEnrichmentService.enrich_query(
+                    query_text=expanded_query,
+                    detected_category=detected_category.name if detected_category else None,
+                    detected_color=detected_color,
+                    detected_contexts=llm_norm.get('contexto') or [],
+                    image_url=None,  # TODO: agregar soporte para imagen del usuario
+                    client_id=str(client.id),
+                    use_cache=True
+                )
 
+                tag_phrases = enrichment.get('tag_phrases', [])
+                
                 if tag_phrases:
                     with torch.no_grad():
                         tag_inputs = processor(text=tag_phrases, return_tensors="pt", padding=True)
@@ -1941,10 +1943,15 @@ def text_search():
                         fused = alpha * q + beta_tag * tag_mean
                         fused = fused / fused.norm()
                         query_embedding = fused.cpu().numpy()
-                    print(f"🧪 FUSION: alpha={alpha} beta_tag={beta_tag} tags={tag_phrases}")
+                    
+                    inferred_tags = enrichment.get('inferred_tags', [])
+                    print(f"🧪 FUSION: alpha={alpha} beta_tag={beta_tag} phrases={len(tag_phrases)} tags={len(inferred_tags)}")
         except Exception as _e:
             # Fallback silencioso: si algo falla seguimos con embedding original
             print(f"⚠️ FUSION skip: {_e}")
+            import traceback
+            traceback.print_exc()
+
 
         # Consultar productos con embeddings (de imágenes principales), atributos y tags
         products_query = db.session.query(
