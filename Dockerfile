@@ -18,7 +18,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiar código fuente
 COPY clip_admin_backend/ ./clip_admin_backend/
 COPY shared/ ./shared/
-COPY demo-store.html ./clip_admin_backend/app/static/demo-store.html
 
 # Configurar directorio de trabajo
 WORKDIR /app/clip_admin_backend
