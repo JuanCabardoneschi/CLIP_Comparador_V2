@@ -1939,19 +1939,24 @@ def text_search():
             return { _norm_token(t) for t in toks if _norm_token(t) and _norm_token(t) not in STOPWORDS }
 
         query_tokens = tokenize(expanded_query)
+        print(f"🔍 Query tokens: {query_tokens}")
 
         # Construir tokens por categoría (nombre, name_en y alternative_terms si existe)
         cat_tokens_list = []
         for category in categories:
-            toks = set()
-            toks |= tokenize(category.name)
+            # Separar tokens del nombre (PESO ALTO) vs alternative_terms (PESO BAJO)
+            name_toks = set()
+            name_toks |= tokenize(category.name)
             if category.name_en:
-                toks |= tokenize(category.name_en)
+                name_toks |= tokenize(category.name_en)
+            
+            alt_toks = set()
             alt = getattr(category, 'alternative_terms', None)
             if alt:
                 for term in str(alt).split(','):
-                    toks |= tokenize(term.strip())
-            cat_tokens_list.append((category, toks))
+                    alt_toks |= tokenize(term.strip())
+            
+            cat_tokens_list.append((category, name_toks, alt_toks))
 
         # Detección mejorada: evaluar TODAS las categorías y elegir la mejor coincidencia
         # Buscar primero coincidencia exacta de frase completa (ej: "tiro bajo" completo)
@@ -1961,32 +1966,48 @@ def text_search():
         # 1. Prioridad: Buscar coincidencia de frase completa en alternative_terms o nombre
         query_normalized = expanded_query.lower().strip()
         for category in categories:
-            # Verificar en nombre
-            if query_normalized in category.name.lower():
+            # Verificar en nombre (PRIORIDAD ALTA: nombre exacto de categoría)
+            if query_normalized in category.name.lower() or category.name.lower() in query_normalized:
                 detected_category = category
                 print(f"📁 Categoría detectada por nombre exacto: {category.name}")
                 break
-            # Verificar en alternative_terms
-            alt = getattr(category, 'alternative_terms', None)
-            if alt:
-                alt_terms = [t.strip().lower() for t in str(alt).split(',')]
-                if query_normalized in alt_terms:
-                    detected_category = category
-                    print(f"📁 Categoría detectada por alternative_term exacto: {category.name}")
-                    break
+            # Verificar en name_en también con alta prioridad
+            if category.name_en and (query_normalized in category.name_en.lower() or category.name_en.lower() in query_normalized):
+                detected_category = category
+                print(f"📁 Categoría detectada por name_en exacto: {category.name}")
+                break
+        
+        # Segundo pase: alternative_terms si no hubo match en nombre
+        if not detected_category:
+            for category in categories:
+                alt = getattr(category, 'alternative_terms', None)
+                if alt:
+                    alt_terms = [t.strip().lower() for t in str(alt).split(',')]
+                    if query_normalized in alt_terms:
+                        detected_category = category
+                        print(f"📁 Categoría detectada por alternative_term exacto: {category.name}")
+                        break
 
         # 2. Si no hay coincidencia exacta, usar scoring de tokens (máxima superposición)
         if not detected_category:
-            for category, toks in cat_tokens_list:
-                # Calcular intersección (tokens en común)
-                intersection = query_tokens & toks
-                if intersection:
-                    # Score basado en: cantidad de tokens coincidentes / total tokens del query
-                    # Esto favorece coincidencias más completas
-                    score = len(intersection) / max(len(query_tokens), 1)
+            candidates = []  # Para debugging
+            for category, name_toks, alt_toks in cat_tokens_list:
+                # Calcular intersección con tokens del nombre (PESO 1.0)
+                name_intersection = query_tokens & name_toks
+                # Calcular intersección con tokens de alternative_terms (PESO 0.5)
+                alt_intersection = query_tokens & alt_toks
+                
+                if name_intersection or alt_intersection:
+                    # Score ponderado: tokens del nombre valen el doble
+                    score = (len(name_intersection) * 1.0 + len(alt_intersection) * 0.5) / max(len(query_tokens), 1)
+                    all_intersection = name_intersection | alt_intersection
+                    candidates.append((category.name, score, all_intersection, 'name' if name_intersection else 'alt'))
                     if score > best_score:
                         best_score = score
                         best_category = category
+
+            if candidates:
+                print(f"🎯 Candidatos de categoría: {[(c[0], f'{c[1]:.2f}', c[2], c[3]) for c in sorted(candidates, key=lambda x: x[1], reverse=True)[:5]]}")
 
             if best_category and best_score > 0:
                 detected_category = best_category
@@ -1995,7 +2016,11 @@ def text_search():
 
         # Si NO detectamos categoría: decidir si es fuera de catálogo o si permitimos búsqueda global
         if not detected_category:
-            all_cat_tokens = set().union(*(toks for _, toks in cat_tokens_list)) if cat_tokens_list else set()
+            all_cat_tokens = set()
+            for _, name_toks, alt_toks in cat_tokens_list:
+                all_cat_tokens |= name_toks
+                all_cat_tokens |= alt_toks
+            
             if query_tokens and query_tokens.isdisjoint(all_cat_tokens):
                 # Ningún token del query coincide con tokens de categorías → fuera de catálogo
                 available_names = [cat.name for cat in categories]
@@ -2084,6 +2109,9 @@ def text_search():
         # FILTRAR por categoría si fue detectada
         if detected_category:
             products_query = products_query.filter(Product.category_id == detected_category.id)
+            print(f"🔎 Filtrando productos por categoría: {detected_category.name}")
+        else:
+            print(f"🔎 Búsqueda SIN filtro de categoría (global)")
 
         products = products_query.all()
 
