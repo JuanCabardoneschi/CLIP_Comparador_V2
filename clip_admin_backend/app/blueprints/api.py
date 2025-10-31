@@ -2022,21 +2022,11 @@ def text_search():
                 all_cat_tokens |= alt_toks
 
             if query_tokens and query_tokens.isdisjoint(all_cat_tokens):
-                # Ningún token del query coincide con tokens de categorías → fuera de catálogo
-                available_names = [cat.name for cat in categories]
-                return jsonify({
-                    "success": False,
-                    "error": "category_not_detected",
-                    "query": query_text,
-                    "detected_category": None,
-                    "results": [],
-                    "total_products_analyzed": 0,
-                    "message": "No pudimos reconocer una categoría comercializada en tu consulta.",
-                    "details": "Probá con una de estas categorías disponibles.",
-                    "available_categories": available_names
-                }), 400
-            # Si hay alguna coincidencia débil (e.g., tokens genéricos), continuar sin filtrar por categoría
-            print("ℹ️ TEXT SEARCH: Sin categoría inequívoca, continuando sin filtro por categoría")
+                # Antes devolvíamos 400. Ahora permitimos BÚSQUEDA GLOBAL para casos como nombres de modelo (ej: "monaco").
+                print("ℹ️ TEXT SEARCH: tokens sin cruce con categorías → continuamos en búsqueda GLOBAL por nombre/SKU/tags")
+            else:
+                # Si hay alguna coincidencia débil (e.g., tokens genéricos), continuar sin filtrar por categoría
+                print("ℹ️ TEXT SEARCH: Sin categoría inequívoca, continuando sin filtro por categoría")
 
         # --- Enriquecimiento opcional de query con tags inferidos (feature flag) ---
         try:
