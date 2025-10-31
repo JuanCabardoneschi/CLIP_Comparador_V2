@@ -714,6 +714,20 @@ def process_pending():
                     confidence = metadata.get('confidence_score', 0) if metadata else 0
                     print(f"✅ {image.filename} procesado con {method} (confianza: {confidence:.3f})")
 
+                    # ✨ NUEVO: Actualizar tags contextuales del producto
+                    if image.product:
+                        try:
+                            from app.services.attribute_autofill_service import AttributeAutofillService
+                            result = AttributeAutofillService.autofill_product_attributes(
+                                image.product,
+                                overwrite=False
+                            )
+                            if result['success'] and result['tags']:
+                                image.product.tags = result['tags']
+                                print(f"  ✓ Tags actualizados para {image.product.name}: {result['tags']}")
+                        except Exception as tag_error:
+                            print(f"⚠️ Error actualizando tags de {image.product.name}: {tag_error}")
+
                 except Exception as e:
                     print(f"❌ Error procesando {image.filename}: {e}")
                     image.upload_status = 'failed'

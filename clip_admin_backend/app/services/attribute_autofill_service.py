@@ -319,18 +319,18 @@ class AttributeAutofillService:
             if all_tags:
                 sorted_tags = sorted(all_tags.items(), key=lambda x: x[1], reverse=True)[:8]
                 new_tag_names = [tag for tag, _ in sorted_tags]
-                
+
                 # Mezclar con tags existentes (evitar duplicados)
                 existing_tags = []
                 if product.tags:
                     existing_tags = [t.strip() for t in product.tags.split(',') if t.strip()]
-                
+
                 # Combinar: primero los nuevos (más relevantes), luego los viejos no duplicados
                 combined_tags = new_tag_names.copy()
                 for old_tag in existing_tags:
                     if old_tag not in combined_tags:
                         combined_tags.append(old_tag)
-                
+
                 # Limitar a 12 tags totales para no saturar
                 final_tags = combined_tags[:12]
                 detected_tags = ", ".join(final_tags)
