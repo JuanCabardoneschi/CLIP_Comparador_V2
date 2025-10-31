@@ -86,6 +86,7 @@
                 display: none;
                 padding: 2.5rem;
                 animation: clipFadeIn 0.3s ease;
+                position: relative; /* Para overlays de bloqueo */
             }
 
             .clip-tab-content.active {
@@ -338,6 +339,29 @@
             .clip-loading-text {
                 color: #64748b;
                 font-size: 1.1rem;
+            }
+
+            /* Overlay de bloqueo durante procesamiento */
+            .clip-overlay {
+                position: absolute;
+                inset: 0;
+                background: rgba(255, 255, 255, 0.7);
+                display: none;
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+                z-index: 20;
+                backdrop-filter: blur(1px);
+            }
+
+            .clip-overlay.active {
+                display: flex;
+            }
+
+            .clip-overlay .clip-loading-text {
+                margin-top: 0.75rem;
+                color: #475569;
+                font-weight: 600;
             }
 
             /* Error */
@@ -648,6 +672,12 @@
                         </div>
                         <button class="clip-search-btn" id="clip-visual-search-btn">Buscar productos similares</button>
                     </div>
+
+                    <!-- Overlay de procesamiento (visual) -->
+                    <div class="clip-overlay" id="clip-visual-overlay">
+                        <div class="clip-spinner"></div>
+                        <div class="clip-loading-text">Analizando imagen...</div>
+                    </div>
                 </div>
 
                 <div class="clip-tab-content" id="clip-text-tab">
@@ -670,6 +700,12 @@
                             <span class="clip-example-tag" data-query="camisa casual">camisa casual</span>
                             <span class="clip-example-tag" data-query="delantal negro">delantal negro</span>
                         </div>
+                    </div>
+
+                    <!-- Overlay de procesamiento (text) -->
+                    <div class="clip-overlay" id="clip-text-overlay">
+                        <div class="clip-spinner"></div>
+                        <div class="clip-loading-text">Buscando productos...</div>
                     </div>
                 </div>
 
@@ -697,7 +733,8 @@
         `;
 
         // State
-        let selectedFile = null;
+    let selectedFile = null;
+    let isProcessing = false; // Evitar múltiples requests simultáneos
 
         // Tab switching
         container.querySelectorAll('.clip-tab').forEach(tab => {
@@ -718,7 +755,7 @@
         const removeBtn = container.querySelector('#clip-remove');
         const visualSearchBtn = container.querySelector('#clip-visual-search-btn');
 
-        upload.addEventListener('click', () => fileInput.click());
+    upload.addEventListener('click', () => { if (!isProcessing) fileInput.click(); });
 
         upload.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -762,6 +799,7 @@
         });
 
         visualSearchBtn.addEventListener('click', () => {
+            if (isProcessing) return;
             if (!selectedFile) return;
             performVisualSearch(selectedFile);
         });
@@ -771,6 +809,7 @@
         const textSearchBtn = container.querySelector('#clip-text-search-btn');
 
         textSearchBtn.addEventListener('click', () => {
+            if (isProcessing) return;
             const query = textInput.value.trim();
             if (!query) {
                 alert('Por favor ingresa una descripción');
@@ -780,7 +819,7 @@
         });
 
         textInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') textSearchBtn.click();
+            if (e.key === 'Enter' && !isProcessing) textSearchBtn.click();
         });
 
         // Example tags
@@ -793,11 +832,44 @@
         });
 
         // Visual search API
+        function beginProcessing(scope) {
+            isProcessing = true;
+            // Deshabilitar controles según scope
+            if (scope === 'visual') {
+                visualSearchBtn.disabled = true;
+                fileInput.disabled = true;
+                upload.style.pointerEvents = 'none';
+                container.querySelector('#clip-visual-overlay').classList.add('active');
+            } else if (scope === 'text') {
+                textSearchBtn.disabled = true;
+                textInput.disabled = true;
+                container.querySelector('#clip-text-overlay').classList.add('active');
+            }
+            // Ocultar resultados/errores para evitar interacción
+            container.querySelector('#clip-results').classList.remove('active');
+            container.querySelector('#clip-error').classList.remove('active');
+            container.querySelector('#clip-refinement').style.display = 'none';
+        }
+
+        function endProcessing(scope) {
+            isProcessing = false;
+            if (scope === 'visual') {
+                visualSearchBtn.disabled = false;
+                fileInput.disabled = false;
+                upload.style.pointerEvents = '';
+                container.querySelector('#clip-visual-overlay').classList.remove('active');
+            } else if (scope === 'text') {
+                textSearchBtn.disabled = false;
+                textInput.disabled = false;
+                container.querySelector('#clip-text-overlay').classList.remove('active');
+            }
+        }
+
         function performVisualSearch(file) {
+            if (isProcessing) return;
+            beginProcessing('visual');
             const formData = new FormData();
             formData.append('image', file);
-
-            showLoading();
 
             fetch(`${config.serverUrl}/api/search`, {
                 method: 'POST',
@@ -806,7 +878,7 @@
             })
             .then(res => res.json())
             .then(data => {
-                hideLoading();
+                endProcessing('visual');
                 if (data.success && data.results && data.results.length > 0) {
                     const total = data.total_results || data.results.length;
                     displayResults(data.results, total);
@@ -818,7 +890,7 @@
                 }
             })
             .catch(err => {
-                hideLoading();
+                endProcessing('visual');
                 showError('Error al realizar la búsqueda. Intenta nuevamente.');
                 console.error(err);
             });
@@ -826,7 +898,8 @@
 
         // Text search API
         function performTextSearch(query) {
-            showLoading();
+            if (isProcessing) return;
+            beginProcessing('text');
 
             fetch(`${config.serverUrl}/api/search`, {
                 method: 'POST',
@@ -838,7 +911,7 @@
             })
             .then(res => res.json())
             .then(data => {
-                hideLoading();
+                endProcessing('text');
 
                 // Detectar si necesita refinamiento
                 if (data.needs_refinement) {
@@ -857,7 +930,7 @@
                 }
             })
             .catch(err => {
-                hideLoading();
+                endProcessing('text');
                 showError('Error al realizar la búsqueda. Intenta nuevamente.');
                 console.error(err);
             });
@@ -943,16 +1016,9 @@
         }
 
         // Helpers
-        function showLoading() {
-            container.querySelector('#clip-loading').classList.add('active');
-            container.querySelector('#clip-results').classList.remove('active');
-            container.querySelector('#clip-error').classList.remove('active');
-            container.querySelector('#clip-refinement').style.display = 'none';
-        }
-
-        function hideLoading() {
-            container.querySelector('#clip-loading').classList.remove('active');
-        }
+        // Deprecated: se reemplaza por overlays por sección (visual/text)
+        function showLoading() { /* noop */ }
+        function hideLoading() { /* noop */ }
 
         function showError(msg) {
             const errorDiv = container.querySelector('#clip-error');
