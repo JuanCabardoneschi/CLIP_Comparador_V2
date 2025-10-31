@@ -314,16 +314,32 @@ class AttributeAutofillService:
                     else:
                         print(f"  ⊘ {attr_name}: Ya tiene valor '{current_attributes[attr_name]}' (detectado: {best_option[0]})")
 
-            # Consolidar tags contextuales (top 8 para mayor riqueza semántica)
+            # Consolidar tags contextuales (mezclar existentes + nuevos)
             detected_tags = ""
             if all_tags:
                 sorted_tags = sorted(all_tags.items(), key=lambda x: x[1], reverse=True)[:8]
-                tag_names = [tag for tag, _ in sorted_tags]
-                detected_tags = ", ".join(tag_names)
+                new_tag_names = [tag for tag, _ in sorted_tags]
                 
+                # Mezclar con tags existentes (evitar duplicados)
+                existing_tags = []
+                if product.tags:
+                    existing_tags = [t.strip() for t in product.tags.split(',') if t.strip()]
+                
+                # Combinar: primero los nuevos (más relevantes), luego los viejos no duplicados
+                combined_tags = new_tag_names.copy()
+                for old_tag in existing_tags:
+                    if old_tag not in combined_tags:
+                        combined_tags.append(old_tag)
+                
+                # Limitar a 12 tags totales para no saturar
+                final_tags = combined_tags[:12]
+                detected_tags = ", ".join(final_tags)
+
                 # Mostrar tags con confianza para debugging
                 tags_debug = ", ".join([f"{tag}({conf:.2f})" for tag, conf in sorted_tags])
-                print(f"  ✓ Tags contextuales detectados: {tags_debug}")
+                print(f"  ✓ Tags nuevos detectados: {tags_debug}")
+                if existing_tags:
+                    print(f"  ℹ️ Tags existentes preservados: {', '.join([t for t in existing_tags if t in final_tags])}")
 
             return {
                 'success': True,

@@ -853,7 +853,7 @@ def delete_image(product_id, image_id):
 @bp.route("/api/generate-embeddings", methods=["POST"])
 @login_required
 def generate_embeddings():
-    """Generar embeddings para imágenes pendientes"""
+    """Generar embeddings para imágenes pendientes y actualizar tags del producto"""
     try:
         # Obtener imágenes pendientes del cliente
         pending_images = Image.query.filter_by(
@@ -867,7 +867,9 @@ def generate_embeddings():
 
         # Usar la lógica REAL de generación de embeddings del blueprint de embeddings
         processed = 0
+        tags_updated = 0
         from app.blueprints.embeddings import generate_clip_embedding  # import local para evitar ciclos
+        from app.services.attribute_autofill_service import AttributeAutofillService
 
         for image in pending_images:
             try:
@@ -885,28 +887,32 @@ def generate_embeddings():
                 image.upload_status = 'completed'
                 image.error_message = None
                 processed += 1
-                
-                # ✨ NUEVO: Actualizar tags contextuales del producto
+
+                # ✨ Actualizar tags contextuales del producto
                 product = Product.query.get(image.product_id)
                 if product:
-                    from app.services.attribute_autofill_service import AttributeAutofillService
                     result = AttributeAutofillService.autofill_product_attributes(
-                        product, 
+                        product,
                         overwrite=False
                     )
                     if result['success'] and result['tags']:
                         product.tags = result['tags']
+                        tags_updated += 1
                         print(f"  ✓ Tags actualizados para {product.name}: {result['tags']}")
-                        
+
             except Exception as e:
                 image.upload_status = 'failed'
                 image.error_message = str(e)
 
         db.session.commit()
 
+        message = f"{processed} embeddings generados"
+        if tags_updated > 0:
+            message += f" y {tags_updated} productos con tags actualizados"
+
         return jsonify({
             "success": True,
-            "message": f"{processed} embeddings generados correctamente"
+            "message": message
         })
 
     except Exception as e:
@@ -920,31 +926,31 @@ def regenerate_all_tags():
     """Regenerar tags contextuales para todos los productos con imágenes"""
     try:
         from app.services.attribute_autofill_service import AttributeAutofillService
-        
+
         # Obtener solo productos del cliente actual que tengan imágenes
         products = Product.query.filter_by(
             client_id=current_user.client_id
         ).all()
-        
+
         products_with_images = [p for p in products if p.images.count() > 0]
-        
+
         if not products_with_images:
             return jsonify({
-                "success": False, 
+                "success": False,
                 "message": "No hay productos con imágenes para procesar"
             })
-        
+
         updated = 0
         failed = 0
-        
+
         for product in products_with_images:
             try:
                 # Solo regenerar tags, no sobrescribir atributos existentes
                 result = AttributeAutofillService.autofill_product_attributes(
-                    product, 
+                    product,
                     overwrite=False
                 )
-                
+
                 if result['success'] and result['tags']:
                     # Actualizar tags (siempre sobrescribimos tags para obtener los nuevos contextuales)
                     product.tags = result['tags']
@@ -952,14 +958,14 @@ def regenerate_all_tags():
                     print(f"✓ {product.name}: {result['tags']}")
                 else:
                     failed += 1
-                    
+
             except Exception as e:
                 failed += 1
                 print(f"❌ Error en {product.name}: {e}")
                 continue
-        
+
         db.session.commit()
-        
+
         return jsonify({
             "success": True,
             "message": f"✨ Tags actualizados: {updated} productos exitosos, {failed} fallidos",
@@ -967,12 +973,12 @@ def regenerate_all_tags():
             "failed": failed,
             "total": len(products_with_images)
         })
-        
+
     except Exception as e:
         db.session.rollback()
         import traceback
         traceback.print_exc()
         return jsonify({
-            "success": False, 
+            "success": False,
             "message": f"Error: {str(e)}"
         })

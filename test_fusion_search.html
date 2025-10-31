@@ -127,7 +127,7 @@
             <h3>Test 1: Query con Color</h3>
             <input type="text" class="query-input" id="query1" value="delantal rojo" placeholder="Escribe tu query...">
             <button class="test-button" onclick="testSearch('query1', 'results1')">🔍 Buscar</button>
-            
+
             <div class="expected">
                 <strong>🎯 Qué esperar:</strong>
                 <ul>
@@ -137,7 +137,7 @@
                     <li>Productos rojos aparecen más arriba que otros colores</li>
                 </ul>
             </div>
-            
+
             <div class="results" id="results1"></div>
         </div>
 
@@ -146,7 +146,7 @@
             <h3>Test 2: Query con Color + Contexto de Estilo</h3>
             <input type="text" class="query-input" id="query2" value="camisa azul elegante" placeholder="Escribe tu query...">
             <button class="test-button" onclick="testSearch('query2', 'results2')">🔍 Buscar</button>
-            
+
             <div class="expected">
                 <strong>🎯 Qué esperar:</strong>
                 <ul>
@@ -155,7 +155,7 @@
                     <li>Productos azules + elegantes tienen mejor score</li>
                 </ul>
             </div>
-            
+
             <div class="results" id="results2"></div>
         </div>
 
@@ -164,7 +164,7 @@
             <h3>Test 3: Query sin Color (Solo Categoría)</h3>
             <input type="text" class="query-input" id="query3" value="delantal" placeholder="Escribe tu query...">
             <button class="test-button" onclick="testSearch('query3', 'results3')">🔍 Buscar</button>
-            
+
             <div class="expected">
                 <strong>🎯 Qué esperar:</strong>
                 <ul>
@@ -173,7 +173,7 @@
                     <li>Búsqueda funciona normal (no se rompe)</li>
                 </ul>
             </div>
-            
+
             <div class="results" id="results3"></div>
         </div>
 
@@ -181,7 +181,7 @@
         <div class="test-case">
             <h3>Test 4: Verificar Cache (ejecuta Test 1 de nuevo)</h3>
             <button class="test-button" onclick="testSearch('query1', 'results4')">🔍 Repetir Búsqueda "delantal rojo"</button>
-            
+
             <div class="expected">
                 <strong>🎯 Qué esperar:</strong>
                 <ul>
@@ -189,7 +189,7 @@
                     <li>Respuesta más rápida (sin recalcular embeddings)</li>
                 </ul>
             </div>
-            
+
             <div class="results" id="results4"></div>
         </div>
 
@@ -249,16 +249,16 @@
 
                 if (data.success) {
                     let html = `<h4>✅ Resultados (${data.total_products_analyzed} productos analizados)</h4>`;
-                    
+
                     if (data.results && data.results.length > 0) {
                         data.results.forEach((item, index) => {
                             html += `
                                 <div class="result-item">
                                     <strong>${index + 1}. ${item.name}</strong><br>
                                     <small>SKU: ${item.sku} | Categoría: ${item.category}</small><br>
-                                    <span class="score">Score Final: ${item.final_score}</span> | 
-                                    CLIP: ${item.clip_similarity} | 
-                                    Attr: ${item.attr_boost} | 
+                                    <span class="score">Score Final: ${item.final_score}</span> |
+                                    CLIP: ${item.clip_similarity} |
+                                    Attr: ${item.attr_boost} |
                                     Tag: ${item.tag_boost}
                                 </div>
                             `;
