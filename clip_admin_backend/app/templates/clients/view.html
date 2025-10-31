@@ -310,8 +310,8 @@
                                     Analiza todas las imágenes de productos y genera nuevos tags contextuales usando IA.
                                     Útil después de actualizaciones del sistema de clasificación.
                                 </p>
-                                <button 
-                                    class="btn btn-warning btn-sm" 
+                                <button
+                                    class="btn btn-warning btn-sm"
                                     onclick="regenerateClientTags({{ client.id }})"
                                     id="btn-regenerate-tags-{{ client.id }}">
                                     <i class="bi bi-arrow-clockwise me-1"></i>
@@ -507,16 +507,16 @@ function submitDelete() {
 // Regenerar tags contextuales para un cliente
 function regenerateClientTags(clientId) {
     const btn = document.getElementById(`btn-regenerate-tags-${clientId}`);
-    
+
     if (!confirm('¿Regenerar tags contextuales para todos los productos de este cliente?\n\nEsto analizará todas las imágenes con IA y puede tomar varios minutos.\n\nLos productos con imágenes obtendrán tags actualizados según el nuevo modelo de clasificación.')) {
         return;
     }
-    
+
     // Deshabilitar botón y mostrar spinner
     btn.disabled = true;
     const originalHTML = btn.innerHTML;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Regenerando...';
-    
+
     // Hacer request al endpoint
     fetch(`/products/api/regenerate-tags-by-client/${clientId}`, {
         method: 'POST',
@@ -530,7 +530,7 @@ function regenerateClientTags(clientId) {
             // Mostrar mensaje de éxito con detalles
             const message = `✅ Tags Regenerados\n\n${data.message}\n\nProductos actualizados: ${data.updated}\nProductos sin cambios: ${data.failed}\nTotal procesados: ${data.total}`;
             alert(message);
-            
+
             // Toast de éxito
             showSuccessToast(`Tags regenerados: ${data.updated}/${data.total} productos`);
         } else {
@@ -562,11 +562,11 @@ function showSuccessToast(message) {
             <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
         </div>
     `;
-    
+
     document.body.appendChild(toast);
     const bsToast = new bootstrap.Toast(toast);
     bsToast.show();
-    
+
     setTimeout(() => {
         toast.remove();
     }, 5000);
