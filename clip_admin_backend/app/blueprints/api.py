@@ -1889,7 +1889,9 @@ def text_search():
 
         # --- LLM Normalization (con vocabulario dinámico del cliente) ---
         llm_norm = normalize_query(query_text, client_id=client.id)
-        print(f"🧠 LLM Normalizer: {llm_norm}")
+        # TODO: Mover a nivel de logs DEBUG
+        # print(f"🧠 LLM Normalizer: {llm_norm}")
+        print(f"🧠 LLM Normalizer: tipo={llm_norm.get('tipo')}, color={llm_norm.get('color')}, contexto={llm_norm.get('contexto')}")
 
         # Extraer campos del normalizador para usar en boosts
         detected_color = llm_norm.get('color', '').lower() if llm_norm.get('color') else None
@@ -1955,7 +1957,7 @@ def text_search():
         # Buscar primero coincidencia exacta de frase completa (ej: "tiro bajo" completo)
         best_category = None
         best_score = 0
-        
+
         # 1. Prioridad: Buscar coincidencia de frase completa en alternative_terms o nombre
         query_normalized = expanded_query.lower().strip()
         for category in categories:
@@ -1972,7 +1974,7 @@ def text_search():
                     detected_category = category
                     print(f"📁 Categoría detectada por alternative_term exacto: {category.name}")
                     break
-        
+
         # 2. Si no hay coincidencia exacta, usar scoring de tokens (máxima superposición)
         if not detected_category:
             for category, toks in cat_tokens_list:
@@ -1985,7 +1987,7 @@ def text_search():
                     if score > best_score:
                         best_score = score
                         best_category = category
-            
+
             if best_category and best_score > 0:
                 detected_category = best_category
                 print(f"📁 Categoría detectada por tokens (score={best_score:.2f}): {detected_category.name}")
