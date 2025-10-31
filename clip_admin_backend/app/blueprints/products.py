@@ -982,3 +982,88 @@ def regenerate_all_tags():
             "success": False,
             "message": f"Error: {str(e)}"
         })
+
+
+@bp.route("/api/regenerate-tags-by-client/<int:client_id>", methods=["POST"])
+@login_required
+def regenerate_tags_by_client(client_id):
+    """
+    Regenerar tags contextuales para todos los productos de un cliente específico.
+    Solo accesible para super admins.
+    """
+    # Verificar que sea super admin
+    if not current_user.is_super_admin:
+        return jsonify({
+            "success": False,
+            "message": "Acceso denegado. Solo super admins pueden ejecutar esta operación."
+        }), 403
+
+    try:
+        from app.services.attribute_autofill_service import AttributeAutofillService
+        from app.models.client import Client
+
+        # Validar que el cliente existe
+        client = Client.query.get(client_id)
+        if not client:
+            return jsonify({
+                "success": False,
+                "message": f"Cliente con ID {client_id} no encontrado"
+            }), 404
+
+        # Obtener solo productos del cliente que tengan imágenes
+        products = Product.query.filter_by(client_id=client_id).all()
+        products_with_images = [p for p in products if p.images.count() > 0]
+
+        if not products_with_images:
+            return jsonify({
+                "success": False,
+                "message": f"No hay productos con imágenes para el cliente '{client.name}'"
+            })
+
+        print(f"🔄 Iniciando regeneración de tags para {len(products_with_images)} productos del cliente '{client.name}'")
+
+        updated = 0
+        failed = 0
+
+        for product in products_with_images:
+            try:
+                # Solo regenerar tags, no sobrescribir atributos existentes
+                result = AttributeAutofillService.autofill_product_attributes(
+                    product,
+                    overwrite=False
+                )
+
+                if result['success'] and result['tags']:
+                    # Actualizar tags (siempre sobrescribimos tags para obtener los nuevos contextuales)
+                    product.tags = result['tags']
+                    updated += 1
+                    print(f"✓ {product.name}: {result['tags']}")
+                else:
+                    failed += 1
+
+            except Exception as e:
+                failed += 1
+                print(f"❌ Error en {product.name}: {e}")
+                continue
+
+        db.session.commit()
+
+        print(f"✅ Regeneración completada para '{client.name}': {updated} exitosos, {failed} fallidos")
+
+        return jsonify({
+            "success": True,
+            "message": f"✨ Tags regenerados para '{client.name}'",
+            "updated": updated,
+            "failed": failed,
+            "total": len(products_with_images),
+            "client_name": client.name
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "message": f"Error: {str(e)}"
+        })

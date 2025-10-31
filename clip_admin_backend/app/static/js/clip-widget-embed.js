@@ -376,6 +376,64 @@
                 border-radius: 8px;
             }
 
+            /* Refinement Suggestions */
+            .clip-refinement {
+                background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+                border: 2px solid #fbbf24;
+                border-radius: 12px;
+                padding: 1.5rem;
+                margin: 1.5rem 0;
+                animation: clipFadeIn 0.3s ease;
+            }
+
+            .clip-refinement-icon {
+                font-size: 2rem;
+                margin-bottom: 0.5rem;
+            }
+
+            .clip-refinement-message {
+                font-size: 1.1rem;
+                font-weight: 600;
+                color: #78350f;
+                margin-bottom: 1rem;
+            }
+
+            .clip-refinement-label {
+                font-size: 0.9rem;
+                color: #92400e;
+                font-weight: 600;
+                margin-bottom: 0.75rem;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+
+            .clip-suggestions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.75rem;
+                margin-top: 0.5rem;
+            }
+
+            .clip-suggestion-chip {
+                background: white;
+                color: #1f2937;
+                padding: 0.75rem 1.25rem;
+                border-radius: 20px;
+                border: 2px solid #fbbf24;
+                cursor: pointer;
+                transition: all 0.2s;
+                font-weight: 500;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+
+            .clip-suggestion-chip:hover {
+                background: #667eea;
+                color: white;
+                border-color: #667eea;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            }
+
             .clip-category-tag {
                 display: inline-block;
                 background: white;
@@ -614,6 +672,12 @@
 
                 <div class="clip-error" id="clip-error"></div>
 
+                <div class="clip-refinement" id="clip-refinement" style="display: none;">
+                    <div class="clip-refinement-icon">💡</div>
+                    <div class="clip-refinement-message" id="clip-refinement-message"></div>
+                    <div id="clip-suggestions-container"></div>
+                </div>
+
                 <div class="clip-results" id="clip-results">
                     <div class="clip-results-header">
                         <h2 class="clip-results-title">✨ Productos Encontrados</h2>
@@ -764,6 +828,13 @@
             .then(res => res.json())
             .then(data => {
                 hideLoading();
+
+                // Detectar si necesita refinamiento
+                if (data.needs_refinement) {
+                    showRefinementSuggestions(data);
+                    return;
+                }
+
                 if (data.success && data.results && data.results.length > 0) {
                     const total = data.total_results || data.results.length;
                     displayResults(data.results, total);
@@ -865,6 +936,7 @@
             container.querySelector('#clip-loading').classList.add('active');
             container.querySelector('#clip-results').classList.remove('active');
             container.querySelector('#clip-error').classList.remove('active');
+            container.querySelector('#clip-refinement').style.display = 'none';
         }
 
         function hideLoading() {
@@ -876,6 +948,65 @@
             errorDiv.textContent = msg;
             errorDiv.classList.add('active');
             container.querySelector('#clip-results').classList.remove('active');
+            container.querySelector('#clip-refinement').style.display = 'none';
+        }
+
+        function showRefinementSuggestions(data) {
+            const refinementDiv = container.querySelector('#clip-refinement');
+            const messageDiv = container.querySelector('#clip-refinement-message');
+            const suggestionsContainer = container.querySelector('#clip-suggestions-container');
+
+            messageDiv.textContent = data.refinement_message || 'Tu búsqueda es muy general. ¿Podrías ser más específico?';
+
+            let suggestionsHTML = '';
+
+            // Sugerencias de colores
+            if (data.suggestions && data.suggestions.colores && data.suggestions.colores.length > 0) {
+                suggestionsHTML += `
+                    <div class="clip-refinement-label">Colores disponibles:</div>
+                    <div class="clip-suggestions">
+                        ${data.suggestions.colores.map(color =>
+                            `<button class="clip-suggestion-chip" data-type="color" data-value="${color}">
+                                ${color}
+                            </button>`
+                        ).join('')}
+                    </div>
+                `;
+            }
+
+            // Sugerencias de contextos/estilos
+            if (data.suggestions && data.suggestions.contextos && data.suggestions.contextos.length > 0) {
+                suggestionsHTML += `
+                    <div class="clip-refinement-label" style="margin-top: 1rem;">Estilos disponibles:</div>
+                    <div class="clip-suggestions">
+                        ${data.suggestions.contextos.map(contexto =>
+                            `<button class="clip-suggestion-chip" data-type="contexto" data-value="${contexto}">
+                                ${contexto}
+                            </button>`
+                        ).join('')}
+                    </div>
+                `;
+            }
+
+            suggestionsContainer.innerHTML = suggestionsHTML;
+            refinementDiv.style.display = 'block';
+
+            // Agregar event listeners a los chips
+            suggestionsContainer.querySelectorAll('.clip-suggestion-chip').forEach(chip => {
+                chip.addEventListener('click', function() {
+                    const value = this.dataset.value;
+                    const currentQuery = container.querySelector('#clip-text-input').value;
+                    const baseQuery = currentQuery.replace(/\b(de\s+)?colores?\b/gi, '').trim();
+                    const newQuery = `${baseQuery} ${value}`.trim();
+
+                    // Actualizar input y ejecutar búsqueda
+                    container.querySelector('#clip-text-input').value = newQuery;
+                    performTextSearch(newQuery);
+                });
+            });
+
+            container.querySelector('#clip-results').classList.remove('active');
+            container.querySelector('#clip-error').classList.remove('active');
         }
 
         function showCategoryNotDetectedError(message, details, categories) {

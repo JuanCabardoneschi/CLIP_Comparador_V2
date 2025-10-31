@@ -283,6 +283,78 @@
 </div>
 {% endif %}
 
+<!-- Sección de Mantenimiento y Optimización -->
+{% if current_user.is_super_admin %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card shadow-sm border-warning">
+            <div class="card-header bg-warning bg-opacity-10 py-3">
+                <h6 class="m-0 font-weight-bold text-warning">
+                    <i class="bi bi-tools me-2"></i>
+                    Mantenimiento y Optimización
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- Regenerar Tags Contextuales -->
+                    <div class="col-md-6 mb-3">
+                        <div class="d-flex align-items-start">
+                            <div class="flex-shrink-0">
+                                <div class="bg-warning bg-opacity-25 rounded p-2">
+                                    <i class="bi bi-tags-fill text-warning fs-4"></i>
+                                </div>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="mb-1">Regenerar Tags Contextuales</h6>
+                                <p class="text-muted small mb-2">
+                                    Analiza todas las imágenes de productos y genera nuevos tags contextuales usando IA.
+                                    Útil después de actualizaciones del sistema de clasificación.
+                                </p>
+                                <button 
+                                    class="btn btn-warning btn-sm" 
+                                    onclick="regenerateClientTags({{ client.id }})"
+                                    id="btn-regenerate-tags-{{ client.id }}">
+                                    <i class="bi bi-arrow-clockwise me-1"></i>
+                                    Regenerar Tags
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Placeholder para futuras herramientas -->
+                    <div class="col-md-6 mb-3">
+                        <div class="d-flex align-items-start">
+                            <div class="flex-shrink-0">
+                                <div class="bg-secondary bg-opacity-25 rounded p-2">
+                                    <i class="bi bi-database text-secondary fs-4"></i>
+                                </div>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h6 class="mb-1">Más Herramientas Próximamente</h6>
+                                <p class="text-muted small mb-2">
+                                    Herramientas adicionales de optimización estarán disponibles aquí.
+                                </p>
+                                <button class="btn btn-secondary btn-sm" disabled>
+                                    <i class="bi bi-hourglass-split me-1"></i>
+                                    Próximamente
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Información importante -->
+                <div class="alert alert-info mb-0 mt-2">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>Nota:</strong> Las operaciones de mantenimiento pueden tomar varios minutos dependiendo de la cantidad de productos.
+                    El sistema procesará las imágenes en segundo plano.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Modal para nueva API Key - DESHABILITADO (funcionalidad no disponible) -->
 <!--
 <div class="modal fade" id="newApiKeyModal" tabindex="-1">
@@ -430,6 +502,74 @@ function confirmDelete() {
 
 function submitDelete() {
     document.getElementById('deleteForm').submit();
+}
+
+// Regenerar tags contextuales para un cliente
+function regenerateClientTags(clientId) {
+    const btn = document.getElementById(`btn-regenerate-tags-${clientId}`);
+    
+    if (!confirm('¿Regenerar tags contextuales para todos los productos de este cliente?\n\nEsto analizará todas las imágenes con IA y puede tomar varios minutos.\n\nLos productos con imágenes obtendrán tags actualizados según el nuevo modelo de clasificación.')) {
+        return;
+    }
+    
+    // Deshabilitar botón y mostrar spinner
+    btn.disabled = true;
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Regenerando...';
+    
+    // Hacer request al endpoint
+    fetch(`/products/api/regenerate-tags-by-client/${clientId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            // Mostrar mensaje de éxito con detalles
+            const message = `✅ Tags Regenerados\n\n${data.message}\n\nProductos actualizados: ${data.updated}\nProductos sin cambios: ${data.failed}\nTotal procesados: ${data.total}`;
+            alert(message);
+            
+            // Toast de éxito
+            showSuccessToast(`Tags regenerados: ${data.updated}/${data.total} productos`);
+        } else {
+            alert(`❌ Error al regenerar tags:\n\n${data.message}`);
+        }
+    })
+    .catch(err => {
+        console.error('Error:', err);
+        alert('❌ Error al realizar la petición.\n\nRevisa la consola para más detalles.');
+    })
+    .finally(() => {
+        // Restaurar botón
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+    });
+}
+
+// Mostrar toast de éxito
+function showSuccessToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'toast align-items-center text-white bg-success border-0';
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">
+                <i class="bi bi-check-circle me-2"></i>
+                ${message}
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+    
+    setTimeout(() => {
+        toast.remove();
+    }, 5000);
 }
 </script>
 

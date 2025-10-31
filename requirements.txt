@@ -34,6 +34,7 @@ huggingface-hub==0.19.4
 Pillow==10.1.0
 numpy==1.25.2
 sentence-transformers==2.2.2
+scikit-learn==1.3.2  # Para matching semántico en LLM query normalizer
 
 # Image Processing & Storage
 cloudinary==1.36.0  # Cloudinary para almacenamiento en la nube

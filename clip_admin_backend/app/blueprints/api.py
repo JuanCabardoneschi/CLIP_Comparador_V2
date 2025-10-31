@@ -602,8 +602,17 @@ def _process_image_data(image_file):
     return image_data, limit, threshold, None, None
 
 
-def _generate_query_embedding(image_data):
-    """Genera el embedding de la imagen de consulta"""
+def _generate_query_embedding(image_data, detected_category=None):
+    """
+    Genera el embedding de la imagen de consulta con enriquecimiento opcional por tags
+
+    Args:
+        image_data: Bytes de la imagen
+        detected_category: Categoría detectada (opcional, para contexto)
+
+    Returns:
+        Tuple: (embedding_enriquecido, error_response, status_code)
+    """
     print(f"📷 DEBUG: Procesando imagen de {len(image_data)} bytes")
     query_embedding, error = process_image_for_search(image_data)
     if error:
@@ -622,6 +631,64 @@ def _generate_query_embedding(image_data):
 
     print(f"🧠 DEBUG: Embedding generado - dimensiones: {len(query_embedding)}")
     print(f"🧠 DEBUG: Primeros 5 valores: {query_embedding[:5]}")
+
+    # ✨ ENRIQUECIMIENTO CON TAGS INFERIDOS (para búsqueda visual)
+    fusion_enabled = system_config.get('search', 'enable_inferred_tags', False)
+    if fusion_enabled:
+        try:
+            from PIL import Image
+            from io import BytesIO
+            from app.services.attribute_autofill_service import AttributeAutofillService
+            import torch
+
+            # Convertir bytes a PIL Image
+            pil_image = Image.open(BytesIO(image_data)).convert('RGB')
+            category_context = detected_category.name.lower() if detected_category else "producto"
+
+            # Inferir tags visuales de la imagen subida
+            from app.services.attribute_autofill_service import TAG_OPTIONS
+            inferred_tags = AttributeAutofillService._classify_tags(
+                pil_image,
+                TAG_OPTIONS,
+                threshold=0.15,
+                category_context=category_context
+            )
+
+            if inferred_tags and len(inferred_tags) > 0:
+                # Tomar top 5 tags más relevantes
+                top_tags = inferred_tags[:5]
+                tag_names = [tag for tag, _ in top_tags]
+
+                print(f"🔮 VISUAL FUSION: Tags inferidos de imagen: {', '.join([f'{t}({c:.2f})' for t, c in top_tags])}")
+
+                # Generar embeddings de los tags
+                model, processor = get_clip_model()
+                tag_phrases = [f"a {tag} style {category_context}" for tag in tag_names]
+
+                with torch.no_grad():
+                    tag_inputs = processor(text=tag_phrases, return_tensors="pt", padding=True)
+                    tag_embeddings = model.get_text_features(**tag_inputs)
+                    tag_embeddings = tag_embeddings / tag_embeddings.norm(dim=-1, keepdim=True)
+                    tag_mean = tag_embeddings.mean(dim=0)
+                    tag_mean = tag_mean / tag_mean.norm()
+
+                    # Fusionar: 80% visual + 20% tags inferidos
+                    q = torch.tensor(query_embedding).unsqueeze(0)
+                    q = q / q.norm()
+
+                    alpha = 0.8  # Peso del embedding visual original
+                    beta = 0.2   # Peso de los tags inferidos
+
+                    fused = alpha * q + beta * tag_mean
+                    fused = fused / fused.norm()
+                    query_embedding = fused.squeeze().cpu().numpy().tolist()
+
+                    print(f"✨ VISUAL FUSION: Embedding enriquecido (α={alpha} visual + β={beta} tags)")
+
+        except Exception as e:
+            print(f"⚠️ VISUAL FUSION skip: {e}")
+            # Si falla, continuar con embedding original
+            pass
 
     return query_embedding, None, None
 
@@ -1612,8 +1679,11 @@ def visual_search():
             detected_color, color_confidence = ("unknown", 0.0)
             print("⚠️ RAILWAY LOG: Categoría sin colores definidos; se omite boost/metadata por color")
 
-        # ===== GENERAR EMBEDDING DE LA IMAGEN =====
-        query_embedding, error_response, status_code = _generate_query_embedding(image_data)
+        # ===== GENERAR EMBEDDING DE LA IMAGEN (con enriquecimiento por tags) =====
+        query_embedding, error_response, status_code = _generate_query_embedding(
+            image_data,
+            detected_category=detected_category  # Pasar categoría para contexto
+        )
         if error_response:
             print(f"❌ RAILWAY LOG: Error generando embedding")
             return error_response, status_code
@@ -1817,8 +1887,8 @@ def text_search():
 
         print(f"📝 TEXT SEARCH: Query='{query_text}' Client={client.name} Limit={limit}", flush=True)
 
-        # --- LLM Normalization ---
-        llm_norm = normalize_query(query_text)
+        # --- LLM Normalization (con vocabulario dinámico del cliente) ---
+        llm_norm = normalize_query(query_text, client_id=client.id)
         print(f"🧠 LLM Normalizer: {llm_norm}")
 
         # Extraer campos del normalizador para usar en boosts
@@ -2067,6 +2137,13 @@ def text_search():
             "total_products_analyzed": len(products),
             "search_time_seconds": round(elapsed_time, 3)
         }
+
+        # Agregar sugerencias si la query es ambigua
+        if llm_norm.get('needs_refinement'):
+            response['needs_refinement'] = True
+            response['ambiguous_terms'] = llm_norm.get('ambiguous_terms', [])
+            response['suggestions'] = llm_norm.get('suggestions', {})
+            response['refinement_message'] = "Tu búsqueda es muy general. ¿Podrías ser más específico?"
 
         # Añadir CORS para consistencia cuando este handler es invocado desde /api/search
         resp = jsonify(response)

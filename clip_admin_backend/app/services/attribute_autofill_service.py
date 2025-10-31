@@ -287,9 +287,9 @@ class AttributeAutofillService:
                             all_attributes[attr_name][best_option] = 0
                         all_attributes[attr_name][best_option] += confidence * weight
 
-                # Clasificar tags relevantes (threshold más bajo para capturar más contexto)
+                # Clasificar tags relevantes (threshold MÁS BAJO para capturar más contexto semántico)
                 relevant_tags = cls._classify_tags(pil_image, TAG_OPTIONS,
-                                                  threshold=0.20, category_context=category_ctx)
+                                                  threshold=0.15, category_context=category_ctx)
                 for tag, confidence in relevant_tags:
                     if tag not in all_tags:
                         all_tags[tag] = 0
