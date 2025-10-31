@@ -1949,13 +1949,13 @@ def text_search():
             name_toks |= tokenize(category.name)
             if category.name_en:
                 name_toks |= tokenize(category.name_en)
-            
+
             alt_toks = set()
             alt = getattr(category, 'alternative_terms', None)
             if alt:
                 for term in str(alt).split(','):
                     alt_toks |= tokenize(term.strip())
-            
+
             cat_tokens_list.append((category, name_toks, alt_toks))
 
         # Detección mejorada: evaluar TODAS las categorías y elegir la mejor coincidencia
@@ -1976,7 +1976,7 @@ def text_search():
                 detected_category = category
                 print(f"📁 Categoría detectada por name_en exacto: {category.name}")
                 break
-        
+
         # Segundo pase: alternative_terms si no hubo match en nombre
         if not detected_category:
             for category in categories:
@@ -1996,7 +1996,7 @@ def text_search():
                 name_intersection = query_tokens & name_toks
                 # Calcular intersección con tokens de alternative_terms (PESO 0.5)
                 alt_intersection = query_tokens & alt_toks
-                
+
                 if name_intersection or alt_intersection:
                     # Score ponderado: tokens del nombre valen el doble
                     score = (len(name_intersection) * 1.0 + len(alt_intersection) * 0.5) / max(len(query_tokens), 1)
@@ -2020,7 +2020,7 @@ def text_search():
             for _, name_toks, alt_toks in cat_tokens_list:
                 all_cat_tokens |= name_toks
                 all_cat_tokens |= alt_toks
-            
+
             if query_tokens and query_tokens.isdisjoint(all_cat_tokens):
                 # Ningún token del query coincide con tokens de categorías → fuera de catálogo
                 available_names = [cat.name for cat in categories]
@@ -2115,6 +2115,34 @@ def text_search():
 
         products = products_query.all()
 
+        # Fallback 1: Si no hay productos en la categoría detectada, rehacer búsqueda global
+        if detected_category and len(products) == 0:
+            print("⚠️ TEXT SEARCH: 0 productos en categoría detectada → Fallback a búsqueda global")
+            detected_category = None
+            # reconstruir query sin filtro de categoría
+            products_query = db.session.query(
+                Product.id,
+                Product.name,
+                Product.sku,
+                Product.price,
+                Product.attributes,
+                Product.tags,
+                Category.name.label('category_name'),
+                Image.clip_embedding,
+                Image.cloudinary_url
+            ).join(
+                Category, Product.category_id == Category.id
+            ).join(
+                Image, db.and_(
+                    Product.id == Image.product_id,
+                    Image.is_primary == True
+                )
+            ).filter(
+                Product.client_id == client.id,
+                Image.clip_embedding.isnot(None)
+            )
+            products = products_query.all()
+
         print(f"🔍 TEXT SEARCH: Analizando {len(products)} productos...")
 
         # Calcular scores híbridos
@@ -2149,18 +2177,20 @@ def text_search():
             except Exception:
                 pass
 
-            # Boost por tags
+            # Boost por nombre de producto y SKU (nuevo) + tags
+            name_boost = _calculate_name_match(query_lower, prod.name, getattr(prod, 'sku', None))
             tag_boost = _calculate_tag_match(query_lower, prod.tags)
+            tag_name_boost = min(1.0, tag_boost + name_boost)
 
             # Score final híbrido
-            # Ponderaciones: CLIP 50%, Atributos 40%, Tags 10%
+            # Ponderaciones: CLIP 50%, Atributos 40%, Tags+Nombre 10%
             final_score = (
                 clip_similarity * 0.5 +
                 attr_boost * 0.4 +
-                tag_boost * 0.1
+                tag_name_boost * 0.1
             )
 
-            print(f"Producto: {prod.name} | CLIP: {clip_similarity:.3f} | Attr: {attr_boost:.3f} | Tag: {tag_boost:.3f} | Score: {final_score:.3f}")
+            print(f"Producto: {prod.name} | CLIP: {clip_similarity:.3f} | Attr: {attr_boost:.3f} | Tag: {tag_boost:.3f} | Name: {name_boost:.3f} | Score: {final_score:.3f}")
 
             results.append({
                 'product_id': str(prod.id),
@@ -2174,6 +2204,7 @@ def text_search():
                 'clip_similarity': round(clip_similarity, 4),
                 'attr_boost': round(attr_boost, 4),
                 'tag_boost': round(tag_boost, 4),
+                'name_boost': round(name_boost, 4),
                 'final_score': round(final_score, 4)
             })
 
@@ -2185,6 +2216,76 @@ def text_search():
         results = results[:limit]
 
         elapsed_time = time.time() - start_time
+
+        # Fallback 2: Si tras el scoring no hay resultados, intentar una búsqueda global sin categoría
+        if len(results) == 0 and detected_category is not None:
+            print("⚠️ TEXT SEARCH: 0 resultados tras filtrar por categoría → Reintentando global")
+            detected_category = None
+            # reconstruir query sin filtro de categoría
+            products_query = db.session.query(
+                Product.id,
+                Product.name,
+                Product.sku,
+                Product.price,
+                Product.attributes,
+                Product.tags,
+                Category.name.label('category_name'),
+                Image.clip_embedding,
+                Image.cloudinary_url
+            ).join(
+                Category, Product.category_id == Category.id
+            ).join(
+                Image, db.and_(
+                    Product.id == Image.product_id,
+                    Image.is_primary == True
+                )
+            ).filter(
+                Product.client_id == client.id,
+                Image.clip_embedding.isnot(None)
+            )
+            products = products_query.all()
+
+            print(f"🔍 TEXT SEARCH (fallback): Analizando {len(products)} productos...")
+
+            results = []
+            for prod in products:
+                embedding = prod.clip_embedding
+                if isinstance(embedding, str):
+                    import json
+                    try:
+                        embedding = json.loads(embedding)
+                    except:
+                        continue
+                emb = np.array(embedding, dtype=np.float32)
+                clip_similarity = float(np.dot(query_embedding, emb) / (np.linalg.norm(query_embedding) * np.linalg.norm(emb)))
+                attr_boost = _calculate_attribute_match(query_lower, prod.attributes, prod.category_name, detected_color, detected_tipo)
+                name_boost = _calculate_name_match(query_lower, prod.name, getattr(prod, 'sku', None))
+                tag_boost = _calculate_tag_match(query_lower, prod.tags)
+                tag_name_boost = min(1.0, tag_boost + name_boost)
+                final_score = (
+                    clip_similarity * 0.5 +
+                    attr_boost * 0.4 +
+                    tag_name_boost * 0.1
+                )
+                results.append({
+                    'product_id': str(prod.id),
+                    'name': prod.name,
+                    'sku': prod.sku,
+                    'price': float(prod.price) if prod.price else None,
+                    'category': prod.category_name,
+                    'attributes': prod.attributes,
+                    'tags': prod.tags or "",
+                    'image_url': prod.cloudinary_url,
+                    'clip_similarity': round(clip_similarity, 4),
+                    'attr_boost': round(attr_boost, 4),
+                    'tag_boost': round(tag_boost, 4),
+                    'name_boost': round(name_boost, 4),
+                    'final_score': round(final_score, 4)
+                })
+
+            results.sort(key=lambda x: x['final_score'], reverse=True)
+            results = results[:limit]
+            print(f"🔁 TEXT SEARCH Fallback: {len(results)} resultados")
 
         print(f"✅ TEXT SEARCH: {len(results)} resultados en {elapsed_time:.3f}s")
 
@@ -2358,6 +2459,43 @@ def _calculate_attribute_match(query_lower: str, attributes: dict, category: str
                                 break
 
     return min(score, 1.0)  # Cap a 1.0
+
+
+def _calculate_name_match(query_lower: str, name: str, sku: str = None) -> float:
+    """
+    Calcula boost por coincidencia con nombre del producto y/o SKU.
+
+    Reglas simples y baratas:
+    - Frase completa contenida en el nombre: +0.6
+    - Coincidencia por palabras (>2 letras) en el nombre: +0.15 por match, hasta +0.4
+    - SKU: coincidencia exacta +0.6, contiene +0.3
+    El resultado se capa a 1.0 y luego se pondera externamente con peso 0.1
+    """
+    score = 0.0
+    if not name and not sku:
+        return score
+
+    name_lower = (name or "").lower()
+    q = (query_lower or "").strip()
+    if q:
+        # Frase completa
+        if len(q) >= 3 and q in name_lower:
+            score += 0.6
+        # Por palabras
+        words = [w for w in q.split() if len(w) > 2]
+        if words:
+            matches = sum(1 for w in words if w in name_lower)
+            if matches:
+                score += min(0.4, matches * 0.15)
+
+    if sku:
+        sku_lower = str(sku).lower()
+        if q and q == sku_lower:
+            score += 0.6
+        elif q and q in sku_lower:
+            score += 0.3
+
+    return min(score, 1.0)
 
 
 def _calculate_tag_match(query_lower: str, tags: str) -> float:
