@@ -667,7 +667,77 @@ CREATE TABLE client_synonym_config (
 
 ## 🔧 PENDIENTES TÉCNICOS
 
-### 1. Migrar Templates de Atributos por Industria a Base de Datos
+### 1. Sistema de Logs Configurables por Niveles
+**Estado**: 📋 Backlog
+**Complejidad**: Baja
+**Impacto**: Alto (reducción de ruido en logs, mejor debugging)
+**Prioridad**: Alta
+**Fecha agregada**: 31 Octubre 2025
+
+**Contexto**:
+Actualmente el sistema genera muchos logs (embeddings, comparaciones, Cloudinary, etc.) que dificultan el debugging en producción Railway. Se necesita un sistema de niveles configurable desde panel de superadmin.
+
+**Niveles Propuestos**:
+
+1. **Nivel 1 - Solo Errores** (ERROR):
+   - ❌ Errores de BD
+   - ❌ Fallos de Cloudinary
+   - ❌ Excepciones no controladas
+   - ❌ API requests fallidos
+
+2. **Nivel 2 - Operaciones Básicas** (INFO - Default):
+   - ✅ Nivel 1 +
+   - ℹ️ Login/logout usuarios
+   - ℹ️ CRUD de productos/clientes
+   - ℹ️ Regeneración de embeddings (inicio/fin)
+   - ℹ️ Búsquedas API (sin detalles)
+
+3. **Nivel 3 - Extendido** (DEBUG):
+   - ✅ Nivel 2 +
+   - 🔍 Cada embedding generado
+   - 🔍 Comparaciones CLIP individuales
+   - 🔍 Descargas de Cloudinary
+   - 🔍 Query normalizer matches
+   - 🔍 Autofill de atributos por producto
+   - 🔍 Cache hits/misses
+
+**Implementación**:
+
+```python
+# En system_config.json
+{
+  "logging": {
+    "level": 2,  # 1=ERROR, 2=INFO, 3=DEBUG
+    "clip_operations": true,  # Toggle específico para CLIP
+    "api_requests": true,     # Toggle para API requests
+    "database_queries": false # Toggle para SQL queries
+  }
+}
+```
+
+**Panel de Superadmin**:
+- Route: `/system-config/logging`
+- Form con radio buttons para nivel (1/2/3)
+- Toggles individuales para subsistemas
+- Preview de qué tipo de logs aparecerán
+- Botón "Aplicar sin reinicio" (actualiza en caliente)
+
+**Archivos a Modificar**:
+- `app/blueprints/system_config_admin.py` - Nuevo endpoint `/logging`
+- `app/templates/system_config/logging.html` - UI de configuración
+- `app/utils/logger.py` (nuevo) - Wrapper de logging con niveles
+- `app/config.py` - Leer config de logging
+- Todos los blueprints - Reemplazar `print()` por `logger.debug()`
+
+**Beneficios**:
+- Railway logs más limpios en producción
+- Debugging granular cuando se necesita
+- Ahorro de espacio en logs (Railway limita a 10MB)
+- Mejor performance (menos I/O en producción)
+
+---
+
+### 2. Migrar Templates de Atributos por Industria a Base de Datos
 **Estado**: 📋 Backlog (Fase 2)
 **Complejidad**: Media
 **Impacto**: Alto para escalabilidad
