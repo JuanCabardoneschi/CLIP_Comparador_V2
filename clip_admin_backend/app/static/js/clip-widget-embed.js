@@ -609,15 +609,23 @@
             return;
         }
 
+        // Iconos inline (SVG) para evitar problemas de codificación de emojis
+        const icons = {
+            camera: '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 3l-1.5 2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1.5L15 3H9zm3 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10z"></path></svg>',
+            search: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21 20l-5.586-5.586A7 7 0 1 0 9 16a7 7 0 0 0 6.414-3.586L21 18.999V20zM4 9a5 5 0 1 1 10 0A5 5 0 0 1 4 9z"></path></svg>',
+            chat: '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"></path></svg>',
+            bulb: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9 21h6v-1H9v1zm3-19a7 7 0 0 0-4 12.917V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.083A7 7 0 0 0 12 2z"></path></svg>'
+        };
+
         container.innerHTML = `
             <div class="clip-widget-wrap">
                 <div class="clip-tabs">
                     <button class="clip-tab active" data-tab="visual">
-                        <span class="clip-tab-icon">📸</span>
+                        <span class="clip-tab-icon">${icons.camera}</span>
                         <span>Búsqueda Visual</span>
                     </button>
                     <button class="clip-tab" data-tab="text">
-                        <span class="clip-tab-icon">💬</span>
+                        <span class="clip-tab-icon">${icons.chat}</span>
                         <span>Búsqueda por Descripción</span>
                     </button>
                 </div>
@@ -627,7 +635,7 @@
                     <p class="clip-search-subtitle">Sube una imagen y encontraremos productos similares</p>
 
                     <div class="clip-upload-area" id="clip-upload">
-                        <div class="clip-upload-icon">📷</div>
+                        <div class="clip-upload-icon">${icons.camera}</div>
                         <div class="clip-upload-text">Arrastra una imagen aquí</div>
                         <div class="clip-upload-hint">o haz clic para seleccionar</div>
                     </div>
@@ -648,14 +656,14 @@
                         <p class="clip-search-subtitle">Describe lo que buscas y encuentra productos que coincidan</p>
 
                         <div class="clip-input-wrap">
-                            <span class="clip-input-icon">🔍</span>
+                            <span class="clip-input-icon">${icons.search}</span>
                             <input type="text" class="clip-input" id="clip-text-input"
                                    placeholder="Ej: camisa blanca, delantal marrón, camisa casual...">
                         </div>
                         <button class="clip-search-btn" id="clip-text-search-btn">Buscar productos</button>
 
                         <div class="clip-examples">
-                            <div class="clip-examples-label">💡 Ejemplos populares:</div>
+                            <div class="clip-examples-label">Ejemplos populares:</div>
                             <span class="clip-example-tag" data-query="delantal azul">delantal azul</span>
                             <span class="clip-example-tag" data-query="camisa clara">camisa clara</span>
                             <span class="clip-example-tag" data-query="delantal marrón">delantal marrón</span>
@@ -673,14 +681,14 @@
                 <div class="clip-error" id="clip-error"></div>
 
                 <div class="clip-refinement" id="clip-refinement" style="display: none;">
-                    <div class="clip-refinement-icon">💡</div>
+                    <div class="clip-refinement-icon">${icons.bulb}</div>
                     <div class="clip-refinement-message" id="clip-refinement-message"></div>
                     <div id="clip-suggestions-container"></div>
                 </div>
 
                 <div class="clip-results" id="clip-results">
                     <div class="clip-results-header">
-                        <h2 class="clip-results-title">✨ Productos Encontrados</h2>
+                        <h2 class="clip-results-title">Productos Encontrados</h2>
                         <div class="clip-results-count" id="clip-results-count"></div>
                     </div>
                     <div class="clip-grid" id="clip-grid"></div>
@@ -802,8 +810,11 @@
                 if (data.success && data.results && data.results.length > 0) {
                     const total = data.total_results || data.results.length;
                     displayResults(data.results, total);
+                } else if (data && data.error === 'category_not_detected') {
+                    // Mostrar mensaje especial con categorías disponibles (igual que en texto)
+                    showCategoryNotDetectedError(data.message, data.details, data.available_categories);
                 } else {
-                    showError(data.error || 'No se encontraron productos similares');
+                    showError(data && data.error ? data.error : 'No se encontraron productos similares');
                 }
             })
             .catch(err => {
