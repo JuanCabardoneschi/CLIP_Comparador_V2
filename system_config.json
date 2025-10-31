@@ -8,7 +8,7 @@
     "max_results": 3,
     "enable_category_detection": true,
     "enable_visual_search": true,
-    "enable_inferred_tags": false,
+    "enable_inferred_tags": true,
     "weight_inferred_tags": 0.05,
     "clip_fusion": {
       "alpha": 1.0,

@@ -91,7 +91,7 @@ class QueryEnrichmentService:
         # Generar embeddings
         with torch.no_grad():
             outputs = cls._model(**inputs)
-            
+
             # Normalizar embeddings
             image_embeds = outputs.image_embeds / outputs.image_embeds.norm(dim=-1, keepdim=True)
             text_embeds = outputs.text_embeds / text_embeds.norm(dim=-1, keepdim=True)
@@ -117,7 +117,7 @@ class QueryEnrichmentService:
         return hashlib.md5(key_data.encode('utf-8')).hexdigest()
 
     @classmethod
-    def enrich_query(cls, 
+    def enrich_query(cls,
                     query_text: str,
                     detected_category: Optional[str] = None,
                     detected_color: Optional[str] = None,
@@ -173,12 +173,12 @@ class QueryEnrichmentService:
                 if image:
                     print(f"🖼️ Analizando imagen para enrichment...")
                     visual_tags = cls._classify_tags_from_image(
-                        image, 
+                        image,
                         INFERENCE_TAG_OPTIONS,
                         threshold=0.25,
                         category_context=category_ctx
                     )
-                    
+
                     # Agregar top 3 tags visuales
                     for tag, conf in visual_tags[:3]:
                         inferred_tags.append((tag, conf))
@@ -202,7 +202,7 @@ class QueryEnrichmentService:
                 cls._cache[cache_key] = result
 
             print(f"🔮 ENRICHED: {len(tag_phrases)} frases, {len(inferred_tags)} tags")
-            
+
             return result
 
         except Exception as e:

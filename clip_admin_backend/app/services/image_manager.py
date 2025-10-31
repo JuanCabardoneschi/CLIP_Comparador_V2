@@ -223,6 +223,25 @@ class ImageManager:
                     print(f"⚠️ No se pudo eliminar archivo local: {e}")
 
             db.session.add(image)
+            
+            # ✨ NUEVO: Autogenerar tags contextuales tras subir imagen
+            try:
+                from app.services.attribute_autofill_service import AttributeAutofillService
+                from app.models.product import Product
+                
+                product = Product.query.get(product_id)
+                if product and cloudinary_url:  # Solo si hay URL de Cloudinary
+                    result = AttributeAutofillService.autofill_product_attributes(
+                        product, 
+                        overwrite=False
+                    )
+                    if result['success'] and result['tags']:
+                        product.tags = result['tags']
+                        print(f"  ✓ Tags autogenerados para {product.name}: {result['tags']}")
+            except Exception as e:
+                print(f"⚠️ Error autogenerando tags: {e}")
+                # No propagar error - la imagen ya está subida
+            
             return image
 
         except Exception as e:

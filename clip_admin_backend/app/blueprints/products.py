@@ -885,6 +885,19 @@ def generate_embeddings():
                 image.upload_status = 'completed'
                 image.error_message = None
                 processed += 1
+                
+                # ✨ NUEVO: Actualizar tags contextuales del producto
+                product = Product.query.get(image.product_id)
+                if product:
+                    from app.services.attribute_autofill_service import AttributeAutofillService
+                    result = AttributeAutofillService.autofill_product_attributes(
+                        product, 
+                        overwrite=False
+                    )
+                    if result['success'] and result['tags']:
+                        product.tags = result['tags']
+                        print(f"  ✓ Tags actualizados para {product.name}: {result['tags']}")
+                        
             except Exception as e:
                 image.upload_status = 'failed'
                 image.error_message = str(e)
@@ -899,3 +912,67 @@ def generate_embeddings():
     except Exception as e:
         db.session.rollback()
         return jsonify({"success": False, "message": f"Error: {str(e)}"})
+
+
+@bp.route("/api/regenerate-all-tags", methods=["POST"])
+@login_required
+def regenerate_all_tags():
+    """Regenerar tags contextuales para todos los productos con imágenes"""
+    try:
+        from app.services.attribute_autofill_service import AttributeAutofillService
+        
+        # Obtener solo productos del cliente actual que tengan imágenes
+        products = Product.query.filter_by(
+            client_id=current_user.client_id
+        ).all()
+        
+        products_with_images = [p for p in products if p.images.count() > 0]
+        
+        if not products_with_images:
+            return jsonify({
+                "success": False, 
+                "message": "No hay productos con imágenes para procesar"
+            })
+        
+        updated = 0
+        failed = 0
+        
+        for product in products_with_images:
+            try:
+                # Solo regenerar tags, no sobrescribir atributos existentes
+                result = AttributeAutofillService.autofill_product_attributes(
+                    product, 
+                    overwrite=False
+                )
+                
+                if result['success'] and result['tags']:
+                    # Actualizar tags (siempre sobrescribimos tags para obtener los nuevos contextuales)
+                    product.tags = result['tags']
+                    updated += 1
+                    print(f"✓ {product.name}: {result['tags']}")
+                else:
+                    failed += 1
+                    
+            except Exception as e:
+                failed += 1
+                print(f"❌ Error en {product.name}: {e}")
+                continue
+        
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": f"✨ Tags actualizados: {updated} productos exitosos, {failed} fallidos",
+            "updated": updated,
+            "failed": failed,
+            "total": len(products_with_images)
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False, 
+            "message": f"Error: {str(e)}"
+        })

@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Query Enrichment Fusion</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .test-case {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #f9f9f9;
+        }
+        .test-case h3 {
+            margin-top: 0;
+            color: #0066cc;
+        }
+        .query-input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        .test-button {
+            background: #0066cc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .test-button:hover {
+            background: #0052a3;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0f8ff;
+            border-left: 4px solid #0066cc;
+            border-radius: 4px;
+            display: none;
+        }
+        .results.show {
+            display: block;
+        }
+        .result-item {
+            padding: 10px;
+            margin: 10px 0;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        .score {
+            font-weight: bold;
+            color: #00aa00;
+        }
+        .log {
+            background: #2d2d2d;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+            margin-top: 20px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .expected {
+            margin-top: 10px;
+            padding: 10px;
+            background: #fffacd;
+            border-left: 4px solid #ffd700;
+            border-radius: 4px;
+        }
+        .expected strong {
+            color: #d4a017;
+        }
+        .config {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test: Query Enrichment con Tags Inferidos</h1>
+        <p class="subtitle">Prueba la nueva funcionalidad de enriquecimiento de búsqueda</p>
+
+        <div class="config">
+            <h3>⚙️ Configuración Actual</h3>
+            <p><strong>Feature Flag:</strong> <span id="flag-status">Verificando...</span></p>
+            <p><strong>Alpha (peso query):</strong> 1.0</p>
+            <p><strong>Beta_tag (peso tags):</strong> 0.5</p>
+            <p><strong>API Key:</strong> <input type="text" id="api-key" placeholder="clip_xxxxxxxxxxxxxxxx" style="width: 300px;"></p>
+        </div>
+
+        <!-- Test 1: Query con Color -->
+        <div class="test-case">
+            <h3>Test 1: Query con Color</h3>
+            <input type="text" class="query-input" id="query1" value="delantal rojo" placeholder="Escribe tu query...">
+            <button class="test-button" onclick="testSearch('query1', 'results1')">🔍 Buscar</button>
+            
+            <div class="expected">
+                <strong>🎯 Qué esperar:</strong>
+                <ul>
+                    <li>Log: <code>🧪 FUSION: ... phrases=1-3 ...</code></li>
+                    <li>Frases generadas: "a red colored product"</li>
+                    <li>Mejora en score CLIP de productos rojos</li>
+                    <li>Productos rojos aparecen más arriba que otros colores</li>
+                </ul>
+            </div>
+            
+            <div class="results" id="results1"></div>
+        </div>
+
+        <!-- Test 2: Query con Color + Contexto -->
+        <div class="test-case">
+            <h3>Test 2: Query con Color + Contexto de Estilo</h3>
+            <input type="text" class="query-input" id="query2" value="camisa azul elegante" placeholder="Escribe tu query...">
+            <button class="test-button" onclick="testSearch('query2', 'results2')">🔍 Buscar</button>
+            
+            <div class="expected">
+                <strong>🎯 Qué esperar:</strong>
+                <ul>
+                    <li>Frases generadas: "a blue colored product", "an elegant style product"</li>
+                    <li>Log: <code>phrases=2</code></li>
+                    <li>Productos azules + elegantes tienen mejor score</li>
+                </ul>
+            </div>
+            
+            <div class="results" id="results2"></div>
+        </div>
+
+        <!-- Test 3: Query sin Color -->
+        <div class="test-case">
+            <h3>Test 3: Query sin Color (Solo Categoría)</h3>
+            <input type="text" class="query-input" id="query3" value="delantal" placeholder="Escribe tu query...">
+            <button class="test-button" onclick="testSearch('query3', 'results3')">🔍 Buscar</button>
+            
+            <div class="expected">
+                <strong>🎯 Qué esperar:</strong>
+                <ul>
+                    <li>Si no hay color detectado, no genera frases de color</li>
+                    <li>Log: <code>phrases=0-1</code> (solo si hay contexto)</li>
+                    <li>Búsqueda funciona normal (no se rompe)</li>
+                </ul>
+            </div>
+            
+            <div class="results" id="results3"></div>
+        </div>
+
+        <!-- Test 4: Cache Hit -->
+        <div class="test-case">
+            <h3>Test 4: Verificar Cache (ejecuta Test 1 de nuevo)</h3>
+            <button class="test-button" onclick="testSearch('query1', 'results4')">🔍 Repetir Búsqueda "delantal rojo"</button>
+            
+            <div class="expected">
+                <strong>🎯 Qué esperar:</strong>
+                <ul>
+                    <li>Log en consola del servidor: <code>💾 CACHE HIT: enrichment para query="delantal rojo"</code></li>
+                    <li>Respuesta más rápida (sin recalcular embeddings)</li>
+                </ul>
+            </div>
+            
+            <div class="results" id="results4"></div>
+        </div>
+
+        <div class="log" id="console-log">
+            <strong>📋 Instrucciones:</strong><br>
+            1. Asegúrate de que el servidor Flask esté corriendo (http://localhost:5000)<br>
+            2. Verifica en system_config.json: "enable_inferred_tags": true<br>
+            3. Ingresa tu API Key arriba<br>
+            4. Ejecuta los tests y observa los logs en la consola del servidor<br>
+            5. Compara los scores CLIP antes/después de la fusión<br><br>
+            <strong>📊 Logs de búsqueda aparecerán aquí...</strong>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api/search';
+
+        // Verificar estado del flag al cargar
+        window.addEventListener('load', async () => {
+            const apiKey = localStorage.getItem('clip_api_key');
+            if (apiKey) {
+                document.getElementById('api-key').value = apiKey;
+            }
+        });
+
+        async function testSearch(queryInputId, resultsId) {
+            const query = document.getElementById(queryInputId).value;
+            const apiKey = document.getElementById('api-key').value;
+            const resultsDiv = document.getElementById(resultsId);
+            const logDiv = document.getElementById('console-log');
+
+            if (!apiKey) {
+                alert('Por favor ingresa tu API Key');
+                return;
+            }
+
+            // Guardar API key
+            localStorage.setItem('clip_api_key', apiKey);
+
+            resultsDiv.innerHTML = '<p>🔄 Buscando...</p>';
+            resultsDiv.classList.add('show');
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': apiKey
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        limit: 5
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    let html = `<h4>✅ Resultados (${data.total_products_analyzed} productos analizados)</h4>`;
+                    
+                    if (data.results && data.results.length > 0) {
+                        data.results.forEach((item, index) => {
+                            html += `
+                                <div class="result-item">
+                                    <strong>${index + 1}. ${item.name}</strong><br>
+                                    <small>SKU: ${item.sku} | Categoría: ${item.category}</small><br>
+                                    <span class="score">Score Final: ${item.final_score}</span> | 
+                                    CLIP: ${item.clip_similarity} | 
+                                    Attr: ${item.attr_boost} | 
+                                    Tag: ${item.tag_boost}
+                                </div>
+                            `;
+                        });
+                    } else {
+                        html += '<p>No se encontraron resultados</p>';
+                    }
+
+                    html += `<p><small>Tiempo: ${data.search_time_seconds}s</small></p>`;
+                    resultsDiv.innerHTML = html;
+
+                    // Actualizar log
+                    logDiv.innerHTML = `<strong>📊 Última búsqueda:</strong><br>Query: "${query}"<br>Resultados: ${data.results.length}<br><br><strong>⚠️ Revisa la consola del servidor para ver los logs de FUSION</strong>`;
+                } else {
+                    resultsDiv.innerHTML = `<p>❌ Error: ${data.message || 'Error desconocido'}</p>`;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `<p>❌ Error de conexión: ${error.message}</p>`;
+                console.error('Error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

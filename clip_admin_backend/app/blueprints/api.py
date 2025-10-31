@@ -1913,7 +1913,7 @@ def text_search():
             fusion_enabled = system_config.get('search', 'enable_inferred_tags', False)
             if fusion_enabled:
                 from app.services.query_enrichment_service import QueryEnrichmentService
-                
+
                 fusion_cfg = system_config.get('search', 'clip_fusion', {}) or {}
                 alpha = float(fusion_cfg.get('alpha', 1.0))
                 beta_tag = float(fusion_cfg.get('beta_tag', 0.5))
@@ -1930,7 +1930,7 @@ def text_search():
                 )
 
                 tag_phrases = enrichment.get('tag_phrases', [])
-                
+
                 if tag_phrases:
                     with torch.no_grad():
                         tag_inputs = processor(text=tag_phrases, return_tensors="pt", padding=True)
@@ -1943,7 +1943,7 @@ def text_search():
                         fused = alpha * q + beta_tag * tag_mean
                         fused = fused / fused.norm()
                         query_embedding = fused.cpu().numpy()
-                    
+
                     inferred_tags = enrichment.get('inferred_tags', [])
                     print(f"🧪 FUSION: alpha={alpha} beta_tag={beta_tag} phrases={len(tag_phrases)} tags={len(inferred_tags)}")
         except Exception as _e:
