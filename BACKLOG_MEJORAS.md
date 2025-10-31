@@ -1,6 +1,99 @@
 # BACKLOG DE MEJORAS Y PENDIENTES
 **Fecha de Creación**: 22 Octubre 2025
-**Última Actualización**: 24 Octubre 2025
+**Última Actualización**: 31 Octubre 2025
+
+---
+
+## 🚨 CRÍTICO - ANTES DE SUBIR A PRODUCCIÓN
+
+### ⚠️ Migración de Búsqueda Textual - Preservar Configuraciones de Cliente
+**Estado**: ⚠️ PENDIENTE VALIDACIÓN
+**Complejidad**: Media
+**Impacto**: CRÍTICO (puede borrar datos de clientes en producción)
+**Prioridad**: MÁXIMA - BLOQUEANTE PARA DEPLOY
+**Fecha agregada**: 31 Octubre 2025
+
+**Problema Identificado**:
+Durante el desarrollo local de la búsqueda textual (31 Oct 2025), se detectó que algunas migraciones/actualizaciones relacionadas con:
+- Migración de embeddings CLIP
+- Extracción de información de vectores
+- Actualización de atributos dinámicos
+
+**Pueden haber borrado/sobrescrito**:
+- ✅ Configuraciones de `product_attribute_config` (atributos custom del cliente)
+- ✅ Campo `expose_in_search` (configuración de visibilidad en resultados)
+- ✅ Atributos JSONB de productos existentes
+- ✅ URLs de productos (`url_producto`)
+- ✅ Valores de atributos custom
+
+**Riesgo en Producción**:
+Si se ejecutan los mismos comandos/migraciones en Railway sin validación previa:
+- Los clientes perderían sus configuraciones de atributos
+- Los productos perderían campos custom configurados
+- Las integraciones con ecommerce (URLs) dejarían de funcionar
+- Pérdida de datos sin backup
+
+**Acciones Requeridas ANTES del Deploy**:
+
+1. **Backup Completo de Railway** (OBLIGATORIO):
+   ```bash
+   python railway_db_tool.py sql -e "SELECT * FROM product_attribute_config;" > backup_attr_config.sql
+   python railway_db_tool.py sql -e "SELECT id, attributes FROM products;" > backup_products_attrs.sql
+   ```
+
+2. **Validar Scripts de Migración**:
+   - [ ] Revisar `migrations/` para scripts que modifiquen `product_attribute_config`
+   - [ ] Verificar que NO hagan `DELETE` o `UPDATE` sin `WHERE client_id`
+   - [ ] Confirmar que scripts usen `INSERT ... ON CONFLICT DO NOTHING` (no `UPDATE`)
+
+3. **Testing en Staging/Restauración Local**:
+   ```bash
+   # Restaurar BD de Railway a local
+   .\restore_from_railway.ps1
+
+   # Ejecutar migraciones en local
+   # Validar que NO se pierdan datos
+
+   # Comparar antes/después
+   python check_clients_id.py
+   ```
+
+4. **Deploy Seguro en Railway**:
+   - [ ] Crear backup manual en Railway dashboard
+   - [ ] Ejecutar migraciones UNA POR UNA (no batch)
+   - [ ] Validar después de cada migración con `railway_db_tool.py counts`
+   - [ ] Tener rollback plan (SQL scripts de restore)
+
+5. **Validación Post-Deploy**:
+   - [ ] Verificar que cliente Demo Fashion Store mantiene sus atributos
+   - [ ] Confirmar que `expose_in_search` no se resetee a `false`
+   - [ ] Validar que URLs de productos sigan presentes
+   - [ ] Probar búsqueda textual con resultados completos (atributos + URLs)
+
+**Archivos a Revisar Antes de Deploy**:
+- `migrations/*.sql` - Todos los scripts SQL
+- `migrations/*.py` - Scripts Python de migración
+- `tools/migrations/*.py` - Herramientas de migración
+- `setup_local_postgres.py` - Setup inicial
+- Cualquier script que modifique `product_attribute_config` o `products.attributes`
+
+**Contexto**:
+Esta funcionalidad (búsqueda textual) es la primera feature grande desarrollada post-Railway deploy.
+Las migraciones locales pueden haber sido más agresivas porque se asumía BD limpia.
+Railway tiene datos reales de clientes que NO pueden perderse.
+
+**Checklist de Deploy Seguro**:
+- [ ] Backup completo de Railway descargado y validado
+- [ ] Scripts de migración revisados y aprobados
+- [ ] Testing en local con datos de Railway restaurados
+- [ ] Plan de rollback documentado
+- [ ] Validación de que atributos custom se preservan
+- [ ] Confirmación de que `expose_in_search` no se resetea
+- [ ] Testing post-deploy de búsqueda textual en Railway
+- [ ] Verificación de que URLs de productos funcionan
+
+**Responsable**: Validar antes del próximo deploy a Railway
+**Deadline**: ANTES de ejecutar cualquier migración en producción
 
 ---
 
@@ -53,6 +146,113 @@
 - [ ] Testing de endpoints en Railway
 - [ ] Agregar historial de cambios de stock (audit log)
 - [ ] Notificaciones cuando stock crítico (<5 unidades)
+
+---
+
+### 🎯 Admin Panel de Atributos de Productos (30 Oct 2025)
+**Estado**: ✅ COMPLETADO
+**Complejidad**: Media
+**Impacto**: Alto
+
+**Implementado**:
+- ✅ Blueprint `/attributes/` con CRUD completo
+- ✅ `GET /attributes/` → Lista todos los atributos del cliente
+- ✅ `GET /attributes/create` → Formulario crear atributo
+- ✅ `POST /attributes/create` → Guardar nuevo atributo
+- ✅ `GET /attributes/edit/<id>` → Formulario editar
+- ✅ `POST /attributes/edit/<id>` → Guardar cambios
+- ✅ `POST /attributes/delete/<id>` → Eliminar atributo
+- ✅ Formulario incluye: Key, Label, Type, Required, Options, Field Order
+- ✅ Campo `expose_in_search` implementado (checkbox)
+- ✅ Templates: `app/templates/attributes/index.html`, `form.html`
+
+**Archivos Creados**:
+- `clip_admin_backend/app/blueprints/attributes.py`
+- `clip_admin_backend/app/templates/attributes/index.html`
+- `clip_admin_backend/app/templates/attributes/form.html`
+
+**Nota**: Default de `expose_in_search` es `False`. Si se desea cambiar a `True`, es decisión de negocio (no bloqueante).
+
+---
+
+### 🖼️ Fix Duplicación de Paths en Cloudinary (30 Oct 2025)
+**Estado**: ✅ COMPLETADO Y EN PRODUCCIÓN
+**Complejidad**: Baja
+**Impacto**: Medio
+
+**Implementado**:
+- ✅ Modificado `cloudinary_manager._generate_public_id()`
+- ✅ Estructura actual: `products/{product_id}/{filename}`
+- ✅ Eliminada duplicación anterior: `clip_v2/{client}/products/{client}/products/...`
+
+**Archivo Modificado**:
+- `clip_admin_backend/app/services/cloudinary_manager.py` (línea 50)
+
+---
+
+### 🤖 Auto-Completado de Atributos con CLIP (31 Oct 2025)
+**Estado**: ✅ COMPLETADO
+**Complejidad**: Media
+**Impacto**: Alto (mejora UX y calidad de datos)
+**Fecha agregada**: 31 Octubre 2025
+
+**Implementado**:
+- ✅ Servicio `AttributeAutofillService` con análisis CLIP
+- ✅ Detección automática de atributos visuales (color, material, estilo, etc.)
+- ✅ Clasificación de tags (formal, casual, deportivo, etc.)
+- ✅ Integración en creación de productos (automático)
+- ✅ Endpoint API para trigger manual: `POST /products/<id>/autofill-attributes`
+- ✅ Modo conservador: NO sobrescribe valores del usuario (overwrite=False por defecto)
+- ✅ Soporte para atributos multi-select
+- ✅ Templates de prompts específicos por tipo de atributo
+- ✅ Ponderación de imagen primaria (1.5x weight)
+
+**Funcionalidades**:
+1. **Auto-completado al crear producto**:
+   - Se ejecuta automáticamente después de subir imágenes
+   - Solo completa atributos vacíos
+   - Respeta valores ingresados manualmente por el usuario
+   - Muestra mensaje con atributos detectados
+
+2. **Endpoint API Manual**:
+   ```bash
+   POST /products/<product_id>/autofill-attributes
+   Body: {"overwrite": false}  # opcional
+   ```
+   - Permite re-analizar producto existente
+   - `overwrite=false`: Solo completa vacíos (default)
+   - `overwrite=true`: Sobrescribe todos los atributos
+
+3. **Algoritmo de Detección**:
+   - Analiza todas las imágenes del producto
+   - Usa templates de prompts contextualizados por categoría
+   - Sistema de votación ponderado por confianza
+   - Threshold de confianza: 0.2 (20%)
+   - Top 3 tags por relevancia
+
+**Archivos Creados**:
+- `clip_admin_backend/app/services/attribute_autofill_service.py`
+
+**Archivos Modificados**:
+- `clip_admin_backend/app/blueprints/products.py`:
+  - Integración en `create()` función
+  - Nuevo endpoint `autofill_attributes()`
+
+**Script Original** (usado como referencia):
+- `auto_fill_attributes.py` (raíz del proyecto)
+
+**Próximos Pasos** (Opcionales):
+- [ ] Agregar botón UI en panel de productos para trigger manual
+- [ ] Mostrar preview de atributos detectados antes de guardar
+- [ ] Estadísticas de confianza en UI
+- [ ] Batch autofill para múltiples productos
+- [ ] Configurar threshold de confianza por cliente
+
+**Notas**:
+- El servicio usa lazy loading de CLIP (solo se carga al primer uso)
+- Compatible con Railway (CPU-only)
+- No bloquea creación de producto si falla el autofill
+- Reutiliza modelo CLIP ya cargado si existe
 
 ---
 
@@ -214,62 +414,169 @@ max_categories_per_search = Column(Integer, default=3)
 
 ---
 
-### 2. Admin Panel de Atributos
-**Estado**: ⏳ Pendiente
-**Complejidad**: Media
-**Impacto**: Alto (actualmente se editan a mano en BD)
-**Fecha agregada**: 23 Octubre 2025
+## 🎯 PRIORIDAD ALTA
 
-**Problema**:
-- Los atributos (color, marca, talla, etc.) se crean desde el formulario de productos
-- `expose_in_search` queda en `false` por defecto → atributos NO aparecen en API
-- No hay forma de gestionar atributos centralizadamente
-- Cambiar `expose_in_search` requiere UPDATE manual en BD
+### 1. Generalizar Auto-Clasificación de Atributos (Desacoplar de Ropa)
+**Estado**: 💡 Propuesto
+**Complejidad**: Media-Alta
+**Impacto**: Crítico (sistema actualmente sesgado a ropa)
+**Prioridad**: Alta
+**Fecha agregada**: 30 Octubre 2025
 
-**Solución Necesaria**:
-1. **Blueprint `/attributes/`** con vistas:
-   - `GET /attributes/` → Lista todos los atributos del cliente
-   - `GET /attributes/create` → Formulario crear atributo
-   - `POST /attributes/create` → Guardar nuevo atributo
-   - `GET /attributes/edit/<key>` → Formulario editar
-   - `POST /attributes/edit/<key>` → Guardar cambios
-   - `POST /attributes/delete/<key>` → Eliminar atributo
+**Problema Identificado**:
+El sistema de auto-clasificación de atributos (`auto_fill_attributes.py`) tiene componentes hardcoded orientados a ropa:
 
-2. **Formulario debe incluir**:
-   - Key (identificador único)
-   - Label (nombre visible)
-   - Type (text, select, list, url, etc.)
-   - ☑️ **Expose in Search** (default: `True`) ← CRÍTICO
-   - Description (opcional)
-   - Options (para select/list)
-
-3. **Cambiar default en modelo**:
+1. **TAG_OPTIONS Hardcoded**:
    ```python
-   # En ProductAttributeConfig
-   expose_in_search = Column(Boolean, default=True, nullable=False)  # Cambiar a True
+   TAG_OPTIONS = [
+       "formal", "casual", "deportivo", "elegante", "moderno", "clásico",
+       "vintage", "urbano", "profesional", "juvenil", "trabajo", "fiesta",
+       "verano", "invierno", "unisex", "masculino", "femenino", "infantil",
+       "premium", "económico", "cómodo", "ajustado", "holgado"
+   ]
    ```
+   ❌ No funciona para autos, muebles, electrónica, etc.
 
-4. **Migración para datos existentes**:
-   ```sql
-   UPDATE product_attribute_config
-   SET expose_in_search = true
-   WHERE key IN ('color', 'marca', 'talla', 'material');
+2. **ATTRIBUTE_PROMPT_TEMPLATES Hardcoded**:
+   ```python
+   ATTRIBUTE_PROMPT_TEMPLATES = {
+       "color": "a {value} colored {category}",
+       "material": "a {category} made of {value}",
+       "estilo": "a {value} style {category}",
+       ...
+   }
    ```
+   ❌ Templates funcionan para ropa pero no para otros verticales
 
-**Archivos a crear/modificar**:
-- Nuevo: `app/blueprints/attributes.py`
-- Nuevo: `app/templates/attributes/index.html`
-- Nuevo: `app/templates/attributes/form.html`
-- Modificar: `app/models/product_attribute_config.py` (default=True)
-- Migración: `migrations/versions/xxx_set_expose_default_true.py`
+3. **Sinónimos de Boost Hardcoded**:
+   ```python
+   value_synonyms = {
+       "negra": ["negro", "negra", "black"],
+       "casual": ["casual", "informal"],
+       ...
+   }
+   ```
+   ❌ Solo incluye sinónimos de moda/ropa
 
-**Estimación**: 2-3 días
+**Impacto en Otros Verticales**:
+- **Vendedor de Autos**: Necesita tags como "sedan", "suv", "deportivo", "4x4", "híbrido"
+- **Mueblería**: Tags como "moderno", "minimalista", "rústico", "vintage", "funcional"
+- **Electrónica**: Tags como "portátil", "gaming", "profesional", "inalámbrico"
+
+**Solución Propuesta**:
+
+**Opción 1 - MVP (1-2 semanas)**:
+- Mover `TAG_OPTIONS` a tabla `client_tag_config` (similar a `product_attribute_config`)
+- Admin UI para configurar tags por cliente
+- Mantener templates actuales como default (funcionan razonablemente bien)
+- Permitir override de templates en tabla `client_attribute_template_config`
+
+**Opción 2 - Sistema Completo (3-4 semanas)**:
+- Templates dinámicos por cliente y tipo de negocio
+- Sinónimos configurables por cliente (tabla `client_synonym_config`)
+- Biblioteca de presets por vertical: "ROPA", "AUTOS", "MUEBLES", "ELECTRONICA"
+- Sistema de sugerencias automáticas de tags basado en catálogo existente
+- UI en admin: "Crear desde preset" → copiar configuración base
+
+**Estructura DB Propuesta**:
+```sql
+-- Tags configurables por cliente
+CREATE TABLE client_tag_config (
+    id UUID PRIMARY KEY,
+    client_id UUID REFERENCES clients(id),
+    tag_name VARCHAR(50) NOT NULL,
+    tag_category VARCHAR(50), -- ej: "style", "season", "audience"
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Templates de prompts por cliente
+CREATE TABLE client_attribute_template_config (
+    id UUID PRIMARY KEY,
+    client_id UUID REFERENCES clients(id),
+    attribute_key VARCHAR(50) NOT NULL, -- ej: "color", "tipo_motor"
+    prompt_template TEXT NOT NULL, -- ej: "a {value} {category} car"
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Sinónimos configurables
+CREATE TABLE client_synonym_config (
+    id UUID PRIMARY KEY,
+    client_id UUID REFERENCES clients(id),
+    base_word VARCHAR(50) NOT NULL,
+    synonyms JSONB NOT NULL, -- ["palabra1", "palabra2"]
+    language VARCHAR(10) DEFAULT 'es',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+**Presets por Vertical** (archivo JSON):
+```json
+{
+  "ROPA": {
+    "tags": ["formal", "casual", "deportivo", ...],
+    "templates": {
+      "color": "a {value} colored {category}",
+      "material": "a {category} made of {value}"
+    },
+    "synonyms": {"negra": ["negro", "negra", "black"], ...}
+  },
+  "AUTOS": {
+    "tags": ["sedan", "suv", "deportivo", "4x4", "híbrido", "eléctrico"],
+    "templates": {
+      "color": "a {value} {category} car",
+      "tipo_motor": "a {category} with {value} engine",
+      "carroceria": "a {value} body style {category}"
+    },
+    "synonyms": {"roja": ["rojo", "roja", "red"], ...}
+  },
+  "MUEBLES": {
+    "tags": ["moderno", "minimalista", "rústico", "vintage", "funcional"],
+    "templates": {
+      "color": "a {value} colored {category} furniture",
+      "material": "{category} furniture made of {value}",
+      "estilo": "{value} style {category}"
+    }
+  }
+}
+```
+
+**Archivos a Crear/Modificar**:
+- Nuevo: `migrations/create_client_vertical_config.sql`
+- Nuevo: `app/models/client_vertical_config.py`
+- Nuevo: `app/blueprints/vertical_config.py` (admin CRUD)
+- Nuevo: `shared/vertical_presets.json` (biblioteca de presets)
+- Modificar: `auto_fill_attributes.py` (leer de DB en lugar de constantes)
+- Nuevo: `app/templates/vertical_config/` (UI admin)
+
+**Flujo de Onboarding Mejorado**:
+1. Cliente nuevo → Admin selecciona vertical ("ROPA", "AUTOS", etc.)
+2. Sistema copia preset automáticamente
+3. Admin revisa y ajusta tags/templates/sinónimos
+4. Cliente ejecuta `auto_fill_attributes.py` → usa configuración personalizada
+
+**Backward Compatibility**:
+- Clientes existentes sin configuración → usar defaults actuales (ropa)
+- Migración opcional: detectar vertical por categorías existentes
+
+**Testing**:
+- Tienda de ropa (actual)
+- Concesionaria de autos (nuevo)
+- Tienda de muebles (nuevo)
+- Tienda de electrónica (nuevo)
+
+**Métricas de Éxito**:
+- Sistema funciona en ≥3 verticales diferentes
+- Accuracy ≥80% en clasificación de atributos no-ropa
+- Tiempo de onboarding nuevo vertical < 30 minutos
+
+**Estimación**: 3-4 semanas (completo) / 1-2 semanas (MVP)
+
+**Próximo Paso**: Definir si MVP o completo según roadmap
 
 ---
 
-## 🎯 PRIORIDAD ALTA
-
-### 1. Sistema de Aprendizaje Adaptativo por Cliente
+### 2. Sistema de Aprendizaje Adaptativo por Cliente
 **Estado**: 💡 Propuesto
 **Complejidad**: Alta
 **Impacto**: Crítico para calidad de resultados
@@ -435,7 +742,25 @@ ON attribute_templates(industry, key);
 
 ---
 
-### 2. Eliminar Métodos Deprecados de Image Managers
+## ⚠️ PENDIENTES TÉCNICOS (Deuda Técnica)
+**Estado**: ⏳ Programado para 10 Nov 2025
+**Complejidad**: Baja
+**Impacto**: Medio (limpieza de código)
+
+**Tareas**:
+- [ ] Verificar que no hay nuevos usos de `image_manager.get_image_url()`
+- [ ] Verificar que no hay nuevos usos de `cloudinary_manager.get_image_url()`
+- [ ] Confirmar que todo usa `image.display_url` / `image.thumbnail_url`
+- [ ] Eliminar métodos deprecados de `app/services/image_manager.py`
+- [ ] Eliminar métodos deprecados de `app/services/cloudinary_manager.py`
+- [ ] Actualizar tests si existen
+
+**Deadline**: 10 Noviembre 2025
+**Estimación**: 2 horas
+
+## ⚠️ PENDIENTES TÉCNICOS (Deuda Técnica)
+
+### 1. Eliminar Métodos Deprecados de Image Managers
 **Estado**: ⏳ Programado para 10 Nov 2025
 **Complejidad**: Baja
 **Impacto**: Medio (limpieza de código)
@@ -453,44 +778,22 @@ ON attribute_templates(industry, key);
 
 ---
 
-### 3. Fix Duplicación de Paths en Cloudinary
-**Estado**: ✅ Código modificado, pendiente de deploy
-**Complejidad**: Baja
-**Impacto**: Medio (organización)
-
-**Problema**:
-- Estructura actual: `clip_v2/eve-s-store/products/eve-s-store/products/...` (duplicado)
-- Estructura deseada: `clip_v2/eve-s-store/products/{product_id}/...`
-
-**Solución Implementada**:
-- Modificado `cloudinary_manager._generate_public_id()` para retornar solo path relativo
-- Cambio de: `f"clip_v2/{client_slug}/{product_id}/..."`
-- A: `f"products/{product_id}/..."`
-
-**Archivos Modificados**:
-- `clip_admin_backend/app/services/cloudinary_manager.py`
-
-**Pendiente**:
-- [ ] Commit y push
-- [ ] Deploy a Railway
-- [ ] Verificar que nuevas subidas usan estructura correcta
-- [ ] Opcional: Script de migración para reorganizar imágenes existentes
-
-**Estimación**: 30 minutos (deploy + verificación)
-
----
-
-### 4. Implementar SearchLog para Analytics
-**Estado**: 🚧 Modelo creado, sin uso
+### 2. Implementar SearchLog para Analytics
+**Estado**: 🚧 **30% COMPLETADO**
 **Complejidad**: Media
 **Impacto**: Alto (métricas de negocio)
 
-**Problema**:
-- Modelo `SearchLog` existe pero no se está usando
-- No hay tracking de búsquedas, clicks, conversiones
-- Imposible medir calidad de resultados o ROI
+**Completado**:
+- ✅ Modelo `SearchLog` creado en `app/models/search_log.py`
+- ✅ Importado en `api.py`
+- ✅ Query de conteo diario: `searches_today` en dashboard
 
-**Tareas**:
+**Problema**:
+- ❌ No se registran búsquedas individuales en endpoint `/api/search`
+- ❌ No hay tracking de búsquedas, clicks, conversiones
+- ❌ Imposible medir calidad de resultados o ROI
+
+**Tareas Pendientes**:
 - [ ] Activar logging en endpoint `/api/search`
 - [ ] Guardar: client_id, image_hash, query_embedding, results, timestamp
 - [ ] Implementar endpoint para tracking de clicks: `/api/search/click`
@@ -597,9 +900,12 @@ ON attribute_templates(industry, key);
 ## 🔐 SEGURIDAD Y PERFORMANCE
 
 ### 7. Rate Limiting Granular por Cliente
-**Estado**: ⚠️ Básico implementado, mejorable
+**Estado**: ⚠️ **BÁSICO IMPLEMENTADO** (mejorable)
 **Complejidad**: Media
 **Impacto**: Medio
+
+**Implementado**:
+- ✅ Rate limiting básico en API funcional
 
 **Mejoras Propuestas**:
 - Rate limiting diferenciado por plan (Free/Pro/Enterprise)
@@ -648,11 +954,14 @@ ON attribute_templates(industry, key);
 ---
 
 ### 10. Monitoring y Alertas
-**Estado**: ⚠️ Logs básicos
+**Estado**: ⚠️ **LOGS BÁSICOS** (expandible)
 **Complejidad**: Media
 **Impacto**: Alto (operaciones)
 
-**Mejoras**:
+**Implementado**:
+- ✅ Logging básico en sistema
+
+**Mejoras Propuestas**:
 - Dashboard de salud del sistema
 - Alertas por Slack/Email:
   - Errores en generación de embeddings
@@ -668,11 +977,15 @@ ON attribute_templates(industry, key);
 ## 📝 DOCUMENTACIÓN
 
 ### 11. Documentación de API Externa
-**Estado**: ❌ Falta
+**Estado**: ⚠️ **PARCIAL** (API Inventario documentada, falta API Search)
 **Complejidad**: Baja
 **Impacto**: Alto (para clientes/integradores)
 
-**Contenido Necesario**:
+**Completado**:
+- ✅ `docs/API_INVENTARIO_EXTERNA.md` - Completa con ejemplos
+- ✅ Ejemplos en JavaScript, Python, cURL
+
+**Contenido Faltante**:
 - Swagger/OpenAPI spec para `/api/search`
 - Ejemplos de integración (JS, Python, cURL)
 - Guía de troubleshooting
@@ -726,7 +1039,131 @@ ON attribute_templates(industry, key);
 
 ---
 
-## 📋 RESUMEN DE PRIORIZACIÓN
+## � INVESTIGACIÓN Y DESARROLLO
+
+### 15. Integrar Auto-Clasificación de Atributos en Sistema de Embeddings
+**Estado**: 💡 Propuesto (30 Oct 2025)
+**Complejidad**: Media-Alta
+**Impacto**: Alto (enriquece embeddings con información semántica)
+**Fecha agregada**: 30 Octubre 2025
+
+**Contexto**:
+- Actualmente existe `auto_fill_attributes.py` como script standalone
+- Usa CLIP para clasificar atributos visuales (color, material, tags)
+- Sistema dinámico que lee configuración de `product_attribute_config`
+- Utiliza `categories.clip_prompt` y `categories.name_en` para contexto
+- Implementa CLIP-guided cropping y weighted scoring de múltiples imágenes
+
+**Problema**:
+- Los embeddings se generan solo desde imágenes visuales
+- No se aprovecha la información semántica de atributos auto-clasificados
+- Búsqueda textual ("delantal marrón") requiere enriquecimiento manual
+
+**Solución Propuesta**:
+Integrar la auto-clasificación en el pipeline de generación de embeddings:
+
+**Opción 1: Embeddings Híbridos (CLIP Text + Visual)**
+```python
+# Pipeline integrado:
+1. Al subir producto/imagen → auto-clasificar atributos con CLIP
+2. Generar embedding visual: clip.encode_image(image)
+3. Generar embedding textual enriquecido:
+   text = f"a photo of {category.clip_prompt} {color} {material}"
+   text_emb = clip.encode_text(text)
+4. Combinar embeddings:
+   hybrid_emb = α*visual_emb + β*text_emb  # pesos configurables
+5. Almacenar hybrid_emb como embedding principal
+```
+
+**Opción 2: Embeddings Duales (Search Optimizer)**
+```python
+# Mantener separados para flexibilidad:
+1. visual_embedding (actual) → productos visualmente similares
+2. semantic_embedding (nuevo) → productos conceptualmente similares
+3. SearchOptimizer combina según configuración:
+   - Solo visual: búsqueda por imagen pura
+   - Solo semántico: búsqueda por concepto/tags
+   - Híbrido: balance configurable por cliente
+```
+
+**Ventajas**:
+- ✅ Búsqueda textual mejorada ("delantal marrón" match atributos)
+- ✅ Sinónimos gratuitos (CLIP entiende "chocolate" ≈ "marrón")
+- ✅ Cross-modal search (texto → productos, imagen → productos)
+- ✅ Aprovecha infraestructura existente (CLIP, product_attribute_config)
+- ✅ No requiere modelos adicionales
+
+**Cambios Requeridos**:
+
+**Backend**:
+- Modificar: `app/blueprints/embeddings.py`
+  - Integrar lógica de `auto_fill_attributes.py`
+  - Agregar generación de embeddings textuales enriquecidos
+  - Nuevos campos en `images` tabla: `semantic_embedding`, `hybrid_embedding`
+- Modificar: `app/blueprints/api.py`
+  - Endpoint `/api/search` con parámetro `search_mode`: `visual|semantic|hybrid`
+  - Lógica de similaridad según modo seleccionado
+- Nuevo: `app/services/attribute_classifier.py`
+  - Refactor de `auto_fill_attributes.py` como servicio
+  - Reutilizable en diferentes contextos
+
+**Database**:
+- Migración Alembic:
+  ```sql
+  ALTER TABLE images
+  ADD COLUMN semantic_embedding TEXT,
+  ADD COLUMN hybrid_embedding TEXT,
+  ADD COLUMN attribute_classification_metadata JSONB;
+  ```
+
+**Admin**:
+- Panel de configuración por cliente:
+  - ☑️ Auto-clasificar atributos al subir imágenes
+  - Pesos de embeddings híbridos: α (visual) / β (semántico)
+  - Threshold de confianza para atributos
+  - Search mode por defecto: visual/semantic/hybrid
+
+**Widget**:
+- Selector de modo de búsqueda (opcional, para testing):
+  ```html
+  <select name="search_mode">
+    <option value="hybrid">Buscar por apariencia + concepto</option>
+    <option value="visual">Solo por apariencia visual</option>
+    <option value="semantic">Solo por concepto/tags</option>
+  </select>
+  ```
+
+**Testing**:
+- Casos de prueba:
+  1. "delantal marrón" → debe matchear atributos color=marrón, categoria=delantal
+  2. Imagen de gorro negro → debe matchear visual + semántico
+  3. Sinónimos: "chocolate" debe matchear productos color=marrón
+  4. Cross-modal: texto "camisa azul" vs imagen de camisa azul
+
+**Riesgos**:
+- ⚠️ Dimensionalidad: Embeddings híbridos pueden requerir más almacenamiento
+- ⚠️ Performance: Clasificación automática agrega latencia al upload
+- ⚠️ Precisión: Atributos auto-clasificados pueden tener errores
+- ⚠️ Complejidad: Mantener 2-3 tipos de embeddings por imagen
+
+**Mitigación**:
+- Clasificación asíncrona (background job) para no bloquear upload
+- Cache de CLIP model para reutilizar entre clasificaciones
+- Validación manual de atributos en admin panel
+- Feature flag para habilitar/deshabilitar por cliente
+
+**Estimación**: 3-4 semanas (completo con testing)
+
+**Prioridad**: Media-Alta (depende de feedback de clientes sobre búsqueda textual)
+
+**Referencias**:
+- Script actual: `auto_fill_attributes.py`
+- Modelo: `app/models/product_attribute_config.py`
+- Categorías: `app/models/category.py` (campos `clip_prompt`, `name_en`)
+
+---
+
+## �📋 RESUMEN DE PRIORIZACIÓN
 
 ### Sprint 1 (2 semanas)
 1. 🧠 Validación Zero‑Shot Dinámica contra Catálogo (#2 Prioridad Alta)
@@ -757,6 +1194,25 @@ ON attribute_templates(industry, key);
 ---
 
 ## 🔄 CHANGELOG
+
+**30 Oct 2025**:
+- 📊 **Auditoría completa del backlog vs código real**
+- ✅ Movido Item "Admin Panel de Atributos" a COMPLETADO
+- ✅ Movido Item "Fix Cloudinary Paths" a COMPLETADO
+- ⚠️ Actualizado Item "SearchLog Analytics" - 30% completado
+- ⚠️ Actualizado Item "Rate Limiting" - Básico implementado
+- ⚠️ Actualizado Item "Monitoring" - Logs básicos
+- ⚠️ Actualizado Item "Documentación API" - API Inventario documentada
+- 📝 Agregado Item #15: Integrar Auto-Clasificación de Atributos en Sistema de Embeddings
+  - Contexto: Sistema actual de auto_fill_attributes.py como standalone
+  - Propuesta: Embeddings híbridos (visual + semántico) para búsqueda textual enriquecida
+  - Estimación: 3-4 semanas (completo con testing)
+- 📄 Creado `BACKLOG_STATUS_AUDIT_30OCT2025.md` con análisis detallado
+- 💡 **Agregado Item #16**: Pre-bake modelo LLM en Docker para Railway
+  - Contexto: Modelo sentence-transformers descarga en primer arranque (slow cold-start)
+  - Propuesta: Incluir modelo pre-descargado en imagen Docker + variable HF_HUB_DISABLE_SYMLINKS_WARNING
+  - Estimación: 2-3 horas (modificar Dockerfile + testing)
+  - Beneficios: Cold-start rápido, sin warnings de symlinks, sin descargas en cada deploy
 
 **22 Oct 2025**:
 - Documento creado

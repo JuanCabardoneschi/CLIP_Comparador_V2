@@ -153,7 +153,7 @@ class Config:
         # Base de datos (PostgreSQL obligatorio)
         self.SQLALCHEMY_DATABASE_URI = get_database_url()
         self.SQLALCHEMY_TRACK_MODIFICATIONS = False
-        self.SQLALCHEMY_ECHO = not is_production()  # SQL logging solo en dev
+        self.SQLALCHEMY_ECHO = False  # Desactivado temporalmente para debug limpio
         self.SQLALCHEMY_ENGINE_OPTIONS = {
             'pool_pre_ping': True,  # Verificar conexiones antes de usarlas
             'pool_recycle': 300,    # Reciclar conexiones cada 5 minutos

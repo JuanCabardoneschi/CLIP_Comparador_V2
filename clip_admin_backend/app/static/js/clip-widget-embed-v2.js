@@ -354,40 +354,6 @@
                 display: block;
             }
 
-            .clip-category-error {
-                text-align: center;
-            }
-
-            .clip-error-icon {
-                font-size: 3rem;
-                margin-bottom: 1rem;
-            }
-
-            .clip-error-message {
-                font-size: 1.1rem;
-                font-weight: 600;
-                margin-bottom: 1rem;
-            }
-
-            .clip-available-categories {
-                margin-top: 1.5rem;
-                padding: 1rem;
-                background: rgba(255, 255, 255, 0.5);
-                border-radius: 8px;
-            }
-
-            .clip-category-tag {
-                display: inline-block;
-                background: white;
-                color: #991b1b;
-                padding: 0.4rem 0.8rem;
-                border-radius: 16px;
-                margin: 0.25rem;
-                font-size: 0.9rem;
-                font-weight: 500;
-                border: 1px solid #fca5a5;
-            }
-
             /* Results */
             .clip-results {
                 display: none;
@@ -495,51 +461,6 @@
 
             .clip-product-stock.in-stock {
                 color: #10b981;
-            }
-
-            .clip-product-attributes {
-                margin-top: 0.75rem;
-                padding-top: 0.75rem;
-                border-top: 1px solid #e5e7eb;
-            }
-
-            .clip-product-attribute {
-                display: flex;
-                justify-content: space-between;
-                align-items: baseline;
-                font-size: 0.85rem;
-                margin-bottom: 0.4rem;
-            }
-
-            .clip-attr-label {
-                color: #6b7280;
-                font-weight: 500;
-            }
-
-            .clip-attr-value {
-                color: #111827;
-                text-align: right;
-                flex: 1;
-                margin-left: 0.5rem;
-            }
-
-            .clip-product-link {
-                display: block;
-                margin-top: 0.75rem;
-                padding: 0.6rem 1rem;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                text-decoration: none;
-                border-radius: 6px;
-                text-align: center;
-                font-size: 0.9rem;
-                font-weight: 600;
-                transition: transform 0.2s, box-shadow 0.2s;
-            }
-
-            .clip-product-link:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
             }
         `;
         document.head.appendChild(style);
@@ -736,8 +657,7 @@
             .then(data => {
                 hideLoading();
                 if (data.success && data.results && data.results.length > 0) {
-                    const total = data.total_results || data.results.length;
-                    displayResults(data.results, total);
+                    displayResults(data.results, data.total_results);
                 } else {
                     showError(data.error || 'No se encontraron productos similares');
                 }
@@ -759,17 +679,13 @@
                     'Content-Type': 'application/json',
                     'X-API-Key': config.apiKey
                 },
-                body: JSON.stringify({ query })
+                body: JSON.stringify({ query, max_results: 20 })
             })
             .then(res => res.json())
             .then(data => {
                 hideLoading();
                 if (data.success && data.results && data.results.length > 0) {
-                    const total = data.total_results || data.results.length;
-                    displayResults(data.results, total);
-                } else if (data.error === 'category_not_detected') {
-                    // Mostrar mensaje especial con categorías disponibles
-                    showCategoryNotDetectedError(data.message, data.details, data.available_categories);
+                    displayResults(data.results, data.total_results);
                 } else {
                     showError(data.error || 'No se encontraron productos');
                 }
@@ -789,73 +705,24 @@
 
             countDiv.textContent = `${total} producto${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}`;
 
-            // DEBUG: Ver qué está llegando
-            console.log('🔍 DEBUG displayResults:', results);
-            if (results.length > 0) {
-                console.log('📦 Primer resultado:', results[0]);
-                console.log('📋 Atributos:', results[0].attributes);
-                console.log('🔗 product_url:', results[0].product_url);
-            }
-
-            gridDiv.innerHTML = results.map(r => {
-                // Construir atributos dinámicos visibles
-                let attributesHtml = '';
-                if (r.attributes && typeof r.attributes === 'object') {
-                    console.log(`🎨 Procesando atributos de ${r.name}:`, r.attributes);
-                    const visibleAttrs = Object.entries(r.attributes)
-                        .filter(([key, value]) => {
-                            // Excluir url_producto (se muestra como botón)
-                            if (key === 'url_producto') return false;
-                            // Mostrar solo atributos con valor
-                            return value !== null && value !== undefined && value !== '';
-                        })
-                        .map(([key, value]) => {
-                            const label = key.replace(/_/g, ' ').charAt(0).toUpperCase() + key.replace(/_/g, ' ').slice(1);
-                            const displayValue = Array.isArray(value) ? value.join(', ') : value;
-                            return `
-                                <div class="clip-product-attribute">
-                                    <span class="clip-attr-label">${label}:</span>
-                                    <span class="clip-attr-value">${displayValue}</span>
-                                </div>
-                            `;
-                        })
-                        .join('');
-
-                    if (visibleAttrs) {
-                        attributesHtml = `<div class="clip-product-attributes">${visibleAttrs}</div>`;
-                    }
-                }
-
-                // Botón de URL del producto
-                const productUrl = r.product_url || (r.attributes && r.attributes.url_producto);
-                console.log(`🔗 URL para ${r.name}:`, productUrl);
-                const urlButtonHtml = productUrl ? `
-                    <a href="${productUrl}" target="_blank" class="clip-product-link">
-                        Ver Producto →
-                    </a>
-                ` : '';
-
-                return `
-                    <div class="clip-product">
-                        <div class="clip-product-img-wrap">
-                            <img src="${r.image_url}" alt="${r.name}" class="clip-product-img">
-                            ${r.similarity ? `<div class="clip-similarity-badge">${Math.round(r.similarity * 100)}%</div>` : ''}
-                        </div>
-                        <div class="clip-product-info">
-                            <div class="clip-product-category">${r.category || 'Producto'}</div>
-                            <div class="clip-product-name">${r.name}</div>
-                            <div class="clip-product-price">$${r.price ? r.price.toFixed(2) : 'N/A'}</div>
-                            ${r.stock !== undefined ? `
-                                <div class="clip-product-stock ${r.stock > 0 ? 'in-stock' : ''}">
-                                    ${r.stock > 0 ? `✓ Stock: ${r.stock}` : '✗ Sin stock'}
-                                </div>
-                            ` : ''}
-                            ${attributesHtml}
-                            ${urlButtonHtml}
-                        </div>
+            gridDiv.innerHTML = results.map(r => `
+                <div class="clip-product">
+                    <div class="clip-product-img-wrap">
+                        <img src="${r.image_url}" alt="${r.name}" class="clip-product-img">
+                        ${r.similarity ? `<div class="clip-similarity-badge">${Math.round(r.similarity * 100)}%</div>` : ''}
                     </div>
-                `;
-            }).join('');
+                    <div class="clip-product-info">
+                        <div class="clip-product-category">${r.category || 'Producto'}</div>
+                        <div class="clip-product-name">${r.name}</div>
+                        <div class="clip-product-price">$${r.price ? r.price.toFixed(2) : 'N/A'}</div>
+                        ${r.stock !== undefined ? `
+                            <div class="clip-product-stock ${r.stock > 0 ? 'in-stock' : ''}">
+                                ${r.stock > 0 ? `✓ Stock: ${r.stock}` : '✗ Sin stock'}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
 
             resultsDiv.classList.add('active');
         }
@@ -874,26 +741,6 @@
         function showError(msg) {
             const errorDiv = container.querySelector('#clip-error');
             errorDiv.textContent = msg;
-            errorDiv.classList.add('active');
-            container.querySelector('#clip-results').classList.remove('active');
-        }
-
-        function showCategoryNotDetectedError(message, details, categories) {
-            const errorDiv = container.querySelector('#clip-error');
-            const categoriesList = categories && categories.length > 0
-                ? `<div class="clip-available-categories">
-                     <strong>${details}</strong><br><br>
-                     ${categories.map(cat => `<span class="clip-category-tag">${cat}</span>`).join('')}
-                   </div>`
-                : '';
-
-            errorDiv.innerHTML = `
-                <div class="clip-category-error">
-                    <div class="clip-error-icon">🔍</div>
-                    <div class="clip-error-message">${message}</div>
-                    ${categoriesList}
-                </div>
-            `;
             errorDiv.classList.add('active');
             container.querySelector('#clip-results').classList.remove('active');
         }

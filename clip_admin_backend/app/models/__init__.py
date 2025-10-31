@@ -11,3 +11,4 @@ from .product_attribute_config import ProductAttributeConfig
 from .image import Image
 from .search_log import SearchLog
 from .store_search_config import StoreSearchConfig
+from .color_mapping import ColorMapping

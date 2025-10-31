@@ -334,6 +334,43 @@ def create():
                 # No bloquear la creación por un fallo en embeddings; mostrar aviso suave
                 flash(f"El producto se creó, pero hubo un problema generando el embedding: {str(e)}", "warning")
 
+            # 🤖 Auto-completar atributos usando CLIP (solo si hay imágenes y atributos configurados)
+            try:
+                from app.services.attribute_autofill_service import AttributeAutofillService
+
+                # Solo ejecutar si el producto tiene imágenes y atributos vacíos/incompletos
+                if images_processed > 0:
+                    result = AttributeAutofillService.autofill_product_attributes(
+                        product,
+                        overwrite=False  # No sobrescribir valores que el usuario ya puso
+                    )
+
+                    if result['success']:
+                        # Mergear atributos detectados con los existentes
+                        current_attrs = product.attributes or {}
+                        detected_attrs = result['attributes']
+
+                        # Solo agregar atributos que no existan o estén vacíos
+                        updated = False
+                        for key, value in detected_attrs.items():
+                            if key not in current_attrs or not current_attrs.get(key):
+                                current_attrs[key] = value
+                                updated = True
+
+                        # Actualizar tags si no tiene
+                        if result['tags'] and not product.tags:
+                            product.tags = result['tags']
+                            updated = True
+
+                        if updated:
+                            product.attributes = current_attrs
+                            db.session.commit()
+                            flash(f"✨ Auto-completado: {result['message']}", "info")
+
+            except Exception as e:
+                # No bloquear la creación si falla el autofill
+                print(f"⚠️ No se pudo auto-completar atributos: {e}")
+
             return redirect(url_for("products.view", product_id=product.id))
 
         except ValueError as ve:
@@ -432,7 +469,7 @@ def view(product_id):
         Image.is_primary.desc(),
         Image.created_at.asc()
     ).all()
-    
+
     # Verificar si hay imágenes procesadas
     any_processed = any(img.is_processed for img in images) if images else False
 
@@ -563,9 +600,9 @@ def delete(product_id):
 
         # Eliminar archivos físicos de las imágenes
         for image in images:
-            # Construir ruta al archivo
-            client = Client.query.get(current_user.client_id)
-            if client:
+            # Solo eliminar archivos físicos si no usan Cloudinary
+            if not image.cloudinary_public_id and image.filename:
+                client = Client.query.get(current_user.client_id)
                 client_folder = client.name.replace(' ', '_').lower()
                 upload_folder = os.path.join(current_app.root_path, 'static', 'uploads', 'clients', client_folder)
                 file_path = os.path.join(upload_folder, image.filename)
@@ -596,6 +633,70 @@ def delete(product_id):
         flash(f"Error al eliminar el producto: {str(e)}", "error")
 
     return redirect(url_for("products.index"))
+
+
+@bp.route("/<product_id>/autofill-attributes", methods=["POST"])
+@login_required
+def autofill_attributes(product_id):
+    """Endpoint para auto-completar atributos de un producto usando CLIP"""
+    product = Product.query.filter_by(
+        id=product_id,
+        client_id=current_user.client_id
+    ).first_or_404()
+
+    try:
+        from app.services.attribute_autofill_service import AttributeAutofillService
+
+        # Obtener parámetro overwrite del request (default=False)
+        overwrite = request.json.get('overwrite', False) if request.is_json else False
+
+        result = AttributeAutofillService.autofill_product_attributes(product, overwrite=overwrite)
+
+        if result['success']:
+            # Actualizar producto con atributos detectados
+            current_attrs = product.attributes or {}
+            detected_attrs = result['attributes']
+
+            updated_fields = []
+            for key, value in detected_attrs.items():
+                if overwrite or key not in current_attrs or not current_attrs.get(key):
+                    current_attrs[key] = value
+                    updated_fields.append(f"{key}: {value}")
+
+            # Actualizar tags si no tiene o si overwrite=True
+            if result['tags'] and (overwrite or not product.tags):
+                product.tags = result['tags']
+                updated_fields.append(f"tags: {result['tags']}")
+
+            if updated_fields:
+                product.attributes = current_attrs
+                db.session.commit()
+
+                return jsonify({
+                    'success': True,
+                    'message': f'✨ Atributos auto-completados: {", ".join(updated_fields)}',
+                    'attributes': current_attrs,
+                    'tags': product.tags
+                })
+            else:
+                return jsonify({
+                    'success': True,
+                    'message': 'No hay atributos nuevos para completar (todos ya tienen valor)',
+                    'attributes': current_attrs,
+                    'tags': product.tags
+                })
+        else:
+            return jsonify({
+                'success': False,
+                'message': result['message']
+            }), 400
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        }), 500
 
 
 @bp.route("/<product_id>/images/add", methods=["POST"])

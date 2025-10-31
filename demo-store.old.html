@@ -194,8 +194,8 @@
         /* Search View */
         .search-view {
             display: none;
-            max-width: 1400px;
-            margin: 1rem auto;
+            max-width: 1200px;
+            margin: 2rem auto;
             padding: 0 1.5rem;
         }
 
@@ -204,76 +204,172 @@
         }
 
         .back-btn {
-            background: #6b7280;
-            color: white;
+            background: transparent;
+            color: #6b7280;
             border: none;
-            padding: 0.6rem 1.2rem;
+            padding: 0.6rem 1rem;
             border-radius: 8px;
             font-weight: 600;
             cursor: pointer;
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
+            transition: background 0.2s;
         }
 
         .back-btn:hover {
-            background: #4b5563;
+            background: #f3f4f6;
         }
 
-        .search-section {
+        /* Main Search Container */
+        .search-container {
             background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+            overflow: hidden;
         }
 
-        .search-header {
+        /* Tab Navigation */
+        .search-tabs {
+            display: flex;
+            border-bottom: 2px solid #f1f5f9;
+            background: #fafbfc;
+        }
+
+        .search-tab {
+            flex: 1;
+            padding: 1.5rem 2rem;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #64748b;
+            transition: all 0.3s;
+            position: relative;
             display: flex;
             align-items: center;
-            gap: 1rem;
-            margin-bottom: 1rem;
+            justify-content: center;
+            gap: 0.75rem;
         }
 
-        .search-header h2 {
+        .search-tab:hover {
+            background: #f8fafc;
+            color: #475569;
+        }
+
+        .search-tab.active {
             color: #667eea;
+            background: white;
+        }
+
+        .search-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .tab-icon {
             font-size: 1.5rem;
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+            padding: 2.5rem;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Visual Search Tab */
+        .visual-search-content {
+            text-align: center;
+        }
+
+        .search-title {
+            font-size: 1.8rem;
+            color: #1e293b;
+            margin-bottom: 0.5rem;
+            font-weight: 700;
+        }
+
+        .search-subtitle {
+            color: #64748b;
+            font-size: 1.05rem;
+            margin-bottom: 2rem;
         }
 
         .upload-area {
             border: 3px dashed #cbd5e1;
-            border-radius: 12px;
-            padding: 2rem;
-            text-align: center;
+            border-radius: 16px;
+            padding: 3rem 2rem;
             cursor: pointer;
             transition: all 0.3s ease;
-            background: #f8fafc;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .upload-area:hover::before,
+        .upload-area.dragover::before {
+            opacity: 1;
         }
 
         .upload-area:hover {
             border-color: #667eea;
-            background: #f1f5f9;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.15);
         }
 
         .upload-area.dragover {
             border-color: #667eea;
             background: #eef2ff;
+            border-style: solid;
         }
 
         .upload-icon {
-            font-size: 3rem;
-            margin-bottom: 0.75rem;
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         .upload-text {
-            font-size: 1.1rem;
-            color: #64748b;
+            font-size: 1.2rem;
+            color: #334155;
             margin-bottom: 0.5rem;
+            font-weight: 600;
         }
 
         .upload-hint {
-            font-size: 0.9rem;
+            font-size: 1rem;
             color: #94a3b8;
         }
 
@@ -283,43 +379,133 @@
 
         .preview-area {
             display: none;
-            text-align: center;
-            margin: 1.5rem 0;
+            margin: 2rem 0;
         }
 
         .preview-area.active {
             display: block;
         }
 
+        .preview-container {
+            display: inline-block;
+            position: relative;
+        }
+
         .preview-image {
-            max-width: 350px;
-            max-height: 350px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            margin-bottom: 0.75rem;
+            max-width: 400px;
+            max-height: 400px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            border: 4px solid white;
+        }
+
+        .remove-image-btn {
+            position: absolute;
+            top: -12px;
+            right: -12px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+            transition: transform 0.2s;
+        }
+
+        .remove-image-btn:hover {
+            transform: scale(1.1);
         }
 
         .search-btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            padding: 0.75rem 2rem;
-            font-size: 1rem;
-            border-radius: 8px;
+            padding: 1rem 3rem;
+            font-size: 1.1rem;
+            border-radius: 12px;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: all 0.3s;
             font-weight: 600;
+            margin-top: 1.5rem;
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
         }
 
         .search-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
         }
 
         .search-btn:disabled {
             background: #cbd5e1;
             cursor: not-allowed;
             transform: none;
+            box-shadow: none;
+        }
+
+        /* Text Search Tab */
+        .text-search-content {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .search-input-container {
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 1.25rem 1.5rem 1.25rem 3.5rem;
+            font-size: 1.1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 16px;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+        }
+
+        .search-input-icon {
+            position: absolute;
+            left: 1.25rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1.3rem;
+            color: #94a3b8;
+        }
+
+        .search-examples {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }
+
+        .example-tag {
+            background: #f1f5f9;
+            color: #475569;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .example-tag:hover {
+            background: #e0e7ff;
+            color: #667eea;
+            border-color: #c7d2fe;
         }
 
         .loading {
@@ -629,37 +815,83 @@
             ← Volver a la tienda
         </button>
 
-        <div class="search-section">
-            <div class="search-header">
-                <span style="font-size: 3rem;">🤖</span>
-                <div>
-                    <h2>Búsqueda Visual con Inteligencia Artificial</h2>
-                    <p style="color: #64748b; margin-top: 0.5rem;">Sube una foto y encuentra productos similares en nuestro catálogo</p>
+        <!-- Main Search Container with Tabs -->
+        <div class="search-container">
+            <!-- Tab Navigation -->
+            <div class="search-tabs">
+                <button class="search-tab active" data-tab="visual">
+                    <span class="tab-icon">�</span>
+                    <span>Búsqueda Visual</span>
+                </button>
+                <button class="search-tab" data-tab="text">
+                    <span class="tab-icon">💬</span>
+                    <span>Búsqueda por Descripción</span>
+                </button>
+            </div>
+
+            <!-- Visual Search Tab Content -->
+            <div class="tab-content active" id="visualTab">
+                <div class="visual-search-content">
+                    <h2 class="search-title">Encuentra productos con una foto</h2>
+                    <p class="search-subtitle">Sube una imagen y nuestro sistema encontrará productos similares al instante</p>
+                    
+                    <!-- Upload Area -->
+                    <div id="clip-widget"></div>
+                    <!-- Input para cámara móvil (oculto, solo para widget) -->
+                    <input type="file" id="clip-widget-mobile-upload" accept="image/*" capture="environment" style="display:none;" />
                 </div>
             </div>
 
-            <!-- Upload Area -->
-            <div id="clip-widget"></div>
-            <!-- Input para cámara móvil (oculto, solo para widget) -->
-            <input type="file" id="clip-widget-mobile-upload" accept="image/*" capture="environment" style="display:none;" />
+            <!-- Text Search Tab Content -->
+            <div class="tab-content" id="textTab">
+                <div class="text-search-content">
+                    <h2 class="search-title">Busca por descripción</h2>
+                    <p class="search-subtitle">Describe lo que buscas y encuentra productos que coincidan</p>
+                    
+                    <div class="search-input-container">
+                        <span class="search-input-icon">🔍</span>
+                        <input 
+                            type="text" 
+                            class="search-input" 
+                            id="textSearchInput"
+                            placeholder="Ej: camisa blanca, delantal marrón, camisa casual..."
+                        />
+                    </div>
+                    
+                    <button class="search-btn" id="textSearchBtn">
+                        Buscar productos
+                    </button>
 
-            <!-- Error Message -->
-            <div class="error-message" id="errorMessage" style="display:none;">
-                <div class="error-title">❌ Error en la búsqueda</div>
-                <div class="error-text" id="errorText"></div>
+                    <div class="search-examples">
+                        <div style="width: 100%; color: #64748b; font-size: 0.9rem; margin-bottom: 0.5rem;">
+                            💡 Ejemplos populares:
+                        </div>
+                        <span class="example-tag" data-query="delantal azul">delantal azul</span>
+                        <span class="example-tag" data-query="camisa clara">camisa clara</span>
+                        <span class="example-tag" data-query="delantal marrón">delantal marrón</span>
+                        <span class="example-tag" data-query="camisa casual">camisa casual</span>
+                        <span class="example-tag" data-query="delantal negro">delantal negro</span>
+                    </div>
+                </div>
             </div>
+        </div>
+
+        <!-- Error Message -->
+        <div class="error-message" id="errorMessage" style="display:none;">
+            <div class="error-title">❌ Error en la búsqueda</div>
+            <div class="error-text" id="errorText"></div>
         </div>
 
         <!-- Loading -->
         <div class="loading" id="loading" style="display:none;">
             <div class="spinner"></div>
-            <div class="loading-text">Analizando imagen con inteligencia artificial...</div>
+            <div class="loading-text">Analizando con inteligencia artificial...</div>
         </div>
 
         <!-- Results Section -->
         <div class="results-section" id="resultsSection" style="display:none;">
             <div class="results-header">
-                <h2 class="results-title">✨ Productos Similares Encontrados</h2>
+                <h2 class="results-title">✨ Productos Encontrados</h2>
                 <div class="results-count" id="resultsCount"></div>
             </div>
             <div class="products-grid" id="resultsGrid"></div>
@@ -670,13 +902,16 @@
     <script>
         window.CLIPWidget = {
             apiKey: 'test-api-key-demo-fashion-store-2024',
-            serverUrl: 'https://clipcomparadorv2-production.up.railway.app'
+            serverUrl: (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'http://localhost:5000'
+                : 'https://clipcomparadorv2-production.up.railway.app'
         };
     </script>
     <script src="/static/js/clip-widget-embed.js"></script>
 
     <!-- Toggle de vistas -->
     <script>
+        // Toggle entre tienda y vista de búsqueda
         document.getElementById('aiSearchToggle').addEventListener('click', function(e) {
             e.preventDefault();
             document.getElementById('storeView').classList.add('hidden');
@@ -686,7 +921,128 @@
         document.getElementById('backToStore').addEventListener('click', function() {
             document.getElementById('searchView').classList.remove('active');
             document.getElementById('storeView').classList.remove('hidden');
+            // Reset tabs
+            document.querySelector('.search-tab.active').classList.remove('active');
+            document.querySelector('.search-tab[data-tab="visual"]').classList.add('active');
+            document.querySelector('.tab-content.active').classList.remove('active');
+            document.getElementById('visualTab').classList.add('active');
         });
+
+        // Tab switching
+        document.querySelectorAll('.search-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                const targetTab = this.dataset.tab;
+                
+                // Update active tab
+                document.querySelectorAll('.search-tab').forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Update active content
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                document.getElementById(targetTab + 'Tab').classList.add('active');
+            });
+        });
+
+        // Example tags click
+        document.querySelectorAll('.example-tag').forEach(tag => {
+            tag.addEventListener('click', function() {
+                const query = this.dataset.query;
+                document.getElementById('textSearchInput').value = query;
+                document.getElementById('textSearchBtn').click();
+            });
+        });
+
+        // Text search button
+        document.getElementById('textSearchBtn').addEventListener('click', function() {
+            const query = document.getElementById('textSearchInput').value.trim();
+            if (!query) {
+                alert('Por favor ingresa una descripción para buscar');
+                return;
+            }
+
+            // Show loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('errorMessage').style.display = 'none';
+
+            // Perform text search
+            fetch(window.CLIPWidget.serverUrl + '/api/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': window.CLIPWidget.apiKey
+                },
+                body: JSON.stringify({
+                    query: query,
+                    max_results: 20
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('loading').style.display = 'none';
+                
+                if (data.success && data.results && data.results.length > 0) {
+                    displayResults(data.results, data.total_results);
+                } else {
+                    document.getElementById('errorMessage').style.display = 'block';
+                    document.getElementById('errorText').textContent = 
+                        data.error || 'No se encontraron productos que coincidan con tu búsqueda';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('errorMessage').style.display = 'block';
+                document.getElementById('errorText').textContent = 
+                    'Hubo un error al realizar la búsqueda. Por favor intenta nuevamente.';
+            });
+        });
+
+        // Enter key on text search
+        document.getElementById('textSearchInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('textSearchBtn').click();
+            }
+        });
+
+        // Display results function (shared for both visual and text search)
+        function displayResults(results, totalResults) {
+            document.getElementById('resultsSection').style.display = 'block';
+            document.getElementById('resultsCount').textContent = 
+                `${totalResults} producto${totalResults !== 1 ? 's' : ''} encontrado${totalResults !== 1 ? 's' : ''}`;
+            
+            const grid = document.getElementById('resultsGrid');
+            grid.innerHTML = results.map(result => `
+                <div class="product-card">
+                    <div class="product-image-container">
+                        <img 
+                            src="${result.image_url}" 
+                            alt="${result.name}"
+                            class="product-image"
+                            loading="lazy"
+                        />
+                        ${result.similarity ? `
+                            <div class="similarity-badge">
+                                ${Math.round(result.similarity * 100)}% similitud
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="product-info">
+                        <div class="product-category">${result.category || 'Producto'}</div>
+                        <div class="product-name">${result.name}</div>
+                        <div class="product-price">$${result.price ? result.price.toFixed(2) : 'N/A'}</div>
+                        ${result.stock !== undefined ? `
+                            <div class="product-stock ${result.stock > 0 ? 'in-stock' : 'out-stock'}">
+                                ${result.stock > 0 ? `✓ Stock: ${result.stock}` : '✗ Sin stock'}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Make displayResults available globally for the widget
+        window.displayResults = displayResults;
     </script>
 
 </body>

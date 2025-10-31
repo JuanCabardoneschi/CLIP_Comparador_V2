@@ -22,6 +22,9 @@ from app.models.store_search_config import StoreSearchConfig
 from app.services.image_manager import image_manager
 from app.core.search_optimizer import SearchOptimizer
 from app.utils.system_config import system_config
+from app.core.modifier_expander import expand_color_modifiers
+from app.utils.colors import normalize_color
+from app.utils.llm_query_normalizer import normalize_query
 from sqlalchemy import func, or_, text
 from googletrans import Translator
 
@@ -1128,6 +1131,7 @@ def detect_dominant_color_from_palette(image_data, colors_list):
         traceback.print_exc()
         return "unknown", 0.0
 
+
 def detect_general_object(image_data, client_id=None):
     """
     Detecta QUÉ es el objeto en la imagen usando CLIP
@@ -1493,6 +1497,31 @@ def visual_search():
     start_time = time.time()
 
     try:
+        # Soportar también búsqueda textual vía JSON en el mismo endpoint
+        # Si el Content-Type es application/json y no hay archivo de imagen, delegar a text_search()
+        if request.method == 'POST' and (request.is_json or (request.content_type and 'application/json' in request.content_type)) and not request.files:
+            # Delegar al handler de búsqueda textual existente
+            resp = text_search()
+
+            # Asegurar headers CORS consistentes con el endpoint unificado
+            if isinstance(resp, tuple):
+                resp_obj, status_code = resp
+                try:
+                    resp_obj.headers['Access-Control-Allow-Origin'] = '*'
+                    resp_obj.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+                    resp_obj.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+                except Exception:
+                    pass
+                return resp_obj, status_code
+            else:
+                try:
+                    resp.headers['Access-Control-Allow-Origin'] = '*'
+                    resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+                    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+                except Exception:
+                    pass
+                return resp
+
         # Validar request
         client, image_file, error_response = _validate_visual_search_request()
         if error_response:
@@ -1501,7 +1530,6 @@ def visual_search():
         # Procesar datos de imagen
         image_data, limit, _, error_response, status_code = _process_image_data(image_file)
         # Obtener configuración real del panel
-        print(f"❌ DEBUG: No hay categorías activas para el cliente {client.id}")
         max_results = system_config.get('search', 'max_results')
         # Si el parámetro limit no está en el request, usar el del panel
         if not limit:
@@ -1603,36 +1631,10 @@ def visual_search():
 
         print(f"🎯 DEBUG: Productos encontrados en categoría {detected_category.name}: {len(product_best_match)}")
 
-        # ===== APLICAR BOOST POR COLOR MATCHING =====
-        # Aplicar boost siempre que se detecte un color (independiente de confianza)
-        # para que el usuario vea resultados del color detectado
-        if detected_color and detected_color != "unknown":
-            print(f"🎨 RAILWAY LOG: Aplicando boost por color matching (color: {detected_color}, confianza: {color_confidence:.2f})")
-
-            for product_id, match_data in product_best_match.items():
-                product = match_data['product']
-                # Obtener color preferentemente desde JSONB y normalizar género
-                product_color = None
-                try:
-                    if hasattr(product, 'attributes') and product.attributes:
-                        product_color = product.attributes.get('color')
-                except Exception:
-                    product_color = None
-                if not product_color:
-                    product_color = (getattr(product, 'color', None) or '').strip()
-
-                product_color_norm = _normalize_color_gender(product_color)
-                detected_color_norm = _normalize_color_gender(detected_color)
-
-                # Si el color del producto coincide exactamente con el detectado, dar boost
-                if product_color_norm and product_color_norm == detected_color_norm:
-                    original_similarity = match_data['similarity']
-                    boosted_similarity = min(1.0, original_similarity * 1.12)  # Boost del 12%
-                    match_data['similarity'] = boosted_similarity
-                    match_data['color_boost'] = True
-                    print(f"🎨 COLOR BOOST: {product.name} ({product_color_norm}) {original_similarity:.4f} → {boosted_similarity:.4f}")
-                else:
-                    match_data['color_boost'] = False
+        # ===== NO APLICAR BOOST NI METADATA POR COLOR EN BÚSQUEDA VISUAL =====
+        # La detección de color solo se usa para logging/debug
+        # El ranking visual debe ser 100% basado en similitud CLIP pura
+        # Mantener paridad con producción (Railway)
 
         # 🚀 FASE 3: APLICAR SEARCH OPTIMIZER (si está activado)
         if search_optimizer and len(product_best_match) > 0:
@@ -1640,13 +1642,8 @@ def visual_search():
 
             # Preparar atributos detectados para metadata scoring
             detected_attributes = {}
-            # Solo usar el color detectado si la confianza es suficiente (>= 0.30)
-            if detected_color and detected_color != "unknown" and color_confidence >= 0.30:
-                detected_attributes['color'] = detected_color
-                print(f"🔍 DEBUG: Atributos detectados para metadata scoring: {detected_attributes}")
-            else:
-                if detected_color and detected_color != "unknown":
-                    print(f"ℹ️ DEBUG: Color detectado '{detected_color}' omitido para metadata (confianza {color_confidence:.2f} < 0.30)")
+            # NO usar color detectado en búsqueda visual para mantener paridad con producción
+            # El color solo se considera en búsqueda textual
 
             # Convertir product_best_match a formato esperado por optimizer
             raw_results = [
@@ -1745,14 +1742,456 @@ def visual_search():
         }), 500
 
 
-@bp.route("/search", methods=["OPTIONS"])
-def visual_search_options():
-    """CORS preflight para el endpoint de búsqueda"""
-    response = jsonify({"message": "OK"})
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
-    return response
+@bp.route("/search/text", methods=["POST", "OPTIONS"])
+def text_search():
+    """
+    Endpoint de búsqueda textual híbrida (CLIP + Atributos + Tags)
+
+    Headers:
+        X-API-Key: API Key del cliente
+
+    JSON Body:
+        query: Texto de búsqueda (ej: "camisa blanca", "delantal marrón")
+        limit: Número de resultados (default: 10, max: 50)
+    """
+    # Manejar preflight OPTIONS request
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+        return response
+
+    start_time = time.time()
+
+    try:
+        # Log temprano para verificar llegada de requests incluso si falla la API Key
+        print(
+            f"👉 TEXT SEARCH HIT: path={request.path} from={request.remote_addr} has_key={'X-API-Key' in request.headers}",
+            flush=True
+        )
+        # Validar API Key
+        api_key = request.headers.get('X-API-Key')
+        if not api_key:
+            return jsonify({
+                "success": False,
+                "error": "missing_api_key",
+                "message": "X-API-Key header requerido"
+            }), 401
+
+        # Buscar cliente por API Key
+        client = Client.query.filter_by(api_key=api_key).first()
+        if not client:
+            return jsonify({
+                "success": False,
+                "error": "invalid_api_key",
+                "message": "API Key inválido"
+            }), 401
+
+        # Obtener parámetros del request
+        data = request.get_json()
+        if not data or 'query' not in data:
+            return jsonify({
+                "success": False,
+                "error": "missing_query",
+                "message": "Campo 'query' requerido en el body JSON"
+            }), 400
+
+        query_text = data.get('query', '').strip()
+        if not query_text:
+            return jsonify({
+                "success": False,
+                "error": "empty_query",
+                "message": "La query no puede estar vacía"
+            }), 400
+
+        # Obtener configuración real del panel
+        max_results = system_config.get('search', 'max_results')
+        # Permitir tanto 'limit' como 'max_results' del request, pero respetar el límite del sistema
+        limit_value = data.get('limit', data.get('max_results', max_results))
+        try:
+            # Respetar el límite configurado en el sistema
+            limit = min(int(limit_value), max_results)
+        except Exception:
+            limit = max_results
+
+        print(f"📝 TEXT SEARCH: Query='{query_text}' Client={client.name} Limit={limit}", flush=True)
+
+        # --- LLM Normalization ---
+        llm_norm = normalize_query(query_text)
+        print(f"🧠 LLM Normalizer: {llm_norm}")
+
+        # Extraer campos del normalizador para usar en boosts
+        detected_color = llm_norm.get('color', '').lower() if llm_norm.get('color') else None
+        detected_tipo = llm_norm.get('tipo', '').lower() if llm_norm.get('tipo') else None
+
+        # Expandir modificadores de color con colores del cliente
+        expanded_query = expand_color_modifiers(query_text, client_id=str(client.id))
+        if expanded_query != query_text:
+            print(f"🔄 Query expandido: '{query_text}' -> '{expanded_query}'")
+
+        # Generar embedding CLIP del texto de búsqueda (usar query expandido)
+        model, processor = get_clip_model()
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        with torch.no_grad():
+            text_inputs = processor(text=[expanded_query], return_tensors="pt", padding=True)
+            text_features = model.get_text_features(**text_inputs)
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+            query_embedding = text_features.cpu().numpy()[0]
+
+        # Usar query expandido para matching de atributos también
+        query_lower = expanded_query.lower()
+
+        # Intentar detectar categoría en el query mediante tokens normalizados
+        detected_category = None
+        categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
+
+        import re, unicodedata
+
+        def _norm_token(t: str) -> str:
+            t = ''.join(c for c in unicodedata.normalize('NFD', t.lower()) if unicodedata.category(c) != 'Mn')
+            t = re.sub(r"[^a-z0-9]+", "", t)
+            # singularización naive: quitar 's' final si queda algo
+            if len(t) > 3 and t.endswith('s'):
+                t = t[:-1]
+            return t
+
+        STOPWORDS = {
+            'hombre','hombres','dama','damas','mujer','mujeres','unisex',
+            'y','de','para','con','sin','del','la','el','los','las'
+        }
+
+        def tokenize(texto: str):
+            toks = re.split(r"[\s,./;:()\-–]+", texto or "")
+            return { _norm_token(t) for t in toks if _norm_token(t) and _norm_token(t) not in STOPWORDS }
+
+        query_tokens = tokenize(expanded_query)
+
+        # Construir tokens por categoría (nombre, name_en y alternative_terms si existe)
+        cat_tokens_list = []
+        for category in categories:
+            toks = set()
+            toks |= tokenize(category.name)
+            if category.name_en:
+                toks |= tokenize(category.name_en)
+            alt = getattr(category, 'alternative_terms', None)
+            if alt:
+                for term in str(alt).split(','):
+                    toks |= tokenize(term.strip())
+            cat_tokens_list.append((category, toks))
+
+        # Detección: si hay intersección con alguna categoría, elegirla
+        for category, toks in cat_tokens_list:
+            if query_tokens & toks:
+                detected_category = category
+                print(f"📁 Categoría detectada por tokens: {category.name}")
+                break
+
+        # Si NO detectamos categoría: decidir si es fuera de catálogo o si permitimos búsqueda global
+        if not detected_category:
+            all_cat_tokens = set().union(*(toks for _, toks in cat_tokens_list)) if cat_tokens_list else set()
+            if query_tokens and query_tokens.isdisjoint(all_cat_tokens):
+                # Ningún token del query coincide con tokens de categorías → fuera de catálogo
+                available_names = [cat.name for cat in categories]
+                return jsonify({
+                    "success": False,
+                    "error": "category_not_detected",
+                    "query": query_text,
+                    "detected_category": None,
+                    "results": [],
+                    "total_products_analyzed": 0,
+                    "message": "No pudimos reconocer una categoría comercializada en tu consulta.",
+                    "details": "Probá con una de estas categorías disponibles.",
+                    "available_categories": available_names
+                }), 400
+            # Si hay alguna coincidencia débil (e.g., tokens genéricos), continuar sin filtrar por categoría
+            print("ℹ️ TEXT SEARCH: Sin categoría inequívoca, continuando sin filtro por categoría")
+
+        # Consultar productos con embeddings (de imágenes principales), atributos y tags
+        products_query = db.session.query(
+            Product.id,
+            Product.name,
+            Product.sku,
+            Product.price,
+            Product.attributes,
+            Product.tags,
+            Category.name.label('category_name'),
+            Image.clip_embedding,
+            Image.cloudinary_url
+        ).join(
+            Category, Product.category_id == Category.id
+        ).join(
+            Image, db.and_(
+                Product.id == Image.product_id,
+                Image.is_primary == True
+            )
+        ).filter(
+            Product.client_id == client.id,
+            Image.clip_embedding.isnot(None)
+        )
+
+        # FILTRAR por categoría si fue detectada
+        if detected_category:
+            products_query = products_query.filter(Product.category_id == detected_category.id)
+
+        products = products_query.all()
+
+        print(f"🔍 TEXT SEARCH: Analizando {len(products)} productos...")
+
+        # Calcular scores híbridos
+
+        results = []
+        for prod in products:
+            # Parse embedding (puede estar como string JSON)
+            embedding = prod.clip_embedding
+            if isinstance(embedding, str):
+                import json
+                try:
+                    embedding = json.loads(embedding)
+                except:
+                    continue  # Skip si no se puede parsear
+
+            # Score CLIP (similitud visual/semántica)
+            emb = np.array(embedding, dtype=np.float32)
+            clip_similarity = float(np.dot(query_embedding, emb) / (np.linalg.norm(query_embedding) * np.linalg.norm(emb)))
+
+            # Boost por atributos (incluye match de categoría y color del LLM)
+            attr_boost = _calculate_attribute_match(query_lower, prod.attributes, prod.category_name, detected_color, detected_tipo)
+            # Debug de atributos clave: color declarado vs color detectado
+            try:
+                prod_color_dbg = None
+                if isinstance(prod.attributes, dict):
+                    for k in ['color', 'colour', 'color_principal', 'color_secundario']:
+                        if k in prod.attributes and prod.attributes[k]:
+                            prod_color_dbg = prod.attributes[k]
+                            break
+                if detected_color:
+                    print(f"  🔎 ATTR DEBUG: {prod.name} | attr.color={prod_color_dbg} | detected_color={detected_color} | attr_boost={attr_boost:.3f}")
+            except Exception:
+                pass
+
+            # Boost por tags
+            tag_boost = _calculate_tag_match(query_lower, prod.tags)
+
+            # Score final híbrido
+            # Ponderaciones: CLIP 50%, Atributos 40%, Tags 10%
+            final_score = (
+                clip_similarity * 0.5 +
+                attr_boost * 0.4 +
+                tag_boost * 0.1
+            )
+
+            print(f"Producto: {prod.name} | CLIP: {clip_similarity:.3f} | Attr: {attr_boost:.3f} | Tag: {tag_boost:.3f} | Score: {final_score:.3f}")
+
+            results.append({
+                'product_id': str(prod.id),
+                'name': prod.name,
+                'sku': prod.sku,
+                'price': float(prod.price) if prod.price else None,
+                'category': prod.category_name,
+                'attributes': prod.attributes,
+                'tags': prod.tags or "",
+                'image_url': prod.cloudinary_url,
+                'clip_similarity': round(clip_similarity, 4),
+                'attr_boost': round(attr_boost, 4),
+                'tag_boost': round(tag_boost, 4),
+                'final_score': round(final_score, 4)
+            })
+
+        # Ordenar por score descendente
+        results.sort(key=lambda x: x['final_score'], reverse=True)
+
+
+        # Limitar resultados
+        results = results[:limit]
+
+        elapsed_time = time.time() - start_time
+
+        print(f"✅ TEXT SEARCH: {len(results)} resultados en {elapsed_time:.3f}s")
+
+        response = {
+            "success": True,
+            "query": query_text,
+            "detected_category": {
+                "id": str(detected_category.id),
+                "name": detected_category.name,
+                "name_en": detected_category.name_en
+            } if detected_category else None,
+            "results": results,
+            "total_products_analyzed": len(products),
+            "search_time_seconds": round(elapsed_time, 3)
+        }
+
+        # Añadir CORS para consistencia cuando este handler es invocado desde /api/search
+        resp = jsonify(response)
+        try:
+            resp.headers['Access-Control-Allow-Origin'] = '*'
+            resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+        except Exception:
+            pass
+        return resp
+
+    except Exception as e:
+        import traceback
+        print(f"❌ TEXT SEARCH ERROR: {e}")
+        print(traceback.format_exc())
+        return jsonify({
+            "success": False,
+            "error": "internal_error",
+            "message": str(e)
+        }), 500
+
+
+def _translate_query_to_english(query: str) -> str:
+    """
+    Traduce el query a inglés usando deep-translator (gratuito, sin API key).
+    Fallback: retorna query original si falla.
+    """
+    try:
+        from deep_translator import GoogleTranslator
+        translator = GoogleTranslator(source='auto', target='en')
+        translated = translator.translate(query)
+        if translated and translated != query:
+            print(f"🌐 Traducción: '{query}' → '{translated}'")
+            return translated
+    except ImportError:
+        print("⚠️ deep-translator no instalado. Instalar con: pip install deep-translator")
+    except Exception as e:
+        print(f"⚠️ Error en traducción: {e}")
+
+    return query
+
+
+## expand_color_modifiers fue extraído a app.core.modifier_expander.expand_color_modifiers
+
+
+## normalize_color fue extraído a app.utils.colors.normalize_color
+
+
+def _calculate_attribute_match(query_lower: str, attributes: dict, category: str = None, detected_color: str = None, detected_tipo: str = None) -> float:
+    """
+    Calcula boost por matching de atributos JSONB + categoría.
+
+    Estrategia de scoring:
+    - Categoría match: +0.30 (identifica el tipo de producto)
+    - Color exacto (del LLM normalizer): +0.50 (crítico para búsquedas visuales)
+    - Otros atributos exactos: +0.20 cada uno
+    - Match parcial: +0.10
+
+    Args:
+        query_lower: Query en minúsculas
+        attributes: Atributos JSONB del producto
+        category: Nombre de categoría del producto
+        detected_color: Color detectado por LLM normalizer
+        detected_tipo: Tipo detectado por LLM normalizer
+    """
+    score = 0.0
+    other_attr_score = 0.0  # Limitar contribución de atributos NO color
+    query_words = set(query_lower.split())
+
+    # 1. Match de categoría (importante para tipo de producto)
+    if category:
+        category_lower = category.lower()
+        for word in query_words:
+            if len(word) > 3 and word in category_lower:
+                score += 0.30  # Boost fuerte por match de categoría
+                break  # Solo una vez
+
+    # 2. Match de atributos JSONB con ponderación por tipo
+    if attributes:
+        def _to_str_list(val):
+            # Aceptar string, lista de strings o dicts con 'value'
+            if val is None:
+                return []
+            if isinstance(val, str):
+                return [val]
+            if isinstance(val, list):
+                return [str(x) for x in val if x is not None]
+            if isinstance(val, dict):
+                v = val.get('value')
+                return [str(v)] if v is not None else []
+            return []
+
+        for attr_key, attr_value in attributes.items():
+            values = _to_str_list(attr_value)
+            if not values:
+                continue
+
+            attr_key_lower = attr_key.lower()
+
+            # Identificar si es un atributo de color
+            is_color_attr = attr_key_lower in ['color', 'colour', 'color_principal', 'color_secundario']
+
+            for v in values:
+                v_lower = v.lower()
+
+                if is_color_attr:
+                    # PRIORIDAD 1: Usar color del LLM normalizer si está disponible
+                    if detected_color:
+                        product_color_norm = normalize_color(v)
+                        llm_color_norm = normalize_color(detected_color)
+
+                        if product_color_norm and llm_color_norm and product_color_norm == llm_color_norm:
+                            score += 0.50  # Boost fuerte por color del LLM
+                            print(f"  🎨 COLOR MATCH (LLM): '{detected_color}' == '{v}' (+0.50)")
+                            break
+
+                    # FALLBACK: Match tradicional por query
+                    product_color_normalized = normalize_color(v)
+                    query_normalized = normalize_color(query_lower)
+
+                    if product_color_normalized and query_normalized and product_color_normalized == query_normalized:
+                        score += 0.40  # Match de color normalizado
+                        break
+                    else:
+                        # Match por palabra individual (solo si ambas normalizaciones son válidas)
+                        matched_word = False
+                        if product_color_normalized:
+                            for word in query_words:
+                                nw = normalize_color(word)
+                                if nw and nw == product_color_normalized:
+                                    matched_word = True
+                                    break
+                        if matched_word:
+                            score += 0.40
+                            break
+                else:
+                    # Para otros atributos, permitir aporte HASTA +0.20 en total
+                    if other_attr_score < 0.20:
+                        if v_lower in query_lower:
+                            delta = min(0.20, 0.20 - other_attr_score)
+                            other_attr_score += delta
+                            score += delta
+                            break
+                        elif any(word in v_lower for word in query_words if len(word) > 2):
+                            delta = min(0.10, 0.20 - other_attr_score)
+                            if delta > 0:
+                                other_attr_score += delta
+                                score += delta
+                                break
+
+    return min(score, 1.0)  # Cap a 1.0
+
+
+def _calculate_tag_match(query_lower: str, tags: str) -> float:
+    """
+    Calcula boost por matching de tags.
+    """
+    score = 0.0
+    if not tags:
+        return score
+
+    tags_lower = tags.lower()
+    query_words = set(query_lower.split())
+
+    # Match directo de tags
+    for word in query_words:
+        if word in tags_lower:
+            score += 0.2
+
+    return score
 
 
 @bp.errorhandler(500)
