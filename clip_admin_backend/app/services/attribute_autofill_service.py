@@ -13,13 +13,42 @@ from typing import Dict, List, Tuple, Optional
 from app.models import Product, Image as ProductImage, ProductAttributeConfig
 from app import db
 
-# Tags genéricos aplicables a todos los productos
-TAG_OPTIONS = [
-    "formal", "casual", "deportivo", "elegante", "moderno", "clásico",
-    "vintage", "urbano", "profesional", "juvenil", "trabajo", "fiesta",
-    "verano", "invierno", "unisex", "masculino", "femenino", "infantil",
-    "premium", "económico", "cómodo", "ajustado", "holgado"
+# Tags contextuales expandidos para búsquedas conceptuales
+# Categorizados por ocasión, funcionalidad y características visuales
+
+# Ocasión / Uso
+OCCASION_TAGS = [
+    "fiesta", "boda", "gala", "evento_formal", "deporte", "gym", "running",
+    "futbol", "basketball", "yoga", "trabajo", "oficina", "profesional",
+    "casual", "diario", "relax", "outdoor", "playa", "concierto"
 ]
+
+# Funcionalidad
+FUNCTIONAL_TAGS = [
+    "protege_sol", "protege_lluvia", "cubre_bien", "cobertura_total",
+    "transpirable", "comodo", "flexible", "elastico", "ajustable",
+    "liviano", "resistente", "duradero", "impermeable"
+]
+
+# Estilo visual
+VISUAL_STYLE_TAGS = [
+    "elegante", "casual", "deportivo", "moderno", "clasico", "vintage",
+    "minimalista", "colorido", "neutro", "brillante", "mate",
+    "estampado", "liso", "texturizado"
+]
+
+# Demográfico
+DEMOGRAPHIC_TAGS = [
+    "unisex", "masculino", "femenino", "infantil", "juvenil", "adulto"
+]
+
+# Consolidado para clasificación
+TAG_OPTIONS = (
+    OCCASION_TAGS +
+    FUNCTIONAL_TAGS +
+    VISUAL_STYLE_TAGS +
+    DEMOGRAPHIC_TAGS
+)
 
 # Templates de prompts por tipo de atributo
 ATTRIBUTE_PROMPT_TEMPLATES = {
@@ -258,9 +287,9 @@ class AttributeAutofillService:
                             all_attributes[attr_name][best_option] = 0
                         all_attributes[attr_name][best_option] += confidence * weight
 
-                # Clasificar tags relevantes
+                # Clasificar tags relevantes (threshold más bajo para capturar más contexto)
                 relevant_tags = cls._classify_tags(pil_image, TAG_OPTIONS,
-                                                  threshold=0.25, category_context=category_ctx)
+                                                  threshold=0.20, category_context=category_ctx)
                 for tag, confidence in relevant_tags:
                     if tag not in all_tags:
                         all_tags[tag] = 0
@@ -285,13 +314,16 @@ class AttributeAutofillService:
                     else:
                         print(f"  ⊘ {attr_name}: Ya tiene valor '{current_attributes[attr_name]}' (detectado: {best_option[0]})")
 
-            # Consolidar tags (top 3)
+            # Consolidar tags contextuales (top 8 para mayor riqueza semántica)
             detected_tags = ""
             if all_tags:
-                sorted_tags = sorted(all_tags.items(), key=lambda x: x[1], reverse=True)[:3]
+                sorted_tags = sorted(all_tags.items(), key=lambda x: x[1], reverse=True)[:8]
                 tag_names = [tag for tag, _ in sorted_tags]
                 detected_tags = ", ".join(tag_names)
-                print(f"  ✓ Tags detectados: {detected_tags}")
+                
+                # Mostrar tags con confianza para debugging
+                tags_debug = ", ".join([f"{tag}({conf:.2f})" for tag, conf in sorted_tags])
+                print(f"  ✓ Tags contextuales detectados: {tags_debug}")
 
             return {
                 'success': True,
