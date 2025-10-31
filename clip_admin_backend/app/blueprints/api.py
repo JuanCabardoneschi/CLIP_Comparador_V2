@@ -1980,11 +1980,7 @@ def text_search():
 
         # --- Enriquecimiento opcional de query con tags inferidos (feature flag) ---
         try:
-            try:
-                fusion_enabled = system_config.get('search', 'enable_inferred_tags')
-            except KeyError:
-                fusion_enabled = False  # Default si no existe en config
-            
+            fusion_enabled = system_config.get('search', 'enable_inferred_tags', False)
             if fusion_enabled:
                 from app.services.query_enrichment_service import QueryEnrichmentService
 
