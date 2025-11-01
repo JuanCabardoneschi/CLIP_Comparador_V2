@@ -1718,7 +1718,7 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
 
         # Filtrar por diversidad semántica (evita BUZOS+CASACAS+CHAQUETAS)
         if len(selected) > 1:
-            selected = _filter_diverse_categories(selected, diversity_threshold=0.75)
+            selected = _filter_diverse_categories(selected, diversity_threshold=0.65)
 
         # Log final
         print(f"✅ MULTI-CATEGORY: {len(selected)} categorías finales detectadas")
