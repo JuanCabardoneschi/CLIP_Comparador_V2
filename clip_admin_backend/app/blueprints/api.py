@@ -1716,9 +1716,13 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
         for c in selected:
             print(f"   - {c['category'].name}: prob={c['probability']:.4f}, conf={c['confidence']:.4f}")
 
+        print(f"🔀 RAILWAY DEBUG: Aplicando filtro de diversidad (threshold=0.65)...")
+
         # Filtrar por diversidad semántica (evita BUZOS+CASACAS+CHAQUETAS)
         if len(selected) > 1:
             selected = _filter_diverse_categories(selected, diversity_threshold=0.65)
+
+        print(f"✅ RAILWAY DEBUG: Después de diversidad: {len(selected)} categorías finales")
 
         # Log final
         print(f"✅ MULTI-CATEGORY: {len(selected)} categorías finales detectadas")
@@ -1847,6 +1851,10 @@ def visual_search():
                 prelimit_topk=8
             )
 
+            print(f"📋 RAILWAY DEBUG: detected_categories = {len(detected_categories)} categorías")
+            for idx, cat_info in enumerate(detected_categories):
+                print(f"   {idx+1}. {cat_info['category'].name} (conf={cat_info['confidence']:.3f}, prob={cat_info.get('probability', 0):.3f})")
+
             if not detected_categories:
                 print(f"❌ MULTI-CATEGORY: No se detectó ninguna categoría")
                 return jsonify({
@@ -1879,7 +1887,7 @@ def visual_search():
                 category = cat_info['category']
                 conf = cat_info['confidence']
 
-                print(f"🔍 Buscando en {category.name} (conf={conf:.3f})")
+                print(f"🔍 RAILWAY DEBUG: Buscando en {category.name} (conf={conf:.3f})")
 
                 # Buscar productos en esta categoría
                 product_best_match = _find_similar_products_in_category(
@@ -1888,6 +1896,8 @@ def visual_search():
                     product_similarity_threshold,
                     category.id
                 )
+
+                print(f"📦 RAILWAY DEBUG: Encontrados {len(product_best_match)} productos en {category.name}")
 
                 # Aplicar optimizer si está disponible
                 if search_optimizer and len(product_best_match) > 0:
