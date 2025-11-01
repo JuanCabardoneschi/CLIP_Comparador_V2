@@ -1646,7 +1646,7 @@ def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75)
         similarity_matrix = torch.mm(text_embeddings, text_embeddings.t()).cpu().numpy()
 
         # Log de similitudes para debugging
-    print(f"\nDIVERSITY FILTER: Matriz de similitud entre {len(category_names)} categorías:")
+        print(f"\nDIVERSITY FILTER: Matriz de similitud entre {len(category_names)} categorías:")
         for i in range(len(category_names)):
             for j in range(i+1, len(category_names)):
                 sim = similarity_matrix[i][j]
