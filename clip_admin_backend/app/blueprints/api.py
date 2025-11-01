@@ -1,8 +1,9 @@
 ﻿"""
 Blueprint de API
-Endpoints internos para el admin panel y bÃºsqueda visual
+Endpoints internos para el admin panel y búsqueda visual
 """
 
+import sys
 import time
 from app.blueprints.embeddings import _get_idle_timeout_seconds
 import hashlib
@@ -28,7 +29,7 @@ from app.utils.llm_query_normalizer import normalize_query
 from sqlalchemy import func, or_, text
 from googletrans import Translator
 
-# ðŸš€ IMPORTAR CLIP AL INICIO PARA CACHE GLOBAL
+# 🚀 IMPORTAR CLIP AL INICIO PARA CACHE GLOBAL
 from app.blueprints.embeddings import get_clip_model
 
 bp = Blueprint("api", __name__)
@@ -37,6 +38,12 @@ bp = Blueprint("api", __name__)
 CORS(bp, origins=["*"],
      methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
      allow_headers=["Content-Type", "X-API-Key", "Authorization"])
+
+
+# 🔍 Helper para logs que funcionen en Railway (Gunicorn)
+def railway_log(message):
+    """Log que se ve en Railway - usa stderr con flush inmediato"""
+    print(f"[RAILWAY] {message}", file=sys.stderr, flush=True)
 
 
 @bp.route("/image/<path:filename>")
@@ -1300,7 +1307,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         tuple: (categoria_detectada, confidence_score) o (None, 0) si no detecta
     """
     try:
-        current_app.logger.info(f"RAILWAY LOG: Iniciando detecciÃ³n centroides para cliente {client_id}")
+        railway_log(f" LOG: Iniciando detecciÃ³n centroides para cliente {client_id}")
 
         # 1. Obtener categorÃ­as activas del cliente
         categories = Category.query.filter_by(
@@ -1309,10 +1316,10 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         ).all()
 
         if not categories:
-            current_app.logger.info(f"RAILWAY LOG: No categorÃ­as para cliente {client_id}")
+            railway_log(f" LOG: No categorÃ­as para cliente {client_id}")
             return None, 0
 
-        current_app.logger.info(f"RAILWAY LOG: {len(categories)} categorÃ­as encontradas")
+        railway_log(f" LOG: {len(categories)} categorÃ­as encontradas")
 
         # 2. Generar embedding de la imagen nueva
         from PIL import Image as PILImage
@@ -1342,7 +1349,7 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         for category in categories:
             # ðŸš€ USAR CENTROIDE DE BD DIRECTAMENTE
             centroid = category.get_centroid_embedding(auto_calculate=False)
-            current_app.logger.info(f"RAILWAY LOG: {category.name} - centroide {'OK' if centroid is not None else 'NULL'}")
+            railway_log(f" LOG: {category.name} - centroide {'OK' if centroid is not None else 'NULL'}")
 
             if centroid is not None:
                 # Calcular similitud coseno
@@ -1351,12 +1358,12 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
                     'category': category,
                     'similarity': float(similarity)
                 })
-                current_app.logger.info(f"RAILWAY LOG: {category.name}: similitud {similarity:.4f}")
+                railway_log(f" LOG: {category.name}: similitud {similarity:.4f}")
             else:
-                current_app.logger.info(f"RAILWAY LOG: {category.name} SIN CENTROIDE en BD")
+                railway_log(f" LOG: {category.name} SIN CENTROIDE en BD")
 
         if not category_similarities:
-            current_app.logger.info(f"RAILWAY LOG: NO HAY SIMILITUDES - sin centroides vÃ¡lidos")
+            railway_log(f" LOG: NO HAY SIMILITUDES - sin centroides vÃ¡lidos")
             return None, 0
 
         # 6. Encontrar la mejor coincidencia con margen de victoria y desempate
@@ -1367,17 +1374,17 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
         best_score = best_match['similarity']
         second_score = category_similarities[1]['similarity'] if len(category_similarities) > 1 else -1.0
 
-        current_app.logger.info(f"RAILWAY LOG: MEJOR: {best_category.name} = {best_score:.4f} | SEGUNDO = {second_score:.4f}")
+        railway_log(f" LOG: MEJOR: {best_category.name} = {best_score:.4f} | SEGUNDO = {second_score:.4f}")
 
         # Margen de victoria mÃ­nimo para aceptar directamente la categorÃ­a ganadora
         MARGIN_DELTA = 0.03  # 3 puntos de similitud coseno
 
         # Si el margen es muy chico, usamos un desempate con la detecciÃ³n general
         if second_score >= 0 and (best_score - second_score) < MARGIN_DELTA:
-            current_app.logger.info(f"RAILWAY LOG: MARGEN PEQUEÃ‘O ({best_score - second_score:.4f} < {MARGIN_DELTA}), aplicando desempate por objeto general")
+            railway_log(f" LOG: MARGEN PEQUEÃ‘O ({best_score - second_score:.4f} < {MARGIN_DELTA}), aplicando desempate por objeto general")
             try:
                 detected_object, object_confidence = detect_general_object(image_data, client_id)
-                current_app.logger.info(f"RAILWAY LOG: OBJETO GENERAL = {detected_object} (conf {object_confidence:.3f})")
+                railway_log(f" LOG: OBJETO GENERAL = {detected_object} (conf {object_confidence:.3f})")
 
                 if object_confidence >= 0.20:  # usar con umbral bajo, solo como desempate
                     # Comparar el objeto detectado con los nombres de las categorÃ­as (name y name_en)
@@ -1399,22 +1406,22 @@ def detect_image_category_with_centroids(image_data, client_id, confidence_thres
 
                     if not best_matches and second_matches:
                         # Elegir la segunda si estÃ¡ en el grupo preferido
-                        current_app.logger.info(f"RAILWAY LOG: DESEMPATE â†’ Preferimos '{second_cat.name}' por concordar con objeto '{detected_object}'")
+                        railway_log(f" LOG: DESEMPATE â†’ Preferimos '{second_cat.name}' por concordar con objeto '{detected_object}'")
                         best_category = second_cat
                         best_score = top2[1]['similarity']
                     else:
-                        current_app.logger.info(f"RAILWAY LOG: Desempate mantiene categorÃ­a original (best={best_matches}, second={second_matches})")
+                        railway_log(f" LOG: Desempate mantiene categorÃ­a original (best={best_matches}, second={second_matches})")
                 else:
-                    current_app.logger.info("RAILWAY LOG: Desempate no aplicado (baja confianza del objeto)")
+                    railway_log(" LOG: Desempate no aplicado (baja confianza del objeto)")
             except Exception as e:
-                current_app.logger.info(f"RAILWAY LOG: Error en desempate por objeto general: {e}")
+                railway_log(f" LOG: Error en desempate por objeto general: {e}")
 
         # 7. Verificar umbral de confianza
         if best_score >= confidence_threshold:
-            current_app.logger.info(f"RAILWAY LOG: DETECTADO - {best_category.name} (conf: {best_score:.4f})")
+            railway_log(f" LOG: DETECTADO - {best_category.name} (conf: {best_score:.4f})")
             return best_category, best_score
         else:
-            current_app.logger.info(f"RAILWAY LOG: RECHAZADO - {best_score:.4f} < {confidence_threshold}")
+            railway_log(f" LOG: RECHAZADO - {best_score:.4f} < {confidence_threshold}")
             return None, best_score
 
     except Exception as e:
@@ -1716,13 +1723,13 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
         for c in selected:
             print(f"   - {c['category'].name}: prob={c['probability']:.4f}, conf={c['confidence']:.4f}")
 
-        current_app.logger.info(f"ðŸ”€ RAILWAY DEBUG: Aplicando filtro de diversidad (threshold=0.65)...")
+        railway_log(f" DEBUG: Aplicando filtro de diversidad (threshold=0.65)...")
 
         # Filtrar por diversidad semÃ¡ntica (evita BUZOS+CASACAS+CHAQUETAS)
         if len(selected) > 1:
             selected = _filter_diverse_categories(selected, diversity_threshold=0.65)
 
-        current_app.logger.info(f"âœ… RAILWAY DEBUG: DespuÃ©s de diversidad: {len(selected)} categorÃ­as finales")
+        railway_log(f" DEBUG: DespuÃ©s de diversidad: {len(selected)} categorÃ­as finales")
 
         # Log final
         print(f"âœ… MULTI-CATEGORY: {len(selected)} categorÃ­as finales detectadas")
@@ -1851,7 +1858,7 @@ def visual_search():
                 prelimit_topk=8
             )
 
-            current_app.logger.info(f"ðŸ“‹ RAILWAY DEBUG: detected_categories = {len(detected_categories)} categorÃ­as")
+            railway_log(f" DEBUG: detected_categories = {len(detected_categories)} categorÃ­as")
             for idx, cat_info in enumerate(detected_categories):
                 current_app.logger.info(f"   {idx+1}. {cat_info['category'].name} (conf={cat_info['confidence']:.3f}, prob={cat_info.get('probability', 0):.3f})")
 
@@ -1887,7 +1894,7 @@ def visual_search():
                 category = cat_info['category']
                 conf = cat_info['confidence']
 
-                current_app.logger.info(f"ðŸ” RAILWAY DEBUG: Buscando en {category.name} (conf={conf:.3f})")
+                railway_log(f" DEBUG: Buscando en {category.name} (conf={conf:.3f})")
 
                 # Buscar productos en esta categorÃ­a
                 product_best_match = _find_similar_products_in_category(
@@ -1897,7 +1904,7 @@ def visual_search():
                     category.id
                 )
 
-                current_app.logger.info(f"ðŸ“¦ RAILWAY DEBUG: Encontrados {len(product_best_match)} productos en {category.name}")
+                railway_log(f" DEBUG: Encontrados {len(product_best_match)} productos en {category.name}")
 
                 # Aplicar optimizer si estÃ¡ disponible
                 if search_optimizer and len(product_best_match) > 0:
@@ -2006,7 +2013,7 @@ def visual_search():
             })
 
         # MODO SINGLE (original)
-        current_app.logger.info(f"RAILWAY LOG: INICIANDO DETECCIÃ“N DE CATEGORÃA ESPECÃFICA (SINGLE MODE)")
+        railway_log(f" LOG: INICIANDO DETECCIÃ“N DE CATEGORÃA ESPECÃFICA (SINGLE MODE)")
 
         detected_category, category_confidence = detect_image_category_with_centroids(
             image_data,
@@ -2014,11 +2021,11 @@ def visual_search():
             confidence_threshold=category_confidence_threshold  # Sensibilidad por cliente
         )
 
-        current_app.logger.info(f"RAILWAY LOG: Resultado detecciÃ³n = {detected_category.name if detected_category else 'NULL'} (conf: {category_confidence:.3f})")
+        railway_log(f" LOG: Resultado detecciÃ³n = {detected_category.name if detected_category else 'NULL'} (conf: {category_confidence:.3f})")
 
         if detected_category is None:
             # No se pudo detectar una categorÃ­a vÃ¡lida
-            current_app.logger.info(f"RAILWAY LOG: CATEGORÃA NO DETECTADA - devolviendo error")
+            railway_log(f" LOG: CATEGORÃA NO DETECTADA - devolviendo error")
             return jsonify({
                 "success": False,
                 "error": "category_not_detected",
@@ -2028,10 +2035,10 @@ def visual_search():
                 "processing_time": round(time.time() - start_time, 3)
             }), 400
 
-        current_app.logger.info(f"RAILWAY LOG: CATEGORÃA OK: {detected_category.name} - procediendo a bÃºsqueda")
+        railway_log(f" LOG: CATEGORÃA OK: {detected_category.name} - procediendo a bÃºsqueda")
 
         # ===== PASO 2: DETECCIÃ“N DE COLOR RESTRINGIDO A LA CATEGORÃA =====
-        current_app.logger.info(f"RAILWAY LOG: IDENTIFICANDO COLOR DOMINANTE (por categorÃ­a)...")
+        railway_log(f" LOG: IDENTIFICANDO COLOR DOMINANTE (por categorÃ­a)...")
 
         # Construir paleta de colores solo con los productos de la categorÃ­a
         # Preferir colores desde JSONB attributes->>'color' para la categorÃ­a
@@ -2053,10 +2060,10 @@ def visual_search():
 
         if category_colors:
             detected_color, color_confidence = detect_dominant_color_from_palette(image_data, category_colors)
-            current_app.logger.info(f"RAILWAY LOG: COLOR DETECTADO (cat) = {detected_color} (confianza: {color_confidence:.3f})")
+            railway_log(f" LOG: COLOR DETECTADO (cat) = {detected_color} (confianza: {color_confidence:.3f})")
         else:
             detected_color, color_confidence = ("unknown", 0.0)
-            current_app.logger.info("RAILWAY LOG: CategorÃ­a sin colores definidos; se omite boost/metadata por color")
+            railway_log(" LOG: CategorÃ­a sin colores definidos; se omite boost/metadata por color")
 
         # ===== GENERAR EMBEDDING DE LA IMAGEN (con enriquecimiento por tags) =====
         query_embedding, error_response, status_code = _generate_query_embedding(
@@ -2064,11 +2071,11 @@ def visual_search():
             detected_category=detected_category  # Pasar categorÃ­a para contexto
         )
         if error_response:
-            current_app.logger.info(f"RAILWAY LOG: Error generando embedding")
+            railway_log(f" LOG: Error generando embedding")
             return error_response, status_code
 
         # ===== BUSCAR SOLO EN LA CATEGORÃA DETECTADA =====
-        current_app.logger.info(f"RAILWAY LOG: Buscando productos en {detected_category.name}")
+        railway_log(f" LOG: Buscando productos en {detected_category.name}")
 
         # Modificar la bÃºsqueda para filtrar por categorÃ­a detectada
         product_best_match = _find_similar_products_in_category(
@@ -2976,4 +2983,5 @@ def _calculate_tag_match(query_lower: str, tags: str) -> float:
 @bp.errorhandler(500)
 def api_internal_error(error):
     return jsonify({"error": "Error interno del servidor"}), 500
+
 
