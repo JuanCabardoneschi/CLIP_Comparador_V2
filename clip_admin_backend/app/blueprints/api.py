@@ -46,6 +46,78 @@ def railway_log(message):
     print(f"[RAILWAY] {message}", file=sys.stderr, flush=True)
 
 
+# 🔤 Helper: construir prompt en inglés para CLIP desde nombres de categoría
+def _clip_label_from_spanish(name: str) -> str:
+    """
+    Mapear nombres de categorías en español (posibles typos) a descriptores
+    en inglés que CLIP entienda mejor. Mantenerlo simple y determinista.
+
+    Ejemplos:
+      - "shores/short/shorts tiro bajo" → "low-rise jean shorts"
+      - "pantalones de jeans rectos" → "straight-leg jeans"
+      - "chupin" → "skinny jeans"
+      - "boca ancha/oxford" → "wide-leg jeans"
+    """
+    if not name:
+        return "clothing"
+
+    n = name.lower()
+
+    base = None
+    qualifiers: list[str] = []
+
+    # Rise
+    if "tiro bajo" in n or "bajo" in n and "tiro" in n:
+        qualifiers.append("low-rise")
+    elif "tiro alto" in n or ("alto" in n and "tiro" in n):
+        qualifiers.append("high-rise")
+
+    # Jeans family and cut
+    if any(k in n for k in ["short", "shorts", "shore", "shores"]):
+        # Shorts de jean si menciona jean/denim
+        if "jean" in n or "denim" in n:
+            base = "jean shorts"
+        else:
+            base = "shorts"
+    elif "pantalon" in n or "pantalones" in n:
+        if "jean" in n or "denim" in n:
+            base = "jeans"
+        else:
+            base = "pants"
+
+    # Cortes
+    if any(k in n for k in ["recto", "rectos", "recta"]):
+        qualifiers.append("straight-leg")
+    if "chupin" in n or "skinny" in n:
+        qualifiers.append("skinny")
+    if any(k in n for k in ["boca ancha", "pierna ancha", "oxford", "wide"]):
+        qualifiers.append("wide-leg")
+
+    # Fallback si no se detectó base
+    if base is None:
+        if "jean" in n or "denim" in n:
+            base = "jeans"
+        else:
+            base = n.strip() or "clothing"
+
+    phrase = " ".join(qualifiers + [base]).strip()
+    return phrase
+
+
+def _clip_prompt_for_category(category) -> str:
+    """Construye el prompt final "a photo of ..." usando clip_prompt/name_en o mapping."""
+    try:
+        if getattr(category, "clip_prompt", None):
+            label = str(category.clip_prompt).lower()
+        elif getattr(category, "name_en", None):
+            label = str(category.name_en).lower()
+        else:
+            label = _clip_label_from_spanish(getattr(category, "name", ""))
+        return f"a photo of {label}"
+    except Exception:
+        return "a photo of clothing"
+
+
 @bp.route("/image/<path:filename>")
 def serve_image(filename):
     """Servir imÃ¡genes directamente usando ImageManager"""
@@ -1483,22 +1555,16 @@ def detect_image_category(image_data, client_id, confidence_threshold=0.2):
         model, processor = get_clip_model()
         print("ðŸ¤– DEBUG: Modelo CLIP obtenido")
 
-        # 4. Preparar prompts de categorÃ­as
+        # 4. Preparar prompts de categorías (usar prompts en inglés cuando sea posible)
         category_prompts = []
         category_objects = []
 
         for category in categories:
-            # Usar clip_prompt si existe, sino usar name_en, sino name
-            if category.clip_prompt:
-                prompt = f"a photo of {category.clip_prompt}"
-            elif category.name_en:
-                prompt = f"a photo of {category.name_en.lower()}"
-            else:
-                prompt = f"a photo of {category.name.lower()}"
+            prompt = _clip_prompt_for_category(category)
 
             category_prompts.append(prompt)
             category_objects.append(category)
-            print(f"ðŸ“ DEBUG: Prompt para {category.name}: {prompt}")
+            railway_log(f"DEBUG: Prompt para {getattr(category,'name','?')}: {prompt}")
 
         # 5. Procesar imagen y textos con CLIP
         with torch.no_grad():
@@ -1567,7 +1633,7 @@ def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75)
         clip_model, clip_processor = get_clip_model()
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Generar embeddings de nombres de categorÃ­as
+        # Generar embeddings de nombres de categorías (usando nombre tal cual para no hardcodear)
         category_names = [cat['category'].name for cat in categories_with_scores]
         texts = [f"a photo of {name}" for name in category_names]
 
@@ -1580,12 +1646,12 @@ def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75)
         similarity_matrix = torch.mm(text_embeddings, text_embeddings.t()).cpu().numpy()
 
         # Log de similitudes para debugging
-        print(f"\nðŸ“Š DIVERSITY FILTER: Matriz de similitud entre {len(category_names)} categorÃ­as:")
+    print(f"\nDIVERSITY FILTER: Matriz de similitud entre {len(category_names)} categorías:")
         for i in range(len(category_names)):
             for j in range(i+1, len(category_names)):
                 sim = similarity_matrix[i][j]
                 if sim > diversity_threshold:
-                    print(f"   - {category_names[i]} â†” {category_names[j]}: {sim:.3f} (SIMILAR)")
+                    print(f"   - {category_names[i]} <-> {category_names[j]}: {sim:.3f} (SIMILAR)")
 
         # Clustering greedy: agrupar categorÃ­as similares
         groups = []
@@ -1616,9 +1682,9 @@ def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75)
 
             if len(group) > 1:
                 group_names = [category_names[idx] for idx in group]
-                print(f"ðŸ”€ DIVERSITY: Agrupadas {group_names} â†’ seleccionada '{category_names[best_idx]}'")
+                print(f"DIVERSITY: Agrupadas {group_names} -> seleccionada '{category_names[best_idx]}'")
 
-        print(f"âœ… DIVERSITY FILTER: {len(categories_with_scores)} â†’ {len(filtered)} categorÃ­as")
+        print(f"DIVERSITY FILTER: {len(categories_with_scores)} -> {len(filtered)} categorías")
         return filtered
 
     except Exception as e:
@@ -1655,33 +1721,32 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
             print(f"âŒ MULTI-CATEGORY: No hay categorÃ­as activas para cliente {client_id}")
             return []
 
-        # Obtener modelo CLIP
+        # Obtener modelo CLIP y embedding de la imagen (una sola vez)
         clip_model, clip_processor = get_clip_model()
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")        # Procesar imagen
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         from PIL import Image as PILImage
         import io
         image = PILImage.open(io.BytesIO(image_data))
         image_inputs = clip_processor(images=image, return_tensors="pt").to(device)
 
-        # Embedding de imagen
         with torch.no_grad():
             image_features = clip_model.get_image_features(**image_inputs)
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+            image_vec = image_features.squeeze(0).cpu().numpy()
 
-        # Embeddings de textos de categorÃ­as
-        category_texts = [f"a photo of {cat.name}" for cat in categories]
-        text_inputs = clip_processor(text=category_texts, return_tensors="pt", padding=True, truncation=True).to(device)
+        # Similaridad contra centroides de cada categoría (mismo método que SINGLE)
+        confidences = []
+        for cat in categories:
+            centroid = cat.get_centroid_embedding(auto_calculate=False)
+            if centroid is None:
+                confidences.append(-1.0)
+                continue
+            sim = float(np.dot(image_vec, centroid) / (np.linalg.norm(image_vec) * np.linalg.norm(centroid)))
+            confidences.append(sim)
 
-        with torch.no_grad():
-            text_features = clip_model.get_text_features(**text_inputs)
-            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-
-        # Similitud coseno
-        similarities = torch.mm(image_features, text_features.t()).squeeze(0)
-        confidences = similarities.cpu().numpy()
-
-        # Softmax para probabilidades normalizadas
-        logits = similarities * 100  # Escalar para softmax
+        # Probabilidades normalizadas vía softmax de similitudes escaladas
+        sims_tensor = torch.tensor(confidences, dtype=torch.float32)
+        logits = sims_tensor * 100
         probabilities = torch.nn.functional.softmax(logits, dim=0).cpu().numpy()
 
         # Crear lista de candidatos con ambas mÃ©tricas
@@ -1719,7 +1784,7 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
         # Limitar a top-K ANTES de filtro de diversidad
         selected = selected[:prelimit_topk]
 
-        print(f"ðŸ“‹ PRELIMIT: {len(selected)} categorÃ­as seleccionadas (de {len(categories)} totales)")
+        print(f"PRELIMIT: {len(selected)} categorías seleccionadas (de {len(categories)} totales)")
         for c in selected:
             print(f"   - {c['category'].name}: prob={c['probability']:.4f}, conf={c['confidence']:.4f}")
 
