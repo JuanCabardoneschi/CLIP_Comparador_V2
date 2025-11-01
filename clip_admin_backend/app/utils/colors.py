@@ -1,7 +1,9 @@
-"""Color utilities: normalization and helpers.
+﻿"""
+Color utilities: normalization and helpers.
 
-Minimal, dependency-light helpers to keep API routes slim.
+Sistema 100% genérico basado en LLM (sin hardcodeo de colores).
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -17,63 +19,23 @@ _color_embedding_cache: dict[str, np.ndarray] = {}
 
 
 def _strip_accents(s: str) -> str:
+    """Elimina acentos de un string."""
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 
 def _normalize_color_hardcoded(s: str) -> Optional[str]:
     """
-    Normalización rápida por mapeo hardcoded de colores comunes.
-    Devuelve color canónico en MAYÚSCULAS o None si no reconoce.
+    DEPRECATED: No usar mapeo hardcoded.
+
+    Retorna None siempre para forzar el uso del LLM.
+    Esta función existe solo para evitar errores de importación legacy.
     """
-    # Mapeos por substrings (orden importa: más específicos primero)
-    # AZUL
-    if any(k in s for k in ["azul", "celeste", "marino", "jean", "denim"]):
-        return "AZUL"
-
-    # NEGRO / BLANCO / GRIS
-    if "negro" in s:
-        return "NEGRO"
-    if "blanco" in s:
-        return "BLANCO"
-    if "gris" in s:
-        return "GRIS"
-
-    # VERDE / ROJO / AMARILLO
-    if "verde" in s:
-        return "VERDE"
-    if "rojo" in s:
-        return "ROJO"
-    if "amarillo" in s or "mostaza" in s:
-        return "AMARILLO"
-
-    # MARRON/HABANO/BEIGE/NARANJA (agrupados suavemente)
-    if any(k in s for k in ["marron", "habano", "chocolate", "castano"]):
-        return "MARRON"
-    if "beige" in s or "crema" in s:
-        return "BEIGE"
-    if "naranja" in s:
-        return "NARANJA"
-
-    # MORADO/VIOLETA/ROSA
-    if any(k in s for k in ["morado", "violeta", "purpura", "lila"]):
-        return "MORADO"
-    if "rosa" in s or "fucsia" in s:
-        return "ROSA"
-
-    # Más colores comunes
-    if "turquesa" in s or "petroleo" in s or "cyan" in s:
-        return "TURQUESA"
-    if "dorado" in s or "oro" in s:
-        return "DORADO"
-    if "plateado" in s or "plata" in s:
-        return "PLATEADO"
-
     return None
 
 
 def _normalize_color_llm(color_str: str) -> Optional[str]:
     """
-    Fallback: usa el LLM normalizer para extraer el color canónico.
+    Usa el LLM normalizer para extraer el color canónico.
     Cachea resultados para evitar llamadas repetidas.
     """
     # Revisar caché primero
@@ -88,35 +50,37 @@ def _normalize_color_llm(color_str: str) -> Optional[str]:
         result = normalize_query(color_str)
         detected = result.get('color')
 
-        # Normalizar a MAYÚSCULAS si existe
-        normalized = detected.upper() if detected else None
+        # Normalizar a lowercase para comparaciones case-insensitive
+        normalized = detected.lower() if detected else None
 
         # Cachear resultado
         _llm_color_cache[cache_key] = normalized
         return normalized
 
     except Exception as e:
-        print(f"⚠️ normalize_color LLM fallback error: {e}")
+        print(f"Error normalize_color LLM: {e}")
         _llm_color_cache[cache_key] = None
         return None
 
 
 def normalize_color(color_str: Optional[str]) -> Optional[str]:
     """
-    Normaliza nombres de colores a una forma canónica en MAYÚSCULAS.
+    Normaliza nombres de colores usando SOLO el LLM (100% genérico, sin hardcodeo).
 
-    Estrategia híbrida:
-    1. Mapping hardcoded para colores comunes (instantáneo)
-    2. Fallback LLM para colores no reconocidos (con caché)
+    Estrategia:
+    - Usa el LLM normalizer para extraer el color base
+    - Cachea resultados para performance
+    - Totalmente independiente del dominio del cliente
 
     Ejemplos:
-    - "Azul marino" → "AZUL"
-    - "Jean" → "AZUL"
-    - "Fucsia vibrante" → "ROSA"
-    - "Coral" → (LLM) → cached result
+    - "Azul marino" -> LLM -> "azul"
+    - "Jean" -> LLM -> "azul"
+    - "Beige" -> LLM -> "beige"
+    - "Marrón chocolate" -> LLM -> "marrón"
+    - "Habano" -> LLM -> contexto del cliente
 
     Returns:
-        Color canónico en MAYÚSCULAS o None si no puede normalizar.
+        Color normalizado por LLM (lowercase) o None si no puede normalizar.
     """
     if not color_str:
         return None
@@ -130,27 +94,11 @@ def normalize_color(color_str: Optional[str]) -> Optional[str]:
     s = re.sub(r"[^a-z\s]", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
 
-    # PASO 1: Intentar mapeo hardcoded (rápido)
-    hardcoded = _normalize_color_hardcoded(s)
-    if hardcoded:
-        return hardcoded
-
-    # PASO 2: Fallback con LLM (para colores raros/nuevos)
-    # Solo si el color tiene contenido significativo
+    # Usar LLM para normalización (con caché)
     if len(s) >= 3:
         return _normalize_color_llm(s)
 
     return None
-
-
-# Grupos de colores similares (tonos que se perciben como "el mismo" color)
-SIMILAR_COLOR_GROUPS = [
-    {'BEIGE', 'MARRON'},  # Tonos tierra/café
-    {'AZUL', 'TURQUESA'},  # Azules
-    {'ROSA', 'MORADO'},  # Rosas/Violetas
-    {'GRIS', 'PLATEADO'},  # Grises
-    {'AMARILLO', 'DORADO'},  # Amarillos/Dorados
-]
 
 
 def _get_color_embedding(color_str: str) -> Optional[np.ndarray]:
@@ -177,59 +125,47 @@ def _get_color_embedding(color_str: str) -> Optional[np.ndarray]:
             _color_embedding_cache[cache_key] = emb_array
             return emb_array
     except Exception as e:
-        print(f"⚠️ _get_color_embedding error: {e}")
+        print(f"Error _get_color_embedding: {e}")
 
     return None
 
 
-def colors_are_similar(color1: str, color2: str, threshold: float = 0.85) -> bool:
+def colors_are_similar(color1: str, color2: str, threshold: float = 0.75) -> bool:
     """
-    Determina si dos colores son semánticamente similares.
+    Determina si dos colores son semánticamente similares usando SOLO LLM embeddings.
 
-    Estrategia híbrida (en orden de prioridad):
-    1. Comparación exacta (normalizada)
-    2. Grupos de colores similares (hardcoded, basado en percepción visual)
-    3. Fallback: LLM embeddings con threshold MUY alto (solo para casos edge)
+    Estrategia 100% genérica (sin hardcodeo):
+    1. Normaliza ambos colores con LLM
+    2. Si son iguales normalizados -> match exacto
+    3. Si no, compara embeddings semánticos con threshold configurable
+    4. Threshold 0.75 permite capturar similitudes como beige~chocolate, habano~marrón
 
     Args:
-        color1: Primer color (ej: "beige", "BEIGE")
-        color2: Segundo color (ej: "marrón chocolate", "MARRON")
-        threshold: Umbral de similitud coseno para LLM fallback (0.85 = muy estricto)
+        color1: Primer color (ej: "beige", "Beige claro")
+        color2: Segundo color (ej: "marrón chocolate", "chocolate")
+        threshold: Umbral de similitud coseno (default 0.75 = flexible para tonos similares)
 
     Returns:
-        True si los colores son similares
+        True si los colores son similares semánticamente
 
     Ejemplos:
-        colors_are_similar("beige", "marrón chocolate") → True (grupo BEIGE-MARRON)
-        colors_are_similar("coral", "salmón") → True (LLM fallback si >0.85)
-        colors_are_similar("beige", "negro") → False (LLM: 0.765 < 0.85)
+        colors_are_similar("beige", "chocolate") -> True si embedding sim >= 0.75
+        colors_are_similar("habano", "marrón") -> True si LLM los considera similares
+        colors_are_similar("azul", "negro") -> False (embeddings muy diferentes)
     """
     if not color1 or not color2:
         return False
 
-    # Si son exactamente iguales (case-insensitive), son similares
-    c1_lower = color1.lower().strip()
-    c2_lower = color2.lower().strip()
-    if c1_lower == c2_lower:
-        return True
-
-    # Normalizar ambos colores
+    # Normalizar ambos colores con LLM
     c1_norm = normalize_color(color1)
     c2_norm = normalize_color(color2)
 
     # Si son exactamente iguales normalizados, son similares
-    if c1_norm and c2_norm and c1_norm == c2_norm:
+    if c1_norm and c2_norm and c1_norm.lower() == c2_norm.lower():
+        print(f"  Exact Match (LLM): '{c1_norm}' == '{c2_norm}'")
         return True
 
-    # Revisar grupos de colores similares (prioridad: rápido y confiable)
-    if c1_norm and c2_norm:
-        for group in SIMILAR_COLOR_GROUPS:
-            if c1_norm in group and c2_norm in group:
-                print(f"  ✅ Grupo similar: '{c1_norm}' y '{c2_norm}' en {group}")
-                return True
-
-    # Fallback: LLM embeddings (solo para colores raros con threshold MUY alto)
-    # Esto maneja casos como "coral" vs "salmón" que no están en los grupos hardcoded
+    # Usar embeddings semánticos del LLM para comparación
     emb1 = _get_color_embedding(color1)
     emb2 = _get_color_embedding(color2)
 
@@ -237,10 +173,12 @@ def colors_are_similar(color1: str, color2: str, threshold: float = 0.85) -> boo
         similarity = float(np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2)))
         result = similarity >= threshold
 
-        # Log solo cuando el LLM realmente decide (no cuando los grupos ya decidieron)
         if result:
-            print(f"  🔬 LLM Match: '{color1}' vs '{color2}' = {similarity:.3f} (>={threshold})")
+            print(f"  Semantic Match: '{color1}' <-> '{color2}' = {similarity:.3f} (>={threshold})")
+        else:
+            print(f"  No Match: '{color1}' <-> '{color2}' = {similarity:.3f} (<{threshold})")
 
         return result
 
+    print(f"  No embeddings available for '{color1}' or '{color2}'")
     return False

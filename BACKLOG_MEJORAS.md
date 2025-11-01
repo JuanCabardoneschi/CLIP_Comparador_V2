@@ -7,7 +7,7 @@
 ## 🚨 CRÍTICO - ANTES DE SUBIR A PRODUCCIÓN
 
 ### ⚠️ Migración de Búsqueda Textual - Preservar Configuraciones de Cliente
-**Estado**: ⚠️ PENDIENTE VALIDACIÓN
+**Estado**: ✅ COMPLETADO (CERRADO 31 Octubre 2025)
 **Complejidad**: Media
 **Impacto**: CRÍTICO (puede borrar datos de clientes en producción)
 **Prioridad**: MÁXIMA - BLOQUEANTE PARA DEPLOY
@@ -82,15 +82,15 @@ Esta funcionalidad (búsqueda textual) es la primera feature grande desarrollada
 Las migraciones locales pueden haber sido más agresivas porque se asumía BD limpia.
 Railway tiene datos reales de clientes que NO pueden perderse.
 
-**Checklist de Deploy Seguro**:
-- [ ] Backup completo de Railway descargado y validado
-- [ ] Scripts de migración revisados y aprobados
-- [ ] Testing en local con datos de Railway restaurados
-- [ ] Plan de rollback documentado
-- [ ] Validación de que atributos custom se preservan
-- [ ] Confirmación de que `expose_in_search` no se resetea
-- [ ] Testing post-deploy de búsqueda textual en Railway
-- [ ] Verificación de que URLs de productos funcionan
+**Checklist de Deploy Seguro**: COMPLETADO
+- [x] Backup completo de Railway descargado y validado
+- [x] Scripts de migración revisados y aprobados
+- [x] Testing en local con datos de Railway restaurados
+- [x] Plan de rollback documentado
+- [x] Validación de que atributos custom se preservan
+- [x] Confirmación de que `expose_in_search` no se resetea
+- [x] Testing post-deploy de búsqueda textual en Railway
+- [x] Verificación de que URLs de productos funcionan
 
 **Responsable**: Validar antes del próximo deploy a Railway
 **Deadline**: ANTES de ejecutar cualquier migración en producción
@@ -257,6 +257,69 @@ Railway tiene datos reales de clientes que NO pueden perderse.
 ---
 
 ## 🔥 URGENTE - FASE 5 (Sistema en Producción)
+
+### 0. **[LUNES 4 NOV] Parametrizar Ranking de Búsqueda en system_config.json**
+**Estado**: 💡 Propuesto
+**Complejidad**: Baja (2 horas)
+**Impacto**: Medio (permite ajustes sin código)
+**Prioridad**: MEDIA
+**Fecha agregada**: 1 Noviembre 2025
+
+**Problema**:
+- Thresholds y pesos de ranking están hardcodeados en `api.py` (0.75, 0.45, 0.50, 0.35, etc.)
+- No se pueden ajustar sin modificar código
+- Dificulta tuning fino por cliente
+
+**Solución Propuesta**:
+
+**1. Agregar a `system_config.json`**:
+```json
+{
+  "search": {
+    "weight_clip": 0.5,
+    "weight_attributes": 0.35,
+    "weight_color": 0.05,
+    "weight_text": 0.1,
+    "color_threshold_strong": 0.75,
+    "color_threshold_medium": 0.45,
+    "color_soft_boost_max": 0.2,
+    "diversity_threshold": 0.75
+  }
+}
+```
+
+**2. Modificar `_calculate_attribute_match()` y scoring en `text_search()`**:
+```python
+# En lugar de:
+if color_sim >= 0.75:
+
+# Leer de config:
+search_cfg = system_config.get_section('search')
+th_strong = float(search_cfg.get('color_threshold_strong', 0.75))
+if color_sim >= th_strong:
+```
+
+**3. Aplicar a todos los thresholds/pesos hardcodeados**
+
+**Beneficios**:
+- ✅ Ajustes en caliente sin redeploy (editar JSON y reiniciar app)
+- ✅ A/B testing de parámetros fácil
+- ✅ Documentación clara de valores default
+- ✅ Preparación para config per-client
+
+**Archivos a modificar**:
+- `system_config.json` (agregar claves)
+- `clip_admin_backend/app/blueprints/api.py`:
+  - `_calculate_attribute_match()`: líneas 2806, 2822, 2836
+  - `text_search()`: líneas 2548-2550, 2565
+  - `_filter_diverse_categories()`: línea 1543, 1721
+
+**Testing**:
+- Verificar que valores default funcionan igual
+- Probar modificar thresholds y ver cambios en ranking
+- Validar que valores inválidos usan fallback
+
+---
 
 ### 1. Detección Multi-Producto con CLIP (Zero-Shot Multi-Categoría)
 **Estado**: 💡 Diseñado, listo para implementar
@@ -927,7 +990,7 @@ ON attribute_templates(industry, key);
 ## 📊 MEJORAS DE DATOS
 
 ### 6. Enriquecer Metadata de Productos
-**Estado**: 💡 Propuesto
+**Estado**: ✅ COMPLETADO (CERRADO 31 Octubre 2025)
 **Complejidad**: Baja (técnica) / Alta (operativa - requiere trabajo manual)
 **Impacto**: Alto para calidad de búsqueda
 
@@ -936,7 +999,10 @@ ON attribute_templates(industry, key);
 - Sin tags semánticos: "león", "animal", "personaje"
 - Sin descripciones detalladas para CLIP
 
-**Soluciones**:
+**Implementado**:
+- Auto‑Tagging con CLIP (detección de conceptos y guardado en `auto_tags`)
+- UI de tags manuales en formulario de producto (con autocompletado)
+- Descripciones estructuradas basadas en template
 
 **6.1. Auto-Tagging con CLIP** (corto plazo):
 - Usar CLIP para detectar objetos/conceptos en imágenes

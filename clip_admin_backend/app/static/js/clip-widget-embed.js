@@ -475,6 +475,11 @@
                 gap: 1.5rem;
             }
 
+            /* Cuando tiene secciones de categorías, hacerlo vertical */
+            .clip-grid:has(.clip-category-section) {
+                display: block;
+            }
+
             .clip-product {
                 background: white;
                 border: 1px solid #e5e7eb;
@@ -593,6 +598,54 @@
             .clip-product-link:hover {
                 transform: translateY(-2px);
                 box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            }
+
+            /* Multi-Category Sections (Vertical Layout) */
+            .clip-category-section {
+                margin-bottom: 3rem;
+                padding-bottom: 2rem;
+                border-bottom: 2px solid #e5e7eb;
+            }
+
+            .clip-category-section:last-child {
+                border-bottom: none;
+                margin-bottom: 0;
+                padding-bottom: 0;
+            }
+
+            .clip-category-header {
+                margin-bottom: 1.5rem;
+                padding: 1rem;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                border-radius: 8px;
+                color: white;
+            }
+
+            .clip-category-title {
+                font-size: 1.5rem;
+                font-weight: 700;
+                margin: 0 0 0.5rem 0;
+            }
+
+            .clip-category-meta {
+                display: flex;
+                gap: 1.5rem;
+                font-size: 0.9rem;
+                opacity: 0.95;
+            }
+
+            .clip-category-count {
+                font-weight: 600;
+            }
+
+            .clip-category-confidence {
+                opacity: 0.85;
+            }
+
+            .clip-category-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+                gap: 1.5rem;
             }
         `;
         document.head.appendChild(style);
@@ -832,6 +885,7 @@
             beginProcessing('visual');
             const formData = new FormData();
             formData.append('image', file);
+            formData.append('multi_category', 'true'); // ✅ ACTIVAR MODO MULTI-CATEGORÍA
 
             fetch(`${config.serverUrl}/api/search`, {
                 method: 'POST',
@@ -841,10 +895,17 @@
             .then(res => res.json())
             .then(data => {
                 endProcessing('visual');
-                if (data.success && data.results && data.results.length > 0) {
+
+                // Modo multi-categoría
+                if (data.mode === 'multi_category' && data.results_by_category) {
+                    displayMultiCategoryResults(data.results_by_category, data.total_results);
+                }
+                // Modo single categoría (actual)
+                else if (data.success && data.results && data.results.length > 0) {
                     const total = data.total_results || data.results.length;
                     displayResults(data.results, total);
-                } else if (data && data.error === 'category_not_detected') {
+                }
+                else if (data && data.error === 'category_not_detected') {
                     // Mostrar mensaje especial con categorías disponibles (igual que en texto)
                     showCategoryNotDetectedError(data.message, data.details, data.available_categories);
                 } else {
@@ -899,6 +960,101 @@
         }
 
         // Display results
+        function displayMultiCategoryResults(resultsByCategory, totalResults) {
+            const resultsDiv = container.querySelector('#clip-results');
+            const countDiv = container.querySelector('#clip-results-count');
+            const gridDiv = container.querySelector('#clip-grid');
+
+            // Calcular total de productos
+            const totalProductCount = resultsByCategory.reduce((sum, cat) => sum + cat.product_count, 0);
+            const totalCategories = resultsByCategory.length;
+            countDiv.textContent = `${totalProductCount} productos en ${totalCategories} categoría${totalCategories !== 1 ? 's' : ''}`;
+
+            console.log('🎯 MULTI-CATEGORY: Mostrando resultados agrupados', resultsByCategory);
+
+            // Mostrar cada categoría como una sección vertical
+            let sectionsHtml = '';
+
+            resultsByCategory.forEach((categoryData, index) => {
+                const categoryName = categoryData.category_name; // ✅ CORREGIDO: usar category_name
+                const products = categoryData.products;
+                const confidence = Math.round(categoryData.confidence * 100);
+                const totalProducts = products.length;
+
+                // Encabezado de categoría
+                sectionsHtml += `
+                    <div class="clip-category-section">
+                        <div class="clip-category-header">
+                            <h3 class="clip-category-title">${categoryName}</h3>
+                            <div class="clip-category-meta">
+                                <span class="clip-category-count">${totalProducts} producto${totalProducts !== 1 ? 's' : ''}</span>
+                                <span class="clip-category-confidence">${confidence}% confianza</span>
+                            </div>
+                        </div>
+                        <div class="clip-category-grid">
+                            ${products.map(r => {
+                                // Construir atributos dinámicos
+                                let attributesHtml = '';
+                                if (r.attributes && typeof r.attributes === 'object') {
+                                    const visibleAttrs = Object.entries(r.attributes)
+                                        .filter(([key, value]) => {
+                                            if (key === 'url_producto') return false;
+                                            return value !== null && value !== undefined && value !== '';
+                                        })
+                                        .map(([key, value]) => {
+                                            const label = key.replace(/_/g, ' ').charAt(0).toUpperCase() + key.replace(/_/g, ' ').slice(1);
+                                            const displayValue = Array.isArray(value) ? value.join(', ') : value;
+                                            return `
+                                                <div class="clip-product-attribute">
+                                                    <span class="clip-attr-label">${label}:</span>
+                                                    <span class="clip-attr-value">${displayValue}</span>
+                                                </div>
+                                            `;
+                                        })
+                                        .join('');
+
+                                    if (visibleAttrs) {
+                                        attributesHtml = `<div class="clip-product-attributes">${visibleAttrs}</div>`;
+                                    }
+                                }
+
+                                // Botón URL del producto
+                                const productUrl = r.product_url || (r.attributes && r.attributes.url_producto);
+                                const urlButtonHtml = productUrl ? `
+                                    <a href="${productUrl}" target="_blank" class="clip-product-link">
+                                        Ver Producto →
+                                    </a>
+                                ` : '';
+
+                                return `
+                                    <div class="clip-product">
+                                        <div class="clip-product-img-wrap">
+                                            <img src="${r.image_url}" alt="${r.name}" class="clip-product-img">
+                                            ${r.similarity ? `<div class="clip-similarity-badge">${Math.round(r.similarity * 100)}%</div>` : ''}
+                                        </div>
+                                        <div class="clip-product-info">
+                                            <div class="clip-product-category">${r.category || 'Producto'}</div>
+                                            <div class="clip-product-name">${r.name}</div>
+                                            <div class="clip-product-price">$${r.price ? r.price.toFixed(2) : 'N/A'}</div>
+                                            ${r.stock !== undefined ? `
+                                                <div class="clip-product-stock ${r.stock > 0 ? 'in-stock' : ''}">
+                                                    ${r.stock > 0 ? `✓ Stock: ${r.stock}` : '✗ Sin stock'}
+                                                </div>
+                                            ` : ''}
+                                            ${attributesHtml}
+                                            ${urlButtonHtml}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+
+            gridDiv.innerHTML = sectionsHtml;
+            resultsDiv.classList.add('active');
+        }
         function displayResults(results, total) {
             const resultsDiv = container.querySelector('#clip-results');
             const countDiv = container.querySelector('#clip-results-count');

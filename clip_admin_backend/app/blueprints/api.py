@@ -1540,6 +1540,205 @@ def detect_image_category(image_data, client_id, confidence_threshold=0.2):
         return None, 0
 
 
+def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75):
+    """
+    Filtra categorías similares usando embeddings CLIP de sus nombres.
+    Agrupa categorías semánticamente similares y selecciona la mejor de cada grupo.
+
+    Args:
+        categories_with_scores: Lista de dicts con 'category' (objeto Category) y 'confidence'
+        diversity_threshold: Umbral de similitud coseno para considerar categorías como similares (default 0.75)
+
+    Returns:
+        Lista filtrada de categorías diversas (mismo formato que input)
+    """
+    if len(categories_with_scores) <= 1:
+        return categories_with_scores
+
+    try:
+        # Obtener modelo CLIP
+        clip_model, clip_processor = get_clip_model()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Generar embeddings de nombres de categorías
+        category_names = [cat['category'].name for cat in categories_with_scores]
+        texts = [f"a photo of {name}" for name in category_names]
+
+        with torch.no_grad():
+            text_inputs = clip_processor(text=texts, return_tensors="pt", padding=True, truncation=True).to(device)
+            text_embeddings = clip_model.get_text_features(**text_inputs)
+            text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)
+
+        # Matriz de similitud coseno
+        similarity_matrix = torch.mm(text_embeddings, text_embeddings.t()).cpu().numpy()
+
+        # Log de similitudes para debugging
+        print(f"\n📊 DIVERSITY FILTER: Matriz de similitud entre {len(category_names)} categorías:")
+        for i in range(len(category_names)):
+            for j in range(i+1, len(category_names)):
+                sim = similarity_matrix[i][j]
+                if sim > diversity_threshold:
+                    print(f"   - {category_names[i]} ↔ {category_names[j]}: {sim:.3f} (SIMILAR)")
+
+        # Clustering greedy: agrupar categorías similares
+        groups = []
+        used = set()
+
+        for i in range(len(categories_with_scores)):
+            if i in used:
+                continue
+
+            group = [i]
+            used.add(i)
+
+            for j in range(i+1, len(categories_with_scores)):
+                if j in used:
+                    continue
+
+                if similarity_matrix[i][j] > diversity_threshold:
+                    group.append(j)
+                    used.add(j)
+
+            groups.append(group)
+
+        # Seleccionar mejor de cada grupo (por confianza)
+        filtered = []
+        for group in groups:
+            best_idx = max(group, key=lambda idx: categories_with_scores[idx]['confidence'])
+            filtered.append(categories_with_scores[best_idx])
+
+            if len(group) > 1:
+                group_names = [category_names[idx] for idx in group]
+                print(f"🔀 DIVERSITY: Agrupadas {group_names} → seleccionada '{category_names[best_idx]}'")
+
+        print(f"✅ DIVERSITY FILTER: {len(categories_with_scores)} → {len(filtered)} categorías")
+        return filtered
+
+    except Exception as e:
+        print(f"⚠️ DIVERSITY FILTER: Error, retornando sin filtrar: {e}")
+        return categories_with_scores
+
+
+def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, min_conf_threshold=0.18, prelimit_topk=8):
+    """
+    Detecta MÚLTIPLES categorías en una imagen usando CLIP zero-shot classification.
+    Sistema adaptativo: modo estricto si hay categoría dominante, laxo si no.
+
+    Args:
+        image_data: Bytes de la imagen
+        client_id: ID del cliente
+        min_prob_threshold: Umbral mínimo de probabilidad softmax (default 0.03 = 3%)
+        min_conf_threshold: Umbral mínimo de confianza coseno (default 0.18)
+        prelimit_topk: Top K candidatos antes de aplicar filtro de diversidad (default 8)
+
+    Returns:
+        Lista de dicts: [{'category': Category, 'confidence': float, 'probability': float}, ...]
+        Ordenada por confianza descendente, filtrada por diversidad semántica
+    """
+    try:
+        # Limpiar cualquier transacción fallida previa
+        try:
+            db.session.rollback()
+        except:
+            pass
+
+        # Obtener categorías activas del cliente
+        categories = Category.query.filter_by(client_id=client_id, is_active=True).all()
+        if not categories:
+            print(f"❌ MULTI-CATEGORY: No hay categorías activas para cliente {client_id}")
+            return []
+
+        # Obtener modelo CLIP
+        clip_model, clip_processor = get_clip_model()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")        # Procesar imagen
+        from PIL import Image as PILImage
+        import io
+        image = PILImage.open(io.BytesIO(image_data))
+        image_inputs = clip_processor(images=image, return_tensors="pt").to(device)
+
+        # Embedding de imagen
+        with torch.no_grad():
+            image_features = clip_model.get_image_features(**image_inputs)
+            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+
+        # Embeddings de textos de categorías
+        category_texts = [f"a photo of {cat.name}" for cat in categories]
+        text_inputs = clip_processor(text=category_texts, return_tensors="pt", padding=True, truncation=True).to(device)
+
+        with torch.no_grad():
+            text_features = clip_model.get_text_features(**text_inputs)
+            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+
+        # Similitud coseno
+        similarities = torch.mm(image_features, text_features.t()).squeeze(0)
+        confidences = similarities.cpu().numpy()
+
+        # Softmax para probabilidades normalizadas
+        logits = similarities * 100  # Escalar para softmax
+        probabilities = torch.nn.functional.softmax(logits, dim=0).cpu().numpy()
+
+        # Crear lista de candidatos con ambas métricas
+        candidates = []
+        for i, category in enumerate(categories):
+            candidates.append({
+                'category': category,
+                'confidence': float(confidences[i]),
+                'probability': float(probabilities[i])
+            })
+
+        # Ordenar por probabilidad (más confiable que coseno para ranking)
+        candidates.sort(key=lambda x: x['probability'], reverse=True)
+
+        # Sistema adaptativo: detectar si hay categoría DOMINANTE
+        max_conf = candidates[0]['confidence']
+        dominant_threshold = 0.25
+        is_dominant = max_conf > dominant_threshold
+
+        if is_dominant:
+            # Modo ESTRICTO: evitar falsos positivos en imágenes de un solo objeto
+            print(f"🎯 MULTI-CATEGORY: Modo ESTRICTO (categoría dominante: {candidates[0]['category'].name} conf={max_conf:.3f})")
+            strict_prob = 0.08  # 8% de probabilidad mínima
+            strict_conf = 0.20  # 20% de confianza mínima
+
+            selected = [c for c in candidates
+                       if c['probability'] >= strict_prob and c['confidence'] >= strict_conf]
+        else:
+            # Modo LAXO: permitir múltiples categorías
+            print(f"🔍 MULTI-CATEGORY: Modo LAXO (max conf={max_conf:.3f}, sin categoría dominante)")
+
+            selected = [c for c in candidates
+                       if c['probability'] >= min_prob_threshold or c['confidence'] >= min_conf_threshold]
+
+        # Limitar a top-K ANTES de filtro de diversidad
+        selected = selected[:prelimit_topk]
+
+        print(f"📋 PRELIMIT: {len(selected)} categorías seleccionadas (de {len(categories)} totales)")
+        for c in selected:
+            print(f"   - {c['category'].name}: prob={c['probability']:.4f}, conf={c['confidence']:.4f}")
+
+        # Filtrar por diversidad semántica (evita BUZOS+CASACAS+CHAQUETAS)
+        if len(selected) > 1:
+            selected = _filter_diverse_categories(selected, diversity_threshold=0.75)
+
+        # Log final
+        print(f"✅ MULTI-CATEGORY: {len(selected)} categorías finales detectadas")
+        for c in selected:
+            print(f"   → {c['category'].name}: {c['confidence']:.3f}")
+
+        return selected
+
+    except Exception as e:
+        print(f"❌ ERROR en detect_multiple_categories: {e}")
+        import traceback
+        traceback.print_exc()
+        # Rollback en caso de error
+        try:
+            db.session.rollback()
+        except:
+            pass
+        return []
+
+
 @bp.route("/search", methods=["POST", "OPTIONS"])
 def visual_search():
     """
@@ -1564,6 +1763,12 @@ def visual_search():
     start_time = time.time()
 
     try:
+        # Limpiar cualquier transacción fallida previa
+        try:
+            db.session.rollback()
+        except:
+            pass
+
         # Soportar también búsqueda textual vía JSON en el mismo endpoint
         # Si el Content-Type es application/json y no hay archivo de imagen, delegar a text_search()
         if request.method == 'POST' and (request.is_json or (request.content_type and 'application/json' in request.content_type)) and not request.files:
@@ -1627,7 +1832,171 @@ def visual_search():
                 search_optimizer = None
 
         # ===== PASO 1: DETECCIÓN DE CATEGORÍA ESPECÍFICA =====
-        print(f"🚀 RAILWAY LOG: INICIANDO DETECCIÓN DE CATEGORÍA ESPECÍFICA")
+        # Soporta modo SINGLE (1 categoría) o MULTI (varias categorías)
+        multi_category_enabled = request.form.get('multi_category', 'false').lower() == 'true'
+
+        if multi_category_enabled:
+            print(f"🔍 MULTI-CATEGORY MODE: ENABLED")
+
+            # Detectar múltiples categorías (thresholds hardcodeados)
+            detected_categories = detect_multiple_categories(
+                image_data,
+                client.id,
+                min_prob_threshold=0.03,
+                min_conf_threshold=0.18,
+                prelimit_topk=8
+            )
+
+            if not detected_categories:
+                print(f"❌ MULTI-CATEGORY: No se detectó ninguna categoría")
+                return jsonify({
+                    "success": False,
+                    "error": "category_not_detected",
+                    "message": f"Esta imagen no corresponde a productos que comercializa {client.name}",
+                    "details": "No pudimos identificar categorías comercializadas en la imagen.",
+                    "available_categories": [cat.name for cat in Category.query.filter_by(client_id=client.id, is_active=True).all()],
+                    "processing_time": round(time.time() - start_time, 3)
+                }), 400
+
+            print(f"✅ MULTI-CATEGORY: {len(detected_categories)} categorías detectadas")
+
+            # Para backwards compatibility, usar la primera como "detected_category"
+            detected_category = detected_categories[0]['category']
+            category_confidence = detected_categories[0]['confidence']
+
+            # GENERAR EMBEDDING UNA SOLA VEZ (reutilizar para todas las categorías)
+            query_embedding, error_response, status_code = _generate_query_embedding(
+                image_data,
+                detected_category=detected_category
+            )
+            if error_response:
+                return error_response, status_code
+
+            # BUSCAR PRODUCTOS EN CADA CATEGORÍA DETECTADA
+            results_by_category = []
+
+            for cat_info in detected_categories:
+                category = cat_info['category']
+                conf = cat_info['confidence']
+
+                print(f"🔍 Buscando en {category.name} (conf={conf:.3f})")
+
+                # Buscar productos en esta categoría
+                product_best_match = _find_similar_products_in_category(
+                    client,
+                    query_embedding,
+                    product_similarity_threshold,
+                    category.id
+                )
+
+                # Aplicar optimizer si está disponible
+                if search_optimizer and len(product_best_match) > 0:
+                    # Preparar formato para optimizer
+                    raw_results = [
+                        {
+                            'product': match_data['product'],
+                            'similarity': match_data['similarity']
+                        }
+                        for product_id, match_data in product_best_match.items()
+                    ]
+
+                    # Aplicar ranking
+                    ranked_results = search_optimizer.rank_results(raw_results, {})
+
+                    # Actualizar scores
+                    for ranked in ranked_results:
+                        for dict_product_id, match_data in product_best_match.items():
+                            if str(dict_product_id) == ranked.product_id:
+                                product_best_match[dict_product_id]['optimizer_scores'] = {
+                                    'visual_score': ranked.visual_score,
+                                    'metadata_score': ranked.metadata_score,
+                                    'business_score': ranked.business_score,
+                                    'final_score': ranked.final_score
+                                }
+                                product_best_match[dict_product_id]['similarity'] = ranked.final_score
+                                break
+
+                # Convertir dict a lista ordenada por similitud
+                products_list = sorted(
+                    product_best_match.values(),
+                    key=lambda x: x['similarity'],
+                    reverse=True
+                )
+
+                # Limitar resultados por categoría
+                products_list = products_list[:limit]
+
+                # Formatear productos con logs detallados
+                formatted_products = []
+                for idx, match_data in enumerate(products_list):
+                    try:
+                        product = match_data['product']
+                        score = match_data['similarity']
+                        optimizer_scores = match_data.get('optimizer_scores', {
+                            "visual_score": float(score),
+                            "metadata_score": 0.0,
+                            "business_score": 0.0,
+                            "final_score": float(score)
+                        })
+
+                        # Obtener imagen primaria del producto
+                        primary_image = None
+                        try:
+                            primary_image = Image.query.filter_by(
+                                product_id=product.id,
+                                is_primary=True
+                            ).first()
+                            if not primary_image and product.images:
+                                primary_image = product.images[0]
+                        except Exception as img_err:
+                            print(f"⚠️ Error obteniendo imagen primaria: {img_err}")
+                            db.session.rollback()
+                            primary_image = product.images[0] if product.images else None
+
+                        # Usar base64 guardado en BD
+                        image_base64 = primary_image.base64_data if primary_image and primary_image.base64_data else None
+
+                        prod_dict = {
+                            "id": str(product.id),
+                            "name": product.name,
+                            "sku": product.sku,
+                            "price": float(product.price) if product.price else None,
+                            "stock": product.stock,
+                            "category": category.name,
+                            "image_url": image_base64,  # ✅ BASE64 desde BD
+                            "similarity": float(score),
+                            "attributes": product.attributes or {},
+                            "product_url": product.attributes.get('url_producto') if product.attributes else None,
+                            "optimizer_scores": optimizer_scores
+                        }
+                        print(f"[DEBUG] Producto {idx} serializado OK: id={prod_dict['id']}, name={prod_dict['name']}")
+                        formatted_products.append(prod_dict)
+                    except Exception as prod_err:
+                        print(f"[ERROR] Fallo al serializar producto {idx}: {prod_err}")
+                        import traceback
+                        traceback.print_exc()
+                        prod_dict = {"error": str(prod_err)}
+                        formatted_products.append(prod_dict)
+
+                results_by_category.append({
+                    "category_name": category.name,
+                    "category_id": str(category.id),
+                    "confidence": float(conf),
+                    "product_count": len(formatted_products),
+                    "products": formatted_products
+                })
+
+            # Respuesta en modo multi-categoría
+            return jsonify({
+                "success": True,
+                "mode": "multi_category",
+                "results_by_category": results_by_category,
+                "total_categories": len(results_by_category),
+                "processing_time": round(time.time() - start_time, 3)
+            })
+
+        # MODO SINGLE (original)
+        print(f"�🚀 RAILWAY LOG: INICIANDO DETECCIÓN DE CATEGORÍA ESPECÍFICA (SINGLE MODE)")
 
         detected_category, category_confidence = detect_image_category_with_centroids(
             image_data,
@@ -2173,14 +2542,33 @@ def text_search():
             tag_name_boost = min(1.0, tag_boost + name_boost)
 
             # Score final híbrido
-            # Ponderaciones: CLIP 50%, Atributos 40%, Tags+Nombre 10%
+            # Añadimos similitud de color como componente de ranking/desempate
+            color_sim = _best_color_similarity(detected_color, prod.attributes) if detected_color else 0.0
+            # Clasificar productos por calidad de match de color (solo si la query tiene color)
+            # 0 = fuerte (>=0.75), 1 = medio (>=0.45), 2 = bajo (<0.45)
+            if detected_color:
+                if color_sim >= 0.75:
+                    color_group = 0
+                elif color_sim >= 0.45:
+                    color_group = 1
+                else:
+                    color_group = 2
+                # Prioridad de color para ordenar (más alto es mejor)
+                color_priority = 2 - color_group  # fuerte=2, medio=1, bajo=0
+            else:
+                color_group = 2
+                color_priority = 0
+
+            # Ponderaciones: CLIP 50%, Atributos 35%, Color 5%, Tags+Nombre 10%
+            # (Total 1.0). Color actúa como factor de desempate continuo.
             final_score = (
                 clip_similarity * 0.5 +
-                attr_boost * 0.4 +
+                attr_boost * 0.35 +
+                color_sim * 0.05 +
                 tag_name_boost * 0.1
             )
 
-            print(f"Producto: {prod.name} | CLIP: {clip_similarity:.3f} | Attr: {attr_boost:.3f} | Tag: {tag_boost:.3f} | Name: {name_boost:.3f} | Score: {final_score:.3f}")
+            print(f"Producto: {prod.name} | CLIP: {clip_similarity:.3f} | Attr: {attr_boost:.3f} | ColorSim: {color_sim:.3f} | Tag: {tag_boost:.3f} | Name: {name_boost:.3f} | Score: {final_score:.3f}")
 
             results.append({
                 'product_id': str(prod.id),
@@ -2194,12 +2582,18 @@ def text_search():
                 'clip_similarity': round(clip_similarity, 4),
                 'attr_boost': round(attr_boost, 4),
                 'tag_boost': round(tag_boost, 4),
+                'color_similarity': round(color_sim, 4),
+                'color_group': color_group,
+                'color_priority': color_priority,
                 'name_boost': round(name_boost, 4),
                 'final_score': round(final_score, 4)
             })
 
-        # Ordenar por score descendente
-        results.sort(key=lambda x: x['final_score'], reverse=True)
+        # Si la query incluye color, priorizar match/color más cercano antes que score puro.
+        if detected_color:
+            results.sort(key=lambda x: (x.get('color_priority', 0), x.get('color_similarity', 0.0), x['final_score']), reverse=True)
+        else:
+            results.sort(key=lambda x: x['final_score'], reverse=True)
 
 
         # Limitar resultados
@@ -2406,33 +2800,47 @@ def _calculate_attribute_match(query_lower: str, attributes: dict, category: str
                 if is_color_attr:
                     # PRIORIDAD 1: Usar color del LLM normalizer si está disponible
                     if detected_color:
-                        product_color_norm = normalize_color(v)
-                        llm_color_norm = normalize_color(detected_color)
+                        # Usar colors_are_similar() para comparación semántica (embeddings)
+                        from app.utils.colors import colors_are_similar
 
-                        if product_color_norm and llm_color_norm and product_color_norm == llm_color_norm:
+                        if colors_are_similar(detected_color, v, threshold=0.75):
                             score += 0.50  # Boost fuerte por color del LLM
-                            print(f"  🎨 COLOR MATCH (LLM): '{detected_color}' == '{v}' (+0.50)")
+                            print(f"  🎨 COLOR MATCH (LLM Semantic): '{detected_color}' ≈ '{v}' (+0.50)")
                             break
 
-                    # FALLBACK: Match tradicional por query
-                    product_color_normalized = normalize_color(v)
-                    query_normalized = normalize_color(query_lower)
-
-                    if product_color_normalized and query_normalized and product_color_normalized == query_normalized:
-                        score += 0.40  # Match de color normalizado
-                        break
-                    else:
-                        # Match por palabra individual (solo si ambas normalizaciones son válidas)
-                        matched_word = False
-                        if product_color_normalized:
-                            for word in query_words:
-                                nw = normalize_color(word)
-                                if nw and nw == product_color_normalized:
-                                    matched_word = True
+                        # SOFT-BOOST: aunque no supere el umbral, favorecer el color más cercano
+                        try:
+                            from app.utils.llm_query_normalizer import normalize_query
+                            import numpy as np
+                            ra = normalize_query(detected_color)
+                            rb = normalize_query(v)
+                            ea, eb = ra.get('embedding'), rb.get('embedding')
+                            if ea and eb:
+                                ea = np.array(ea, dtype=np.float32)
+                                eb = np.array(eb, dtype=np.float32)
+                                sim = float(np.dot(ea, eb) / (np.linalg.norm(ea) * np.linalg.norm(eb)))
+                                # Escalar hasta +0.20 cuando se acerca al umbral 0.75
+                                soft_boost = min(0.20, max(0.0, (sim / 0.75) * 0.20))
+                                if soft_boost > 0:
+                                    score += soft_boost
+                                    print(f"  🎨 COLOR NEAREST (LLM Semantic): '{detected_color}' ~ '{v}' sim={sim:.3f} (+{soft_boost:.3f})")
                                     break
-                        if matched_word:
-                            score += 0.40
-                            break
+                        except Exception:
+                            pass
+
+                    # FALLBACK: Match tradicional por query con similitud semántica
+                    matched_color = False
+                    for word in query_words:
+                        if len(word) >= 3:  # Solo palabras significativas
+                            from app.utils.colors import colors_are_similar
+                            if colors_are_similar(word, v, threshold=0.75):
+                                score += 0.40  # Match de color por palabra
+                                print(f"  🎨 COLOR MATCH (Query Semantic): '{word}' ≈ '{v}' (+0.40)")
+                                matched_color = True
+                                break
+
+                    if matched_color:
+                        break
                 else:
                     # Para otros atributos, permitir aporte HASTA +0.20 en total
                     if other_attr_score < 0.20:
@@ -2449,6 +2857,54 @@ def _calculate_attribute_match(query_lower: str, attributes: dict, category: str
                                 break
 
     return min(score, 1.0)  # Cap a 1.0
+
+
+def _best_color_similarity(detected_color: str, attributes: dict) -> float:
+    """
+    Calcula la mejor similitud semántica (coseno) entre el color detectado por LLM
+    y los valores de atributos de color del producto. Devuelve un valor en [0,1].
+
+    Se usa como desempate/ranking cuando no hay match por encima del umbral.
+    """
+    if not detected_color or not attributes:
+        return 0.0
+
+    try:
+        from app.utils.llm_query_normalizer import normalize_query
+        import numpy as np
+
+        q = normalize_query(detected_color)
+        ea = q.get('embedding')
+        if not ea:
+            return 0.0
+        ea = np.array(ea, dtype=np.float32)
+
+        def _to_str_list(val):
+            if val is None:
+                return []
+            if isinstance(val, str):
+                return [val]
+            if isinstance(val, list):
+                return [str(x) for x in val if x is not None]
+            if isinstance(val, dict):
+                v = val.get('value')
+                return [str(v)] if v is not None else []
+            return []
+
+        best_sim = 0.0
+        for attr_key, attr_value in attributes.items():
+            if attr_key and attr_key.lower() in ['color', 'colour', 'color_principal', 'color_secundario']:
+                for v in _to_str_list(attr_value):
+                    rb = normalize_query(str(v))
+                    eb = rb.get('embedding')
+                    if eb:
+                        eb = np.array(eb, dtype=np.float32)
+                        sim = float(np.dot(ea, eb) / (np.linalg.norm(ea) * np.linalg.norm(eb)))
+                        if sim > best_sim:
+                            best_sim = sim
+        return max(0.0, min(1.0, best_sim))
+    except Exception:
+        return 0.0
 
 
 def _calculate_name_match(query_lower: str, name: str, sku: str = None) -> float:
