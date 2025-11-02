@@ -26,10 +26,11 @@
 
 ---
 
-### 🎯 Próximo Deploy: v2.3.0-pre.1 (2 Nov 2025)
-**Estado**: 🟡 PREPARANDO
+### 🎯 Deploy Actual: v2.3.0-pre.1 (2 Nov 2025)
+**Estado**: ✅ DEPLOYADO EN RAILWAY
 **Tipo**: Pre-release (testing de mejoras multi-categoría)
-**Fecha programada**: 2 Noviembre 2025
+**Fecha deploy**: 2 Noviembre 2025 ~19:00 ART
+**Commit**: `b91ffbe`
 
 **Cambios Incluidos**:
 1. **Mejoras Multi-Categoría**:
@@ -52,10 +53,17 @@
 **Commit Base**: `b977d4f` - "fix: indentación en diversity filter (syntax error)"
 
 **Testing Pre-Deploy**:
-- [ ] Validar en local con datos de Eve's Store clonados
-- [ ] Probar imagen de shorts+musculosa (debe devolver 2 categorías)
-- [ ] Probar imagen de delantal (debe devolver DELANTAL y CHAQUETAS)
-- [ ] Verificar que diversity filter no colapsa categorías válidas
+- [x] Validar en local con datos de Eve's Store clonados
+- [x] Probar imagen de shorts+musculosa (debe devolver 2 categorías)
+- [x] Probar imagen de delantal (debe devolver DELANTAL y CHAQUETAS)
+- [x] Verificar que diversity filter no colapsa categorías válidas
+
+**Testing Post-Deploy en Railway**:
+- [ ] Verificar endpoint health: https://clip-comparador-v2-production.up.railway.app/health
+- [ ] Probar búsqueda visual multi-categoría con imagen de prueba
+- [ ] Validar panel de administración de Eve's Store
+- [ ] Confirmar logs de diversity filter en Railway
+- [ ] Verificar que clientes existentes no se vieron afectados
 
 **Rollback Plan**:
 - Si falla el deploy → Railway auto-rollback al último deployment exitoso
@@ -65,6 +73,14 @@
 ---
 
 ## 📋 Historial de Deployments
+
+### v2.3.0-pre.1 (2 Nov 2025) 🆕
+- Mejoras diversity filter multi-categoría
+- Tool de sincronización Railway→Local
+- Análisis pesos optimizer
+- **Status**: ✅ EN PRODUCCIÓN (PRE-RELEASE)
+- **Commit**: b91ffbe
+- **Rollback**: v2.2.0-stable disponible
 
 ### v2.2.0-stable (31 Oct 2025)
 - Sistema de Inventario completo

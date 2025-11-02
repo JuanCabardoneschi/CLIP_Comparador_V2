@@ -1653,7 +1653,25 @@ def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75)
                 if sim > diversity_threshold:
                     print(f"   - {category_names[i]} <-> {category_names[j]}: {sim:.3f} (SIMILAR)")
 
-        # Clustering greedy: agrupar categorÃ­as similares
+        # Preparar guardas NUMÉRICAS (agnósticas al dominio) para no colapsar categorías fuertes
+        # Evita hardcodear palabras. Si dos categorías están FUERTES o muy cercanas en confianza,
+        # no se agrupan aunque el texto sea muy similar (multi-label real).
+        confidences = [cat['confidence'] for cat in categories_with_scores]
+        strong_conf_threshold = 0.75  # categorías muy seguras (independiente del rubro)
+        epsilon_conf = 0.06           # si difieren menos del 6% y son razonables, mantener ambas
+
+        def is_strong_pair(i: int, j: int) -> bool:
+            ci = confidences[i]
+            cj = confidences[j]
+            # Ambos muy fuertes
+            if ci >= strong_conf_threshold and cj >= strong_conf_threshold:
+                return True
+            # Muy cercanas entre sí y al menos razonables (>=0.70)
+            if abs(ci - cj) <= epsilon_conf and max(ci, cj) >= 0.70:
+                return True
+            return False
+
+        # Clustering greedy: agrupar categorías similares SOLO si no violan las guardas numéricas
         groups = []
         used = set()
 
@@ -1666,6 +1684,10 @@ def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75)
 
             for j in range(i+1, len(categories_with_scores)):
                 if j in used:
+                    continue
+
+                # NO agrupar si es un par fuerte o muy cercano en confianza (multi-label válido)
+                if is_strong_pair(i, j):
                     continue
 
                 if similarity_matrix[i][j] > diversity_threshold:
@@ -1758,28 +1780,31 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
                 'probability': float(probabilities[i])
             })
 
-        # Ordenar por probabilidad (mÃ¡s confiable que coseno para ranking)
-        candidates.sort(key=lambda x: x['probability'], reverse=True)
+        # DEBUG: Mostrar TODOS los candidatos antes de ordenar
+        print(f"\n🔍 DEBUG: Candidatos ANTES de ordenar (total: {len(candidates)}):")
+        for c in sorted(candidates, key=lambda x: x['confidence'], reverse=True)[:5]:
+            print(f"   - {c['category'].name}: prob={c['probability']:.4f}, conf={c['confidence']:.4f}")
 
-        # Sistema adaptativo: detectar si hay categorÃ­a DOMINANTE
-        max_conf = candidates[0]['confidence']
-        dominant_threshold = 0.25
+        # Ordenar por confidence (similitud real) en lugar de probability (softmax distorsionado)
+        candidates.sort(key=lambda x: x['confidence'], reverse=True)
+
+        # FIX: Obtener max_conf de todos los candidatos (máxima confidence global)
+        max_conf = max(c['confidence'] for c in candidates)
+        dominant_threshold = 0.80  # Threshold más alto para considerar "dominante"
         is_dominant = max_conf > dominant_threshold
 
         if is_dominant:
-            # Modo ESTRICTO: evitar falsos positivos en imÃ¡genes de un solo objeto
-            print(f"ðŸŽ¯ MULTI-CATEGORY: Modo ESTRICTO (categorÃ­a dominante: {candidates[0]['category'].name} conf={max_conf:.3f})")
-            strict_prob = 0.08  # 8% de probabilidad mÃ­nima
-            strict_conf = 0.20  # 20% de confianza mÃ­nima
+            # Modo ESTRICTO: evitar falsos positivos en imágenes de un solo objeto
+            print(f"🎯 MULTI-CATEGORY: Modo ESTRICTO (max confidence={max_conf:.3f})")
+            strict_conf = 0.75  # 75% de similitud mínima (muy alta)
 
-            selected = [c for c in candidates
-                       if c['probability'] >= strict_prob and c['confidence'] >= strict_conf]
+            selected = [c for c in candidates if c['confidence'] >= strict_conf]
         else:
+            lax_conf = 0.70
             # Modo LAXO: permitir mÃºltiples categorÃ­as
             print(f"ðŸ” MULTI-CATEGORY: Modo LAXO (max conf={max_conf:.3f}, sin categorÃ­a dominante)")
 
-            selected = [c for c in candidates
-                       if c['probability'] >= min_prob_threshold or c['confidence'] >= min_conf_threshold]
+            selected = [c for c in candidates if c['confidence'] >= lax_conf]
 
         # Limitar a top-K ANTES de filtro de diversidad
         selected = selected[:prelimit_topk]
@@ -1790,13 +1815,13 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
 
         # Filtro de diversidad: más conservador y con salvaguarda
         # - Si hay 2 o menos categorías, no colapsar: permiten casos claros de 2 prendas (p. ej., top + short)
-        # - Umbral más estricto (0.80) para evitar agrupar prendas distintas por nombres similares
+        # - Umbral muy alto (0.95) para evitar colapsar categorías con diferencias sutiles pero importantes (p. ej., "tiro alto" vs "tiro bajo")
         if len(selected) <= 2:
             railway_log(" DEBUG: Saltando filtro de diversidad (<=2 categorías prelimit)")
         else:
-            railway_log(f" DEBUG: Aplicando filtro de diversidad (threshold=0.80)...")
+            railway_log(f" DEBUG: Aplicando filtro de diversidad (threshold=0.95)...")
             # Filtrar por diversidad semántica (evita duplicados muy cercanos)
-            selected = _filter_diverse_categories(selected, diversity_threshold=0.80)
+            selected = _filter_diverse_categories(selected, diversity_threshold=0.95)
 
         railway_log(f" DEBUG: Despues de diversidad: {len(selected)} categorias finales")
 
