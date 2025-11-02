@@ -1,6 +1,6 @@
 # BACKLOG DE MEJORAS Y PENDIENTES
 **Fecha de Creación**: 22 Octubre 2025
-**Última Actualización**: 31 Octubre 2025
+**Última Actualización**: 2 Noviembre 2025
 
 ---
 
@@ -318,6 +318,33 @@ if color_sim >= th_strong:
 - Verificar que valores default funcionan igual
 - Probar modificar thresholds y ver cambios en ranking
 - Validar que valores inválidos usan fallback
+
+#### 0.a Análisis: impacto real de 60/30/10 en búsqueda visual (multi-categoría)
+- Hoy el SearchOptimizer se inicializa con v=0.6, m=0.3, b=0.1, pero en la ruta visual multi‑categoría se llama con `detected_attributes = {}` → la capa Metadata aporta 0.0.
+- La capa Business aporta prácticamente un binario por stock>0 (≈1.0) y penaliza solo sin stock. No ordena entre productos con stock.
+- Efecto neto actual: score ≈ 60% Visual + 10% Business (si hay stock) + 0% Metadata. Por eso el color NO desempata (p. ej., chaqueta negra vs blanca con scores cercanos).
+
+Opciones consideradas (opt‑in por tienda):
+- A) Pasar `{'color': detected_color}` al optimizer solo si la confianza de color por categoría ≥ 0.70; activa realmente el 30% Metadata como desempate. Controlado por flag de tienda.
+- B) Tie‑break local por color cuando |Δvisual| < ε (p.ej. 0.02), sin tocar optimizer. Más acotado, menos consistente.
+
+Recomendación: A) con flag por tienda y logs; mantener paridad por defecto (flag OFF).
+
+Implicancias de UI (diales personalizados):
+- Exponer en Panel → Configuración de Búsqueda:
+  - Toggle: “Usar metadata en búsqueda visual”
+  - Toggle: “Usar color como desempate en visual”
+  - Slider de confianza de color (0.5–0.9, default 0.70)
+  - Pesos por atributo dentro de Metadata (color_weight, brand_weight, …)
+
+Hardcodes a consolidar (relacionado con este item y el punto 0):
+- Thresholds de color, pesos de scoring y diversidad actualmente en `api.py` (ver referencias existentes en este backlog) y en lógica de text search. Centralizar en `system_config.json` y/o `StoreSearchConfig.metadata_config`.
+
+Checklist para Lunes 4 Nov (tuning sin tocar código):
+- [ ] Agregar toggles/valores por tienda en `StoreSearchConfig.metadata_config` (sin migración; defaults OFF)
+- [ ] Habilitar lectura de thresholds/pesos desde `system_config.json` (punto 0)
+- [ ] Definir contrato de claves por atributo para el optimizer (color_weight, brand_weight, …)
+- [ ] Validar en Eve Store (dev) con imagen de chaqueta blanca vs negra y shorts+musculosa
 
 ---
 

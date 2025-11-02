@@ -1788,13 +1788,17 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
         for c in selected:
             print(f"   - {c['category'].name}: prob={c['probability']:.4f}, conf={c['confidence']:.4f}")
 
-        railway_log(f" DEBUG: Aplicando filtro de diversidad (threshold=0.65)...")
+        # Filtro de diversidad: más conservador y con salvaguarda
+        # - Si hay 2 o menos categorías, no colapsar: permiten casos claros de 2 prendas (p. ej., top + short)
+        # - Umbral más estricto (0.80) para evitar agrupar prendas distintas por nombres similares
+        if len(selected) <= 2:
+            railway_log(" DEBUG: Saltando filtro de diversidad (<=2 categorías prelimit)")
+        else:
+            railway_log(f" DEBUG: Aplicando filtro de diversidad (threshold=0.80)...")
+            # Filtrar por diversidad semántica (evita duplicados muy cercanos)
+            selected = _filter_diverse_categories(selected, diversity_threshold=0.80)
 
-        # Filtrar por diversidad semÃ¡ntica (evita BUZOS+CASACAS+CHAQUETAS)
-        if len(selected) > 1:
-            selected = _filter_diverse_categories(selected, diversity_threshold=0.65)
-
-        railway_log(f" DEBUG: DespuÃ©s de diversidad: {len(selected)} categorÃ­as finales")
+        railway_log(f" DEBUG: Despues de diversidad: {len(selected)} categorias finales")
 
         # Log final
         print(f"âœ… MULTI-CATEGORY: {len(selected)} categorÃ­as finales detectadas")
