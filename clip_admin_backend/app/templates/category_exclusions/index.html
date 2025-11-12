@@ -1,0 +1,110 @@
+{% extends 'layouts/base.html' %}
+{% block title %}Exclusiones de Pares - {{ client.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">Exclusiones de Pares de Categorías</h1>
+    <a href="{{ url_for('category_exclusions.create') }}" class="btn btn-primary">
+      <i class="bi bi-plus-circle"></i> Nueva Regla
+    </a>
+  </div>
+
+  <div class="alert alert-info">
+    <i class="bi bi-info-circle"></i>
+    Las reglas de exclusión determinan qué categoría se muestra cuando dos categorías similares tienen scores cercanos.
+    Ejemplo: "Delantal Completo" vs "Medio Delantal".
+  </div>
+
+  {% if exclusions %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Categoría Principal</th>
+          <th>Categoría Secundaria</th>
+          <th>Regla</th>
+          <th>Parámetros</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for exc in exclusions %}
+        <tr>
+          <td>
+            <span class="badge bg-primary">{{ exc.primary_category.name }}</span>
+          </td>
+          <td>
+            <span class="badge bg-secondary">{{ exc.secondary_category.name }}</span>
+          </td>
+          <td>
+            <code>{{ exc.exclusion_rule }}</code>
+          </td>
+          <td>
+            <small class="text-muted">
+              {% if exc.exclusion_rule == 'torso_evidence' %}
+              gap_max: {{ exc.params.override_gap_max }}<br>
+              torso_min: {{ exc.params.torso_evidence_min }}<br>
+              advantage: {{ exc.params.torso_advantage_min }}
+              {% else %}
+              {{ exc.params | tojson }}
+              {% endif %}
+            </small>
+          </td>
+          <td>
+            <span class="badge {{ 'bg-success' if exc.is_active else 'bg-secondary' }}">
+              {{ 'Activa' if exc.is_active else 'Inactiva' }}
+            </span>
+          </td>
+          <td>
+            <div class="btn-group" role="group">
+              <a href="{{ url_for('category_exclusions.edit', exclusion_id=exc.id) }}"
+                 class="btn btn-sm btn-outline-primary" title="Editar">
+                <i class="bi bi-pencil"></i>
+              </a>
+              <button type="button" class="btn btn-sm btn-outline-secondary toggle-btn"
+                      data-id="{{ exc.id }}" title="Activar/Desactivar">
+                <i class="bi bi-toggle-{{ 'on' if exc.is_active else 'off' }}"></i>
+              </button>
+              <form method="POST" action="{{ url_for('category_exclusions.delete', exclusion_id=exc.id) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('¿Eliminar esta regla?')">
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i>
+    No hay reglas de exclusión configuradas. <a href="{{ url_for('category_exclusions.create') }}">Crear la primera</a>.
+  </div>
+  {% endif %}
+</div>
+
+<script>
+document.querySelectorAll('.toggle-btn').forEach(btn => {
+  btn.addEventListener('click', async function() {
+    const id = this.dataset.id;
+    try {
+      const resp = await fetch(`/categories/exclusions/${id}/toggle`, { method: 'POST' });
+      const data = await resp.json();
+      if (data.success) {
+        location.reload();
+      } else {
+        alert('Error: ' + data.message);
+      }
+    } catch (err) {
+      alert('Error inesperado: ' + err);
+    }
+  });
+});
+</script>
+{% endblock %}

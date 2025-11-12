@@ -1,0 +1,306 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Detalle de Calibración{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('calibration.index') }}">Calibración</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('calibration.calibration_history') }}">Historial</a></li>
+                    <li class="breadcrumb-item active">{{ calibration.id[:8] }}</li>
+                </ol>
+            </nav>
+
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="bi bi-bar-chart me-2"></i>Calibración #{{ calibration.id[:8] }}</h2>
+                    <p class="text-muted mb-0">
+                        Ejecutada el {{ calibration.created_at.strftime('%d/%m/%Y a las %H:%M:%S') }}
+                    </p>
+                </div>
+                <div>
+                    {% if not calibration.applied %}
+                    <button class="btn btn-success" onclick="applyCalibration()">
+                        <i class="bi bi-check-circle"></i> Aplicar Umbrales
+                    </button>
+                    {% else %}
+                    <span class="badge bg-success p-2">✓ Umbrales Aplicados</span>
+                    {% endif %}
+                    <a href="{{ url_for('calibration.calibration_history') }}" class="btn btn-outline-secondary ms-2">
+                        <i class="bi bi-arrow-left"></i> Volver
+                    </a>
+                </div>
+            </div>
+            <hr>
+        </div>
+    </div>
+
+    <!-- Resumen General -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h4 class="card-title">{{ results.dataset_size }}</h4>
+                    <p class="card-text text-muted">Imágenes Evaluadas</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h4 class="card-title">{{ results.categories|length }}</h4>
+                    <p class="card-text text-muted">Categorías Calibradas</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    {% set avg_f1 = results.categories | map(attribute='metrics.f1') | list | sum / (results.categories|length) %}
+                    <h4 class="card-title">{{ (avg_f1 * 100)|round(1) }}%</h4>
+                    <p class="card-text text-muted">F1 Promedio</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h4 class="card-title">{{ results.timestamp.split('T')[1].split('.')[0] }}</h4>
+                    <p class="card-text text-muted">Hora Ejecución</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Métricas por Categoría -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-table me-2"></i>Métricas por Categoría</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Categoría</th>
+                                    <th>Precisión</th>
+                                    <th>Recall</th>
+                                    <th>F1-Score</th>
+                                    <th>TP/FP/FN</th>
+                                    <th>Umbral Actual</th>
+                                    <th>Umbral Sugerido</th>
+                                    <th>Cambio</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for cat in results.categories|sort(attribute='metrics.f1', reverse=true) %}
+                                <tr>
+                                    <td><strong>{{ cat.category }}</strong></td>
+                                    <td>
+                                        <div class="progress" style="height: 20px; min-width: 80px;">
+                                            {% set precision_pct = (cat.metrics.precision * 100)|round(0) %}
+                                            <div class="progress-bar {% if cat.metrics.precision >= 0.8 %}bg-success{% elif cat.metrics.precision >= 0.6 %}bg-warning{% else %}bg-danger{% endif %}"
+                                                 style="width: {{ precision_pct }}%;">
+                                                {{ precision_pct }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 20px; min-width: 80px;">
+                                            {% set recall_pct = (cat.metrics.recall * 100)|round(0) %}
+                                            <div class="progress-bar {% if cat.metrics.recall >= 0.8 %}bg-success{% elif cat.metrics.recall >= 0.6 %}bg-warning{% else %}bg-danger{% endif %}"
+                                                 style="width: {{ recall_pct }}%;">
+                                                {{ recall_pct }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 20px; min-width: 80px;">
+                                            {% set f1_pct = (cat.metrics.f1 * 100)|round(0) %}
+                                            <div class="progress-bar {% if cat.metrics.f1 >= 0.7 %}bg-success{% elif cat.metrics.f1 >= 0.5 %}bg-warning{% else %}bg-danger{% endif %}"
+                                                 style="width: {{ f1_pct }}%;">
+                                                {{ f1_pct }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <small>
+                                            <span class="badge bg-success">TP: {{ cat.metrics.true_positives }}</span>
+                                            <span class="badge bg-danger">FP: {{ cat.metrics.false_positives }}</span>
+                                            <span class="badge bg-warning">FN: {{ cat.metrics.false_negatives }}</span>
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <code>{{ cat.current_threshold }}</code>
+                                    </td>
+                                    <td>
+                                        <code class="text-primary">{{ cat.suggested_threshold }}</code>
+                                    </td>
+                                    <td>
+                                        {% set diff = cat.suggested_threshold - cat.current_threshold %}
+                                        {% if diff > 0.05 %}
+                                        <span class="badge bg-danger">+{{ (diff * 100)|round(0) }}%</span>
+                                        {% elif diff < -0.05 %}
+                                        <span class="badge bg-success">{{ (diff * 100)|round(0) }}%</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">~</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Categorías Problemáticas -->
+    {% set problematic = results.categories | selectattr('metrics.f1', 'lt', 0.5) | list %}
+    {% if problematic %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-warning">
+                <div class="card-header bg-warning">
+                    <h5 class="mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Categorías Problemáticas (F1 < 50%)</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-3">Estas categorías requieren más imágenes de entrenamiento o ajuste manual.</p>
+                    <div class="row">
+                        {% for cat in problematic %}
+                        <div class="col-md-4 mb-3">
+                            <div class="card border-danger">
+                                <div class="card-body">
+                                    <h6 class="card-title">{{ cat.category }}</h6>
+                                    <ul class="list-unstyled mb-0">
+                                        <li><small>F1: <strong>{{ (cat.metrics.f1 * 100)|round(1) }}%</strong></small></li>
+                                        <li><small>Precisión: {{ (cat.metrics.precision * 100)|round(1) }}%</small></li>
+                                        <li><small>Recall: {{ (cat.metrics.recall * 100)|round(1) }}%</small></li>
+                                        <li><small>Imágenes: {{ cat.metrics.true_positives + cat.metrics.false_negatives }}</small></li>
+                                    </ul>
+                                    <a href="{{ url_for('calibration.dataset') }}" class="btn btn-sm btn-outline-primary mt-2">
+                                        <i class="bi bi-plus"></i> Agregar más imágenes
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Casos Fallidos (si existen en results) -->
+    {% if results.failed_cases %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="bi bi-x-circle me-2"></i>Casos Fallidos ({{ results.failed_cases|length }})</h5>
+                </div>
+                <div class="card-body">
+                    <div class="accordion" id="failedCasesAccordion">
+                        {% for case in results.failed_cases[:10] %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#case{{ loop.index }}">
+                                    <strong>{{ case.filename }}</strong>
+                                    <span class="ms-auto me-3">
+                                        <span class="badge bg-success">Esperado: {{ case.expected|join(', ') }}</span>
+                                        <span class="badge bg-danger">Detectado: {{ case.detected|join(', ') }}</span>
+                                    </span>
+                                </button>
+                            </h2>
+                            <div id="case{{ loop.index }}" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <img src="{{ case.image_url }}" class="img-fluid rounded" alt="{{ case.filename }}">
+                                        </div>
+                                        <div class="col-md-8">
+                                            <h6>Categorías Esperadas:</h6>
+                                            <p>{% for cat in case.expected %}<span class="badge bg-info me-1">{{ cat }}</span>{% endfor %}</p>
+
+                                            <h6>Categorías Detectadas:</h6>
+                                            <p>{% for cat in case.detected %}<span class="badge bg-secondary me-1">{{ cat }}</span>{% endfor %}</p>
+
+                                            <h6>Falsos Positivos:</h6>
+                                            <p>{% for cat in case.false_positives %}<span class="badge bg-danger me-1">{{ cat }}</span>{% endfor %}</p>
+
+                                            <h6>Falsos Negativos:</h6>
+                                            <p>{% for cat in case.false_negatives %}<span class="badge bg-warning me-1">{{ cat }}</span>{% endfor %}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% if results.failed_cases|length > 10 %}
+                    <p class="text-muted text-center mt-3">Mostrando 10 de {{ results.failed_cases|length }} casos fallidos</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- SQL Script para Aplicar -->
+    {% if not calibration.applied %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-code-slash me-2"></i>SQL de Actualización</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Este SQL se ejecutará al presionar "Aplicar Umbrales":</p>
+                    <pre class="bg-light p-3 rounded"><code>{% for cat in results.categories %}UPDATE categories
+SET confidence_threshold = {{ cat.suggested_threshold }}
+WHERE client_id = '{{ calibration.client_id }}'
+  AND name = '{{ cat.category }}';
+{% endfor %}</code></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+async function applyCalibration() {
+    if (!confirm('¿Aplicar estos umbrales calibrados?\n\nEsto actualizará {{ results.categories|length }} categorías.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/admin/calibration/{{ calibration.id }}/apply`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert(`✅ Umbrales aplicados correctamente\n\n${data.updated_count} categorías actualizadas`);
+            location.reload();
+        } else {
+            alert('❌ Error: ' + data.error);
+        }
+    } catch (error) {
+        alert('❌ Error: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

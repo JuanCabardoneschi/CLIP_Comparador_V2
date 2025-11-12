@@ -30,6 +30,14 @@ class Image(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # --- Campos de recorte manual / refinamiento ---
+    crop_x = db.Column(db.Integer)
+    crop_y = db.Column(db.Integer)
+    crop_w = db.Column(db.Integer)
+    crop_h = db.Column(db.Integer)
+    is_crop_manual = db.Column(db.Boolean, default=None)  # True si usuario lo definió, False si auto, None si no aplica
+    refined = db.Column(db.Boolean, default=None)  # Marcador de que el embedding ya fue regenerado tras recorte
+
     # Relaciones
     client = db.relationship('Client', backref='images')
 
@@ -119,9 +127,52 @@ class Image(db.Model):
             'is_processed': self.is_processed,
             'upload_status': self.upload_status,
             'error_message': self.error_message,
+            'crop': {
+                'x': self.crop_x,
+                'y': self.crop_y,
+                'w': self.crop_w,
+                'h': self.crop_h,
+                'is_manual': self.is_crop_manual,
+                'refined': self.refined
+            },
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+
+    # ---- Utilidades de recorte ----
+    def has_crop(self) -> bool:
+        return all([
+            isinstance(self.crop_x, int), isinstance(self.crop_y, int),
+            isinstance(self.crop_w, int), isinstance(self.crop_h, int),
+            (self.crop_w or 0) > 0, (self.crop_h or 0) > 0
+        ])
+
+    def get_crop_box(self):
+        """Devuelve la caja de recorte (x1,y1,x2,y2) o None"""
+        if not self.has_crop():
+            return None
+        return (
+            int(self.crop_x),
+            int(self.crop_y),
+            int(self.crop_x + self.crop_w),
+            int(self.crop_y + self.crop_h)
+        )
+
+    def apply_crop_to_pil(self, pil_img):
+        """Aplica recorte a una PIL Image si existe bounding box válido"""
+        box = self.get_crop_box()
+        if not box:
+            return pil_img
+        try:
+            # Sanitizar límites
+            x1, y1, x2, y2 = box
+            x1 = max(0, min(x1, pil_img.width - 1))
+            y1 = max(0, min(y1, pil_img.height - 1))
+            x2 = max(x1 + 1, min(x2, pil_img.width))
+            y2 = max(y1 + 1, min(y2, pil_img.height))
+            return pil_img.crop((x1, y1, x2, y2))
+        except Exception:
+            return pil_img
 
     @staticmethod
     def get_by_client(client_id, processed_only=False):

@@ -1,0 +1,303 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Calibración Multi-Label{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h2>🎯 Calibración de Detección Multi-Label</h2>
+            <p class="text-muted">
+                Etiquetá imágenes de tu catálogo y calibrá thresholds para detectar múltiples categorías simultáneamente.
+                <strong>No se guardan imágenes nuevas</strong> - solo referencias a tu catálogo existente.
+            </p>
+            <hr>
+        </div>
+    </div>
+
+    <!-- Estadísticas del Dataset -->
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card text-center border-primary">
+                <div class="card-body">
+                    <h1 class="display-4 text-primary mb-0">{{ stats.total_images }}</h1>
+                    <p class="text-muted mb-0">Imágenes etiquetadas</p>
+                    <small class="text-muted">{% if stats.total_images >= 30 %}✅ Suficiente{% elif stats.total_images >= 20 %}⚠️ Mínimo alcanzado{% else %}❌ Faltan {{ 20 - stats.total_images }}{% endif %}</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-success">
+                <div class="card-body">
+                    <h1 class="display-4 text-success mb-0">{{ stats.categories_distribution|length }}</h1>
+                    <p class="text-muted mb-0">Categorías cubiertas</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center border-info">
+                <div class="card-body">
+                    <h1 class="display-4 text-info mb-0">{{ "%.1f"|format(stats.avg_categories_per_image|default(0)) }}</h1>
+                    <p class="text-muted mb-0">Cat./imagen promedio</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center {% if last_calibration %}border-success{% else %}border-warning{% endif %}">
+                <div class="card-body">
+                    {% if last_calibration %}
+                    <i class="bi bi-check-circle text-success" style="font-size: 3rem;"></i>
+                    <p class="text-muted mb-0 mt-2">Última calibración</p>
+                    <small class="text-muted">{{ last_calibration.created_at.strftime('%d/%m/%Y %H:%M') }}</small>
+                    {% else %}
+                    <i class="bi bi-exclamation-triangle text-warning" style="font-size: 3rem;"></i>
+                    <p class="text-muted mb-0 mt-2">Sin calibrar</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Acciones Rápidas -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card h-100 shadow-sm border-primary">
+                <div class="card-body text-center">
+                    <i class="bi bi-collection text-primary" style="font-size: 3rem;"></i>
+                    <h5 class="card-title mt-3">1. Etiquetar Imágenes del Catálogo</h5>
+                    <p class="card-text text-muted">
+                        Seleccioná imágenes de tu catálogo y marcá qué categorías deberían detectarse.
+                        <br><strong>No se suben imágenes nuevas</strong> - solo referencias.
+                    </p>
+                    <a href="{{ url_for('calibration.dataset') }}" class="btn btn-primary btn-lg">
+                        <i class="bi bi-plus-circle-fill"></i> Agregar Imágenes ({{ stats.total_images }})
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card h-100 shadow-sm border-success">
+                <div class="card-body text-center">
+                    <i class="bi bi-graph-up text-success" style="font-size: 3rem;"></i>
+                    <h5 class="card-title mt-3">2. Calibrar & Aplicar Thresholds</h5>
+                    <p class="card-text text-muted">
+                        Ejecutá calibración sobre tu dataset, revisá métricas y aplicá thresholds óptimos.
+                        <br><strong>Mínimo 10 imágenes requeridas</strong>
+                    </p>
+                    <button class="btn btn-warning btn-lg" id="runCalibrationBtn" {% if stats.total_images < 10 %}disabled title="Mínimo 10 imágenes requeridas"{% endif %}>
+                        <i class="bi bi-play-circle"></i> Ejecutar Calibración
+                    </button>
+                    <div class="mt-3">
+                        <button class="btn btn-outline-success" id="runWeakCalibrationBtn" title="Auto-calibrar sin dataset (usa el catálogo existente)">
+                            <i class="bi bi-magic"></i> Auto-Calibrar (sin dataset)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Distribución de Categorías -->
+    {% if stats.categories_distribution %}
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Distribución de Categorías en Dataset</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Categoría</th>
+                                    <th class="text-center">Cantidad</th>
+                                    <th>Cobertura</th>
+                                    <th class="text-center">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for cat_name, count in stats.categories_distribution.items()|sort(attribute='1', reverse=True) %}
+                                <tr>
+                                    <td><strong>{{ cat_name }}</strong></td>
+                                    <td class="text-center">
+                                        <span class="badge bg-primary rounded-pill">{{ count }}</span>
+                                    </td>
+                                    <td style="width: 40%;">
+                                        <div class="progress" style="height: 22px;">
+                                            {% set percentage = (count / stats.total_images * 100)|int %}
+                                            <div class="progress-bar {% if count >= 10 %}bg-success{% elif count >= 5 %}bg-warning{% else %}bg-danger{% endif %}"
+                                                 role="progressbar" style="width: {{ percentage }}%">
+                                                {{ percentage }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        {% if count < 5 %}
+                                        <span class="badge bg-danger"><i class="bi bi-exclamation-triangle"></i> Pocos ejemplos</span>
+                                        {% elif count < 10 %}
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-dash-circle"></i> Regular</span>
+                                        {% else %}
+                                        <span class="badge bg-success"><i class="bi bi-check-circle"></i> Buena cobertura</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Imágenes Recientes -->
+    {% if recent_images %}
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Últimas Imágenes Agregadas</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        {% for img in recent_images[:8] %}
+                        <div class="col-md-3">
+                            <div class="card h-100 border">
+                                <img src="{{ img.cloudinary_url }}" class="card-img-top" alt="{{ img.filename }}"
+                                     style="height: 180px; object-fit: cover; cursor: pointer;"
+                                     onclick="window.location.href='{{ url_for('calibration.dataset') }}'">
+                                <div class="card-body p-2">
+                                    <small class="text-muted d-block text-truncate" title="{{ img.filename }}">{{ img.filename }}</small>
+                                    <div class="mt-2">
+                                        {% for cat in img.expected_categories[:3] %}
+                                        <span class="badge bg-info text-white" style="font-size: 0.65rem;">{{ cat }}</span>
+                                        {% endfor %}
+                                        {% if img.expected_categories|length > 3 %}
+                                        <span class="badge bg-secondary" style="font-size: 0.65rem;">+{{ img.expected_categories|length - 3 }}</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Guía Rápida -->
+    <div class="row mt-4 mb-4">
+        <div class="col-12">
+            <div class="alert alert-primary border-primary">
+                <h5><i class="bi bi-lightbulb me-2"></i>¿Cómo usar este módulo?</h5>
+                <ol class="mb-2">
+                    <li><strong>Sube imágenes:</strong> Agrega 20-50 imágenes representativas de tu catálogo</li>
+                    <li><strong>Etiqueta:</strong> Selecciona qué categorías DEBERÍAN detectarse en cada imagen</li>
+                    <li><strong>Calibra:</strong> Ejecuta la calibración para calcular thresholds óptimos por categoría</li>
+                    <li><strong>Revisa:</strong> Analiza las métricas (precisión, recall, F1) por categoría</li>
+                    <li><strong>Aplica:</strong> Confirma los thresholds sugeridos para mejorar la detección</li>
+                    <li><strong>Itera:</strong> Agrega más ejemplos de categorías problemáticas y recalibra</li>
+                </ol>
+                <div class="mt-3">
+                    <a href="{{ url_for('diagnostic.index') }}" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-search"></i> Ir a Diagnóstico
+                    </a>
+                    <a href="{{ url_for('calibration.calibration_history') }}" class="btn btn-sm btn-outline-secondary">
+                        <i class="bi bi-clock-history"></i> Historial de Calibraciones
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('runCalibrationBtn')?.addEventListener('click', async function() {
+    const datasetSize = {{ stats.total_images }};
+
+    if (datasetSize < 10) {
+        alert('⚠️ Se necesitan al menos 10 imágenes para calibrar.\nActualmente tienes: ' + datasetSize);
+        return;
+    }
+
+    if (!confirm(`¿Ejecutar calibración sobre ${datasetSize} imágenes etiquetadas?\n\nEsto evaluará la detección multi-label y calculará thresholds óptimos para cada categoría.`)) {
+        return;
+    }
+
+    const btn = this;
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Calibrando...';
+
+    try {
+        const response = await fetch('/admin/calibration/calibrate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('✅ Calibración completada exitosamente!\n\nRevisa los resultados y métricas en el historial.');
+            window.location.href = '/admin/calibration/calibration/history';
+        } else {
+            alert('❌ Error: ' + (data.error || 'Error desconocido'));
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        }
+    } catch (error) {
+        console.error('Error de calibración:', error);
+        alert('❌ Error de red: ' + error.message);
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+    }
+});
+</script>
+
+<script>
+// Auto-Calibración (sin dataset)
+document.getElementById('runWeakCalibrationBtn')?.addEventListener('click', async function() {
+    if (!confirm('¿Auto-calibrar thresholds usando el catálogo existente?\nNo se requieren imágenes etiquetadas.')) {
+        return;
+    }
+
+    const btn = this;
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Auto-calibrando...';
+
+    try {
+        const resp = await fetch('/admin/calibration/auto-calibrate-weak', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            alert(`✅ Auto-calibración completa.\nUmbrales actualizados: ${data.updated_count}`);
+        } else {
+            alert('❌ Error: ' + (data.error || 'Error desconocido'));
+        }
+    } catch (e) {
+        alert('❌ Error de red: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+    }
+});
+</script>
+
+<style>
+.card {
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1) !important;
+}
+.progress {
+    border: 1px solid #dee2e6;
+}
+</style>
+{% endblock %}

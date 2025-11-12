@@ -18,3 +18,4 @@ from .models.category import Category
 from .models.product import Product
 from .models.image import Image
 from .models.product_attribute_config import ProductAttributeConfig
+from .models.category_pair_exclusion import CategoryPairExclusion

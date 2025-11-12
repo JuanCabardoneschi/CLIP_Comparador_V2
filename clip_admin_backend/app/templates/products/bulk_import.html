@@ -1,0 +1,283 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Importación Masiva de Productos{% endblock %}
+
+{% block page_title %}Importación Masiva de Productos{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('products.index') }}">Productos</a></li>
+        <li class="breadcrumb-item active">Importación Masiva</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Info Box -->
+    <div class="alert alert-info mb-4">
+        <h5><i class="bi bi-info-circle me-2"></i>Cómo funciona</h5>
+        <p class="mb-2">Este proceso permite importar múltiples productos a la vez desde imágenes:</p>
+        <ul class="mb-0">
+            <li>Selecciona una <strong>categoría</strong> para todos los productos</li>
+            <li>Define un <strong>patrón de SKU</strong> con XXX donde irá el consecutivo (ej: GOD-DEL-XXX)</li>
+            <li>Sube <strong>múltiples imágenes</strong> (JPG, PNG, WEBP hasta 50MB c/u)</li>
+            <li>El sistema creará un producto por imagen, generará embeddings, actualizará centroides y auto-completará atributos detectables</li>
+        </ul>
+    </div>
+
+    <div class="row">
+        <!-- Formulario -->
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-upload me-2"></i>Configuración de Importación</h5>
+                </div>
+                <div class="card-body">
+                    <form id="bulkImportForm">
+                        <!-- Categoría -->
+                        <div class="mb-3">
+                            <label for="categorySelect" class="form-label">Categoría <span class="text-danger">*</span></label>
+                            <select id="categorySelect" name="category_id" class="form-select" required>
+                                <option value="">Seleccionar categoría...</option>
+                                {% for category in categories %}
+                                <option value="{{ category.id }}">{{ category.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">Todos los productos se crearán en esta categoría</small>
+                        </div>
+
+                        <!-- Patrón SKU -->
+                        <div class="mb-3">
+                            <label for="skuPattern" class="form-label">Patrón de SKU <span class="text-danger">*</span></label>
+                            <input type="text" id="skuPattern" name="sku_pattern" class="form-control"
+                                   placeholder="GOD-DEL-XXX" required>
+                            <small class="text-muted">
+                                Usa <code>XXX</code> donde irá el consecutivo (001, 002, etc.).
+                                Ejemplo: <code>GOD-DEL-XXX</code> generará GOD-DEL-001, GOD-DEL-002...
+                            </small>
+                        </div>
+
+                        <!-- Upload Imágenes -->
+                        <div class="mb-3">
+                            <label for="imageFiles" class="form-label">Imágenes <span class="text-danger">*</span></label>
+                            <input type="file" id="imageFiles" name="images" class="form-control"
+                                   accept="image/*" multiple required>
+                            <small class="text-muted">Selecciona múltiples archivos (Ctrl+Click o Shift+Click)</small>
+                        </div>
+
+                        <!-- Preview contador -->
+                        <div id="fileCounter" class="alert alert-secondary" style="display: none;">
+                            <i class="bi bi-images me-2"></i><span id="fileCountText">0 archivos seleccionados</span>
+                        </div>
+
+                        <!-- Botón -->
+                        <button type="submit" id="submitBtn" class="btn btn-primary btn-lg w-100">
+                            <i class="bi bi-upload me-2"></i>Iniciar Importación
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel de Progreso -->
+        <div class="col-lg-6">
+            <div class="card" id="progressCard" style="display: none;">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-hourglass-split me-2"></i>Progreso de Importación</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Barra de progreso -->
+                    <div class="mb-3">
+                        <div class="progress" style="height: 30px;">
+                            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                                 role="progressbar" style="width: 0%">
+                                <span id="progressText">0%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Status -->
+                    <div id="statusText" class="text-center mb-3">
+                        <small class="text-muted">Preparando...</small>
+                    </div>
+
+                    <!-- Resultados -->
+                    <div id="resultsContainer" style="display: none;">
+                        <h6>Resumen:</h6>
+                        <ul class="list-group mb-3">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Total procesados
+                                <span class="badge bg-primary" id="totalCount">0</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Exitosos
+                                <span class="badge bg-success" id="successCount">0</span>
+                            </li>
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Fallidos
+                                <span class="badge bg-danger" id="failedCount">0</span>
+                            </li>
+                        </ul>
+
+                        <!-- Lista de productos creados -->
+                        <div id="productsList"></div>
+
+                        <!-- Errores -->
+                        <div id="errorsList"></div>
+
+                        <!-- Botón volver -->
+                        <button onclick="location.reload()" class="btn btn-secondary w-100 mt-3">
+                            <i class="bi bi-arrow-clockwise me-2"></i>Nueva Importación
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('bulkImportForm');
+    const fileInput = document.getElementById('imageFiles');
+    const fileCounter = document.getElementById('fileCounter');
+    const fileCountText = document.getElementById('fileCountText');
+    const submitBtn = document.getElementById('submitBtn');
+    const progressCard = document.getElementById('progressCard');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const statusText = document.getElementById('statusText');
+    const resultsContainer = document.getElementById('resultsContainer');
+
+    // Contador de archivos seleccionados
+    fileInput.addEventListener('change', function() {
+        const count = this.files.length;
+        if (count > 0) {
+            fileCounter.style.display = 'block';
+            fileCountText.textContent = `${count} archivo${count > 1 ? 's' : ''} seleccionado${count > 1 ? 's' : ''}`;
+        } else {
+            fileCounter.style.display = 'none';
+        }
+    });
+
+    // Submit form
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        // Validar
+        const categoryId = document.getElementById('categorySelect').value;
+        const skuPattern = document.getElementById('skuPattern').value.trim();
+        const files = fileInput.files;
+
+        if (!categoryId) {
+            alert('Selecciona una categoría');
+            return;
+        }
+
+        if (!skuPattern || !skuPattern.includes('XXX')) {
+            alert('El patrón de SKU debe contener "XXX"');
+            return;
+        }
+
+        if (files.length === 0) {
+            alert('Selecciona al menos una imagen');
+            return;
+        }
+
+        // Preparar FormData
+        const formData = new FormData();
+        formData.append('category_id', categoryId);
+        formData.append('sku_pattern', skuPattern);
+
+        for (let i = 0; i < files.length; i++) {
+            formData.append('images', files[i]);
+        }
+
+        // Mostrar progreso
+        progressCard.style.display = 'block';
+        form.style.display = 'none';
+        updateProgress(0, files.length, 0, 'Iniciando importación...');
+
+        try {
+            const response = await fetch('/products/bulk-import', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Error en la importación');
+            }
+
+            // Actualizar progreso completo
+            updateProgress(data.results.total, data.results.total, data.results.success, 'Completado');
+
+            // Mostrar resultados
+            displayResults(data.results);
+
+        } catch (error) {
+            console.error('Error:', error);
+            statusText.innerHTML = `<span class="text-danger">Error: ${error.message}</span>`;
+            resultsContainer.style.display = 'block';
+            document.getElementById('errorsList').innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> ${error.message}
+                </div>
+            `;
+        }
+    });
+
+    function updateProgress(current, total, success, message) {
+        const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+        progressBar.style.width = percent + '%';
+        progressText.textContent = percent + '%';
+        statusText.innerHTML = `<small class="text-muted">${message} (${current}/${total})</small>`;
+    }
+
+    function displayResults(results) {
+        resultsContainer.style.display = 'block';
+
+        // Resumen
+        document.getElementById('totalCount').textContent = results.total;
+        document.getElementById('successCount').textContent = results.success;
+        document.getElementById('failedCount').textContent = results.failed;
+
+        // Lista de productos creados
+        if (results.products && results.products.length > 0) {
+            let html = '<h6>Productos creados:</h6><div class="list-group mb-3">';
+            results.products.forEach(p => {
+                html += `
+                    <a href="/products/${p.id}" class="list-group-item list-group-item-action">
+                        <div class="d-flex align-items-center">
+                            ${p.image_url ? `<img src="${p.image_url}" class="me-2" style="width: 50px; height: 50px; object-fit: cover; border-radius: 4px;">` : ''}
+                            <div>
+                                <strong>${p.name}</strong><br>
+                                <small class="text-muted">SKU: ${p.sku}</small>
+                            </div>
+                        </div>
+                    </a>
+                `;
+            });
+            html += '</div>';
+            document.getElementById('productsList').innerHTML = html;
+        }
+
+        // Errores
+        if (results.errors && results.errors.length > 0) {
+            let html = '<h6 class="text-danger">Errores:</h6><div class="alert alert-danger"><ul class="mb-0">';
+            results.errors.forEach(err => {
+                html += `<li>${err}</li>`;
+            });
+            html += '</ul></div>';
+            document.getElementById('errorsList').innerHTML = html;
+        }
+    }
+});
+</script>
+{% endblock %}

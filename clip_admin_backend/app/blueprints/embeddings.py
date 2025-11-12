@@ -41,6 +41,7 @@ from app.utils.system_config import system_config
 from app.models.product import Product
 from app.models.client import Client
 from app.utils.permissions import requires_role, requires_client_scope, filter_by_client_scope
+from app.models.category import Category
 
 bp = Blueprint('embeddings', __name__)
 
@@ -255,17 +256,29 @@ def generate_clip_embedding(image_path, image_obj=None):
         # Obtener información contextual del producto/imagen
         context_info = get_image_context(image_obj) if image_obj else {}
 
-        # Generar embedding optimizado
+        # Si hay recorte manual registrado en la imagen, preparar PIL recortada como override
+        pil_override = None
+        if image_obj and hasattr(image_obj, 'has_crop') and image_obj.has_crop():
+            try:
+                raw_img = load_image_from_source(image_obj.display_url)
+                pil_override = image_obj.apply_crop_to_pil(raw_img)
+                context_info['manual_crop_applied'] = True
+                context_info['manual_crop_box'] = image_obj.get_crop_box()
+            except Exception as ce:
+                print(f"⚠️ Error aplicando recorte manual: {ce}")
+                context_info['manual_crop_applied'] = False
+
+        # Generar embedding optimizado (usa PIL override si existe)
         if context_info and context_info.get('enable_optimization', True):
             embedding, metadata = generate_optimized_embedding(
-                image_path, model, processor, context_info
+                image_path, model, processor, context_info, pil_override=pil_override
             )
             print(f"✅ Embedding optimizado generado: {len(embedding)} dimensiones")
             print(f"📊 Métodos usados: {metadata.get('optimization_method')}")
             return embedding, metadata
         else:
             # Fallback a embedding simple
-            embedding = generate_simple_embedding(image_path, model, processor)
+            embedding = generate_simple_embedding(image_path, model, processor, pil_override=pil_override)
             metadata = {'optimization_method': 'simple', 'embedding_dim': len(embedding)}
             print(f"✅ Embedding simple generado: {len(embedding)} dimensiones")
             return embedding, metadata
@@ -311,6 +324,12 @@ def get_image_context(image_obj):
         if hasattr(product, 'tags') and product.tags:
             context['product_tags'] = [tag.strip() for tag in product.tags.split(',')]
 
+        # Adjuntar información de recorte si existe en la imagen
+        if hasattr(image_obj, 'has_crop') and image_obj.has_crop():
+            box = image_obj.get_crop_box()
+            context['crop_box'] = box
+            context['has_manual_crop'] = bool(image_obj.is_crop_manual)
+
         context['enable_optimization'] = True
         return context
 
@@ -318,11 +337,11 @@ def get_image_context(image_obj):
         print(f"⚠️ Error obteniendo contexto: {e}")
         return {'enable_optimization': False}
 
-def generate_optimized_embedding(image_path_or_url, model, processor, context_info):
+def generate_optimized_embedding(image_path_or_url, model, processor, context_info, pil_override=None):
     """Generar embedding optimizado usando múltiples técnicas"""
 
-    # Cargar imagen (local o URL)
-    image = load_image_from_source(image_path_or_url)
+    # Cargar imagen (local o URL) o usar recorte manual override
+    image = pil_override if pil_override is not None else load_image_from_source(image_path_or_url)
 
     embeddings_list = []
     prompts_used = []
@@ -362,11 +381,86 @@ def generate_optimized_embedding(image_path_or_url, model, processor, context_in
 
     return final_embedding, metadata
 
-def generate_simple_embedding(image_path_or_url, model, processor):
+
+# ---------------------- QA SCORE TEMPORAL ----------------------
+@bp.route('/api/qa-score', methods=['POST'])
+@login_required
+def qa_score():
+    """Endpoint temporal para evaluar score de similitud de una imagen contra dos prompts
+    (ej: Delantal Completo vs Medio Delantal). Se usará internamente para medir impacto del recorte.
+    Request JSON: { image_url: str, product_id: str }
+    Response JSON: { ok: bool, positive_label, negative_label, positive_score, negative_score }
+    """
+    data = request.get_json(silent=True) or {}
+    image_url = data.get('image_url')
+    product_id = data.get('product_id')
+    if not image_url:
+        return jsonify({'ok': False, 'error': 'image_url requerido'}), 400
+
+    # Cargar modelo/processor
+    try:
+        model, processor = get_clip_model()
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Error cargando modelo: {e}'}), 500
+
+    # Obtener categoría para decidir prompts (si hay producto)
+    positive_label = 'Delantal Completo'
+    negative_label = 'Medio Delantal'
+    try:
+        if product_id:
+            prod = Product.query.filter_by(id=product_id).first()
+            if prod and prod.category and prod.category.name_en:
+                # Heurística: si la categoría contiene 'full' => positivo es esa, negativo es medio
+                cname = (prod.category.name_en or '').lower()
+                if 'full' in cname or 'completo' in cname:
+                    positive_label = 'Full apron professional kitchen garment front chest coverage'
+                    negative_label = 'Half apron waist-down kitchen garment'
+                elif 'medio' in cname or 'half' in cname:
+                    positive_label = 'Half apron waist-down kitchen garment'
+                    negative_label = 'Full apron professional kitchen garment front chest coverage'
+    except Exception:
+        pass
+
+    try:
+        pil_img = load_image_from_source(image_url)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Error cargando imagen: {e}'}), 400
+
+    # Preparar batch (imagen + dos textos)
+    try:
+        inputs = processor(text=[positive_label, negative_label], images=pil_img, return_tensors="pt", padding=True)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Error procesando entrada: {e}'}), 500
+
+    if torch.cuda.is_available():
+        inputs = {k: v.cuda() for k, v in inputs.items()}
+
+    with torch.no_grad():
+        image_features = model.get_image_features(**{k: v for k, v in inputs.items() if k in ['pixel_values']})
+        text_features = model.get_text_features(**{k: v for k, v in inputs.items() if k in ['input_ids', 'attention_mask']})
+
+    # Normalizar
+    image_features = image_features / image_features.norm(p=2, dim=-1, keepdim=True)
+    text_features = text_features / text_features.norm(p=2, dim=-1, keepdim=True)
+
+    # Similaridades
+    sims = (image_features @ text_features.T).cpu().numpy()[0]
+    positive_score = float(sims[0])
+    negative_score = float(sims[1])
+
+    return jsonify({
+        'ok': True,
+        'positive_label': positive_label,
+        'negative_label': negative_label,
+        'positive_score': positive_score,
+        'negative_score': negative_score
+    })
+
+def generate_simple_embedding(image_path_or_url, model, processor, pil_override=None):
     """Generar embedding simple (fallback)"""
 
-    # Cargar y procesar imagen (local o URL)
-    image = load_image_from_source(image_path_or_url)
+    # Cargar y procesar imagen (local o URL) o usar override recortado
+    image = pil_override if pil_override is not None else load_image_from_source(image_path_or_url)
 
     # Procesar imagen con manejo de errores
     try:
@@ -770,6 +864,142 @@ def process_pending():
         return jsonify({"success": False, "message": f"Error: {str(e)}"})
 
 
+# ============================================================================
+# PÁGINA DE PRUEBA: DETECCIÓN MULTI-CATEGORÍA (MULTI-CROP)
+# ============================================================================
+@bp.route("/test/multicrop", methods=["GET"])
+def test_multicrop_page():
+    """Renderiza una página simple para probar la detección multi-categoría.
+
+    Permite:
+    - Subir una imagen (archivo local)
+    - Elegir el cliente
+    - Ver categorías detectadas con su score y crop ganador
+    """
+    try:
+        clients = Client.query.filter_by(is_active=True).order_by(Client.name.asc()).all()
+    except Exception:
+        clients = []
+    return render_template("embeddings/test_multicrop.html", clients=clients)
+
+
+@bp.route("/test/multicrop/detect", methods=["POST"])
+def api_test_multicrop_detect():
+    """Endpoint de prueba que recibe una imagen subida y devuelve categorías detectadas.
+
+    Request (multipart/form-data):
+        - file: imagen
+        - client_id: uuid del cliente
+
+    Response (application/json):
+        {
+          success: true,
+          client: { id, name },
+          results: [ { category_id, category_name, score, best_crop, crop_scores, passes_threshold } ]
+        }
+    """
+    try:
+        # Validaciones básicas
+        if 'file' not in request.files:
+            return jsonify({"success": False, "message": "Falta el archivo de imagen (file)"}), 400
+        file = request.files['file']
+        client_id = request.form.get('client_id')
+        if not client_id:
+            return jsonify({"success": False, "message": "Falta client_id"}), 400
+
+        client = Client.query.get(client_id)
+        if not client:
+            return jsonify({"success": False, "message": "Cliente no encontrado"}), 404
+
+        # Cargar imagen en memoria como PIL
+        try:
+            img = PILImage.open(BytesIO(file.read())).convert('RGB')
+        except Exception as e:
+            return jsonify({"success": False, "message": f"No se pudo leer la imagen: {e}"}), 400
+
+        # Ejecutar detección con estrategia multi-crop
+        # Si se recibió un recorte manual (x,y,w,h) aplicar antes de generar crops
+        manual_crop = None
+        try:
+            cx = request.form.get('crop_x'); cy = request.form.get('crop_y'); cw = request.form.get('crop_w'); ch = request.form.get('crop_h')
+            if all([cx, cy, cw, ch]):
+                cx = int(float(cx)); cy = int(float(cy)); cw = int(float(cw)); ch = int(float(ch))
+                # Sanitizar límites
+                cx = max(0, cx); cy = max(0, cy)
+                cw = max(1, min(cw, img.width - cx))
+                ch = max(1, min(ch, img.height - cy))
+                manual_crop = (cx, cy, cx+cw, cy+ch)
+                img = img.crop(manual_crop)
+                clip_logger.info(f"✂️ Recorte manual aplicado: {manual_crop}")
+        except Exception as ce:
+            clip_logger.warning(f"⚠️ Recorte manual ignorado por error: {ce}")
+
+        # Flag de detección automática (Grounding DINO)
+        use_grounding = request.form.get('use_grounding') in ('1', 'true', 'on', 'yes')
+        grounding_meta = None
+
+        if use_grounding:
+            try:
+                from app.utils.grounding_dino import detect_and_crop
+                # Obtener nombres de categorías activas para prompt
+                active_categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
+                category_names = [c.name for c in active_categories]
+                cropped_img, meta = detect_and_crop(img, category_names)
+                grounding_meta = meta
+                img_for_clip = cropped_img
+                clip_logger.info(f"🎯 Grounding DINO: label={meta.get('label')} score={meta.get('score')}")
+            except Exception as ge:
+                clip_logger.warning(f"⚠️ Grounding DINO falló: {ge}. Usando imagen original.")
+                img_for_clip = img
+        else:
+            img_for_clip = img
+
+        # Flag: permitir mostrar ambos delantales (no excluir par delantal)
+        allow_apron_pair = request.form.get('allow_apron_pair') in ('1', 'true', 'on', 'yes')
+
+        results = detect_categories_multi_crop(
+            img_for_clip,
+            client_id=client.id,
+            top_k=10,
+            apply_pair_exclusion=(not allow_apron_pair)
+        )
+
+        # Parámetros opcionales para logging manual
+        expected_category = request.form.get('expected_category')  # nombre esperado (libre)
+        tester_note = request.form.get('note')  # nota libre del tester
+
+        # Enriquecer resultados con metadata de recorte si hubo
+        if manual_crop:
+            for r in results:
+                r['manual_crop'] = {
+                    'x': manual_crop[0], 'y': manual_crop[1],
+                    'width': manual_crop[2]-manual_crop[0], 'height': manual_crop[3]-manual_crop[1]
+                }
+
+        # Si hubo recorte por grounding, adjuntar a resultados
+        if grounding_meta:
+            for r in results:
+                r['grounding'] = grounding_meta
+
+        log_id = _log_multicrop_test(
+            client=client,
+            results=results,
+            expected_category=expected_category,
+            tester_note=tester_note
+        )
+
+        return jsonify({
+            "success": True,
+            "client": {"id": client.id, "name": client.name},
+            "results": results,
+            "log_id": log_id,
+            "expected_category": expected_category,
+            "tester_note": tester_note
+        })
+    except Exception as e:
+        clip_logger.error(f"❌ Error en /embeddings/test/multicrop/detect: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
 @bp.route("/process-single/<image_id>", methods=["POST"])
 @login_required
 def process_single(image_id):
@@ -784,9 +1014,13 @@ def process_single(image_id):
         # embedding = generate_clip_embedding(image_path)
         # image.clip_embedding = json.dumps(embedding.tolist())
 
-        # Simulación
+        # Simulación temporal con dimensión dinámica basada en modelo configurado
+        from app.utils.system_config import system_config
+        model_name = system_config.get('clip', 'model_name', 'ViT-B/16')
+        embedding_dim = 768 if 'L/14' in model_name else 512
+
         image.is_processed = True
-        image.clip_embedding = json.dumps([0.1] * 512)
+        image.clip_embedding = json.dumps([0.1] * embedding_dim)
         image.upload_status = 'completed'
         image.error_message = None
         image.updated_at = datetime.utcnow()
@@ -867,3 +1101,615 @@ def reset_all():
     except Exception as e:
         db.session.rollback()
         return jsonify({"success": False, "message": f"Error: {str(e)}"})
+
+
+# ======================================================
+# UTILIDAD: Logging de pruebas multicrop (JSONL)
+# ======================================================
+def _log_multicrop_test(client, results, expected_category=None, tester_note=None):
+    """Guarda una entrada JSONL con el resultado de la prueba multicrop.
+
+    Estructura:
+        {
+          timestamp: ISO,
+          client_id: str,
+          client_name: str,
+          expected_category: str|None,
+          top_prediction: {category_id, category_name, score},
+          all_results: [...],
+          tester_note: str|None
+        }
+    """
+    try:
+        ts = datetime.utcnow().isoformat()
+        top_pred = results[0] if results else None
+        # Detectar si alguno de los resultados trae metadata de recorte manual
+        crop_meta = None
+        for r in results:
+            if isinstance(r, dict) and r.get('manual_crop'):
+                crop_meta = r['manual_crop']
+                break
+        entry = {
+            "timestamp": ts,
+            "client_id": str(client.id),  # Convertir UUID a string
+            "client_name": client.name,
+            "expected_category": expected_category,
+            "top_prediction": top_pred,
+            "all_results": results,
+            "tester_note": tester_note,
+            "manual_crop": crop_meta
+        }
+
+        # Directorio logs
+        base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir, exist_ok=True)
+
+        # Archivo por día
+        day_str = datetime.utcnow().strftime('%Y%m%d')
+        log_file = os.path.join(base_dir, f'multicrop_tests_{day_str}.jsonl')
+
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+
+        return f"{day_str}-{int(time.time())}"
+    except Exception as e:
+        clip_logger.error(f"⚠️ Error logueando prueba multicrop: {e}")
+        return None
+
+
+@bp.route("/test/multicrop/logs", methods=["GET"])
+@login_required
+@requires_role('SUPER_ADMIN', 'STORE_ADMIN')
+@requires_client_scope
+def list_multicrop_logs():
+    """Lista entradas de log multicrop del día indicado (o día actual)."""
+    date_str = request.args.get('date')
+    limit = int(request.args.get('limit', 50))
+    if limit < 1: limit = 1
+    if limit > 500: limit = 500
+
+    if not date_str:
+        date_str = datetime.utcnow().strftime('%Y%m%d')
+
+    base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+    log_file = os.path.join(base_dir, f'multicrop_tests_{date_str}.jsonl')
+
+    entries = []
+    try:
+        if os.path.exists(log_file):
+            with open(log_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        # Filtrar por client scope si corresponde
+                        # current_user.client_id podría restringir
+                        if hasattr(current_user, 'client_id') and current_user.client_id:
+                            if str(obj.get('client_id')) != str(current_user.client_id):
+                                continue
+                        entries.append(obj)
+                    except Exception:
+                        continue
+        # Ordenar descendente por timestamp
+        entries.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        entries = entries[:limit]
+        return jsonify({"success": True, "entries": entries, "date": date_str})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
+
+
+@bp.route("/test/multicrop/logs/dates", methods=["GET"])
+@login_required
+@requires_role('SUPER_ADMIN', 'STORE_ADMIN')
+@requires_client_scope
+def list_multicrop_log_dates():
+    """Devuelve lista de días disponibles con archivos de log multicrop."""
+    base_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+    dates = []
+    try:
+        if os.path.exists(base_dir):
+            for fn in os.listdir(base_dir):
+                if fn.startswith('multicrop_tests_') and fn.endswith('.jsonl'):
+                    # Extraer YYYYMMDD
+                    part = fn.replace('multicrop_tests_', '').replace('.jsonl', '')
+                    if part.isdigit() and len(part) == 8:
+                        dates.append(part)
+        dates.sort(reverse=True)
+        return jsonify({"success": True, "dates": dates[:30]})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
+
+
+@bp.route("/recalculate-centroids", methods=["POST"])
+@login_required
+@requires_role('SUPER_ADMIN', 'STORE_ADMIN')
+@requires_client_scope
+def recalculate_centroids():
+    """Recalcula los centroides de todas las categorías del cliente actual.
+
+    Forzado (force=True) para garantizar consistencia luego de reembedding.
+    """
+    try:
+        # Determinar client_id según el scope del usuario
+        client_id = getattr(current_user, 'client_id', None)
+        if not client_id:
+            return jsonify({"success": False, "message": "Usuario no asignado a cliente"}), 400
+
+        clip_logger.info(f"🔄 Recalculando centroides para cliente {client_id} (forzado)")
+        stats = Category.recalculate_all_centroids(client_id=client_id, force=True)
+
+        return jsonify({
+            "success": True,
+            "message": "Recalculo de centroides completado",
+            "stats": stats
+        })
+    except Exception as e:
+        db.session.rollback()
+        clip_logger.error(f"❌ Error recalculando centroides: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+# ============================================================================
+# MULTI-CROP DETECTION SYSTEM
+# Sistema de detección multi-categoría con crops multi-escala
+# ============================================================================
+
+def generate_multi_scale_crops(image):
+    """
+    Genera crops multi-escala de una imagen para reducir ruido de catálogo sucio.
+
+    Estrategia:
+    - full: Imagen completa (contexto global)
+    - center_60: Centro 60% (reduce bordes/fondo, enfoca torso)
+    - upper_50: Mitad superior (gorros, camisas, accesorios superiores)
+    - lower_50: Mitad inferior (pantalones, zapatos, faldas)
+    - left_50: Mitad izquierda (asimetría, logos laterales)
+    - right_50: Mitad derecha (asimetría, logos laterales)
+
+    Args:
+        image: PIL.Image o ruta de imagen
+
+    Returns:
+        dict: {
+            'full': PIL.Image,
+            'center_60': PIL.Image,
+            'upper_50': PIL.Image,
+            'lower_50': PIL.Image,
+            'left_50': PIL.Image,
+            'right_50': PIL.Image
+        }
+    """
+    # Cargar imagen si es ruta
+    if isinstance(image, str):
+        image = load_image_from_source(image)
+    elif not isinstance(image, PILImage.Image):
+        raise ValueError(f"Tipo de imagen inválido: {type(image)}")
+
+    w, h = image.size
+
+    # Nuevos crops para mejorar discriminación delantal completo vs medio:
+    # upper_torso: zona de pechera + cuello (primer ~60% vertical centrado horizontal)
+    # chest_focus: región más concentrada en pecho (30%–55% vertical y 15% laterales recortados)
+    upper_torso_box = (int(w*0.1), 0, int(w*0.9), int(h*0.6))
+    chest_focus_box = (int(w*0.15), int(h*0.08), int(w*0.85), int(h*0.55))
+
+    crops = {
+        'full': image,
+        'center_60': image.crop((int(w*0.2), int(h*0.2), int(w*0.8), int(h*0.8))),
+        'upper_50': image.crop((0, 0, w, int(h*0.5))),
+        'lower_50': image.crop((0, int(h*0.5), w, h)),
+        'left_50': image.crop((0, 0, int(w*0.5), h)),
+        'right_50': image.crop((int(w*0.5), 0, w, h)),
+        'upper_torso': image.crop(upper_torso_box),
+        'chest_focus': image.crop(chest_focus_box)
+    }
+
+    return crops
+
+
+def detect_categories_multi_crop(
+    image_path_or_url,
+    client_id,
+    threshold=None,
+    top_k=5,
+    model=None,
+    processor=None,
+    apply_pair_exclusion: bool = True
+):
+    """
+    Detecta categorías en imagen usando strategy multi-escala.
+
+    Workflow:
+    1. Obtiene categorías activas del cliente (via productos)
+    2. Genera 6 crops de la imagen
+    3. Encode clip_prompt de cada categoría
+    4. Calcula similarity de cada crop vs cada prompt
+    5. Aggregate score = max(crop_scores)  # El mejor crop gana
+    6. Retorna top-k categorías sobre threshold
+
+    Args:
+        image_path_or_url: Ruta local o URL de Cloudinary
+        client_id: UUID del cliente
+        threshold: Score mínimo (default: client.category_confidence_threshold / 100)
+        top_k: Número máximo de categorías a retornar
+        model: Modelo CLIP (opcional, se carga si no se provee)
+        processor: Procesador CLIP (opcional)
+
+    Returns:
+        list: [
+            {
+                'category_id': str,
+                'category_name': str,
+                'score': float,
+                'best_crop': str,  # Qué crop tuvo mejor score
+                'crop_scores': dict,  # Scores de cada crop
+                'passes_threshold': bool
+            }
+        ]
+    """
+    # Cargar modelo si no se proveyó
+    if model is None or processor is None:
+        model, processor = get_clip_model()
+        _touch_clip_last_used()
+
+    # Obtener cliente y threshold
+    from app.models.client import Client
+    client = Client.query.get(client_id)
+    if not client:
+        raise ValueError(f"Cliente {client_id} no encontrado")
+
+    if threshold is None:
+        threshold = (client.category_confidence_threshold or 70) / 100.0
+
+    # Obtener categorías activas del cliente (via productos)
+    from app.models.category import Category
+    from app.models.product import Product
+
+    categories = db.session.query(Category).join(
+        Product, Product.category_id == Category.id
+    ).filter(
+        Product.client_id == client_id,
+        Product.is_active == True
+    ).distinct().all()
+
+    if not categories:
+        clip_logger.warning(f"⚠️ Cliente {client.name} no tiene categorías activas")
+        return []
+
+    clip_logger.info(f"🔍 Detectando categorías para cliente {client.name}: {len(categories)} categorías activas")
+
+    # Asegurar que, si hay uno de los delantales, también se evalúe su par aunque no tenga productos activos
+    try:
+        from sqlalchemy import func
+        present = { (c.name or '').upper() for c in categories }
+        need_full = ('MEDIO DELANTAL' in present) and ('DELANTAL COMPLETO' not in present)
+        need_half = ('DELANTAL COMPLETO' in present) and ('MEDIO DELANTAL' not in present)
+        extra = []
+        if need_full:
+            extra_full = db.session.query(Category).filter(func.upper(Category.name).like('%DELANTAL COMPLETO%')).first()
+            if extra_full:
+                extra.append(extra_full)
+        if need_half:
+            extra_half = db.session.query(Category).filter(func.upper(Category.name).like('%MEDIO DELANTAL%')).first()
+            if extra_half:
+                extra.append(extra_half)
+        if extra:
+            categories = list({c.id: c for c in [*categories, *extra]}.values())
+            clip_logger.info(f"➕ Se agregaron {len(extra)} categorías pares para comparación (delantales)")
+    except Exception as ex_extra:
+        clip_logger.warning(f"⚠️ No se pudieron agregar categorías pares: {ex_extra}")
+
+    # Generar crops
+    crops = generate_multi_scale_crops(image_path_or_url)
+    clip_logger.info(f"✂️ Generados {len(crops)} crops multi-escala")
+
+    # Encode todos los crops
+    crop_embeddings = {}
+    for crop_name, crop_img in crops.items():
+        crop_emb = generate_image_only_embedding(crop_img, model, processor)
+        # Normalizar L2
+        crop_emb = crop_emb / np.linalg.norm(crop_emb)
+        crop_embeddings[crop_name] = crop_emb
+
+    clip_logger.info(f"📊 Embeddings generados para {len(crop_embeddings)} crops")
+
+    # Calcular scores por categoría
+    results = []
+    for cat in categories:
+        name_upper = (cat.name or '').upper()
+
+        # Prompt por defecto para categorías críticas si falta clip_prompt
+        default_prompt = None
+        if 'DELANTAL COMPLETO' in name_upper:
+            default_prompt = "a professional photo of full bib apron with large chest panel, shoulder straps, neck tie, covers entire torso from chest to knees, industrial kitchen workwear"
+        elif 'MEDIO DELANTAL' in name_upper:
+            default_prompt = "a professional photo of waist apron without bib or chest coverage, tied only at waist level, covers hips and thighs, half apron, no shoulder straps"
+        elif 'CASACA' in name_upper:
+            default_prompt = "a professional photo of chef jacket with buttons or zipper closure, long sleeves, collar, white kitchen coat, culinary uniform top"
+
+        if not cat.clip_prompt and not default_prompt:
+            clip_logger.warning(f"⚠️ Categoría {cat.name} sin clip_prompt, saltando...")
+            continue
+
+        # Elegir prompt inicial (prioriza clip_prompt, sino default)
+        prompt_text = cat.clip_prompt or default_prompt
+
+        # Override de prompt para casos críticos (mantener consistencia)
+        try:
+            if 'DELANTAL COMPLETO' in name_upper:
+                prompt_text = "a professional photo of full bib apron with large chest panel, shoulder straps, neck tie, covers entire torso from chest to knees, industrial kitchen workwear"
+            elif 'MEDIO DELANTAL' in name_upper:
+                prompt_text = "a professional photo of waist apron without bib or chest coverage, tied only at waist level, covers hips and thighs, half apron, no shoulder straps"
+            elif 'CASACA' in name_upper:
+                prompt_text = "a professional photo of chef jacket with buttons or zipper closure, long sleeves, collar, white kitchen coat, culinary uniform top"
+        except Exception:
+            pass
+
+        # Pesos por región (crops) para discriminar mejor categorías ambiguas
+        # Mantener simple: si un crop no está listado usa 1.0.
+        region_weights = {}
+        if 'DELANTAL COMPLETO' in name_upper:
+            region_weights = {
+                'chest_focus': 1.50,
+                'upper_torso': 1.35,
+                'upper_50': 1.20,
+                'center_60': 1.00,
+                'lower_50': 0.80,
+                'left_50': 0.75,
+                'right_50': 0.75,
+                'full': 0.90
+            }
+        elif 'MEDIO DELANTAL' in name_upper:
+            region_weights = {
+                'lower_50': 1.45,
+                'center_60': 1.10,
+                'upper_torso': 0.70,
+                'chest_focus': 0.60,
+                'upper_50': 0.65,
+                'left_50': 0.85,
+                'right_50': 0.85,
+                'full': 0.95
+            }
+        elif 'CASACA' in name_upper:
+            region_weights = {
+                'upper_torso': 1.35,
+                'chest_focus': 1.30,
+                'upper_50': 1.25,
+                'center_60': 1.00,
+                'lower_50': 0.70,
+                'left_50': 0.90,
+                'right_50': 0.90,
+                'full': 0.95
+            }
+
+        text_inputs = processor(text=[prompt_text], return_tensors="pt", padding=True)
+        if torch.cuda.is_available():
+            text_inputs = {k: v.cuda() for k, v in text_inputs.items()}
+
+        with torch.no_grad():
+            text_features = model.get_text_features(**text_inputs)
+
+        text_emb = text_features.cpu().numpy().flatten()
+        text_emb = text_emb / np.linalg.norm(text_emb)
+
+        # Calcular similarity de cada crop vs prompt
+        crop_scores = {}
+        weighted_crop_scores = {}
+        for crop_name, crop_emb in crop_embeddings.items():
+            score = np.dot(crop_emb, text_emb)
+            crop_scores[crop_name] = float(score)
+            weight = region_weights.get(crop_name, 1.0)
+            weighted_crop_scores[crop_name] = float(score * weight)
+
+        # Aggregate: max weighted score (el mejor crop ponderado gana)
+        max_score = max(weighted_crop_scores.values())
+        best_crop = max(weighted_crop_scores.items(), key=lambda x: x[1])[0]
+
+        results.append({
+            'category_id': str(cat.id),
+            'category_name': cat.name,
+            'score': max_score,
+            'best_crop': best_crop,
+            'crop_scores': crop_scores,              # scores crudos
+            'weighted_crop_scores': weighted_crop_scores,  # scores tras ponderación
+            'passes_threshold': max_score >= threshold
+        })
+
+    # Reglas post-proceso simples para delantal:
+    # Si "Delantal Completo" presente y alguno de sus crops específicos (upper_torso/chest_focus)
+    # supera cierta confianza relativa, suprimir "Medio Delantal" si su score < completo - margin.
+    apron_full = next((r for r in results if 'DELANTAL COMPLETO' in r['category_name'].upper()), None)
+    apron_half = next((r for r in results if 'MEDIO DELANTAL' in r['category_name'].upper()), None)
+    if apron_full and apron_half:
+        # Usar scores ponderados para evidencia por región
+        w_scores_full = apron_full.get('weighted_crop_scores', apron_full.get('crop_scores', {}))
+        full_upper_torso = w_scores_full.get('upper_torso', 0.0)
+        full_chest_focus = w_scores_full.get('chest_focus', 0.0)
+        evidence_score = max(full_upper_torso, full_chest_focus)
+        margin = 0.06  # margen mínimo de diferencia requerido
+        suppression_evidence_threshold = 0.20  # evidencia mínima en crops torso (ponderada)
+        if apron_full['score'] > apron_half['score'] + margin and evidence_score >= suppression_evidence_threshold:
+            apron_half['suppressed'] = True
+            apron_half['suppression_reason'] = 'bib_detected'
+        else:
+            apron_half['suppressed'] = False
+
+    # (Opcional) suprimir headwear si no hay evidencia en upper_torso/chest_focus
+    headwear_candidates = [r for r in results if any(x in r['category_name'].upper() for x in ['GORRO', 'GORROS', 'GORRAS'])]
+    for hw in headwear_candidates:
+        w_scores_hw = hw.get('weighted_crop_scores', hw.get('crop_scores', {}))
+        torso_evidence = max(w_scores_hw.get('upper_torso', 0.0), w_scores_hw.get('chest_focus', 0.0))
+        if torso_evidence < 0.12:  # umbral suave para evitar suprimir en exceso
+            hw['suppressed'] = True
+            hw['suppression_reason'] = 'headwear_not_visible'
+        else:
+            hw['suppressed'] = hw.get('suppressed', False)
+
+    # (La inserción de each result ahora ocurre dentro del loop antes de reglas)
+
+    # Ordenar por score descendente
+    results = sorted(results, key=lambda x: x['score'], reverse=True)
+
+    # =============================
+    # Exclusión dura de pares (opcional). Si apply_pair_exclusion=False se mantienen ambos.
+    # =============================
+    if apply_pair_exclusion:
+        try:
+            # Cargar reglas de exclusión desde BD (por cliente) con fallback a system_config
+            from app.models.category_pair_exclusion import CategoryPairExclusion
+
+            # Buscar regla activa para este cliente
+            db_rules = CategoryPairExclusion.query.filter_by(
+                client_id=client_id,
+                is_active=True
+            ).all()
+
+            # Obtener configuración por defecto desde system_config
+            default_config = system_config.get('pair_exclusion_rules', 'delantal', {})
+
+            # Mapear categorías por nombre
+            name_map = { (r['category_name'] or '').upper(): r for r in results }
+
+            # Procesar cada regla de exclusión de la BD
+            for rule in db_rules:
+                # Buscar las categorías primaria y secundaria en los resultados
+                primary_cat = next((r for r in results if r['category_id'] == str(rule.primary_category_id)), None)
+                secondary_cat = next((r for r in results if r['category_id'] == str(rule.secondary_category_id)), None)
+
+                if not primary_cat or not secondary_cat:
+                    continue
+
+                # Usar parámetros de la regla o defaults del config
+                params = rule.params or {}
+                tie_margin = params.get('tie_margin', default_config.get('tie_margin', 0.02))
+                override_gap_max = params.get('override_gap_max', default_config.get('override_gap_max', 0.10))
+                torso_evidence_min = params.get('torso_evidence_min', default_config.get('torso_evidence_min', 0.24))
+                torso_advantage_min = params.get('torso_advantage_min', default_config.get('torso_advantage_min', 0.06))
+
+                # Aplicar lógica de exclusión según el tipo de regla
+                if rule.exclusion_rule == 'torso_evidence':
+                    # Si alguno ya está suprimido, elegir el otro
+                    if secondary_cat.get('suppressed') and not primary_cat.get('suppressed'):
+                        chosen = primary_cat; other = secondary_cat
+                        reason = 'secondary_suppressed'
+                    elif primary_cat.get('suppressed') and not secondary_cat.get('suppressed'):
+                        chosen = secondary_cat; other = primary_cat
+                        reason = 'primary_suppressed'
+                    else:
+                        # Ambos activos: elegir por score, con desempate usando evidencia regional
+                        if abs(primary_cat['score'] - secondary_cat['score']) <= tie_margin:
+                            wp = primary_cat.get('weighted_crop_scores', {})
+                            ws = secondary_cat.get('weighted_crop_scores', {})
+                            torso_primary = max(wp.get('chest_focus', 0.0), wp.get('upper_torso', 0.0))
+                            waist_secondary = ws.get('lower_50', 0.0)
+                            if torso_primary >= waist_secondary + torso_advantage_min:
+                                chosen = primary_cat; other = secondary_cat; reason = 'torso_evidence'
+                            else:
+                                chosen = secondary_cat; other = primary_cat; reason = 'waist_evidence'
+                        else:
+                            if primary_cat['score'] > secondary_cat['score']:
+                                chosen = primary_cat; other = secondary_cat; reason = 'higher_score'
+                            else:
+                                # Regla de override suave
+                                wp = primary_cat.get('weighted_crop_scores', {})
+                                ws = secondary_cat.get('weighted_crop_scores', {})
+                                torso_primary = max(wp.get('chest_focus', 0.0), wp.get('upper_torso', 0.0))
+                                waist_secondary = ws.get('lower_50', 0.0)
+                                torso_advantage = torso_primary - waist_secondary
+                                if (secondary_cat['score'] - primary_cat['score']) <= override_gap_max and torso_primary >= torso_evidence_min and torso_advantage >= torso_advantage_min:
+                                    chosen = primary_cat; other = secondary_cat; reason = 'torso_override'
+                                else:
+                                    chosen = secondary_cat; other = primary_cat; reason = 'higher_score'
+
+                    other['excluded_pair'] = True
+                    other['exclusion_reason'] = reason
+                    chosen['exclusion_reason'] = reason
+                    results = [r for r in results if r is not other]
+                    clip_logger.info(f"🚫 Exclusión par aplicada (DB rule). Kept='{chosen['category_name']}' score={chosen['score']:.3f} reason={reason}")
+
+            # Fallback: Si no hay reglas en BD, aplicar lógica hardcoded para delantales (compatibilidad)
+            if not db_rules:
+                full_key = next((k for k in name_map.keys() if 'DELANTAL COMPLETO' in k), None)
+                half_key = next((k for k in name_map.keys() if 'MEDIO DELANTAL' in k), None)
+                if full_key and half_key:
+                    apron_full = name_map[full_key]
+                    apron_half = name_map[half_key]
+
+                    # Usar parámetros del default_config
+                    tie_margin = default_config.get('tie_margin', 0.02)
+                    override_gap_max = default_config.get('override_gap_max', 0.10)
+                    torso_evidence_min = default_config.get('torso_evidence_min', 0.24)
+                    torso_advantage_min = default_config.get('torso_advantage_min', 0.06)
+
+                    # Si alguno ya está suprimido, elegir el otro
+                    if apron_half.get('suppressed') and not apron_full.get('suppressed'):
+                        chosen = apron_full; other = apron_half
+                        reason = 'half_suppressed'
+                    elif apron_full.get('suppressed') and not apron_half.get('suppressed'):
+                        chosen = apron_half; other = apron_full
+                        reason = 'full_suppressed'
+                    else:
+                        # Ambos activos: elegir por score, con desempate usando evidencia regional
+                        if abs(apron_full['score'] - apron_half['score']) <= tie_margin:
+                            wf = apron_full.get('weighted_crop_scores', {})
+                            wh = apron_half.get('weighted_crop_scores', {})
+                            torso_full = max(wf.get('chest_focus', 0.0), wf.get('upper_torso', 0.0))
+                            waist_half = wh.get('lower_50', 0.0)
+                            if torso_full >= waist_half + torso_advantage_min:
+                                chosen = apron_full; other = apron_half; reason = 'torso_evidence'
+                            else:
+                                chosen = apron_half; other = apron_full; reason = 'waist_evidence'
+                        else:
+                            if apron_full['score'] > apron_half['score']:
+                                chosen = apron_full; other = apron_half; reason = 'higher_score'
+                            else:
+                                # Regla de override suave
+                                wf = apron_full.get('weighted_crop_scores', {})
+                                wh = apron_half.get('weighted_crop_scores', {})
+                                torso_full = max(wf.get('chest_focus', 0.0), wf.get('upper_torso', 0.0))
+                                waist_half = wh.get('lower_50', 0.0)
+                                torso_advantage = torso_full - waist_half
+                                if (apron_half['score'] - apron_full['score']) <= override_gap_max and torso_full >= torso_evidence_min and torso_advantage >= torso_advantage_min:
+                                    chosen = apron_full; other = apron_half; reason = 'torso_override'
+                                else:
+                                    chosen = apron_half; other = apron_full; reason = 'higher_score'
+
+                    other['excluded_pair'] = True
+                    other['exclusion_reason'] = reason
+                    chosen['exclusion_reason'] = reason
+                    results = [r for r in results if r is not other]
+                    clip_logger.info(f"🚫 Exclusión par delantal aplicada (fallback). Kept='{chosen['category_name']}' score={chosen['score']:.3f} reason={reason}")
+        except Exception as ex_pair:
+            clip_logger.warning(f"⚠️ Error aplicando exclusión de par: {ex_pair}")
+
+    # Filtrar por threshold preliminar
+    passed = [r for r in results if r['passes_threshold']]
+
+    # Logging detallado de TOP 5 (siempre, aunque no pasen el umbral)
+    clip_logger.info("🔎 TOP 5 raw scores (antes de aplicar fallback):")
+    for r in results[:5]:
+        clip_logger.info(f"   {r['category_name']:<30s} score={r['score']:.3f} passes={r['passes_threshold']} best_crop={r['best_crop']}")
+
+    # Si ninguna categoría pasa el umbral, aplicar estrategia de fallback:
+    # - Usar top_k categorías crudas
+    # - Marcar passes_threshold sólo para la mejor (winner) para evitar vacío total
+    if not passed:
+        clip_logger.warning("⚠️ Ninguna categoría supera el threshold. Aplicando fallback (top_k crudo).")
+        if results:
+            winner_score = results[0]['score']
+            # Ajustar threshold dinámico (winner * 0.85) para marcar algunas como 'pasó'
+            adaptive_cut = winner_score * 0.85
+            for r in results[:top_k]:
+                r['passes_threshold'] = r['score'] >= adaptive_cut
+            clip_logger.info(f"🔧 Threshold adaptativo aplicado: {adaptive_cut:.3f} (85% del ganador {winner_score:.3f})")
+        return results[:top_k]
+
+    clip_logger.info(f"✅ Detección completa: {len(passed)}/{len(results)} categorías sobre threshold")
+    for r in passed[:3]:
+        clip_logger.info(f"   {r['category_name']}: score={r['score']:.3f} (best_crop={r['best_crop']})")
+
+    # Retornar sólo las que pasan (limitadas a top_k)
+    return passed[:top_k]

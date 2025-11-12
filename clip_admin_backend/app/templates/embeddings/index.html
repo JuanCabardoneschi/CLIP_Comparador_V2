@@ -337,7 +337,22 @@ body .progress .progress-bar.progress-bar-striped.progress-bar-animated[style*="
                             </button>
                         </div>
                         <div class="col-md-3">
-                            <button class="btn btn-info w-100 mb-2" onclick="viewLogs()">
+                            <button class="btn btn-secondary w-100 mb-2" onclick="recalcCentroids()">
+                                <i class="fas fa-sync"></i> Recalcular Centroides
+                                <br><small>Forzar para todas las categorías</small>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-6">
+                            <button class="btn btn-outline-primary w-100" onclick="reprocessAllWithCentroids()"
+                                    {% if total_images == 0 %}disabled{% endif %}>
+                                <i class="fas fa-recycle"></i> Reprocesar TODO + Centroides
+                                <br><small>Resetear embeddings, procesar y recalcular centroides</small>
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <button class="btn btn-info w-100" onclick="viewLogs()">
                                 <i class="fas fa-list-alt"></i> Ver Logs
                                 <br><small>Historial detallado</small>
                             </button>
@@ -457,6 +472,7 @@ body .progress .progress-bar.progress-bar-striped.progress-bar-animated[style*="
 let processingModal;
 let isProcessing = false;
 let pollingInterval = null;
+let recalcAfterProcessing = false;
 
 // Funciones globales - FUERA del DOMContentLoaded
 function processPending() {
@@ -648,6 +664,14 @@ function updateStatsRealTime() {
                     stopPolling();
                     processingModal.hide();
                     showAlert('success', `✅ Se procesaron ${stats.processed} embeddings correctamente`);
+                    // Si se solicitó, recalcular centroides automáticamente
+                    if (recalcAfterProcessing) {
+                        recalcAfterProcessing = false;
+                        setTimeout(() => {
+                            recalcCentroids(true);
+                        }, 800);
+                        return; // Esperar recalculo de centroides antes de recargar
+                    }
                     setTimeout(() => {
                         location.reload();
                     }, 2000);
@@ -792,5 +816,64 @@ function showAlert(type, message) {
 window.addEventListener('beforeunload', function() {
     stopPolling();
 });
+
+// === Nuevas funciones: centroides y reprocesado total ===
+function recalcCentroids(silent = false) {
+    if (!silent && !confirm('¿Recalcular centroides de TODAS las categorías del cliente?')) {
+        return;
+    }
+
+    fetch('{{ url_for("embeddings.recalculate_centroids") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            if (!silent) {
+                showAlert('success', '✅ Centroides recalculados correctamente');
+            }
+            // Refrescar stats por si cambian métricas internas
+            setTimeout(() => { location.reload(); }, 1200);
+        } else {
+            showAlert('error', data.message || 'Error al recalcular centroides');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        showAlert('error', 'Error de red recalculando centroides');
+    });
+}
+
+function reprocessAllWithCentroids() {
+    const totalCount = parseInt(document.getElementById('total-count').textContent);
+    if (totalCount === 0) {
+        showAlert('warning', 'No hay imágenes para reprocesar');
+        return;
+    }
+
+    if (!confirm(`⚠️ Esto reseteará ${totalCount} embeddings y volverá a procesar todo.\nLuego recalculará los centroides. ¿Continuar?`)) {
+        return;
+    }
+
+    // 1) Resetear
+    fetch('{{ url_for("embeddings.reset_all") }}', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            showAlert('error', data.message || 'Error al resetear');
+            return;
+        }
+        // 2) Procesar pendientes con modal y polling
+        recalcAfterProcessing = true; // 3) Al terminar, recalcular centroides auto
+        processPending();
+    })
+    .catch(err => {
+        console.error(err);
+        showAlert('error', 'Error de red durante el reset');
+    });
+}
 </script>
 {% endblock %}

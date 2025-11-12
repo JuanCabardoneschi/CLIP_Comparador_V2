@@ -1,0 +1,19 @@
+{% extends "layouts/base.html" %}
+{% block title %}Editar imagen{% endblock %}
+{% block content %}
+<div class="container py-3">
+  <h4>Editar imagen</h4>
+  <form method="POST">
+    <div class="mb-3">
+      <label class="form-label">Alt text</label>
+      <input type="text" name="alt_text" value="{{ image.alt_text }}" class="form-control" />
+    </div>
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" name="is_primary" id="isPrimary" {% if image.is_primary %}checked{% endif %} />
+      <label class="form-check-label" for="isPrimary">Imagen principal</label>
+    </div>
+    <button class="btn btn-primary">Guardar</button>
+    <a href="{{ url_for('images.view', image_id=image.id) }}" class="btn btn-secondary ms-2">Cancelar</a>
+  </form>
+</div>
+{% endblock %}

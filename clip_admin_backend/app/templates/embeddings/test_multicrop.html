@@ -1,0 +1,411 @@
+{% extends 'layouts/base.html' %}
+{% block title %}Test Multi-Crop Categorías{% endblock %}
+{% block extra_css %}
+<style>
+  .result-card { border-left: 5px solid var(--primary-color); }
+  .score-bar { height: 6px; background: #e9ecef; border-radius: 4px; overflow: hidden; }
+  .score-bar-fill { height: 100%; background: linear-gradient(90deg,#0d6efd,#6610f2); }
+  .crop-scores small { font-size: 0.7rem; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h1 class="h3 mb-4">Prueba Detección Multi-Categoría (Multi-Crop)</h1>
+  <p class="text-muted">Sube una imagen real (outfit / producto) y detectaremos hasta 10 categorías usando estrategia multi-crop (full, centro, superior, inferior, izquierda, derecha). Se muestra el <strong>score</strong> y el <strong>crop ganador</strong>.</p>
+
+  <form id="detectForm" class="card p-3 mb-3" enctype="multipart/form-data">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label">Cliente</label>
+        <select name="client_id" class="form-select" required>
+          <option value="" disabled selected>Seleccionar...</option>
+          {% for c in clients %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Imagen</label>
+        <input type="file" name="file" id="fileInput" accept="image/*" class="form-control" required />
+      </div>
+      <div class="col-md-4">
+        <div class="form-check form-switch mt-4">
+          <input class="form-check-input" type="checkbox" id="useGrounding" name="use_grounding">
+          <label class="form-check-label" for="useGrounding">Grounding DINO (experimental)</label>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="form-check form-switch mt-4">
+          <input class="form-check-input" type="checkbox" id="allowApronPair" name="allow_apron_pair">
+          <label class="form-check-label" for="allowApronPair">Mostrar ambos (Full & Medio Delantal)</label>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <button class="btn btn-primary w-100" type="submit">
+          <i class="bi bi-search"></i> Detectar Categorías
+        </button>
+      </div>
+    </div>
+    <hr class="my-3"/>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Categoría esperada (opcional)</label>
+        <input type="text" name="expected_category" class="form-control" placeholder="Ej: Delantal Completo" />
+      </div>
+      <div class="col-md-8">
+        <label class="form-label">Nota / Contexto de la prueba (opcional)</label>
+        <input type="text" name="note" class="form-control" placeholder="Ej: luz frontal, prenda parcialmente doblada" />
+      </div>
+    </div>
+  </form>
+
+  <div id="previewContainer" class="mb-4 d-none">
+    <div class="card">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <strong>Imagen subida</strong>
+        <div class="form-check form-switch m-0">
+          <input class="form-check-input" type="checkbox" id="enableManualCrop">
+          <label class="form-check-label" for="enableManualCrop">Activar recorte manual</label>
+        </div>
+      </div>
+      <div class="card-body p-2">
+        <div class="row g-3">
+          <div class="col-md-8 text-center">
+            <canvas id="cropCanvas" style="max-width:100%; border:1px solid #dee2e6; border-radius:6px; cursor:crosshair; display:none"></canvas>
+            <img id="imagePreview" src="" alt="Previsualización" style="max-height:360px; max-width:100%; object-fit:contain; border-radius:8px;" />
+          </div>
+          <div class="col-md-4">
+            <p class="small text-muted mb-2">Si recortas: enfoca las prendas clave (ej: sólo el torso para distinguir tipos de delantal). El sistema seguirá usando multi-crops sobre tu recorte.</p>
+            <div id="cropMeta" class="small text-muted"></div>
+            <input type="hidden" name="crop_x" id="cropX" />
+            <input type="hidden" name="crop_y" id="cropY" />
+            <input type="hidden" name="crop_w" id="cropW" />
+            <input type="hidden" name="crop_h" id="cropH" />
+            <button type="button" id="resetCropBtn" class="btn btn-sm btn-outline-secondary mt-2 d-none">Reset recorte</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="loading" class="alert alert-info d-none">
+    Procesando imagen... puede tardar unos segundos.
+  </div>
+
+  <div id="results" class="row g-3"></div>
+
+  <div id="logMeta" class="mt-4 d-none">
+    <div class="alert alert-success mb-2" id="logSavedMsg"></div>
+  </div>
+
+  <hr class="my-4"/>
+  <h2 class="h5">Historial de Pruebas (últimas)</h2>
+  <p class="text-muted">Se guardan en JSONL por día. Puedes refrescar y analizar aciertos / errores.</p>
+  <div class="d-flex mb-2 gap-2">
+    <button class="btn btn-outline-secondary" id="refreshLogsBtn">Actualizar Logs</button>
+    <select id="logsDateSelect" class="form-select" style="max-width:200px"></select>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered align-middle" id="logsTable">
+      <thead class="table-light">
+        <tr>
+          <th>Timestamp</th>
+          <th>Cliente</th>
+          <th>Esperada</th>
+          <th>Top Predicción</th>
+          <th>Score</th>
+          <th>Correcta?</th>
+          <th>Nota</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div id="logsStats" class="mt-2"></div>
+</div>
+
+<script>
+const form = document.getElementById('detectForm');
+const loadingEl = document.getElementById('loading');
+const resultsEl = document.getElementById('results');
+const fileInput = document.getElementById('fileInput');
+const previewContainer = document.getElementById('previewContainer');
+const imagePreview = document.getElementById('imagePreview');
+const cropCanvas = document.getElementById('cropCanvas');
+const enableManualCrop = document.getElementById('enableManualCrop');
+const cropMeta = document.getElementById('cropMeta');
+const cropX = document.getElementById('cropX');
+const cropY = document.getElementById('cropY');
+const cropW = document.getElementById('cropW');
+const cropH = document.getElementById('cropH');
+const resetCropBtn = document.getElementById('resetCropBtn');
+const logMeta = document.getElementById('logMeta');
+const logSavedMsg = document.getElementById('logSavedMsg');
+const logsTableBody = document.querySelector('#logsTable tbody');
+const refreshLogsBtn = document.getElementById('refreshLogsBtn');
+const logsDateSelect = document.getElementById('logsDateSelect');
+const logsStats = document.getElementById('logsStats');
+
+// Previsualización inmediata
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) {
+    previewContainer.classList.add('d-none');
+    imagePreview.src = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    imagePreview.src = ev.target.result;
+    previewContainer.classList.remove('d-none');
+    // Reiniciar canvas y recorte
+    cropCanvas.style.display = 'none';
+    imagePreview.style.display = 'block';
+    clearCrop();
+  };
+  reader.readAsDataURL(file);
+});
+
+enableManualCrop.addEventListener('change', () => {
+  if (enableManualCrop.checked) {
+    // Mostrar canvas y dibujar imagen
+    initCanvasFromImage();
+  } else {
+    cropCanvas.style.display = 'none';
+    imagePreview.style.display = 'block';
+    clearCrop();
+  }
+});
+
+function initCanvasFromImage() {
+  const img = imagePreview;
+  if (!img.src) return;
+  const ctx = cropCanvas.getContext('2d');
+  // Ajustar tamaño del canvas a la imagen renderizada
+  const tempImg = new Image();
+  tempImg.onload = () => {
+    const maxH = 360;
+    let w = tempImg.width;
+    let h = tempImg.height;
+    const ratio = Math.min(1, maxH / h);
+    w = Math.round(w * ratio);
+    h = Math.round(h * ratio);
+    cropCanvas.width = w;
+    cropCanvas.height = h;
+    ctx.drawImage(tempImg, 0, 0, w, h);
+    cropCanvas.style.display = 'block';
+    imagePreview.style.display = 'none';
+    attachCropEvents();
+  };
+  tempImg.src = img.src;
+}
+
+let dragStart = null;
+let currentRect = null;
+function attachCropEvents() {
+  const ctx = cropCanvas.getContext('2d');
+  cropCanvas.onmousedown = (e) => {
+    const rect = cropCanvas.getBoundingClientRect();
+    dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    currentRect = null;
+  };
+  cropCanvas.onmousemove = (e) => {
+    if (!dragStart) return;
+    const rect = cropCanvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    currentRect = {
+      x: Math.min(dragStart.x, x),
+      y: Math.min(dragStart.y, y),
+      w: Math.abs(x - dragStart.x),
+      h: Math.abs(y - dragStart.y)
+    };
+    redrawWithRect(currentRect);
+  };
+  cropCanvas.onmouseup = () => {
+    if (currentRect && currentRect.w > 5 && currentRect.h > 5) {
+      applyCropMeta(currentRect);
+    }
+    dragStart = null;
+  };
+  cropCanvas.onmouseleave = () => { if (dragStart) dragStart = null; };
+}
+
+function redrawWithRect(r) {
+  const ctx = cropCanvas.getContext('2d');
+  const imgData = imagePreview.src;
+  const baseImg = new Image();
+  baseImg.onload = () => {
+    ctx.clearRect(0,0,cropCanvas.width,cropCanvas.height);
+    ctx.drawImage(baseImg,0,0,cropCanvas.width,cropCanvas.height);
+    if (r) {
+      ctx.strokeStyle = '#0d6efd';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.fillStyle = 'rgba(13,110,253,0.15)';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+    }
+  };
+  baseImg.src = imgData;
+}
+
+function applyCropMeta(r) {
+  cropX.value = r.x;
+  cropY.value = r.y;
+  cropW.value = r.w;
+  cropH.value = r.h;
+  cropMeta.innerHTML = `Recorte: x=${r.x}, y=${r.y}, w=${r.w}, h=${r.h}`;
+  resetCropBtn.classList.remove('d-none');
+}
+
+function clearCrop() {
+  cropX.value = cropY.value = cropW.value = cropH.value = '';
+  cropMeta.innerHTML = '';
+  resetCropBtn.classList.add('d-none');
+}
+
+resetCropBtn.addEventListener('click', () => {
+  clearCrop();
+  redrawWithRect(null);
+});
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  resultsEl.innerHTML = '';
+  loadingEl.classList.remove('d-none');
+
+  const fd = new FormData(form);
+  // Añadir flag grounding explícito (checkbox value sólo si marcado)
+  const groundingChk = document.getElementById('useGrounding');
+  if (groundingChk && groundingChk.checked) {
+    fd.set('use_grounding', '1');
+  } else {
+    fd.delete('use_grounding');
+  }
+  // Añadir flag para no excluir par delantal (mostrar ambos)
+  const apronPairChk = document.getElementById('allowApronPair');
+  if (apronPairChk && apronPairChk.checked) {
+    fd.set('allow_apron_pair', '1');
+  } else {
+    fd.delete('allow_apron_pair');
+  }
+  try {
+    const resp = await fetch('/embeddings/test/multicrop/detect', {
+      method: 'POST',
+      body: fd
+    });
+    const data = await resp.json();
+    loadingEl.classList.add('d-none');
+
+    if (!data.success) {
+      resultsEl.innerHTML = `<div class='col-12'><div class='alert alert-danger'>Error: ${data.message}</div></div>`;
+      return;
+    }
+
+    if (!data.results.length) {
+      resultsEl.innerHTML = `<div class='col-12'><div class='alert alert-warning'>No se detectaron categorías sobre el umbral. (Puedes bajar el threshold temporalmente para explorar)</div></div>`;
+      return;
+    }
+
+    data.results.forEach(r => {
+      const pct = Math.min(100, Math.round(r.score * 100));
+      const cropScores = Object.entries(r.crop_scores)
+        .map(([k,v]) => `${k}: ${(v*100).toFixed(1)}%`).join(' | ');
+      const passesClass = r.passes_threshold ? 'bg-success bg-opacity-10' : 'bg-secondary bg-opacity-10';
+      const manualCropBadge = r.manual_crop ? `<span class='badge bg-info ms-2'>Recorte manual</span>` : '';
+      resultsEl.innerHTML += `
+        <div class='col-md-6'>
+          <div class='card result-card ${passesClass}'>
+            <div class='card-body'>
+              <div class='d-flex justify-content-between align-items-center mb-2'>
+                <h6 class='mb-0'>${r.category_name}${manualCropBadge}</h6>
+                <span class='badge ${r.passes_threshold ? 'bg-success' : 'bg-secondary'}'>${pct}%</span>
+              </div>
+              <div class='score-bar mb-2'>
+                <div class='score-bar-fill' style='width:${pct}%;'></div>
+              </div>
+              <p class='mb-1'><strong>Crop ganador:</strong> ${r.best_crop}</p>
+              <p class='crop-scores text-muted mb-0'><small>${cropScores}</small></p>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    // Mostrar feedback de logging si se guardó
+    if (data.log_id) {
+      logMeta.classList.remove('d-none');
+      const exp = data.expected_category || '(sin esperada)';
+      logSavedMsg.innerHTML = `<strong>Log guardado:</strong> ID ${data.log_id} | Esperada: <em>${exp}</em>`;
+      // Refrescar logs en segundo plano
+      setTimeout(() => refreshLogs(), 800);
+    }
+  } catch (err) {
+    loadingEl.classList.add('d-none');
+    resultsEl.innerHTML = `<div class='col-12'><div class='alert alert-danger'>Error inesperado: ${err}</div></div>`;
+  }
+});
+
+// ==== LOGS ====
+async function fetchAvailableDates() {
+  try {
+    const resp = await fetch('/embeddings/test/multicrop/logs/dates');
+    const data = await resp.json();
+    if (data.success) {
+      logsDateSelect.innerHTML = '';
+      data.dates.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.textContent = d;
+        logsDateSelect.appendChild(opt);
+      });
+    }
+  } catch(e){ console.error(e); }
+}
+
+async function refreshLogs() {
+  const day = logsDateSelect.value || '';
+  let url = '/embeddings/test/multicrop/logs?limit=50';
+  if (day) url += `&date=${day}`;
+  logsTableBody.innerHTML = '<tr><td colspan="7" class="text-muted">Cargando...</td></tr>';
+  try {
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (!data.success) {
+      logsTableBody.innerHTML = `<tr><td colspan='7' class='text-danger'>Error: ${data.message}</td></tr>`;
+      return;
+    }
+    const rows = data.entries;
+    logsTableBody.innerHTML = '';
+    let correctCount = 0;
+    rows.forEach(r => {
+      const topName = r.top_prediction ? r.top_prediction.category_name : '(sin)';
+      const score = r.top_prediction ? (r.top_prediction.score * 100).toFixed(1) + '%' : '-';
+      const expected = r.expected_category || '';
+      const isCorrect = expected && topName && expected.toLowerCase().trim() === topName.toLowerCase().trim();
+      if (isCorrect) correctCount++;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><small>${r.timestamp}</small></td>
+        <td><small>${r.client_name}</small></td>
+        <td><small>${expected}</small></td>
+        <td><small>${topName}</small></td>
+        <td><small>${score}</small></td>
+        <td>${isCorrect ? '<span class="badge bg-success">✔</span>' : '<span class="badge bg-secondary">✖</span>'}</td>
+        <td><small>${r.tester_note || ''}</small></td>
+      `;
+      logsTableBody.appendChild(tr);
+    });
+    const acc = rows.length ? ((correctCount / rows.length) * 100).toFixed(1) : '0.0';
+    logsStats.innerHTML = `<small class='text-muted'>Total: ${rows.length} | Aciertos: ${correctCount} | Accuracy: ${acc}%</small>`;
+  } catch (e) {
+    console.error(e);
+    logsTableBody.innerHTML = `<tr><td colspan='7' class='text-danger'>Error cargando logs</td></tr>`;
+  }
+}
+
+refreshLogsBtn.addEventListener('click', refreshLogs);
+logsDateSelect.addEventListener('change', refreshLogs);
+// Inicial
+fetchAvailableDates().then(refreshLogs);
+</script>
+{% endblock %}

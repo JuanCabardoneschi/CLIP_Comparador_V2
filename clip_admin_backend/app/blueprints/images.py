@@ -135,6 +135,96 @@ def edit(image_id):
     return render_template("images/edit.html", image=image)
 
 
+@bp.route("/<image_id>/crop", methods=["POST"])
+@login_required
+def crop(image_id):
+    """Endpoint asíncrono para guardar recorte manual y regenerar embedding.
+
+    Flujo:
+    1. Recibe JSON {x,y,w,h}
+    2. Valida límites y tamaño mínimo
+    3. Guarda coordenadas en la imagen (is_crop_manual=True, refined=False)
+    4. Genera embedding usando generate_clip_embedding (aplica override de recorte)
+    5. Marca refined=True y is_processed=True si éxito
+    6. Actualiza centroide de la categoría si corresponde
+    7. Devuelve JSON con resultado y metadata
+    """
+    image = Image.query.get_or_404(image_id)
+
+    data = request.get_json(silent=True) or {}
+    try:
+        x = int(data.get('x', 0))
+        y = int(data.get('y', 0))
+        w = int(data.get('w', 0))
+        h = int(data.get('h', 0))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'Coordenadas inválidas'}), 400
+
+    # Validaciones básicas
+    if w <= 0 or h <= 0:
+        return jsonify({'ok': False, 'error': 'Ancho y alto deben ser > 0'}), 400
+    if image.width and image.height:
+        if x < 0 or y < 0 or x + w > image.width or y + h > image.height:
+            return jsonify({'ok': False, 'error': 'Recorte fuera de límites de la imagen'}), 400
+        # Tamaño mínimo relativo (más estricto para relevancia): 30% altura, 40% ancho
+        min_w = max(32, int(image.width * 0.40))
+        min_h = max(32, int(image.height * 0.30))
+        if w < min_w or h < min_h:
+            return jsonify({'ok': False, 'error': f'Recorte demasiado pequeño (mínimo {min_w}x{min_h})'}), 400
+
+    # Guardar recorte
+    image.crop_x = x
+    image.crop_y = y
+    image.crop_w = w
+    image.crop_h = h
+    image.is_crop_manual = True
+    image.refined = False  # Se marcará True tras regenerar embedding
+    db.session.commit()
+
+    # Regenerar embedding usando lógica central
+    from app.blueprints.embeddings import generate_clip_embedding
+    embedding, metadata = generate_clip_embedding(image.display_url, image)
+    if not embedding:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': 'Error generando embedding'}), 500
+
+    import json
+    image.clip_embedding = json.dumps(embedding)
+    image.is_processed = True
+    image.refined = True
+    image.upload_status = 'completed'
+    image.error_message = None
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'ok': False, 'error': f'Error guardando embedding: {e}'}), 500
+
+    # Actualizar centroide de la categoría (forzar recálculo tras refinar embedding)
+    category = image.product.category if image.product else None
+    centroid_updated = False
+    if category:
+        try:
+            if category.update_centroid_embedding(force_recalculate=True):
+                db.session.commit()
+                centroid_updated = True
+        except Exception as ce:
+            db.session.rollback()
+            # No bloquear por fallo de centroide
+            print(f"⚠️ Error actualizando centroide tras recorte: {ce}")
+
+    return jsonify({
+        'ok': True,
+        'image_id': image.id,
+        'crop': {'x': x, 'y': y, 'w': w, 'h': h},
+        'refined': image.refined,
+        'embedding_dim': len(embedding),
+        'manual_crop_box': image.get_crop_box(),
+        'centroid_updated': centroid_updated,
+        'metadata': metadata
+    })
+
+
 @bp.route("/<image_id>/delete", methods=["POST"])
 @login_required
 def delete(image_id):

@@ -32,6 +32,11 @@
     margin-bottom: 20px;
 }
 
+.primary-image-wrapper { position:relative; display:inline-block; }
+.primary-image-actions { position:absolute; top:8px; right:8px; display:flex; gap:8px; }
+.primary-image-actions .btn { padding:4px 10px; font-size:12px; box-shadow:0 0 4px rgba(0,0,0,0.25); }
+.primary-crop-overlay { position:absolute; border:2px solid #ff5722; box-shadow:0 0 6px rgba(255,87,34,0.4); background:rgba(255,87,34,0.08); pointer-events:none; display:none; z-index:5; }
+
 .primary-image {
     max-width: 100%;
     max-height: 400px;
@@ -113,6 +118,19 @@
     justify-content: center;
 }
 
+/* Botones de crop en modal */
+.crop-action-btn {
+    width: 42px; height: 42px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 20px;
+}
+.crop-canvas-wrap { position: relative; display: inline-block; }
+.crop-canvas-wrap img { display:block; max-width:100%; height:auto; }
+.crop-canvas-wrap canvas { position:absolute; left:0; top:0; cursor: crosshair; z-index:2; }
+.crop-overlay-hint { position:absolute; top:0; left:0; right:0; padding:6px 8px; background:rgba(0,0,0,0.35); color:#fff; font-size:12px; z-index:3; pointer-events:none; }
+.crop-metrics-bar { position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.55); color:#fff; font-size:11px; padding:4px 6px; display:flex; justify-content:space-between; gap:8px; z-index:3; pointer-events:none; }
+.crop-metrics-bar span.bad { color:#ff6b6b; font-weight:600; }
+.crop-metrics-bar span.good { color:#51cf66; font-weight:600; }
+
 .primary-badge {
     position: absolute;
     bottom: 2px;
@@ -191,6 +209,41 @@
                 <p class="mb-2">
                     <i class="bi bi-tag"></i>
                     {{ product.category.name if product.category else 'Sin categoría' }}
+
+            <!-- Modal de recorte de imagen -->
+            <div class="modal fade" id="cropImageModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Recortar Imagen</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="cropStatus" class="mb-2 small text-muted">Selecciona el área relevante (pecho / tirantes)</div>
+                            <div class="crop-canvas-wrap" id="cropWrap">
+                                <img id="cropBaseImage" src="" alt="Imagen a recortar" style="max-width:100%;" />
+                                <canvas id="cropCanvasModal"></canvas>
+                                <div class="crop-overlay-hint">Arrastra para definir el recorte</div>
+                                <div id="cropMetrics" class="crop-metrics-bar" style="display:none;">
+                                    <div>Ancho: <span id="cropMetricW">-</span></div>
+                                    <div>Alto: <span id="cropMetricH">-</span></div>
+                                    <div>Calidad: <span id="cropMetricQuality">-</span></div>
+                                </div>
+                            </div>
+                            <div class="mt-2" id="cropInfoModal">Sin recorte</div>
+                        </div>
+                        <div class="modal-footer d-flex justify-content-between">
+                            <div>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearCropSelection()">Limpiar</button>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-danger crop-action-btn" onclick="cancelCrop()" title="Cancelar"><i class="bi bi-x-lg"></i></button>
+                                <button type="button" class="btn btn-success crop-action-btn" onclick="saveCropSelection()" title="Guardar"><i class="bi bi-check-lg"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
                 </p>
                 {% if product.sku %}
                     <p class="mb-0"><small>SKU: {{ product.sku }}</small></p>
@@ -367,15 +420,53 @@
                         <i class="bi bi-plus-circle"></i> Agregar Imágenes
                     </button>
                 </div>
+                                                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                                                    <div id="qaScorePanel" class="small" style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;padding:6px 10px;min-width:320px;">
+                                                                        <strong>Scores (aprón)</strong>
+                                                                        <div id="qaBaselineScore" class="mt-1 text-muted" style="font-size:0.85rem;">Base: --</div>
+                                                                        <div id="qaCurrentScore" class="mt-1">Actual: Cargando...</div>
+                                                                        <div id="qaImprovement" class="text-muted" style="font-size:0.8rem;"></div>
+                                                                        <div id="qaDelta" class="text-muted" style="font-size:0.75rem;"></div>
+                                                                    </div>
+                                                                    <div class="d-flex gap-2">
+                                                                        <button id="qaScoreBtn" class="btn btn-outline-secondary btn-sm" onclick="qaScoreSelectedImage(true)">
+                                                                            <i class="bi bi-arrow-repeat"></i> Refrescar
+                                                                        </button>
+                                                                        <button class="btn btn-outline-danger btn-sm" onclick="resetBaseline()" title="Reinicia baseline para la imagen activa">
+                                                                            <i class="bi bi-x-circle"></i> Reset base
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                <!-- Caja para nuevos valores posteriores al recorte (sin tocar baseline) -->
+                                                                <div id="qaNewScoreBox" class="small mb-3" style="width:240px;min-height:110px;border:1px solid #dc3545;border-radius:6px;padding:6px 10px;background:#fff5f5;">
+                                                                    <strong>Nuevos scores tras recorte</strong>
+                                                                    <div id="qaNewScoreContent" class="mt-1 text-muted" style="font-size:0.8rem;">(Pendiente de recorte)</div>
+                                                                    <div id="qaNewDiff" class="text-muted" style="font-size:0.75rem;"></div>
+                                                                    <div id="qaNewVsBase" class="text-muted" style="font-size:0.7rem;"></div>
+                                                                </div>
 
                 {% if images %}
                     <!-- Imagen principal -->
                     <div class="primary-image-container">
                         {% set primary_img = images|selectattr('is_primary', 'equalto', true)|first or images[0] %}
-                        <img id="primaryImage"
-                             src="{{ primary_img.display_url }}"
-                             alt="{{ product.name }}"
-                             class="primary-image">
+                        <div class="primary-image-wrapper">
+                       <img id="primaryImage"
+                           src="{{ primary_img.display_url }}"
+                           alt="{{ product.name }}"
+                           data-image-id="{{ primary_img.id }}"
+                           data-image-url="{{ primary_img.display_url }}"
+                           data-crop-x="{{ primary_img.crop_x or 0 }}"
+                           data-crop-y="{{ primary_img.crop_y or 0 }}"
+                           data-crop-w="{{ primary_img.crop_w or 0 }}"
+                           data-crop-h="{{ primary_img.crop_h or 0 }}"
+                           class="primary-image">
+                       <div id="primaryCropOverlay" class="primary-crop-overlay"></div>
+                            <div class="primary-image-actions">
+                                <button type="button" id="mainCropBtn" class="btn btn-sm btn-primary" onclick="openCropModal('{{ primary_img.id }}', '{{ primary_img.display_url }}')" title="Recortar imagen seleccionada">
+                                    <i class="bi bi-scissors"></i> Recortar
+                                </button>
+                            </div>
+                        </div>
 
                         <div class="mt-2">
                             <small class="text-muted">
@@ -390,11 +481,16 @@
                     <!-- Miniaturas -->
                     {% if images|length > 1 %}
                     <div class="thumbnail-grid">
-                        {% for image in images %}
-                        <div class="thumbnail {% if image.is_primary %}primary{% endif %} {% if loop.index0 == 0 %}active{% endif %}"
-                             data-image-url="{{ image.display_url }}"
-                             data-filename="{{ image.original_filename or image.filename }}"
-                             data-filesize="{{ image.file_size or 0 }}">>
+                    {% for image in images %}
+                    <div class="thumbnail {% if image.is_primary %}primary{% endif %} {% if loop.index0 == 0 %}active{% endif %}"
+                        data-image-url="{{ image.display_url }}"
+                        data-filename="{{ image.original_filename or image.filename }}"
+                        data-filesize="{{ image.file_size or 0 }}"
+                        data-image-id="{{ image.id }}"
+                        data-crop-x="{{ image.crop_x or 0 }}"
+                        data-crop-y="{{ image.crop_y or 0 }}"
+                        data-crop-w="{{ image.crop_w or 0 }}"
+                        data-crop-h="{{ image.crop_h or 0 }}">
                             <img src="{{ image.thumbnail_url }}"
                                  alt="Imagen {{ loop.index }}">
 
@@ -415,8 +511,11 @@
                                 </button>
                             </div>
 
-                            {% if image.is_primary %}
-                                <div class="primary-badge">Principal</div>
+                            <div class="primary-badge" style="background: rgba(0,0,0,0.55);">
+                                {% if image.is_primary %}P{% else %}{{ loop.index }}{% endif %}
+                            </div>
+                            {% if image.has_crop() %}
+                              <div style="position:absolute; top:2px; left:2px; background:rgba(25,135,84,0.9); color:#fff; padding:1px 4px; font-size:9px; border-radius:3px;">Crop</div>
                             {% endif %}
                         </div>
                         {% endfor %}
@@ -549,7 +648,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function changeMainImage(src, filename, fileSize, thumbnail) {
     // Cambiar imagen principal
-    document.getElementById('primaryImage').src = src;
+    const primaryImg = document.getElementById('primaryImage');
+    primaryImg.src = src;
+    primaryImg.dataset.imageId = thumbnail.getAttribute('data-image-id');
+    primaryImg.dataset.cropX = thumbnail.getAttribute('data-crop-x');
+    primaryImg.dataset.cropY = thumbnail.getAttribute('data-crop-y');
+    primaryImg.dataset.cropW = thumbnail.getAttribute('data-crop-w');
+    primaryImg.dataset.cropH = thumbnail.getAttribute('data-crop-h');
+    // Actualizar botón de recorte para apuntar a la nueva imagen seleccionada
+    const cropBtn = document.getElementById('mainCropBtn');
+    cropBtn.onclick = function(){ openCropModal(primaryImg.dataset.imageId, src); };
+    // Esperar a que cargue (si cambia) y actualizar overlay
+    if(primaryImg.complete){ updatePrimaryCropOverlay(); } else { primaryImg.onload = ()=>{ updatePrimaryCropOverlay(); }; }
 
     // Actualizar información
     let infoText = filename;
@@ -563,6 +673,79 @@ function changeMainImage(src, filename, fileSize, thumbnail) {
     // Agregar clase active a la seleccionada
     thumbnail.classList.add('active');
 }
+
+let lastPositive = null, lastNegative = null;
+const baselineScores = {}; // imageUrl -> {p,n,diff}
+
+function resetBaseline(){
+    const active = document.querySelector('.thumbnail.active');
+    if(!active){ return; }
+    delete baselineScores[active.dataset.imageUrl];
+    document.getElementById('qaBaselineScore').textContent = 'Base: --';
+    document.getElementById('qaImprovement').textContent = '';
+    qaScoreSelectedImage(true);
+}
+
+async function qaScoreSelectedImage(force=false){
+    const active = document.querySelector('.thumbnail.active');
+    // Fallback: usar imagen principal si no hay miniaturas (caso de una sola imagen)
+    let imageUrl = null; let imageId = null;
+    if(active){
+        imageUrl = active.dataset.imageUrl;
+        imageId = active.dataset.imageId;
+    } else {
+        const prim = document.getElementById('primaryImage');
+        if(prim){ imageUrl = prim.getAttribute('src'); imageId = prim.dataset.imageId; }
+    }
+    const currentEl = document.getElementById('qaCurrentScore');
+    if(!imageUrl){ currentEl.textContent='Actual: (sin imagen)'; return; }
+    currentEl.textContent = 'Actual: Calculando...';
+    try {
+        const resp = await fetch('/embeddings/api/qa-score', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ image_url: imageUrl, product_id: '{{ product.id }}' }) });
+        const data = await resp.json();
+        if(!data.ok){ currentEl.textContent = 'Actual: Error'; return; }
+        const p = data.positive_score, n = data.negative_score;
+        const diff = p - n;
+        const diffPct = ((diff) * 100).toFixed(1);
+        currentEl.innerHTML = `Actual: <span title='${data.positive_label}'>Full <strong>${p.toFixed(3)}</strong></span> | <span title='${data.negative_label}'>Half <strong>${n.toFixed(3)}</strong></span>`;
+
+        // Baseline
+        const baseEl = document.getElementById('qaBaselineScore');
+        if(!baselineScores[imageUrl]){
+            baselineScores[imageUrl] = { p, n, diff, imageId };
+            baseEl.innerHTML = `Base: Full ${p.toFixed(3)} | Half ${n.toFixed(3)} (Δ ${diff.toFixed(3)})`;
+            document.getElementById('qaImprovement').textContent = 'Mejora diff: 0.000';
+        } else {
+            const b = baselineScores[imageUrl];
+            baseEl.innerHTML = `Base: Full ${b.p.toFixed(3)} | Half ${b.n.toFixed(3)} (Δ ${b.diff.toFixed(3)})`;
+            const improvement = diff - b.diff;
+            document.getElementById('qaImprovement').textContent = `Mejora diff: ${improvement.toFixed(3)}`;
+        }
+
+        // Tendencia (última medición inmediata anterior para misma imagen)
+        const deltaEl = document.getElementById('qaDelta');
+        let trend = '';
+        if(lastPositive !== null && lastNegative !== null){
+            const prevDiff = lastPositive - lastNegative;
+            const deltaDiff = diff - prevDiff;
+            const arrow = deltaDiff > 0 ? '▲' : (deltaDiff < 0 ? '▼' : '→');
+            trend = `Δ vs anterior: ${arrow} ${deltaDiff.toFixed(3)}`;
+        }
+        deltaEl.textContent = `Ventaja Full-Half actual: ${diff.toFixed(3)} (${diffPct}%) ${trend}`;
+        lastPositive = p; lastNegative = n;
+    } catch(e){ currentEl.textContent = 'Actual: Error red'; }
+}
+
+// Auto cálculo inicial y al cambiar miniatura
+document.addEventListener('DOMContentLoaded', ()=>{
+    qaScoreSelectedImage();
+    document.querySelectorAll('.thumbnail').forEach(t => {
+        t.addEventListener('click', ()=>{ qaScoreSelectedImage(); });
+    });
+    // Mostrar overlay inicial si hay recorte
+    const prim = document.getElementById('primaryImage');
+    if(prim){ if(prim.complete){ updatePrimaryCropOverlay(); } else { prim.onload = ()=> updatePrimaryCropOverlay(); } }
+});
 
 function setPrimaryImage(imageId) {
     fetch(`/products/{{ product.id }}/images/${imageId}/set-primary`, {
@@ -697,5 +880,183 @@ function generateEmbeddings() {
         alert('Error al generar embeddings');
     });
 }
+
+// --- Lógica de recorte en modal ---
+let cropModal = null;
+let cropImageId = null;
+let cropCanvas, cropCtx, cropImgElem;
+let cStartX=0, cStartY=0, cCurX=0, cCurY=0, cDragging=false, cHasRect=false;
+
+function openCropModal(imageId, imageUrl){
+    cropImageId = imageId;
+    if(!cropModal){ cropModal = new bootstrap.Modal(document.getElementById('cropImageModal')); }
+    cropImgElem = document.getElementById('cropBaseImage');
+    cropImgElem.src = imageUrl;
+    // Inicializar luego de que el modal esté visible para evitar clientWidth=0
+    const modalEl = document.getElementById('cropImageModal');
+    const onShown = () => {
+        cropImgElem.onload = () => { initCropCanvas(); };
+        if (cropImgElem.complete) { initCropCanvas(); }
+        modalEl.removeEventListener('shown.bs.modal', onShown);
+    };
+    modalEl.addEventListener('shown.bs.modal', onShown);
+    document.getElementById('cropStatus').textContent = 'Selecciona el área y confirma con el tilde verde.';
+    cropModal.show();
+}
+
+function initCropCanvas(){
+    cropCanvas = document.getElementById('cropCanvasModal');
+    cropCtx = cropCanvas.getContext('2d');
+    // Usar dimensiones naturales para mayor precisión
+    const displayW = cropImgElem.clientWidth;
+    const displayH = cropImgElem.clientHeight;
+    cropCanvas.width = displayW;
+    cropCanvas.height = displayH;
+    cropCanvas.style.width = displayW+'px';
+    cropCanvas.style.height = displayH+'px';
+    cropCanvas.style.pointerEvents = 'auto';
+    cropCanvas.style.touchAction = 'none';
+    attachCropEvents();
+    redrawCrop();
+}
+
+function attachCropEvents(){
+        cropCanvas.addEventListener('mousedown', (ev)=>{ const p=getRel(ev); cStartX=p.x; cStartY=p.y; cDragging=true; cHasRect=false; ev.preventDefault(); });
+        cropCanvas.addEventListener('mousemove', (ev)=>{ if(!cDragging) return; const p=getRel(ev); cCurX=p.x; cCurY=p.y; cHasRect=true; redrawCrop(); ev.preventDefault(); });
+        cropCanvas.addEventListener('mouseleave', ()=>{ cDragging=false; });
+        // Soporte táctil básico
+        cropCanvas.addEventListener('touchstart', (ev)=>{ const t=ev.touches[0]; const p=getRel(t); cStartX=p.x; cStartY=p.y; cDragging=true; cHasRect=false; ev.preventDefault(); });
+        cropCanvas.addEventListener('touchmove', (ev)=>{ if(!cDragging) return; const t=ev.touches[0]; const p=getRel(t); cCurX=p.x; cCurY=p.y; cHasRect=true; redrawCrop(); ev.preventDefault(); });
+        cropCanvas.addEventListener('touchend', ()=>{ cDragging=false; });
+    window.addEventListener('mouseup', ()=>{ cDragging=false; });
+}
+
+function getRel(ev){ const r=cropCanvas.getBoundingClientRect(); return {x:ev.clientX-r.left, y:ev.clientY-r.top}; }
+
+function redrawCrop(){
+    cropCtx.clearRect(0,0,cropCanvas.width,cropCanvas.height);
+    if(cHasRect){
+        const x=Math.min(cStartX,cCurX); const y=Math.min(cStartY,cCurY); const w=Math.abs(cCurX-cStartX); const h=Math.abs(cCurY-cStartY);
+        cropCtx.strokeStyle='#00d1ff'; cropCtx.lineWidth=2; cropCtx.strokeRect(x,y,w,h);
+        cropCtx.fillStyle='rgba(0,209,255,0.15)'; cropCtx.fillRect(x,y,w,h);
+        document.getElementById('cropInfoModal').textContent=`Recorte: x=${Math.round(x)}, y=${Math.round(y)}, w=${Math.round(w)}, h=${Math.round(h)}`;
+        updateCropMetrics(w,h);
+    }
+}
+
+function clearCropSelection(){ cHasRect=false; cropCtx.clearRect(0,0,cropCanvas.width,cropCanvas.height); document.getElementById('cropInfoModal').textContent='Sin recorte'; }
+function cancelCrop(){ clearCropSelection(); cropModal.hide(); }
+
+async function saveCropSelection(){
+    if(!cHasRect){ alert('Define un recorte primero'); return; }
+    const xDisp=Math.min(cStartX,cCurX), yDisp=Math.min(cStartY,cCurY), wDisp=Math.abs(cCurX-cStartX), hDisp=Math.abs(cCurY-cStartY);
+    // Escalar a dimensiones reales
+    const scaleX = cropImgElem.naturalWidth / cropCanvas.width;
+    const scaleY = cropImgElem.naturalHeight / cropCanvas.height;
+    const x = Math.round(xDisp*scaleX), y=Math.round(yDisp*scaleY), w=Math.round(wDisp*scaleX), h=Math.round(hDisp*scaleY);
+    document.getElementById('cropStatus').textContent='Procesando...';
+    try{
+        const resp = await fetch(`/images/${cropImageId}/crop`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({x,y,w,h}) });
+        const data = await resp.json();
+        if(!data.ok){ document.getElementById('cropStatus').textContent='Error: '+(data.error||'desconocido'); return; }
+        document.getElementById('cropStatus').textContent='✅ Embedding regenerado';
+        // Ocultar modal sin recargar para preservar baseline original
+        setTimeout(()=>{ cropModal.hide(); }, 400);
+        // Calcular nuevos scores sin tocar baseline
+        const activeThumb = document.querySelector('.thumbnail.active');
+        const newBoxContent = document.getElementById('qaNewScoreContent');
+        newBoxContent.textContent = 'Calculando nuevos scores...';
+        const primImg = document.getElementById('primaryImage');
+        const imageUrl = primImg ? primImg.getAttribute('src') : (activeThumb ? activeThumb.dataset.imageUrl : null);
+        const baseKey = activeThumb ? activeThumb.dataset.imageUrl : imageUrl;
+        if(imageUrl){
+            setTimeout(async ()=>{
+                try {
+                    const r = await fetch('/embeddings/api/qa-score', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ image_url: imageUrl, product_id: '{{ product.id }}' }) });
+                    const jd = await r.json();
+                    if(!jd.ok){ newBoxContent.textContent='Error al calcular'; return; }
+                    const p=jd.positive_score, n=jd.negative_score, diff=p-n;
+                    newBoxContent.innerHTML = `Full <strong>${p.toFixed(3)}</strong> | Half <strong>${n.toFixed(3)}</strong>`;
+                    document.getElementById('qaNewDiff').textContent = `Ventaja nueva: ${diff.toFixed(3)} (${(diff*100).toFixed(1)}%)`;
+                    const base = baselineScores[baseKey];
+                    if(base){
+                        const mejora = diff - base.diff;
+                        document.getElementById('qaNewVsBase').textContent = `Mejora vs base: ${mejora.toFixed(3)}`;
+                    } else {
+                        document.getElementById('qaNewVsBase').textContent = '(Sin baseline almacenado)';
+                    }
+                } catch(err){ newBoxContent.textContent='Error red'; }
+            }, 600);
+        } else { newBoxContent.textContent='(Sin imagen)'; }
+                // Actualizar overlay con nuevos datos de recorte (data ya guardada, pero necesitamos fetch de la imagen actualizada?)
+                // Guardamos coords en dataset para reflejar visualmente sin reload
+                const prim = document.getElementById('primaryImage');
+                prim.dataset.cropX = x;
+                prim.dataset.cropY = y;
+                prim.dataset.cropW = w;
+                prim.dataset.cropH = h;
+                // Tras recalcular scores mostramos overlay
+                setTimeout(()=>{ updatePrimaryCropOverlay(); }, 800);
+    }catch(e){ document.getElementById('cropStatus').textContent='Error de red: '+e; }
+}
+
+// --- Métricas dinámicas de recorte ---
+function updateCropMetrics(wDisp, hDisp){
+    const metricsBar = document.getElementById('cropMetrics');
+    if(!metricsBar) return;
+    metricsBar.style.display='flex';
+    const cw = cropCanvas.width; const ch = cropCanvas.height;
+    const relW = wDisp / cw; const relH = hDisp / ch;
+    const pctW = (relW*100).toFixed(1)+'%';
+    const pctH = (relH*100).toFixed(1)+'%';
+    const wSpan = document.getElementById('cropMetricW');
+    const hSpan = document.getElementById('cropMetricH');
+    const qSpan = document.getElementById('cropMetricQuality');
+
+    // Heurísticas: queremos ancho ~40-65% y alto >=60%; si objetivo es enfatizar torso completo, alto >=70% es ideal.
+    let qualityTags = [];
+    function cls(span, good){ span.classList.remove('good','bad'); span.classList.add(good?'good':'bad'); }
+
+    const goodW = relW>=0.38 && relW<=0.68; // dentro de rango recomendado
+    const goodH = relH>=0.60; // mínimo aceptable
+    wSpan.textContent = pctW; cls(wSpan, goodW);
+    hSpan.textContent = pctH; cls(hSpan, goodH);
+
+    if(!goodW){
+        if(relW<0.38) qualityTags.push('ancho muy estrecho (riesgo perder contexto)');
+        else if(relW>0.68) qualityTags.push('ancho demasiado grande (incluye ruido)');
+    }
+    if(!goodH){ qualityTags.push('altura insuficiente (necesita más torso)'); }
+
+    if(qualityTags.length===0){ qSpan.textContent='Óptimo'; qSpan.className='good'; }
+    else { qSpan.textContent = qualityTags[0]; qSpan.className='bad'; }
+}
+
+        function updatePrimaryCropOverlay(){
+            const img = document.getElementById('primaryImage');
+            const box = document.getElementById('primaryCropOverlay');
+            if(!img || !box) return;
+            const cx = parseInt(img.dataset.cropX||'0');
+            const cy = parseInt(img.dataset.cropY||'0');
+            const cw = parseInt(img.dataset.cropW||'0');
+            const ch = parseInt(img.dataset.cropH||'0');
+            if(cw>0 && ch>0){
+                const dispW = img.clientWidth;
+                const dispH = img.clientHeight;
+                const natW = img.naturalWidth;
+                const natH = img.naturalHeight;
+                if(natW>0 && natH>0){
+                    const scaleX = dispW / natW;
+                    const scaleY = dispH / natH;
+                    box.style.left = (cx * scaleX)+'px';
+                    box.style.top = (cy * scaleY)+'px';
+                    box.style.width = (cw * scaleX)+'px';
+                    box.style.height = (ch * scaleY)+'px';
+                    box.style.display='block';
+                }
+            } else {
+                box.style.display='none';
+            }
+        }
 </script>
 {% endblock %}

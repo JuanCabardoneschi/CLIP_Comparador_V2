@@ -1,0 +1,577 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Dataset de Calibración{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('calibration.index') }}">Calibración</a></li>
+                    <li class="breadcrumb-item active">Dataset</li>
+                </ol>
+            </nav>
+
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="bi bi-images me-2"></i>Dataset de Calibración</h2>
+                    <p class="text-muted mb-0">{{images|length}} imágenes etiquetadas · Referencias del catálogo</p>
+                </div>
+                <div>
+                    <button class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#importCatalogModal">
+                        <i class="bi bi-plus-circle-fill"></i> Agregar Imágenes
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="exportDataset()">
+                        <i class="bi bi-download"></i> Exportar
+                    </button>
+                </div>
+            </div>
+            <hr>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <input type="text" class="form-control" id="searchInput" placeholder="🔍 Buscar por nombre o categoría...">
+        </div>
+        <div class="col-md-3">
+            <select class="form-select" id="filterCaseType">
+                <option value="">Todos los tipos</option>
+                <option value="general">General</option>
+                <option value="single">Categoría única</option>
+                <option value="multi">Múltiples categorías</option>
+                <option value="edge_case">Casos difíciles</option>
+                <option value="problematic">Problemáticos</option>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <select class="form-select" id="filterStatus">
+                <option value="all">Activos e inactivos</option>
+                <option value="active" selected>Solo activos</option>
+                <option value="inactive">Solo inactivos</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-outline-danger w-100" onclick="deleteSelected()" id="deleteBtn" disabled>
+                <i class="bi bi-trash"></i> Eliminar
+            </button>
+        </div>
+    </div>
+
+    <!-- Grid de Imágenes -->
+    {% if images %}
+    <div class="row g-3" id="imagesGrid">
+        {% for img in images %}
+        <div class="col-md-3 image-card"
+             data-case-type="{{ img.case_type }}"
+             data-status="{{ 'active' if img.is_active else 'inactive' }}"
+             data-categories="{{ img.expected_categories|join(',') }}"
+             data-filename="{{ img.filename }}">
+            <div class="card h-100 shadow-sm {% if not img.is_active %}opacity-50{% endif %}">
+                <!-- Checkbox de selección -->
+                <div class="position-absolute top-0 start-0 p-2">
+                    <input type="checkbox" class="form-check-input bg-white shadow select-checkbox"
+                           data-image-id="{{ img.id }}" style="width: 20px; height: 20px;">
+                </div>
+
+                <!-- Badge de estado -->
+                <div class="position-absolute top-0 end-0 p-2">
+                    {% if img.is_active %}
+                    <span class="badge bg-success">✓ Activo</span>
+                    {% else %}
+                    <span class="badge bg-secondary">✗ Inactivo</span>
+                    {% endif %}
+                </div>
+
+                <!-- Imagen -->
+             <img src="{{ img.cloudinary_url }}" class="card-img-top" alt="{{ img.display_name }}"
+                     style="height: 200px; object-fit: cover; cursor: pointer;"
+                     onclick="showImageModal('{{ img.id }}')">
+
+                <!-- Body -->
+                <div class="card-body p-2">
+                    <small class="text-muted d-block text-truncate fw-bold" title="{{ img.display_name }}">
+                        {{ img.display_name }}
+                    </small>
+
+                    <!-- Tipo de caso -->
+                    <div class="mt-2">
+                        <span class="badge bg-secondary" style="font-size: 0.7rem;">
+                            {{ img.case_type|replace('_', ' ')|title }}
+                        </span>
+                    </div>
+
+                    <!-- Categorías esperadas -->
+                    <div class="mt-2" style="max-height: 60px; overflow-y: auto;">
+                        {% for cat in img.expected_categories %}
+                        <span class="badge bg-info text-white mb-1" style="font-size: 0.65rem;">{{ cat }}</span>
+                        {% endfor %}
+                    </div>
+
+                    <!-- Notas -->
+                    {% if img.notes %}
+                    <div class="mt-2">
+                        <small class="text-muted fst-italic" style="font-size: 0.7rem;">
+                            {{ img.notes[:60] }}{% if img.notes|length > 60 %}...{% endif %}
+                        </small>
+                    </div>
+                    {% endif %}
+
+                    <!-- Fecha -->
+                    <div class="mt-2">
+                        <small class="text-muted" style="font-size: 0.65rem;">
+                            <i class="bi bi-calendar"></i> {{ img.created_at.strftime('%d/%m/%Y') }}
+                        </small>
+                    </div>
+
+                    <!-- Acciones -->
+                    <div class="d-grid gap-1 mt-2">
+                        <button class="btn btn-sm btn-outline-primary" onclick="editImage('{{ img.id }}')">
+                            <i class="bi bi-pencil"></i> Editar
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteImage('{{ img.id }}')">
+                            <i class="bi bi-trash"></i> Eliminar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-info text-center">
+                <h5><i class="bi bi-info-circle me-2"></i>No hay imágenes en el dataset</h5>
+                <p class="mb-0">Comienza agregando imágenes del catálogo para calibrar el sistema.</p>
+                <button class="btn btn-primary mt-3" data-bs-toggle="modal" data-bs-target="#importCatalogModal">
+                    <i class="bi bi-plus-circle-fill"></i> Agregar Primera Imagen
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal Importar desde Catálogo -->
+<div class="modal fade" id="importCatalogModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-collection me-2"></i>Importar Imágenes del Catálogo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row mb-3">
+          <div class="col-md-4">
+            <input id="catalogSearch" type="text" class="form-control" placeholder="🔍 Buscar producto o filename..." />
+          </div>
+          <div class="col-md-2">
+            <select id="catalogCaseType" class="form-select">
+              <option value="general">General</option>
+              <option value="single">Categoría única</option>
+              <option value="multi">Múltiples categorías</option>
+              <option value="edge_case">Edge case</option>
+              <option value="problematic">Problemático</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Categorías esperadas (seleccioná las que se ven en la imagen):</label>
+            <select multiple id="catalogCategories" class="form-select" size="5" style="height: 120px;">
+              {% for cat in categories %}
+                <option value="{{ cat.name }}">{{ cat.name }}</option>
+              {% endfor %}
+            </select>
+            <small class="text-muted"><i class="bi bi-info-circle"></i> Mantené presionado Ctrl/Cmd y hacé click para seleccionar múltiples</small>
+            <div id="selectedCategoriesDisplay" class="mt-2"></div>
+          </div>
+        </div>
+        <div class="row mb-3">
+          <div class="col-12">
+            <button id="importSelectedBtn" class="btn btn-success w-100" disabled>
+              <i class="bi bi-cloud-arrow-down"></i> Importar Imagen Seleccionada
+            </button>
+          </div>
+        </div>
+        <div class="row" id="catalogImagesGrid"></div>
+        <div class="text-center mt-3">
+          <button class="btn btn-outline-secondary" id="loadMoreBtn">Cargar más</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Detalle/Edición -->
+<div class="modal fade" id="imageModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Editar Imagen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <div class="text-center">
+                    <div class="spinner-border" role="status"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Filtros en tiempo real
+const searchInput = document.getElementById('searchInput');
+const filterCaseType = document.getElementById('filterCaseType');
+const filterStatus = document.getElementById('filterStatus');
+const imageCards = document.querySelectorAll('.image-card');
+
+function applyFilters() {
+    const searchTerm = searchInput.value.toLowerCase();
+    const caseType = filterCaseType.value;
+    const status = filterStatus.value;
+
+    imageCards.forEach(card => {
+        const filename = card.dataset.filename.toLowerCase();
+        const categories = card.dataset.categories.toLowerCase();
+        const cardCaseType = card.dataset.caseType;
+        const cardStatus = card.dataset.status;
+
+        const matchesSearch = filename.includes(searchTerm) || categories.includes(searchTerm);
+        const matchesCaseType = !caseType || cardCaseType === caseType;
+        const matchesStatus = status === 'all' ||
+                             (status === 'active' && cardStatus === 'active') ||
+                             (status === 'inactive' && cardStatus === 'inactive');
+
+        if (matchesSearch && matchesCaseType && matchesStatus) {
+            card.style.display = '';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+}
+
+searchInput.addEventListener('input', applyFilters);
+filterCaseType.addEventListener('change', applyFilters);
+filterStatus.addEventListener('change', applyFilters);
+
+// Selección múltiple
+const checkboxes = document.querySelectorAll('.select-checkbox');
+const deleteBtn = document.getElementById('deleteBtn');
+
+checkboxes.forEach(checkbox => {
+    checkbox.addEventListener('change', updateDeleteButton);
+});
+
+function updateDeleteButton() {
+    const selectedCount = document.querySelectorAll('.select-checkbox:checked').length;
+    deleteBtn.disabled = selectedCount === 0;
+    deleteBtn.innerHTML = selectedCount > 0
+        ? `<i class="bi bi-trash"></i> Eliminar (${selectedCount})`
+        : '<i class="bi bi-trash"></i> Eliminar';
+}
+
+// Mostrar modal de imagen
+async function showImageModal(imageId) {
+    const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+    const modalBody = document.getElementById('modalBody');
+
+    modal.show();
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div></div>';
+
+    try {
+        const response = await fetch(`/admin/calibration/image/${imageId}`);
+        const data = await response.json();
+
+        if (data.success) {
+            renderImageModal(data.image);
+        } else {
+            modalBody.innerHTML = '<div class="alert alert-danger">Error cargando imagen</div>';
+        }
+    } catch (error) {
+        modalBody.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    }
+}
+
+function renderImageModal(image) {
+    const modalBody = document.getElementById('modalBody');
+
+    modalBody.innerHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <img src="${image.image_url}" class="img-fluid rounded" alt="${image.filename}">
+            </div>
+            <div class="col-md-6">
+                <h6>Categorías Esperadas:</h6>
+                <div id="editCategories" class="mb-3">
+                    ${image.expected_categories.map(cat => `
+                        <span class="badge bg-info me-1 mb-1">${cat}</span>
+                    `).join('')}
+                </div>
+
+                <h6>Tipo de Caso:</h6>
+                <p>${image.case_type.replace('_', ' ')}</p>
+
+                <h6>Notas:</h6>
+                <p class="text-muted">${image.notes || '(sin notas)'}</p>
+
+                <h6>Fecha:</h6>
+                <p>${new Date(image.created_at).toLocaleDateString('es-AR')}</p>
+            </div>
+        </div>
+    `;
+}
+
+// Editar imagen
+function editImage(imageId) {
+    alert('Funcionalidad en desarrollo. Por ahora puedes eliminar y volver a subir.');
+}
+
+// Eliminar imagen individual
+async function deleteImage(imageId) {
+    if (!confirm('¿Eliminar esta imagen del dataset?')) return;
+
+    try {
+        const response = await fetch(`/admin/calibration/image/${imageId}`, {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('✅ Imagen eliminada');
+            location.reload();
+        } else {
+            alert('❌ Error: ' + data.error);
+        }
+    } catch (error) {
+        alert('❌ Error: ' + error.message);
+    }
+}
+
+// Eliminar seleccionadas
+async function deleteSelected() {
+    const selected = Array.from(document.querySelectorAll('.select-checkbox:checked'))
+                          .map(cb => cb.dataset.imageId);
+
+    if (selected.length === 0) return;
+
+    if (!confirm(`¿Eliminar ${selected.length} imágenes seleccionadas del dataset?`)) return;
+
+    let successCount = 0;
+
+    for (const imageId of selected) {
+        try {
+            const response = await fetch(`/admin/calibration/image/${imageId}`, {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+            if (data.success) successCount++;
+        } catch (error) {
+            console.error('Error eliminando imagen:', imageId, error);
+        }
+    }
+
+    alert(`✅ ${successCount} de ${selected.length} imágenes eliminadas`);
+    location.reload();
+}
+
+// Exportar dataset
+async function exportDataset() {
+    try {
+        const response = await fetch('/admin/calibration/export');
+        const data = await response.json();
+
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `dataset_calibration_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+
+        alert('✅ Dataset exportado');
+    } catch (error) {
+        alert('❌ Error exportando: ' + error.message);
+    }
+}
+
+// --- Catálogo: listar e importar ---
+let catalogPage = 1;
+let catalogLoading = false;
+// Permitir selección múltiple
+let catalogSelectedIds = new Set();
+const grid = document.getElementById('catalogImagesGrid');
+const btnLoadMore = () => document.getElementById('loadMoreBtn');
+const btnImport = () => document.getElementById('importSelectedBtn');
+
+function getSelectedCategories() {
+  const sel = document.getElementById('catalogCategories');
+  return Array.from(sel.selectedOptions).map(o => o.value);
+}
+
+async function loadCatalogImages(reset=false) {
+  if (catalogLoading) return;
+  catalogLoading = true;
+  if (reset) { catalogPage = 1; grid.innerHTML = ''; }
+
+    const q = encodeURIComponent(document.getElementById('catalogSearch').value || '');
+  try {
+    const res = await fetch(`/admin/calibration/catalog-images?q=${q}&page=${catalogPage}&per_page=40`);
+    const data = await res.json();
+    if (!data.success) throw new Error('No se pudo cargar el catálogo');
+
+    data.images.forEach(img => {
+      const col = document.createElement('div');
+      col.className = 'col-md-3 mb-3';
+      col.innerHTML = `
+                <div class="card h-100 shadow-sm catalog-card ${catalogSelectedIds.has(img.id) ? 'border-primary border-3 selected' : ''}" data-id="${img.id}">
+          <img src="${img.thumbnail_url}" class="card-img-top" style="height: 180px; object-fit: cover;">
+          <div class="card-body p-2">
+            <small class="text-truncate d-block" title="${img.product_name || img.filename}">${img.product_name || img.filename}</small>
+                        <button class="btn btn-sm btn-outline-primary w-100 mt-2 select-btn">Seleccionar</button>
+          </div>
+        </div>`;
+            // Permitir seleccionar tanto con el botón como haciendo click en la tarjeta (toggle)
+            const selectBtn = col.querySelector('.select-btn');
+            if (catalogSelectedIds.has(img.id)) {
+                selectBtn.classList.remove('btn-outline-primary');
+                selectBtn.classList.add('btn-primary');
+                selectBtn.textContent = 'Seleccionada';
+            }
+            selectBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectCatalogImage(img.id, col);
+            });
+            col.querySelector('.catalog-card').addEventListener('click', () => selectCatalogImage(img.id, col));
+      grid.appendChild(col);
+    });
+
+    catalogPage += 1;
+    catalogLoading = false;
+  } catch (e) {
+    catalogLoading = false;
+    alert('❌ Error cargando catálogo: ' + e.message);
+  }
+}
+
+function selectCatalogImage(id, colEl) {
+    const card = colEl.querySelector('.catalog-card');
+    const selectBtn = colEl.querySelector('.select-btn');
+
+    // Toggle selección
+    if (catalogSelectedIds.has(id)) {
+        catalogSelectedIds.delete(id);
+        card.classList.remove('border-primary', 'border-3', 'selected');
+        if (selectBtn) {
+            selectBtn.classList.remove('btn-primary');
+            selectBtn.classList.add('btn-outline-primary');
+            selectBtn.textContent = 'Seleccionar';
+        }
+    } else {
+        catalogSelectedIds.add(id);
+        card.classList.add('border-primary', 'border-3', 'selected');
+        if (selectBtn) {
+            selectBtn.classList.remove('btn-outline-primary');
+            selectBtn.classList.add('btn-primary');
+            selectBtn.textContent = 'Seleccionada';
+        }
+    }
+
+    updateImportButtonState();
+}
+
+function updateImportButtonState() {
+    const categories = getSelectedCategories();
+    const btn = btnImport();
+    const count = catalogSelectedIds.size;
+    btn.disabled = !(count > 0 && categories.length > 0);
+    const label = count === 1 ? 'Importar 1 imagen seleccionada' : `Importar ${count} imágenes seleccionadas`;
+    btn.innerHTML = `<i class="bi bi-cloud-arrow-down"></i> ${label}`;
+}
+
+document.getElementById('catalogSearch').addEventListener('input', () => {
+  // Pequeño debounce manual
+  clearTimeout(window.__catalogDebounce);
+  window.__catalogDebounce = setTimeout(() => loadCatalogImages(true), 300);
+});
+
+document.getElementById('catalogCategories').addEventListener('change', () => {
+    updateImportButtonState();
+    // Mostrar categorías seleccionadas visualmente
+  const display = document.getElementById('selectedCategoriesDisplay');
+    const categories = getSelectedCategories();
+    if (categories.length > 0) {
+    display.innerHTML = '<div class="alert alert-info p-2 mb-0"><strong>Seleccionadas:</strong> ' +
+      categories.map(c => `<span class="badge bg-primary ms-1">${c}</span>`).join('') + '</div>';
+  } else {
+    display.innerHTML = '<div class="alert alert-warning p-2 mb-0"><i class="bi bi-exclamation-triangle"></i> Seleccioná al menos una categoría</div>';
+  }
+});
+
+document.getElementById('loadMoreBtn').addEventListener('click', () => loadCatalogImages(false));
+
+document.getElementById('importSelectedBtn').addEventListener('click', async () => {
+    if (catalogSelectedIds.size === 0) return alert('Seleccioná al menos una imagen');
+    const categories = getSelectedCategories();
+    if (categories.length === 0) return alert('Seleccioná categorías');
+
+    const caseType = document.getElementById('catalogCaseType').value;
+    let ok = 0, fail = 0;
+    // Importar en serie para evitar saturar el backend
+    for (const id of catalogSelectedIds) {
+        try {
+            const res = await fetch('/admin/calibration/import-from-catalog', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    image_id: id,
+                    expected_categories: categories,
+                    case_type: caseType,
+                    notes: ''
+                })
+            });
+            const data = await res.json();
+            if (data.success) ok++; else fail++;
+        } catch (e) {
+            fail++;
+        }
+    }
+
+    alert(`✅ Importadas: ${ok} · ❌ Fallidas: ${fail}`);
+    location.reload();
+});
+
+// Abrir modal inicial: cargar primer lote
+const importModal = document.getElementById('importCatalogModal');
+importModal.addEventListener('shown.bs.modal', () => {
+    catalogSelectedIds = new Set();
+    loadCatalogImages(true);
+    // Inicializar display de categorías
+    document.getElementById('selectedCategoriesDisplay').innerHTML =
+        '<div class="alert alert-warning p-2 mb-0"><i class="bi bi-exclamation-triangle"></i> Seleccioná al menos una categoría</div>';
+    // Resetear estado del botón
+    updateImportButtonState();
+});
+</script>
+
+<style>
+.image-card {
+    transition: transform 0.2s;
+}
+.image-card:hover {
+    transform: translateY(-5px);
+}
+.select-checkbox {
+    cursor: pointer;
+}
+.opacity-50 {
+    opacity: 0.5;
+}
+.catalog-card.selected {
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+</style>
+{% endblock %}

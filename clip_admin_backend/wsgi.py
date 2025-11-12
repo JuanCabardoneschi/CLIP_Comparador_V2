@@ -357,6 +357,16 @@ def register_blueprints(app):
     except Exception as e:
         print(f"✗ Error registrando system_config_admin blueprint: {e}")
 
+    # Blueprint de exclusiones de categorías (Pair Exclusion Rules)
+    try:
+        from app.blueprints.category_exclusions import bp as category_exclusions_bp
+        app.register_blueprint(category_exclusions_bp, url_prefix="/categories/exclusions")
+        print("✓ Blueprint category_exclusions registrado")
+    except ImportError as e:
+        print(f"✗ Error importando category_exclusions blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando category_exclusions blueprint: {e}")
+
 
 # Crear instancia de la aplicación
 app = create_app()

@@ -1,0 +1,706 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Entrenamiento Visual - CLIP Comparador V2{% endblock %}
+
+{% block page_title %}Entrenamiento Visual{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item active">Entrenamiento Visual</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Info Header -->
+    <div class="alert alert-info mb-4">
+        <h5><i class="bi bi-lightbulb me-2"></i> ¿Cómo funciona el entrenamiento?</h5>
+        <p class="mb-0">
+            Sube una imagen de ejemplo y marca los resultados correctos (✓) e incorrectos (✗).
+            El sistema aprende de tus correcciones para mejorar las búsquedas futuras.
+        </p>
+    </div>
+
+    <div class="row">
+        <!-- Panel Izquierdo: Upload y Filtros -->
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-cloud-upload me-2"></i>Subir Imagen de Entrenamiento</h5>
+                </div>
+                <div class="card-body">
+                    <form id="trainingUploadForm">
+                        <!-- Selección de Cliente (solo superadmin) -->
+                        {% if current_user.role == 'SUPER_ADMIN' %}
+                        <div class="mb-3">
+                            <label class="form-label">Cliente</label>
+                            <select id="clientSelect" class="form-select" required>
+                                <option value="">Seleccionar cliente...</option>
+                                {% for client in clients %}
+                                <option value="{{ client.id }}">{{ client.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% else %}
+                        <input type="hidden" id="clientSelect" value="{{ current_user.client_id }}">
+                        {% endif %}
+
+                        <!-- Selección de Categoría -->
+                        <div class="mb-3">
+                            <label class="form-label">Categoría</label>
+                            <select id="categorySelect" class="form-select">
+                                <option value="">Seleccionar categoría...</option>
+                            </select>
+                            <small class="text-muted" id="categoryHelpText">Deja vacío para autodetectar con la imagen</small>
+                        </div>
+
+                        <!-- Checkbox Forzar Categoría -->
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="forceCategoryCheck">
+                                <label class="form-check-label" for="forceCategoryCheck">
+                                    <strong>Forzar categoría seleccionada</strong>
+                                    <br><small class="text-muted">Salta la autodetección y usa solo la categoría elegida arriba</small>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Preview -->
+                        <div id="imagePreview" class="mb-3" style="display: none;">
+                            <img id="previewImg" src="" alt="Preview"
+                                 class="img-fluid rounded" style="max-height: 200px;">
+                        </div>
+
+                        <!-- Botón de búsqueda -->
+                        <button type="submit" id="searchBtn" class="btn btn-primary w-100" disabled>
+                            <i class="bi bi-search me-2"></i>Buscar Productos Similares
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Variantes Entrenadas (si existen) -->
+            <div class="card" id="variantsCard" style="display: none;">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="bi bi-star me-2"></i>Variantes Entrenadas</h6>
+                </div>
+                <div class="card-body" id="variantsList">
+                    <!-- Se llena dinámicamente -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Derecho: Resultados -->
+        <div class="col-md-8">
+            <!-- Estado inicial -->
+            <div id="initialState" class="card">
+                <div class="card-body text-center py-5">
+                    <!-- Dropzone principal de subida -->
+                    <div id="dropzone" class="p-5 border border-2 border-dashed rounded bg-light"
+                         style="cursor: pointer; border-style: dashed;">
+                        <i class="bi bi-cloud-upload text-muted" style="font-size: 3rem;"></i>
+                        <p class="text-muted mt-2 mb-0">Arrastra una foto aquí o haz clic para seleccionar</p>
+                        <small class="text-muted">JPG, PNG, WEBP hasta 10MB</small>
+                    </div>
+                    <!-- Input de archivo oculto -->
+                    <input type="file" id="imageInput" accept="image/*" style="display:none;">
+                </div>
+            </div>
+
+            <!-- Loading -->
+            <div id="loadingState" class="card" style="display: none;">
+                <div class="card-body text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Buscando...</span>
+                    </div>
+                    <p class="text-muted mt-3">Analizando imagen y buscando productos similares...</p>
+                </div>
+            </div>
+
+            <!-- Resultados -->
+            <div id="resultsState" style="display: none;">
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Resultados de Búsqueda</h5>
+                        <div>
+                            <button id="saveTrainingBtn" class="btn btn-success btn-sm me-2" disabled>
+                                <i class="bi bi-check-circle me-1"></i>Guardar Entrenamiento
+                            </button>
+                            <button id="recalculateBtn" class="btn btn-warning btn-sm" disabled
+                                    title="Recálculo automático: Las variantes se recalculan automáticamente al guardar entrenamiento"
+                                    style="opacity: 0.5; cursor: not-allowed;">
+                                <i class="bi bi-arrow-repeat me-1"></i>Recalcular Variantes
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <!-- Selector de variante -->
+                        <div class="mb-3">
+                            <label class="form-label">Asignar a Variante (opcional)</label>
+                            <div class="input-group">
+                                <select id="variantSelect" class="form-select">
+                                    <option value="">Sin variante</option>
+                                </select>
+                                <button id="newVariantBtn" class="btn btn-outline-secondary" type="button">
+                                    <i class="bi bi-plus-circle"></i> Nueva
+                                </button>
+                            </div>
+                            <small class="form-text text-muted">
+                                <i class="bi bi-info-circle"></i> <strong>Nota:</strong> Al entrenar una variante, solo debes marcar los productos <strong class="text-success">correctos</strong>. Los botones "incorrecto" están ocultos.
+                            </small>
+                        </div>
+
+                        <!-- Grid de resultados -->
+                        <div class="row" id="resultsGrid">
+                            <!-- Se llena dinámicamente -->
+                        </div>
+
+                        <!-- Resumen de marcado -->
+                        <div class="alert alert-secondary mt-3" id="selectionSummary" style="display: none;">
+                            <small>
+                                <strong>Selección:</strong>
+                                <span id="positivesCount">0</span> positivos,
+                                <span id="negativesCount">0</span> negativos
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nueva Variante -->
+<div class="modal fade" id="newVariantModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nueva Variante</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Nombre de la Variante</label>
+                    <input type="text" id="variantNameInput" class="form-control"
+                           placeholder="Ej: Delantal Pechera, Delantal Cintura...">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Clave (identificador interno)</label>
+                    <input type="text" id="variantKeyInput" class="form-control"
+                           placeholder="Ej: bib, waist, medio...">
+                    <small class="text-muted">Solo letras minúsculas y guiones</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="saveVariantBtn">Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .result-card {
+        border: 2px solid transparent;
+        transition: all 0.2s;
+        cursor: pointer;
+        position: relative;
+    }
+
+    .result-card.positive {
+        border-color: #28a745;
+        background-color: #d4edda;
+    }
+
+    .result-card.negative {
+        border-color: #dc3545;
+        background-color: #f8d7da;
+    }
+
+    .result-card:hover {
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    }
+
+    .result-actions {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 10;
+    }
+
+    .result-actions .btn {
+        opacity: 0.8;
+    }
+
+    .result-actions .btn:hover {
+        opacity: 1;
+    }
+
+    .variant-badge {
+        font-size: 0.85rem;
+        padding: 0.5rem 1rem;
+    }
+    #dropzone.border-primary {
+        background-color: #eef6ff;
+    }
+    /* Mostrar imagen completa sin recortes en tarjetas de resultados */
+    .result-image {
+        width: 100%;
+        height: 200px; /* altura mayor para ver mejor la prenda completa */
+        object-fit: contain; /* no recorta, ajusta con barras si hace falta */
+        background-color: #f8f9fa; /* fondo claro para las bandas laterales */
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentClientId = null;
+let currentCategoryId = null;
+let currentResults = [];
+let positives = new Set();
+let negatives = new Set();
+let variantModal = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Inicializar modal
+    variantModal = new bootstrap.Modal(document.getElementById('newVariantModal'));
+
+    // Event listeners
+    document.getElementById('clientSelect').addEventListener('change', loadCategories);
+    document.getElementById('imageInput').addEventListener('change', previewImage);
+    document.getElementById('trainingUploadForm').addEventListener('submit', searchProducts);
+    document.getElementById('newVariantBtn').addEventListener('click', () => variantModal.show());
+    document.getElementById('saveVariantBtn').addEventListener('click', saveNewVariant);
+    document.getElementById('saveTrainingBtn').addEventListener('click', saveTraining);
+    document.getElementById('recalculateBtn').addEventListener('click', recalculateVariants);
+
+    // Listener para el checkbox de forzar categoría
+    document.getElementById('forceCategoryCheck').addEventListener('change', updateForceCategoryState);
+
+    // Si es store admin, cargar categorías directamente
+    {% if current_user.role == 'STORE_ADMIN' %}
+    loadCategories();
+    {% endif %}
+
+    // Dropzone handlers
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('imageInput');
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('border-primary');
+    });
+    dropzone.addEventListener('dragleave', () => {
+        dropzone.classList.remove('border-primary');
+    });
+    dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('border-primary');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            fileInput.files = e.dataTransfer.files;
+            previewImage({ target: fileInput });
+        }
+    });
+    fileInput.addEventListener('change', (e) => previewImage(e));
+});
+
+async function loadCategories() {
+    const clientId = document.getElementById('clientSelect').value;
+    if (!clientId) return;
+
+    currentClientId = clientId;
+    const categorySelect = document.getElementById('categorySelect');
+    categorySelect.innerHTML = '<option value="">Cargando...</option>';
+
+    try {
+        const response = await fetch(`/api/clients/${clientId}/categories`);
+        const categories = await response.json();
+
+        categorySelect.innerHTML = '<option value="">Auto-detectar categoría</option>';
+        categories.forEach(cat => {
+            const option = document.createElement('option');
+            option.value = cat.id;
+            option.textContent = cat.name;
+            categorySelect.appendChild(option);
+        });
+
+        // Cargar variantes existentes
+        loadVariants();
+    } catch (error) {
+        console.error('Error cargando categorías:', error);
+        categorySelect.innerHTML = '<option value="">Error cargando categorías</option>';
+    }
+}
+
+function previewImage(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        document.getElementById('previewImg').src = event.target.result;
+        document.getElementById('imagePreview').style.display = 'block';
+        document.getElementById('searchBtn').disabled = false;
+    };
+    reader.readAsDataURL(file);
+}
+
+function updateForceCategoryState() {
+    const forceChecked = document.getElementById('forceCategoryCheck').checked;
+    const categorySelect = document.getElementById('categorySelect');
+    const helpText = document.getElementById('categoryHelpText');
+
+    if (forceChecked) {
+        // Forzar categoría: debe estar seleccionada
+        if (!categorySelect.value) {
+            categorySelect.classList.add('is-invalid');
+        }
+        helpText.textContent = 'Obligatorio cuando "Forzar categoría" está activo';
+        helpText.className = 'text-warning';
+    } else {
+        // Autodetectar: opcional
+        categorySelect.classList.remove('is-invalid');
+        helpText.textContent = 'Deja vacío para autodetectar con la imagen';
+        helpText.className = 'text-muted';
+    }
+}
+
+
+async function searchProducts(e) {
+    e.preventDefault();
+
+    const imageFile = document.getElementById('imageInput').files[0];
+    const categoryId = document.getElementById('categorySelect').value || null;
+    const forceCategory = document.getElementById('forceCategoryCheck').checked;
+
+    if (!currentClientId || !imageFile) {
+        alert('Selecciona cliente e imagen');
+        return;
+    }
+
+    // Validar que si fuerza categoría, debe tener categoría seleccionada
+    if (forceCategory && !categoryId) {
+        alert('Debes seleccionar una categoría cuando "Forzar categoría" está activo');
+        document.getElementById('categorySelect').classList.add('is-invalid');
+        return;
+    }
+
+    // Si el usuario seleccionó categoría manualmente, sincronizarla como categoría actual
+    if (categoryId) {
+        currentCategoryId = categoryId;
+    }
+
+    // Mostrar loading
+    document.getElementById('initialState').style.display = 'none';
+    document.getElementById('resultsState').style.display = 'none';
+    document.getElementById('loadingState').style.display = 'block';
+
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    formData.append('client_id', currentClientId);
+    if (categoryId) formData.append('category_id', categoryId);
+    formData.append('top_k', 40);  // Aumentado para entrenamiento
+    formData.append('mode', 'single');  // Búsqueda visual single-mode
+
+    // Enviar flag force_category si está activo
+    if (forceCategory) {
+        formData.append('force_category', 'true');
+    }
+
+    try {
+        console.log('🔍 Enviando búsqueda con client_id:', currentClientId, 'category_id:', categoryId);
+
+    // Usar endpoint interno de admin que no requiere API key
+    const response = await fetch('/admin/training/search', {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin'  // Incluir cookies de sesión
+        });
+
+        console.log('📥 Response status:', response.status);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Error response:', errorText);
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+    const data = await response.json();
+        console.log('✅ Resultados recibidos:', data);
+
+    // Establecer categoría actual desde la respuesta del backend
+    // En modo single, viene en data.detected_category.id
+    // (mantenemos fallback por si en el futuro se expone category_id a nivel raíz)
+    currentCategoryId = (data.detected_category && data.detected_category.id) || data.category_id || currentCategoryId || null;
+        currentResults = data.results || [];
+
+        displayResults(data);
+
+        // Cargar variantes para esta categoría
+        await loadVariants();
+    } catch (error) {
+        console.error('❌ Error en búsqueda:', error);
+        alert('Error al buscar productos: ' + error.message);
+        document.getElementById('loadingState').style.display = 'none';
+        document.getElementById('initialState').style.display = 'block';
+    }
+}function displayResults(data) {
+    document.getElementById('loadingState').style.display = 'none';
+    document.getElementById('resultsState').style.display = 'block';
+
+    const grid = document.getElementById('resultsGrid');
+    grid.innerHTML = '';
+
+    if (!data.results || data.results.length === 0) {
+        grid.innerHTML = '<div class="col-12"><p class="text-center text-muted">No se encontraron resultados</p></div>';
+        return;
+    }
+
+    data.results.forEach((result, index) => {
+        const col = document.createElement('div');
+        col.className = 'col-md-3 mb-3';
+        col.innerHTML = `
+            <div class="card result-card" data-product-id="${result.product_id}">
+                <div class="result-actions">
+                    <button class="btn btn-sm btn-success btn-positive" onclick="markPositive('${result.product_id}')">
+                        <i class="bi bi-check-lg"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger btn-negative" onclick="markNegative('${result.product_id}')">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                <img src="${result.image_url}" class="card-img-top result-image" alt="${result.name}">
+                <div class="card-body p-2">
+                    <small class="text-muted">#${index + 1}</small>
+                    <h6 class="card-title mb-1" style="font-size: 0.9rem;">${result.name}</h6>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted">Score: ${(result.similarity * 100).toFixed(1)}%</small>
+                        ${result.sku ? `<small class="badge bg-secondary">${result.sku}</small>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+        grid.appendChild(col);
+    });
+
+    resetSelection();
+}
+
+function markPositive(productId) {
+    negatives.delete(productId);
+    if (positives.has(productId)) {
+        positives.delete(productId);
+    } else {
+        positives.add(productId);
+    }
+    updateCardStates();
+    updateSummary();
+}
+
+function markNegative(productId) {
+    positives.delete(productId);
+    if (negatives.has(productId)) {
+        negatives.delete(productId);
+    } else {
+        negatives.add(productId);
+    }
+    updateCardStates();
+    updateSummary();
+}
+
+function updateCardStates() {
+    document.querySelectorAll('.result-card').forEach(card => {
+        const productId = card.dataset.productId;
+        card.classList.remove('positive', 'negative');
+
+        if (positives.has(productId)) {
+            card.classList.add('positive');
+        } else if (negatives.has(productId)) {
+            card.classList.add('negative');
+        }
+    });
+}
+
+function updateSummary() {
+    document.getElementById('positivesCount').textContent = positives.size;
+    document.getElementById('negativesCount').textContent = negatives.size;
+    document.getElementById('selectionSummary').style.display = (positives.size + negatives.size) > 0 ? 'block' : 'none';
+    document.getElementById('saveTrainingBtn').disabled = positives.size === 0;
+    // Recalculate button is always disabled - auto-recompute makes it obsolete
+    document.getElementById('recalculateBtn').disabled = true;
+}
+
+// Update UI visibility based on variant selection
+function updateVariantUI() {
+    const variantSelect = document.getElementById('variantSelect');
+    const hasVariant = variantSelect && variantSelect.value;
+
+    // Hide all negative buttons when variant is selected
+    document.querySelectorAll('.btn-danger').forEach(btn => {
+        if (hasVariant) {
+            btn.style.display = 'none';
+        } else {
+            btn.style.display = '';
+        }
+    });
+
+    // Clear any negative selections when variant is selected
+    if (hasVariant && negatives.size > 0) {
+        negatives.clear();
+        updateCardStates();
+        updateSummary();
+    }
+}
+
+function resetSelection() {
+    positives.clear();
+    negatives.clear();
+    updateCardStates();
+    updateSummary();
+}
+
+async function loadVariants() {
+    if (!currentClientId || !currentCategoryId) return;
+
+    try {
+        const response = await fetch(`/admin/training/variants?client_id=${currentClientId}&category_id=${currentCategoryId}`);
+        const variants = await response.json();
+
+        const variantSelect = document.getElementById('variantSelect');
+        variantSelect.innerHTML = '<option value="">Sin variante</option>';
+
+        variants.forEach(v => {
+            const option = document.createElement('option');
+            option.value = v.variant_key;
+            option.textContent = `${v.name} (${v.support_count} ejemplos)`;
+            variantSelect.appendChild(option);
+        });
+
+        // Add change event listener to update UI when variant selection changes
+        variantSelect.addEventListener('change', updateVariantUI);
+
+        // Initialize UI state
+        updateVariantUI();
+
+        // Mostrar card de variantes si hay
+        if (variants.length > 0) {
+            const list = document.getElementById('variantsList');
+            list.innerHTML = variants.map(v => `
+                <div class="variant-badge bg-light border rounded p-2 mb-2">
+                    <strong>${v.name}</strong> (${v.variant_key})
+                    <br><small class="text-muted">${v.support_count} ejemplos</small>
+                </div>
+            `).join('');
+            document.getElementById('variantsCard').style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Error cargando variantes:', error);
+    }
+}
+
+async function saveNewVariant() {
+    const name = document.getElementById('variantNameInput').value.trim();
+    const key = document.getElementById('variantKeyInput').value.trim().toLowerCase();
+
+    if (!name || !key) {
+        alert('Completa todos los campos');
+        return;
+    }
+
+    try {
+        const response = await fetch('/admin/training/variant', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                client_id: currentClientId,
+                category_id: currentCategoryId,
+                variant_key: key,
+                name: name
+            })
+        });
+
+        if (response.ok) {
+            variantModal.hide();
+            document.getElementById('variantNameInput').value = '';
+            document.getElementById('variantKeyInput').value = '';
+            await loadVariants();
+        } else {
+            alert('Error creando variante');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error creando variante');
+    }
+}
+
+async function saveTraining() {
+    if (positives.size === 0) {
+        alert('Marca al menos un resultado positivo');
+        return;
+    }
+
+    const variantKey = document.getElementById('variantSelect').value || null;
+    const imageFile = document.getElementById('imageInput').files[0];
+
+    const trainingData = {
+        client_id: currentClientId,
+        category_id: currentCategoryId,
+        query_image_ref: imageFile.name,
+        topk_results: currentResults.map(r => ({
+            product_id: r.product_id,
+            score: r.similarity
+        })),
+        positives: Array.from(positives),
+        negatives: Array.from(negatives),
+        variant_key: variantKey
+    };
+
+    try {
+        const response = await fetch('/admin/training/event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(trainingData)
+        });
+
+        if (response.ok) {
+            alert('✅ Entrenamiento guardado exitosamente');
+            resetSelection();
+        } else {
+            alert('Error guardando entrenamiento');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error guardando entrenamiento');
+    }
+}
+
+async function recalculateVariants() {
+    if (!confirm('¿Recalcular variantes con los datos actuales?')) return;
+
+    try {
+        const response = await fetch('/admin/training/recompute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                client_id: currentClientId,
+                category_id: currentCategoryId
+            })
+        });
+
+        const data = await response.json();
+        alert(`✅ Variantes recalculadas: ${data.updated} actualizadas`);
+        await loadVariants();
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error recalculando variantes');
+    }
+}
+</script>
+{% endblock %}

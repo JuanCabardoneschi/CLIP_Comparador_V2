@@ -1,0 +1,23 @@
+{% extends "layouts/base.html" %}
+{% block title %}Subir imágenes{% endblock %}
+{% block content %}
+<div class="container py-3">
+  <h4>Subir imágenes</h4>
+  <form method="POST" enctype="multipart/form-data">
+    <div class="mb-3">
+      <label class="form-label">Producto</label>
+      <select class="form-select" name="product_id" required>
+        <option value="">Seleccione</option>
+        {% for p in products %}
+        <option value="{{ p.id }}">{{ p.name }} ({{ p.category.name if p.category else 'Sin categoría' }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Imágenes</label>
+      <input class="form-control" type="file" name="images" multiple accept="image/*">
+    </div>
+    <button class="btn btn-primary">Subir</button>
+  </form>
+</div>
+{% endblock %}

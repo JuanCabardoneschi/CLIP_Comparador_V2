@@ -1,0 +1,130 @@
+{% extends "layouts/base.html" %}
+{% block title %}Imagen {{ image.filename }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.image-crop-container { position: relative; display: inline-block; }
+#cropCanvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
+.crop-info { margin-top: 10px; font-size: 0.9rem; }
+.badge-refined { background:#198754; }
+.badge-pending { background:#ffc107; color:#000; }
+.overlay-guide { position:absolute; top:0; left:0; right:0; padding:6px 8px; background:rgba(0,0,0,0.35); color:#fff; font-size:12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+  <h4 class="mb-3"><i class="bi bi-image"></i> Imagen del producto</h4>
+  <div class="mb-2">
+    {% if image.refined %}<span class="badge badge-refined">Refinado</span>
+    {% elif image.has_crop() %}<span class="badge badge-pending">Recorte pendiente</span>
+    {% else %}<span class="badge bg-secondary">Sin recorte</span>{% endif %}
+  </div>
+  <div class="image-crop-container" id="imageContainer">
+    <img id="baseImage" src="{{ image.display_url }}" alt="Imagen" class="img-fluid" style="max-width:650px;"/>
+    <canvas id="cropCanvas"></canvas>
+    <div class="overlay-guide">Arrastra para seleccionar área relevante (pecho / tirantes)</div>
+  </div>
+  <div class="crop-info" id="cropInfo">{% if image.has_crop() %}Recorte actual: x={{ image.crop_x }}, y={{ image.crop_y }}, w={{ image.crop_w }}, h={{ image.crop_h }}{% else %}Sin recorte definido{% endif %}</div>
+  <div class="mt-3 d-flex gap-2">
+    <button id="saveCropBtn" class="btn btn-primary btn-sm"><i class="bi bi-save"></i> Guardar recorte + regenerar</button>
+    <button id="clearCropBtn" class="btn btn-outline-secondary btn-sm">Limpiar selección</button>
+    <a href="{{ url_for('products.view', product_id=image.product_id) }}" class="btn btn-outline-dark btn-sm">Volver al producto</a>
+  </div>
+  <div class="mt-3" id="resultBox" style="display:none;"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function(){
+  const img = document.getElementById('baseImage');
+  const canvas = document.getElementById('cropCanvas');
+  const ctx = canvas.getContext('2d');
+  const info = document.getElementById('cropInfo');
+  const resultBox = document.getElementById('resultBox');
+  let startX=0, startY=0, currentX=0, currentY=0, dragging=false, hasRect=false;
+
+  function resizeCanvas(){
+    canvas.width = img.clientWidth;
+    canvas.height = img.clientHeight;
+    canvas.style.width = img.clientWidth+'px';
+    canvas.style.height = img.clientHeight+'px';
+    redraw();
+  }
+  window.addEventListener('resize', resizeCanvas);
+  if (img.complete) resizeCanvas(); else img.onload = resizeCanvas;
+
+  function getRelativeCoords(ev){
+    const rect = canvas.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    const y = ev.clientY - rect.top;
+    return {x,y};
+  }
+
+  canvas.addEventListener('mousedown', ev => {
+    const {x,y} = getRelativeCoords(ev);
+    startX = x; startY = y; dragging=true; hasRect=false;
+  });
+  canvas.addEventListener('mousemove', ev => {
+    if(!dragging) return;
+    const {x,y} = getRelativeCoords(ev);
+    currentX = x; currentY = y; hasRect=true; redraw();
+  });
+  window.addEventListener('mouseup', ()=>{ dragging=false; });
+
+  function redraw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if(hasRect){
+      const x = Math.min(startX, currentX);
+      const y = Math.min(startY, currentY);
+      const w = Math.abs(currentX - startX);
+      const h = Math.abs(currentY - startY);
+      ctx.strokeStyle = '#00d1ff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x,y,w,h);
+      ctx.fillStyle = 'rgba(0,209,255,0.15)';
+      ctx.fillRect(x,y,w,h);
+      info.textContent = `Recorte provisional: x=${Math.round(x)}, y=${Math.round(y)}, w=${Math.round(w)}, h=${Math.round(h)}`;
+    }
+  }
+
+  document.getElementById('clearCropBtn').addEventListener('click', ()=>{
+    hasRect=false; ctx.clearRect(0,0,canvas.width,canvas.height); info.textContent='Sin recorte definido';
+  });
+
+  document.getElementById('saveCropBtn').addEventListener('click', async ()=>{
+    if(!hasRect){ alert('Selecciona un recorte primero'); return; }
+    // Convertir coordenadas de canvas (display) a pixeles reales de la imagen (natural)
+    const scaleX = img.naturalWidth / canvas.width;
+    const scaleY = img.naturalHeight / canvas.height;
+    const dispX = Math.min(startX, currentX);
+    const dispY = Math.min(startY, currentY);
+    const dispW = Math.abs(currentX - startX);
+    const dispH = Math.abs(currentY - startY);
+    const x = Math.round(dispX * scaleX);
+    const y = Math.round(dispY * scaleY);
+    const w = Math.round(dispW * scaleX);
+    const h = Math.round(dispH * scaleY);
+    resultBox.style.display='block';
+    resultBox.innerHTML = '<div class="alert alert-info">Procesando embedding...</div>';
+    try {
+      const resp = await fetch(`${window.location.pathname}/crop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({x,y,w,h})
+      });
+      const data = await resp.json();
+      if(!data.ok){
+        resultBox.innerHTML = `<div class='alert alert-danger'>Error: ${data.error || 'Desconocido'}</div>`;
+        return;
+      }
+      resultBox.innerHTML = `<div class='alert alert-success'>✅ Recorte guardado y embedding regenerado (${data.embedding_dim}D). Centroide ${data.centroid_updated ? 'actualizado' : 'sin cambio'}.</div>`;
+      info.textContent = `Recorte final: x=${data.crop.x}, y=${data.crop.y}, w=${data.crop.w}, h=${data.crop.h}`;
+    } catch (e){
+      resultBox.innerHTML = `<div class='alert alert-danger'>Error de red: ${e}</div>`;
+    }
+  });
+})();
+</script>
+{% endblock %}

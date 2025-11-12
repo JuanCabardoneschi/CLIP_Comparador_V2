@@ -1,0 +1,290 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Subir Imagen - Calibración (DEPRECADO){% endblock %}
+
+{% block content %}
+<!-- DEPRECADO: Este template ya no se usa. Solo se agregan imágenes desde el catálogo. -->
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-warning">
+                <h4><i class="bi bi-exclamation-triangle"></i> Funcionalidad deprecada</h4>
+                <p>Ya no se suben imágenes nuevas. Por favor, usá el módulo de Dataset para agregar referencias del catálogo.</p>
+                <a href="{{ url_for('calibration.dataset') }}" class="btn btn-primary">
+                    <i class="bi bi-collection"></i> Ir al Dataset
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+<!--
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('calibration.index') }}">Calibración</a></li>
+                    <li class="breadcrumb-item active">Subir Imagen</li>
+                </ol>
+            </nav>
+
+            <h2><i class="bi bi-cloud-upload me-2"></i>Subir & Etiquetar Imagen</h2>
+            <p class="text-muted">
+                Sube una imagen de referencia y selecciona qué categorías DEBERÍAN detectarse en ella.
+            </p>
+            <hr>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <!-- Formulario -->
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">📤 Formulario de Carga</h5>
+                </div>
+                <div class="card-body">
+                    <form id="uploadForm" enctype="multipart/form-data">
+                        <!-- Imagen -->
+                        <div class="mb-3">
+                            <label for="imageInput" class="form-label fw-bold">Imagen *</label>
+                            <input type="file" class="form-control" id="imageInput" name="image"
+                                   accept="image/*" required>
+                            <div class="form-text">Formatos: JPG, PNG, WEBP (máx 5MB)</div>
+                        </div>
+
+                        <!-- Preview -->
+                        <div id="imagePreview" class="mb-3" style="display: none;">
+                            <img id="previewImg" src="" alt="Preview"
+                                 class="img-fluid rounded border" style="max-height: 250px;">
+                        </div>
+
+                        <!-- Categorías Esperadas (Multi-select) -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Categorías Esperadas * <small class="text-muted">(selecciona todas las visibles)</small></label>
+                            <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                                {% for category in categories %}
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox"
+                                           name="expected_categories[]"
+                                           value="{{ category.name }}"
+                                           id="cat_{{ loop.index }}">
+                                    <label class="form-check-label" for="cat_{{ loop.index }}">
+                                        {{ category.name }}
+                                        {% if category.centroid_image_count %}
+                                        <small class="text-muted">({{ category.centroid_image_count }} imgs)</small>
+                                        {% endif %}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="form-text">Marca TODAS las categorías que deberían detectarse en la imagen</div>
+                        </div>
+
+                        <!-- Tipo de Caso -->
+                        <div class="mb-3">
+                            <label for="caseType" class="form-label fw-bold">Tipo de Caso</label>
+                            <select class="form-select" id="caseType" name="case_type">
+                                <option value="general">General</option>
+                                <option value="single">Categoría única (baseline)</option>
+                                <option value="multi">Múltiples categorías</option>
+                                <option value="edge_case">Caso difícil (edge case)</option>
+                                <option value="problematic">Categoría problemática</option>
+                            </select>
+                        </div>
+
+                        <!-- Notas -->
+                        <div class="mb-3">
+                            <label for="notes" class="form-label fw-bold">Notas Descriptivas</label>
+                            <textarea class="form-control" id="notes" name="notes" rows="3"
+                                      placeholder="Ej: Persona con delantal verde y camisa blanca, vista frontal..."></textarea>
+                            <div class="form-text">Describe la imagen para referencia futura</div>
+                        </div>
+
+                        <!-- Botones -->
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                                <i class="bi bi-check-circle me-2"></i>Guardar Imagen
+                            </button>
+                            <a href="{{ url_for('calibration.index') }}" class="btn btn-outline-secondary">
+                                <i class="bi bi-x-circle me-2"></i>Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Guía de Ayuda -->
+        <div class="col-md-6">
+            <div class="card shadow-sm border-info">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-question-circle me-2"></i>Guía de Etiquetado</h5>
+                </div>
+                <div class="card-body">
+                    <h6 class="text-primary">✅ Qué hacer:</h6>
+                    <ul class="small">
+                        <li>Selecciona <strong>TODAS</strong> las categorías visibles en la imagen</li>
+                        <li>Incluye prendas secundarias (ej: camisa bajo chaleco)</li>
+                        <li>Usa nombres exactos como aparecen en tu catálogo</li>
+                        <li>Agrega notas para casos ambiguos o complejos</li>
+                    </ul>
+
+                    <h6 class="text-danger mt-3">❌ Qué NO hacer:</h6>
+                    <ul class="small">
+                        <li>No incluyas categorías que no ves claramente</li>
+                        <li>No "adivines" prendas que podrían estar fuera de cuadro</li>
+                        <li>No marques categorías similares si no estás seguro</li>
+                    </ul>
+
+                    <h6 class="text-success mt-3">💡 Tipos de casos recomendados:</h6>
+                    <div class="small">
+                        <p><strong>Single (baseline):</strong> Solo delantal, solo camisa, etc.</p>
+                        <p><strong>Multi:</strong> Delantal + camisa, chaleco + remera</p>
+                        <p><strong>Edge case:</strong> Múltiples accesorios, ángulos raros</p>
+                        <p><strong>Problemático:</strong> Categorías que el sistema confunde</p>
+                    </div>
+
+                    <div class="alert alert-warning mt-3">
+                        <strong>📊 Meta recomendada:</strong><br>
+                        • 10-15 casos single (baseline)<br>
+                        • 15-20 casos multi (principal)<br>
+                        • 5-10 casos edge/problemáticos<br>
+                        <strong>Total: 30-50 imágenes</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progreso -->
+            <div class="card shadow-sm border-success mt-3">
+                <div class="card-body">
+                    <h6 class="text-success"><i class="bi bi-graph-up me-2"></i>Progreso del Dataset</h6>
+                    <p class="small text-muted mb-2">Categorías con mejor cobertura:</p>
+                    <div class="small">
+                        {% for category in categories[:5] %}
+                        {% if category.centroid_image_count and category.centroid_image_count > 0 %}
+                        <div class="d-flex justify-content-between mb-1">
+                            <span>{{ category.name }}</span>
+                            <span class="badge bg-success">{{ category.centroid_image_count }}</span>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const form = document.getElementById('uploadForm');
+const imageInput = document.getElementById('imageInput');
+const previewDiv = document.getElementById('imagePreview');
+const previewImg = document.getElementById('previewImg');
+const submitBtn = document.getElementById('submitBtn');
+
+// Preview de imagen
+imageInput.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        if (file.size > 5 * 1024 * 1024) {
+            alert('⚠️ La imagen es muy grande (máx 5MB)');
+            this.value = '';
+            previewDiv.style.display = 'none';
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            previewImg.src = e.target.result;
+            previewDiv.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    }
+});
+
+// Submit
+form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    // Validar categorías seleccionadas
+    const selectedCategories = Array.from(document.querySelectorAll('input[name="expected_categories[]"]:checked'));
+
+    if (selectedCategories.length === 0) {
+        alert('⚠️ Debes seleccionar al menos una categoría esperada');
+        return;
+    }
+
+    // Confirmar
+    const catNames = selectedCategories.map(c => c.value).join(', ');
+    if (!confirm(`¿Confirmar que estas categorías DEBERÍAN detectarse?\n\n${catNames}`)) {
+        return;
+    }
+
+    // Deshabilitar botón
+    const originalHTML = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Subiendo...';
+
+    // Crear FormData
+    const formData = new FormData(form);
+
+    try {
+        const response = await fetch('/admin/calibration/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('✅ Imagen guardada exitosamente!\n\n' + selectedCategories.length + ' categorías esperadas registradas.');
+
+            // Redirigir o limpiar
+            if (confirm('¿Quieres subir otra imagen?')) {
+                form.reset();
+                previewDiv.style.display = 'none';
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHTML;
+            } else {
+                window.location.href = data.redirect || '{{ url_for("calibration.dataset") }}';
+            }
+        } else {
+            alert('❌ Error: ' + (data.error || 'Error desconocido'));
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalHTML;
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('❌ Error de red: ' + error.message);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalHTML;
+    }
+});
+
+// Auto-select de tipo de caso según cantidad de categorías marcadas
+document.querySelectorAll('input[name="expected_categories[]"]').forEach(checkbox => {
+    checkbox.addEventListener('change', function() {
+        const count = document.querySelectorAll('input[name="expected_categories[]"]:checked').length;
+        const caseType = document.getElementById('caseType');
+
+        if (count === 1 && caseType.value === 'general') {
+            caseType.value = 'single';
+        } else if (count >= 2 && caseType.value === 'single') {
+            caseType.value = 'multi';
+        }
+    });
+});
+</script>
+
+<style>
+.form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+.form-check-label {
+    cursor: pointer;
+    user-select: none;
+}
+</style>
+{% endblock %}

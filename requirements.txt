@@ -26,6 +26,8 @@ passlib[bcrypt]==1.7.4
 
 # AI & ML - Railway compatible (CPU-only)
 # Usamos ruedas CPU para evitar dependencias CUDA en Railway
+# ACTUALIZACIÓN Nov 2025: Migrado a CLIP ViT-L/14 (768D, ~3GB RAM)
+# Railway Pro Plan requerido: $20/mes (8GB RAM recomendado)
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.1.1+cpu
 torchvision==0.16.1+cpu
@@ -35,6 +37,12 @@ Pillow==10.1.0
 numpy==1.25.2
 sentence-transformers==2.2.2
 scikit-learn==1.3.2  # Para matching semántico en LLM query normalizer
+
+# Visual Detection / Grounding (pruebas)
+groundingdino-py==0.1.2  # Wrapper simplificado Grounding DINO (detección zero-shot)
+opencv-python==4.9.0.80  # Requerido por groundingdino
+pyyaml==6.0.1  # Config parsing para modelos grounding
+timm==0.9.12  # Backbones vision (SwinT) usados por Grounding DINO
 
 # Image Processing & Storage
 cloudinary==1.36.0  # Cloudinary para almacenamiento en la nube

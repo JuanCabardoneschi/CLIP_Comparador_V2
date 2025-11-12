@@ -212,6 +212,14 @@
                     </li>
 
                     <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint and 'category_exclusions' in request.endpoint %}active{% endif %}"
+                           href="{{ url_for('category_exclusions.index') }}">
+                            <i class="bi bi-exclude me-2"></i>
+                            Reglas de Exclusión
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
                         <a class="nav-link {% if request.endpoint and 'embeddings' in request.endpoint %}active{% endif %}"
                            href="{{ url_for('embeddings.index') }}">
                             <i class="bi bi-cpu me-2"></i>

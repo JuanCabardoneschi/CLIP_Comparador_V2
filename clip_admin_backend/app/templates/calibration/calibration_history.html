@@ -1,0 +1,196 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Historial de Calibraciones{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('calibration.index') }}">Calibración</a></li>
+                    <li class="breadcrumb-item active">Historial</li>
+                </ol>
+            </nav>
+
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="bi bi-clock-history me-2"></i>Historial de Calibraciones</h2>
+                    <p class="text-muted mb-0">Registro completo de calibraciones ejecutadas</p>
+                </div>
+                <a href="{{ url_for('calibration.index') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Volver
+                </a>
+            </div>
+            <hr>
+        </div>
+    </div>
+
+    <!-- Tabla de Calibraciones -->
+    {% if calibrations %}
+    <div class="row">
+        <div class="col-12">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 5%;">#</th>
+                            <th style="width: 15%;">Fecha/Hora</th>
+                            <th style="width: 10%;">Imágenes</th>
+                            <th style="width: 10%;">Categorías</th>
+                            <th style="width: 15%;">F1 Promedio</th>
+                            <th style="width: 15%;">Estado</th>
+                            <th style="width: 15%;">Aplicado</th>
+                            <th style="width: 15%;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for cal in calibrations %}
+                        <tr {% if cal.applied %}class="table-success"{% endif %}>
+                            {# cal.id es un objeto UUID; no es subscriptable. Usamos hex para mostrar prefijo #}
+                            <td><strong>{{ cal.id.hex[:8] }}</strong></td>
+                            <td>
+                                <small>
+                                    {{ cal.created_at.strftime('%d/%m/%Y') }}<br>
+                                    <span class="text-muted">{{ cal.created_at.strftime('%H:%M:%S') }}</span>
+                                </small>
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ cal.results.dataset_size }} imgs</span>
+                            </td>
+                            <td>
+                                {% set cat_list = cal.results.get('categories', []) %}
+                                <span class="badge bg-secondary">{{ cat_list|length }} cats</span>
+                            </td>
+                            <td>
+                                {# Manejo seguro: si no hay categorías, evitar división por cero #}
+                                {% set cat_list = cal.results.get('categories', []) %}
+                                {% set cat_len = cat_list | length %}
+                                {% set total_f1 = cat_list | map(attribute='metrics.f1') | sum %}
+                                {% set avg_f1 = (total_f1 / cat_len) if cat_len > 0 else 0 %}
+                                <div class="progress" style="height: 25px;">
+                                    <div class="progress-bar {% if avg_f1 >= 0.7 %}bg-success{% elif avg_f1 >= 0.5 %}bg-warning{% else %}bg-danger{% endif %}"
+                                         role="progressbar"
+                                         style="width: {{ (avg_f1 * 100)|round(0) }}%;">
+                                        {{ (avg_f1 * 100)|round(1) }}%
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                {% if cal.applied %}
+                                    <span class="badge bg-success">✓ Aplicado</span>
+                                {% else %}
+                                    <span class="badge bg-warning">⏳ Pendiente</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if cal.applied and cal.applied_at %}
+                                    <small class="text-muted">{{ cal.applied_at.strftime('%d/%m/%Y %H:%M') }}</small>
+                                {% else %}
+                                    <small class="text-muted">-</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('calibration.calibration_detail', run_id=cal.id) }}"
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-eye"></i> Ver
+                                </a>
+                                {% if not cal.applied %}
+                                <button class="btn btn-sm btn-success"
+                                        onclick="applyCalibration('{{ cal.id }}')">
+                                    <i class="bi bi-check-circle"></i> Aplicar
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumen Estadístico -->
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ calibrations|length }}</h5>
+                    <p class="card-text text-muted">Total Calibraciones</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ calibrations|selectattr('applied')|list|length }}</h5>
+                    <p class="card-text text-muted">Aplicadas</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ calibrations|rejectattr('applied')|list|length }}</h5>
+                    <p class="card-text text-muted">Pendientes</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    {% set last_cal = calibrations[0] if calibrations else None %}
+                    {% if last_cal %}
+                    <h5 class="card-title">{{ last_cal.created_at.strftime('%d/%m') }}</h5>
+                    {% else %}
+                    <h5 class="card-title">-</h5>
+                    {% endif %}
+                    <p class="card-text text-muted">Última Calibración</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Sin Calibraciones -->
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-info text-center">
+                <h5><i class="bi bi-info-circle me-2"></i>No hay calibraciones registradas</h5>
+                <p class="mb-0">Ejecuta la primera calibración desde el panel principal.</p>
+                <a href="{{ url_for('calibration.index') }}" class="btn btn-primary mt-3">
+                    <i class="bi bi-arrow-left"></i> Volver al Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+async function applyCalibration(runId) {
+    if (!confirm('¿Aplicar estos umbrales calibrados al sistema?\n\nEsto actualizará los confidence_threshold de las categorías.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/admin/calibration/${runId}/apply`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert(`✅ Umbrales aplicados correctamente\n\n${data.updated_count} categorías actualizadas`);
+            location.reload();
+        } else {
+            alert('❌ Error: ' + data.error);
+        }
+    } catch (error) {
+        alert('❌ Error: ' + error.message);
+    }
+}
+</script>
+{% endblock %}
