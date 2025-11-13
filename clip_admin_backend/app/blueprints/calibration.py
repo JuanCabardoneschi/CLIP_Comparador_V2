@@ -1,7 +1,8 @@
 """
-Blueprint de Calibración Multi-Label
-Permite a cada cliente construir su dataset de ground-truth y calibrar thresholds
+DEPRECATED: Blueprint de Calibración fue eliminado del sistema.
+Este archivo queda como placeholder para evitar errores de importación en entornos antiguos.
 """
+raise ImportError("calibration blueprint removed: módulo de calibración deshabilitado")
 
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
 from flask_login import login_required, current_user

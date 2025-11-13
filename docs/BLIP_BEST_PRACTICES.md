@@ -597,7 +597,7 @@ def reembed_all_images_blip():
 - [ ] Crear `embeddings_blip.py` con clase `BLIPEmbeddings`
 - [ ] Actualizar `api.py` para usar BLIP
 - [ ] Actualizar `diagnostic.py` para usar BLIP
-- [ ] Actualizar `calibration.py` para usar BLIP
+<!-- Ítem sobre calibration.py eliminado -->
 - [ ] Re-embedear todas las imágenes del catálogo
 - [ ] Recalcular centroides de categorías con prompts de texto
 - [ ] Ejecutar calibración para cada cliente con dataset existente

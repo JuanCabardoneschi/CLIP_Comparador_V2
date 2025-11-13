@@ -65,32 +65,7 @@
 - thumbnail_url: URL del thumbnail (150x150)
 ```
 
-### 5️⃣ **client_category_variants** - Variants entrenados (sub-categorías aprendidas)
-```sql
--- Columnas principales:
-- id (UUID, PK)
-- client_id (UUID, FK -> clients.id)
-- category_id (UUID, FK -> categories.id)
-- variant_key (VARCHAR) -- Identificador único (e.g., "MedioDelantal")
-- name (VARCHAR) -- Nombre descriptivo
-- centroid_embedding (TEXT) -- JSON array con centroid del variant
-- has_centroid (BOOLEAN, default: FALSE)
-- support_count (INTEGER, default: 0) -- Número de entrenamientos
-- created_at, updated_at (TIMESTAMP)
-
--- UNIQUE constraint: (client_id, category_id, variant_key)
-```
-
-### 6️⃣ **training_events** - Registro de entrenamientos de variants
-```sql
--- Columnas principales:
-- id (UUID, PK)
-- client_id (UUID, FK -> clients.id)
-- category_id (UUID, FK -> categories.id)
-- variant_key (VARCHAR)
-- image_urls (TEXT) -- Lista de URLs separadas por comas
-- created_at (TIMESTAMP)
-```
+<!-- Se removieron secciones de variantes/entrenamiento obsoletas -->
 
 ### 7️⃣ **product_attribute_config** - Configuración de atributos dinámicos
 ```sql
@@ -150,13 +125,10 @@
 ```
 clients (1) ──────< (N) categories
 clients (1) ──────< (N) products
-clients (1) ──────< (N) client_category_variants
-clients (1) ──────< (N) training_events
 clients (1) ──────< (N) product_attribute_config
 clients (1) ──────< (N) color_mappings
 
 categories (1) ──────< (N) products
-categories (1) ──────< (N) client_category_variants
 categories (1) ──────< (N) product_attribute_config
 
 products (1) ──────< (N) images
@@ -166,35 +138,7 @@ products (1) ──────< (N) images
 
 ## 🎯 Consultas Útiles
 
-### Verificar variant con centroid
-```sql
-SELECT
-    variant_key,
-    name,
-    has_centroid,
-    CASE
-        WHEN centroid_embedding IS NULL THEN 'NULL'
-        WHEN centroid_embedding = '' THEN 'EMPTY'
-        ELSE 'LENGTH=' || LENGTH(centroid_embedding)
-    END as centroid_status,
-    support_count
-FROM client_category_variants
-WHERE variant_key = 'MedioDelantal';
-```
-
-### Ver todos los variants de un cliente
-```sql
-SELECT
-    ccv.variant_key,
-    ccv.name,
-    c.name as category_name,
-    ccv.has_centroid,
-    ccv.support_count
-FROM client_category_variants ccv
-JOIN categories c ON c.id = ccv.category_id
-WHERE ccv.client_id = 'CLIENT_UUID_AQUI'
-ORDER BY ccv.created_at DESC;
-```
+<!-- Consultas de variantes eliminadas -->
 
 ### Productos sin stock
 ```sql
@@ -208,19 +152,7 @@ WHERE client_id = 'CLIENT_UUID_AQUI'
 AND stock = 0;
 ```
 
-### Training events de un variant
-```sql
-SELECT
-    te.variant_key,
-    te.created_at,
-    te.image_urls,
-    c.name as category_name
-FROM training_events te
-JOIN categories c ON c.id = te.category_id
-WHERE te.client_id = 'CLIENT_UUID_AQUI'
-AND te.variant_key = 'MedioDelantal'
-ORDER BY te.created_at DESC;
-```
+<!-- Consultas de training events eliminadas -->
 
 ### Verificar embeddings de productos
 ```sql
@@ -246,7 +178,7 @@ LIMIT 10;
 
 1. **UUIDs**: Todos los IDs son UUIDs (v4) para aislamiento multi-tenant
 2. **Embeddings**: Almacenados como TEXT con JSON arrays `[0.123, -0.456, ...]`
-3. **Centroids**: Calculados automáticamente por `recompute_variants()`
+<!-- Nota sobre centroides/variants eliminada -->
 4. **Cloudinary**: Imágenes NO se almacenan en BD, solo referencias
 5. **JSONB**: `attributes` y `options` usan JSONB para flexibilidad
 

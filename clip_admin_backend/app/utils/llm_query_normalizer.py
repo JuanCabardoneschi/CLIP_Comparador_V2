@@ -29,6 +29,7 @@ def _extract_client_vocabulary(client_id: int) -> dict:
     from app import db
     from app.models.category import Category
     from app.models.product import Product
+    from app.models.product_attribute_config import ProductAttributeConfig
     from sqlalchemy import text, func
 
     vocabulary = {
@@ -38,7 +39,37 @@ def _extract_client_vocabulary(client_id: int) -> dict:
         'contextos': set()
     }
 
-    # 1. COLORES ESPECÍFICOS: Desde attributes->>'color' de productos del cliente
+    # 1A. COLORES DESDE CONFIGURACIÓN JSONB: Leer opciones definidas en attribute_configs
+    try:
+        color_configs = ProductAttributeConfig.query.filter_by(
+            client_id=client_id,
+            key='color'
+        ).all()
+
+        for config in color_configs:
+            if config.type == 'list' and config.options:
+                # Opciones es JSONB, puede ser lista o string JSON
+                if isinstance(config.options, list):
+                    for option in config.options:
+                        if option and len(option) > 2:
+                            vocabulary['colores_especificos'].add(option.lower().strip())
+                elif isinstance(config.options, str):
+                    import json
+                    try:
+                        options_list = json.loads(config.options)
+                        for option in options_list:
+                            if option and len(option) > 2:
+                                vocabulary['colores_especificos'].add(option.lower().strip())
+                    except:
+                        pass
+
+        if vocabulary['colores_especificos']:
+            print(f"📋 Colores desde config JSONB: {len(vocabulary['colores_especificos'])} opciones")
+
+    except Exception as e:
+        print(f"⚠️ Error extrayendo colores desde config: {e}")
+
+    # 1B. COLORES DESDE PRODUCTOS: Valores reales en attributes->>'color'
     try:
         color_rows = db.session.execute(
             text("""
@@ -61,7 +92,7 @@ def _extract_client_vocabulary(client_id: int) -> dict:
                         vocabulary['colores_especificos'].add(c_clean)
 
     except Exception as e:
-        print(f"⚠️ Error extrayendo colores: {e}")
+        print(f"⚠️ Error extrayendo colores desde productos: {e}")
 
     # Variaciones genéricas (solo si NO hay color específico en query)
     vocabulary['colores_genericos'] = {
@@ -248,11 +279,22 @@ def normalize_query(query: str, client_id: int = None) -> dict:
     # Obtener vocabulario dinámico del cliente
     if client_id:
         vocab = _extract_client_vocabulary(client_id)
-        colores = vocab['colores']
+        colores_db = vocab['colores']
         tipos = vocab['tipos']
         contextos = vocab['contextos']
 
-        print(f"📚 VOCAB: {len(colores)} colores, {len(tipos)} tipos, {len(contextos)} contextos")
+        # COMBINADO: Colores de BD + paleta estándar (para detectar colores que NO tenemos)
+        # Esto permite que el sistema detecte cuando el usuario busca un color que NO existe
+        paleta_estandar = [
+            'negro', 'blanco', 'gris', 'azul', 'rojo', 'verde', 'amarillo',
+            'naranja', 'rosa', 'violeta', 'morado', 'marrón', 'beige', 'celeste',
+            'marino', 'turquesa', 'fucsia', 'bordó', 'dorado', 'plateado'
+        ]
+
+        # Combinar y eliminar duplicados
+        colores = list(set(colores_db + paleta_estandar))
+
+        print(f"📚 VOCAB: {len(colores)} colores ({len(colores_db)} BD + paleta estándar), {len(tipos)} tipos, {len(contextos)} contextos")
     else:
         # Fallback a listas mínimas si no hay client_id
         colores = ['negro', 'blanco', 'azul', 'rojo', 'verde', 'amarillo', 'gris']

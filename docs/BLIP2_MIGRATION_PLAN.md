@@ -333,7 +333,7 @@ embedding_array = np.array(json.loads(image.clip_embedding))
 ### Fase 2: Integración (Local)
 - [ ] Refactorizar `api.py` para usar BLIP-2
 - [ ] Refactorizar `diagnostic.py`
-- [ ] Refactorizar `calibration.py`
+<!-- Punto sobre calibration.py eliminado -->
 - [ ] Actualizar tests
 - [ ] Validar que todo funciona igual
 
@@ -360,7 +360,7 @@ embedding_array = np.array(json.loads(image.clip_embedding))
 - [ ] Remover código de CLIP
 - [ ] Remover dependencias de MiniLM
 - [ ] Actualizar documentación
-- [ ] Eliminar training_events/variants
+<!-- Punto sobre training_events/variants eliminado -->
 
 ---
 

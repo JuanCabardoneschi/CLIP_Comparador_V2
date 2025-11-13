@@ -1804,7 +1804,7 @@ def detect_categories_centroid_based(
     top_k=5,
     model=None,
     processor=None,
-    apply_pair_exclusion: bool = True
+    apply_pair_exclusion: bool = False
 ):
     """
     Detecta categorías usando SOLO centroides + multi-crop.

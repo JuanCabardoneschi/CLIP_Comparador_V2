@@ -807,9 +807,9 @@
 
                 // Mostrar resultados
                 if (data.results && data.results.length > 0) {
-                    displayTextResults(data.results, data.total_results || data.results.length);
+                    displayTextResults(data.results, data.total_results || data.results.length, data.partial_match_info, data.match_quality);
                 } else {
-                    showNoResults();
+                    showNoResults(data.partial_match_info);
                 }
             })
             .catch(err => {
@@ -825,10 +825,27 @@
         }
 
         // Display text search results (sin agrupación por categoría)
-        function displayTextResults(results, total) {
+        function displayTextResults(results, total, partialMatchInfo, matchQuality) {
             const resultsDiv = container.querySelector('#clip-results');
 
+            // Mensaje contextual si hay partial match info
+            const partialMatchHtml = partialMatchInfo ? `
+                <div class="clip-partial-match-info" style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 16px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+                ">
+                    <div style="font-size: 15px; font-weight: 500; line-height: 1.5;">
+                        💡 ${partialMatchInfo.message}
+                    </div>
+                </div>
+            ` : '';
+
             const html = `
+                ${partialMatchHtml}
                 <div class="clip-category-section">
                     <div class="clip-category-header">
                         <div class="clip-category-name">Resultados de Búsqueda</div>
@@ -840,7 +857,7 @@
                                 <div class="clip-product-img-wrap">
                                     <img src="${p.image_url}" alt="${p.name}" class="clip-product-img">
                                     <div class="clip-similarity-badge">
-                                        ${Math.round(p.similarity * 100)}% Match
+                                        ${Math.round((p.final_score || p.similarity || 0) * 100)}% Match
                                     </div>
                                 </div>
                                 <div class="clip-product-info">
@@ -948,12 +965,34 @@
         }
 
         // No results
-        function showNoResults() {
+        function showNoResults(partialMatchInfo) {
             const resultsDiv = container.querySelector('#clip-results');
+
+            const messageHtml = partialMatchInfo ? `
+                <div class="clip-no-results-message" style="
+                    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                    color: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 4px 12px rgba(245, 87, 108, 0.3);
+                ">
+                    <div style="font-size: 18px; font-weight: 600; margin-bottom: 10px;">
+                        ${partialMatchInfo.message}
+                    </div>
+                    ${partialMatchInfo.suggestion ? `
+                        <div style="font-size: 14px; margin-top: 8px;">
+                            💡 ${partialMatchInfo.suggestion}
+                        </div>
+                    ` : ''}
+                </div>
+            ` : '';
+
             resultsDiv.innerHTML = `
+                ${messageHtml}
                 <div class="clip-no-results">
                     <div class="clip-no-results-icon">😔</div>
-                    <div class="clip-no-results-text">No se encontraron productos similares</div>
+                    <div class="clip-no-results-text">${partialMatchInfo ? 'No hay coincidencias exactas' : 'No se encontraron productos similares'}</div>
                     <div class="clip-no-results-hint">Intenta con otra imagen</div>
                 </div>
             `;

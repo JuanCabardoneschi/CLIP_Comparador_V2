@@ -1,9 +1,8 @@
 """
-Modelos de entrenamiento visual por cliente.
-Iteración 1 + 2: eventos de entrenamiento y variantes con centroides.
-
-NOTA: Tablas creadas en BD local con local_db_tool.py
+DEPRECATED: Módulos de entrenamiento eliminados del sistema.
+Este archivo permanece solo para evitar import errors en entornos antiguos.
 """
+raise ImportError("training models removed: 'training_events' y 'client_category_variants' fueron eliminados.")
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import UUID
 from .. import db

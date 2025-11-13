@@ -19,12 +19,12 @@ bp = Blueprint("search_config", __name__, url_prefix="/search-config")
 def update_threshold(client_id):
     """
     Actualizar threshold de similitud visual (AJAX)
-    
+
     Request JSON:
         {
             "product_similarity_threshold": 70
         }
-    
+
     Response JSON:
         {
             "success": true,
@@ -50,24 +50,24 @@ def update_threshold(client_id):
     try:
         data = request.get_json()
         new_threshold = int(data.get('product_similarity_threshold', 70))
-        
+
         # Validar rango (10-100%)
         if not (10 <= new_threshold <= 100):
             return jsonify({
                 "success": False,
                 "message": "El threshold debe estar entre 10% y 100%"
             }), 400
-        
+
         # Actualizar
         client.product_similarity_threshold = new_threshold
         db.session.commit()
-        
+
         return jsonify({
             "success": True,
             "message": f"Threshold actualizado a {new_threshold}%",
             "new_value": new_threshold
         })
-        
+
     except ValueError as e:
         return jsonify({
             "success": False,

@@ -164,7 +164,7 @@
                         <i class="bi bi-check-circle me-2"></i>
                         Guardar Cambios
                     </button>
-                    
+
                     <!-- Botón Ayuda -->
                     <button type="button"
                             class="btn btn-outline-info"
@@ -228,7 +228,7 @@
 
                         <div class="alert alert-info mb-0">
                             <i class="bi bi-lightbulb me-2"></i>
-                            <strong>Consejo:</strong> Si tus clientes se quejan de "muy pocos resultados", baja este valor. 
+                            <strong>Consejo:</strong> Si tus clientes se quejan de "muy pocos resultados", baja este valor.
                             Si ven "productos que no se parecen", súbelo.
                         </div>
                     </div>
@@ -331,18 +331,18 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Manejar cambios en los sliders
     const sliders = document.querySelectorAll('.similarity-slider');
-    
+
     sliders.forEach(slider => {
         const clientId = slider.dataset.clientId;
         const originalValue = parseInt(slider.dataset.originalValue);
         const badge = document.getElementById(`similarity-value-${clientId}`);
         const saveBtn = document.getElementById(`save-btn-${clientId}`);
-        
+
         // Actualizar badge y mostrar/ocultar botón al mover slider
         slider.addEventListener('input', function() {
             const newValue = this.value;
             badge.textContent = `${newValue}%`;
-            
+
             // Mostrar botón solo si cambió el valor
             if (parseInt(newValue) !== originalValue) {
                 saveBtn.classList.remove('d-none');
@@ -351,20 +351,20 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-    
+
     // Manejar clic en botones de guardar
     const saveButtons = document.querySelectorAll('.save-btn');
-    
+
     saveButtons.forEach(btn => {
         btn.addEventListener('click', function() {
             const clientId = this.dataset.clientId;
             const slider = document.getElementById(`similarity-slider-${clientId}`);
             const newValue = parseInt(slider.value);
-            
+
             // Deshabilitar botón mientras se guarda
             this.disabled = true;
             this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
-            
+
             // Enviar petición AJAX
             fetch(`/search-config/update-threshold/${clientId}`, {
                 method: 'POST',
@@ -380,10 +380,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     // Actualizar valor original
                     slider.dataset.originalValue = newValue;
-                    
+
                     // Ocultar botón
                     this.classList.add('d-none');
-                    
+
                     // Mostrar mensaje de éxito
                     const toast = document.createElement('div');
                     toast.className = 'position-fixed top-0 end-0 p-3';
@@ -405,7 +405,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     alert('Error al guardar: ' + data.message);
                 }
-                
+
                 // Restaurar botón
                 this.disabled = false;
                 this.innerHTML = '<i class="bi bi-check-circle me-2"></i>Guardar Cambios';

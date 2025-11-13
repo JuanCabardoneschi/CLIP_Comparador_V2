@@ -1,6 +1,60 @@
 # BACKLOG DE MEJORAS Y PENDIENTES
 **Fecha de Creación**: 22 Octubre 2025
-**Última Actualización**: 15 Noviembre 2025
+**Última Actualización**: 13 Noviembre 2025
+
+---
+
+## 🏗️ REFACTORIZACIÓN ARQUITECTÓNICA
+
+### ⚠️ CRÍTICO: Modularizar api.py (Agregado 13 Nov 2025)
+**Estado**: 📋 PENDIENTE
+**Prioridad**: ALTA
+**Complejidad**: ALTA
+**Estimación**: 8-12 horas
+
+**Problema**:
+`clip_admin_backend/app/blueprints/api.py` tiene **3960+ líneas** con múltiples endpoints y lógica compleja mezclada:
+- Endpoints de búsqueda (GPT-4V, CLIP, texto)
+- Análisis de categorías (centroides, multi-categoría)
+- Helpers de scoring (atributos, color, tags)
+- Lógica de calidad de match
+- Normalización de queries (LLM)
+
+**Objetivo**:
+Separar en módulos especializados manteniendo funcionalidad:
+
+```
+app/blueprints/
+├── api/
+│   ├── __init__.py          # Blueprint principal, registro de sub-blueprints
+│   ├── search.py            # /api/search/* endpoints (unified, text, gpt4v)
+│   ├── categories.py        # /api/categories/* (detect, analyze)
+│   ├── clients.py           # /api/clients/* (list, info)
+│   └── scoring/
+│       ├── __init__.py
+│       ├── attributes.py    # _calculate_attribute_match, _best_color_similarity
+│       ├── quality.py       # Match quality analysis (exact/partial/poor/none)
+│       └── weights.py       # Scoring weights y SearchOptimizer integration
+```
+
+**Beneficios**:
+- ✅ Más fácil de mantener y debuggear
+- ✅ Tests unitarios por módulo
+- ✅ Menos conflictos en Git
+- ✅ Mejor separación de responsabilidades
+
+**Riesgos**:
+- ⚠️ Imports circulares si no se planea bien
+- ⚠️ Cambios en paths pueden romper tests existentes
+
+**Plan de Migración**:
+1. Crear estructura de carpetas `api/` y `api/scoring/`
+2. Extraer helpers de scoring a `scoring/attributes.py` y `scoring/quality.py`
+3. Mover endpoints de búsqueda a `search.py`
+4. Mover endpoints de categorías a `categories.py`
+5. Actualizar imports en `__init__.py` del blueprint principal
+6. Ejecutar tests de integración para validar
+7. Actualizar documentación
 
 ---
 

@@ -1,0 +1,22 @@
+# DB Schema Usage Report (diferencias)
+
+- [only_local] categories.is_leaf -> usos: 8
+  - Archivos: clip_admin_backend\app\blueprints\api.py, clip_admin_backend\app\models\category.py, clip_admin_backend\app\templates\categories\manage.html, clip_admin_backend\tools\diagnose_category_detection.py, docs\DB_SCHEMA_DIFF.md, docs\GPT4V_WIDGET_V3.md, test_multi_crop_detection.py, tools\maintenance\audit_reembed_quality.py
+- [only_local] categories.level -> usos: 11
+  - Archivos: BACKLOG_MEJORAS.md, clip_admin_backend\app\blueprints\embeddings.py, clip_admin_backend\app\models\category.py, clip_admin_backend\app\templates\categories\manage.html, clip_admin_backend\tools\auto_optimize_crops.py, docs\DB_SCHEMA_DIFF.md, migrations\create_color_learning.py, recalculate_blip2_centroids.py, reembed_with_blip2.py, test_multi_crop_detection.py, test_multi_crop_simple.py
+- [only_local] categories.parent_id -> usos: 4
+  - Archivos: clip_admin_backend\app\models\category.py, clip_admin_backend\tools\diagnose_category_detection.py, docs\DB_SCHEMA_DIFF.md, tools\debug_multicategory_detection.py
+- [only_local] categories.vision_hint -> usos: 6
+  - Archivos: clip_admin_backend\app\blueprints\categories.py, clip_admin_backend\app\blueprints\gpt4v_detection.py, clip_admin_backend\app\models\category.py, clip_admin_backend\app\templates\categories\edit.html, docs\DB_SCHEMA_DIFF.md, temp_update_hint.sql
+- [only_local] images.crop_h -> usos: 10
+  - Archivos: clip_admin_backend\app\blueprints\embeddings.py, clip_admin_backend\app\blueprints\images.py, clip_admin_backend\app\models\image.py, clip_admin_backend\app\templates\embeddings\test_multicrop.html, clip_admin_backend\app\templates\images\view.html, clip_admin_backend\app\templates\products\view.html, clip_admin_backend\tools\auto_optimize_crops.py, clip_admin_backend\tools\manual_add_image_crop_columns.py, clip_admin_backend\tools\verify_autocrop_regeneration.py, docs\DB_SCHEMA_DIFF.md
+- [only_local] images.crop_w -> usos: 10
+  - Archivos: clip_admin_backend\app\blueprints\embeddings.py, clip_admin_backend\app\blueprints\images.py, clip_admin_backend\app\models\image.py, clip_admin_backend\app\templates\embeddings\test_multicrop.html, clip_admin_backend\app\templates\images\view.html, clip_admin_backend\app\templates\products\view.html, clip_admin_backend\tools\auto_optimize_crops.py, clip_admin_backend\tools\manual_add_image_crop_columns.py, clip_admin_backend\tools\verify_autocrop_regeneration.py, docs\DB_SCHEMA_DIFF.md
+- [only_local] images.crop_x -> usos: 10
+  - Archivos: clip_admin_backend\app\blueprints\embeddings.py, clip_admin_backend\app\blueprints\images.py, clip_admin_backend\app\models\image.py, clip_admin_backend\app\templates\embeddings\test_multicrop.html, clip_admin_backend\app\templates\images\view.html, clip_admin_backend\app\templates\products\view.html, clip_admin_backend\tools\auto_optimize_crops.py, clip_admin_backend\tools\manual_add_image_crop_columns.py, clip_admin_backend\tools\verify_autocrop_regeneration.py, docs\DB_SCHEMA_DIFF.md
+- [only_local] images.crop_y -> usos: 10
+  - Archivos: clip_admin_backend\app\blueprints\embeddings.py, clip_admin_backend\app\blueprints\images.py, clip_admin_backend\app\models\image.py, clip_admin_backend\app\templates\embeddings\test_multicrop.html, clip_admin_backend\app\templates\images\view.html, clip_admin_backend\app\templates\products\view.html, clip_admin_backend\tools\auto_optimize_crops.py, clip_admin_backend\tools\manual_add_image_crop_columns.py, clip_admin_backend\tools\verify_autocrop_regeneration.py, docs\DB_SCHEMA_DIFF.md
+- [only_local] images.is_crop_manual -> usos: 7
+  - Archivos: clip_admin_backend\app\blueprints\embeddings.py, clip_admin_backend\app\blueprints\images.py, clip_admin_backend\app\models\image.py, clip_admin_backend\tools\auto_optimize_crops.py, clip_admin_backend\tools\manual_add_image_crop_columns.py, clip_admin_backend\tools\verify_autocrop_regeneration.py, docs\DB_SCHEMA_DIFF.md
+- [only_local] images.refined -> usos: 6
+  - Archivos: clip_admin_backend\app\blueprints\images.py, clip_admin_backend\app\models\image.py, clip_admin_backend\app\templates\images\view.html, clip_admin_backend\tools\auto_optimize_crops.py, clip_admin_backend\tools\manual_add_image_crop_columns.py, docs\DB_SCHEMA_DIFF.md

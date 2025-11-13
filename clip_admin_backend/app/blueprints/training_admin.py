@@ -1,5 +1,7 @@
-"""Blueprint Admin para entrenamiento visual (Iteración 1 y 2).
+"""DEPRECATED: Admin de entrenamiento eliminado.
+Este archivo queda como placeholder para evitar import errors.
 """
+raise ImportError("training_admin blueprint removed: endpoints de entrenamiento deshabilitados")
 from flask import Blueprint, request, jsonify, render_template
 from flask_login import login_required, current_user
 from app.models.category import Category

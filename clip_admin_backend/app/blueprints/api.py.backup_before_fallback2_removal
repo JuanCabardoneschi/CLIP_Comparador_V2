@@ -2448,14 +2448,6 @@ def text_search():
         # Extraer campos del normalizador para usar en boosts
         detected_color = llm_norm.get('color', '').lower() if llm_norm.get('color') else None
         detected_tipo = llm_norm.get('tipo', '').lower() if llm_norm.get('tipo') else None
-        # Contexto puede ser lista o string
-        contexto_raw = llm_norm.get('contexto')
-        if isinstance(contexto_raw, list):
-            detected_context = contexto_raw  # Ya es lista
-        elif isinstance(contexto_raw, str):
-            detected_context = [contexto_raw.lower()]
-        else:
-            detected_context = None
 
         # Expandir modificadores de color con colores del cliente
         expanded_query = expand_color_modifiers(query_text, client_id=str(client.id))
@@ -2795,14 +2787,14 @@ def text_search():
 
         # 🎯 Análisis de calidad de match en lugar de fallback global
         # En vez de reintentar globalmente, analizamos QUÉ encontramos y damos contexto al usuario
-
+        
         if len(results) == 0:
             # No hay resultados - analizar por qué y dar feedback útil
             match_quality = "none"
-
+            
             # Verificar si la categoría existe pero está vacía
             if detected_category:
-                category_product_count = len([p for p in products if p.category_id == detected_category.id])
+                category_product_count = len([p for p in all_client_products if p.category_id == detected_category.id])
                 if category_product_count == 0:
                     partial_match_info = {
                         "message": f"No tenemos productos en la categoría '{detected_category.name}' actualmente.",
@@ -2823,7 +2815,7 @@ def text_search():
                     "suggestion": "Intenta usar términos más generales o explora nuestro catálogo.",
                     "reason": "no_match_global"
                 }
-
+            
             detected_attributes = {
                 "color": detected_color,
                 "tipo": detected_tipo,
@@ -2832,15 +2824,14 @@ def text_search():
         else:
             # Hay resultados - analizar calidad del match
             COLOR_EXACT_THRESHOLD = 0.75
-            COLOR_PARTIAL_THRESHOLD = 0.60
+            COLOR_PARTIAL_THRESHOLD = 0.45
             ATTR_EXACT_THRESHOLD = 0.4
-
+            
             best_result = results[0]
             best_color_sim = best_result.get('color_similarity', 0.0)
             best_attr_score = best_result.get('attribute_match_score', 0.0)
-
+            
             # Determinar calidad del match
-            print(f"🎨 QUALITY CHECK: best_color_sim={best_color_sim:.3f} (thresholds: exact≥0.75, partial≥0.60)")
             if detected_color:
                 if best_color_sim >= COLOR_EXACT_THRESHOLD:
                     match_quality = "exact"
@@ -2854,106 +2845,40 @@ def text_search():
                     match_quality = "exact"
                 else:
                     match_quality = "partial"
-
+            
             detected_attributes = {
                 "color": detected_color,
                 "tipo": detected_tipo,
                 "context": detected_context
             }
-
+            
             # Si match es parcial o pobre, dar contexto adicional
             partial_match_info = None
             if match_quality in ["partial", "poor"] and detected_color:
-                # Consultar colores reales disponibles en la categoría detectada
+                # Extraer colores disponibles en los resultados
                 available_colors = set()
-
-                print(f"\n🔍 DEBUG: Iniciando consulta de colores disponibles")
-                print(f"   - match_quality: {match_quality}")
-                print(f"   - detected_color: {detected_color}")
-                print(f"   - detected_category: {detected_category.name if detected_category else None}")
-                print(f"   - client_id: {client.id}")
-
-                try:
-                    # Query directa a BD para obtener colores únicos de productos en esta categoría
-                    color_query = db.session.query(
-                        func.jsonb_extract_path_text(Product.attributes, 'color').label('color')
-                    ).filter(
-                        Product.client_id == client.id,
-                        Product.category_id == detected_category.id if detected_category else True,
-                        func.jsonb_extract_path_text(Product.attributes, 'color').isnot(None),
-                        func.jsonb_extract_path_text(Product.attributes, 'color') != ''
-                    ).distinct()
-
-                    print(f"   - Ejecutando query SQL...")
-                    color_results = color_query.all()
-                    print(f"   - Resultados obtenidos: {len(color_results)} rows")
-
-                    for row in color_results:
-                        print(f"   - Row color: '{row.color}'")
-                        if row.color and row.color.strip():
-                            available_colors.add(row.color.strip().upper())
-
-                    print(f"🎨 Colores disponibles en categoría: {available_colors}")
-
-                except Exception as e:
-                    print(f"⚠️ Error consultando colores: {e}")
-                    import traceback
-                    traceback.print_exc()
-
-                    # Fallback: extraer de los resultados actuales
-                    print(f"   - Usando fallback: extraer de resultados actuales")
-                    for r in results[:10]:
-                        prod_id = r['product_id']
-                        product = next((p for p in products if str(p.id) == prod_id), None)
-                        if product and product.attributes:
-                            prod_color = product.attributes.get('color')
-                            print(f"   - Producto {product.name}: color={prod_color}")
-                            if prod_color:
-                                available_colors.add(prod_color)
-
+                for r in results[:10]:  # Top 10 para no saturar
+                    prod_id = r['product_id']
+                    product = next((p for p in all_client_products if str(p.id) == prod_id), None)
+                    if product and product.attributes_data:
+                        prod_color = product.attributes_data.get('color')
+                        if prod_color:
+                            available_colors.add(prod_color)
+                
                 if available_colors:
                     colors_list = sorted(list(available_colors))
-                    category_text = detected_tipo or (detected_category.name.lower() if detected_category else 'productos')
-
-                    # Detectar el color de los productos que estamos mostrando (el "más cercano")
-                    shown_colors = set()
-                    for r in results[:3]:  # Top 3 resultados
-                        prod_id = r['product_id']
-                        product = next((p for p in products if str(p.id) == prod_id), None)
-                        if product and product.attributes:
-                            prod_color = product.attributes.get('color')
-                            if prod_color:
-                                shown_colors.add(prod_color.upper())
-
-                    closest_color_text = ""
-                    other_colors = []
-
-                    if shown_colors:
-                        # Excluir colores mostrados de la lista de "también disponibles"
-                        other_colors = [c for c in colors_list if c not in shown_colors]
-
-                        if len(shown_colors) == 1:
-                            closest_color_text = f" Nuestro sistema encontró que {list(shown_colors)[0]} es el color más similar disponible."
-                        else:
-                            closest_color_text = f" Nuestro sistema encontró estos colores como los más similares: {', '.join(sorted(shown_colors))}."
-                    else:
-                        other_colors = colors_list
-
                     if match_quality == "poor":
-                        message = f"No tenemos {category_text} en '{detected_color.upper()}' que solicitaste."
-                        message += closest_color_text
-                        if other_colors:
-                            message += f" También disponibles: {', '.join(other_colors)}."
+                        message = f"No tenemos '{detected_tipo or 'productos'}' en color '{detected_color}'. "
+                        message += f"Tenemos en: {', '.join(colors_list)}."
                         partial_match_info = {
                             "message": message,
-                            "requested_color": detected_color.upper(),
+                            "available_colors": colors_list,
+                            "requested_color": detected_color,
                             "reason": "color_not_available"
                         }
                     else:  # partial
-                        message = f"Coincidencia aproximada para '{detected_color.upper()}' en {category_text}."
-                        message += closest_color_text
-                        if other_colors:
-                            message += f" Otros colores disponibles: {', '.join(other_colors)}."
+                        message = f"Coincidencia aproximada para '{detected_color}'. "
+                        message += f"También disponible en: {', '.join(colors_list)}."
                         partial_match_info = {
                             "message": message,
                             "available_colors": colors_list,
@@ -2962,9 +2887,6 @@ def text_search():
                         }
 
         print(f"âœ… TEXT SEARCH: {len(results)} resultados en {elapsed_time:.3f}s")
-        print(f"ðŸŽ¯ MATCH QUALITY: {match_quality}")
-        print(f"ðŸŽ¨ DETECTED COLOR: {detected_color}")
-        print(f"ðŸ'¬ PARTIAL MATCH INFO: {partial_match_info}")
 
         response = {
             "success": True,
@@ -2976,14 +2898,8 @@ def text_search():
             } if detected_category else None,
             "results": results,
             "total_products_analyzed": len(products),
-            "search_time_seconds": round(elapsed_time, 3),
-            "match_quality": match_quality,
-            "detected_attributes": detected_attributes
+            "search_time_seconds": round(elapsed_time, 3)
         }
-
-        # Agregar información de match parcial si existe
-        if partial_match_info:
-            response['partial_match_info'] = partial_match_info
 
         # Agregar sugerencias si la query es ambigua
         if llm_norm.get('needs_refinement'):

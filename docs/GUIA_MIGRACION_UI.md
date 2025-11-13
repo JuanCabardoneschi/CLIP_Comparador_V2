@@ -132,12 +132,7 @@ python recalculate_blip2_centroids.py --force
 ```
 **⚠️ NOTA**: Si usaste la **UI "Regenerar Todo"**, los centroides ya están actualizados automáticamente. Este paso es **solo para quien use el script terminal**.
 
-**Paso 4: Re-calibración (Opcional)**
-```powershell
-# Ajustar thresholds F1-óptimos con BLIP-2
-# Esto se hace desde la UI del admin panel
-# Calibration → Re-calibrar Multi-Label
-```
+<!-- Paso 4 de Re-calibración eliminado -->
 
 ---
 
@@ -315,8 +310,7 @@ Si tienes problemas:
 3️⃣ Recalcular centroides
    → python recalculate_blip2_centroids.py --force
 
-4️⃣ Re-calibración (opcional)
-   → UI Admin → Calibration → Re-calibrar
+<!-- Re-calibración eliminada del flujo final -->
 
 5️⃣ Testing local
    → Probar búsquedas visuales/texto

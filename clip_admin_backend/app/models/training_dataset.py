@@ -1,7 +1,8 @@
 """
-Modelo para Dataset de Training/Calibración por Cliente
-Permite a cada cliente construir su propio ground-truth dataset
+DEPRECATED: Calibración y dataset eliminados del sistema.
+Este archivo queda como placeholder para evitar errores en imports antiguos.
 """
+raise ImportError("calibration removed: tablas 'training_images' y 'calibration_runs' eliminadas.")
 
 from app import db
 from datetime import datetime
