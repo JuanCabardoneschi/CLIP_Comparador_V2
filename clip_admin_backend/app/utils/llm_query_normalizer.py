@@ -260,13 +260,13 @@ def normalize_query(query: str, client_id: int = None) -> dict:
         contextos = ['casual', 'formal', 'deportivo']
 
     # MATCHING SEMÁNTICO con LLM (no substring!)
-    # Thresholds más estrictos para evitar falsos positivos:
-    # - Color: 0.65 (solo si el color está explícito: "gorra roja", "azul marino")
-    # - Tipo: 0.60 (categoría debe estar clara en la query)
-    # - Contexto: 0.45 (más flexible para estilos/ocasiones)
-    color = _semantic_match(query, colores, threshold=0.65) if colores else None
-    tipo = _semantic_match(query, tipos, threshold=0.60) if tipos else None
-    contexto = _semantic_match_multiple(query, contextos, threshold=0.45, top_k=2) if contextos else []
+    # Thresholds optimizados para balance entre precisión y recall:
+    # - Color: 0.45 (captura variantes: "azul" ≈ "celeste", "marino")
+    # - Tipo: 0.50 (categoría con flexibilidad: "jean" ≈ "pantalón", "vaquero")
+    # - Contexto: 0.40 (más flexible para estilos/ocasiones)
+    color = _semantic_match(query, colores, threshold=0.45) if colores else None
+    tipo = _semantic_match(query, tipos, threshold=0.50) if tipos else None
+    contexto = _semantic_match_multiple(query, contextos, threshold=0.40, top_k=2) if contextos else []
 
     # Detectar queries ambiguas y generar sugerencias
     ambiguity_check = _detect_ambiguous_terms(query, vocab if client_id else {})

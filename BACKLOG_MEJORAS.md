@@ -1,6 +1,86 @@
 # BACKLOG DE MEJORAS Y PENDIENTES
 **Fecha de Creación**: 22 Octubre 2025
-**Última Actualización**: 13 Noviembre 2025
+**Última Actualización**: 15 Noviembre 2025
+
+---
+
+## 🎯 WIDGET DUAL-TAB & CONFIGURACIÓN - FUNCIONALIDADES PENDIENTES (Agregado 15 Nov 2025)
+
+### Estado Actual
+El widget v3 (`clip-widget-embed-v3.js`) tiene búsqueda dual:
+- **Tab 1 (Visual)**: GPT-4V + CLIP vía `/api/search/gpt4v-unified`
+- **Tab 2 (Texto)**: MiniLM + CLIP vía `/api/search/text`
+
+**✅ IMPLEMENTADO (15 Nov 2025)**:
+- Dual-tab widget funcional (Visual + Texto)
+- Configuración simplificada en UI (solo "Similitud Visual Mínima" y "Max Results")
+- Thresholds MiniLM optimizados (0.45 color, 0.50 tipo, 0.40 contexto)
+- Pesos del Optimizer deshabilitados (grises) para futura implementación
+- Endpoint GPT4V-unified usa `StoreSearchConfig` en lugar de valores hardcodeados
+
+### 🟡 ALTA PRIORIDAD - Próxima Versión
+
+#### 1. SearchOptimizer Lite con Pesos Configurables
+**Estado**: 📋 PENDIENTE
+**Prioridad**: ALTA
+**Complejidad**: MEDIA
+**Estimación**: 5-6 horas
+
+**Funcionalidad**:
+Reactivar los sliders de "Balanceo de Resultados" en la UI y conectarlos a una lógica de scoring multi-capa:
+- **Visual Weight**: Similitud CLIP (imagen vs imagen)
+- **Metadata Weight**: Coincidencia de atributos (color, marca, material)
+- **Business Weight**: Lógica de negocio (stock, destacados, descuentos)
+
+**Beneficio**: Rankings más sofisticados que consideran no solo parecido visual sino también atributos semánticos y estrategia comercial.
+
+**Implementación**:
+```python
+# En gpt4v_unified_search() y text_search():
+config = StoreSearchConfig.query.filter_by(client_id=client.id).first()
+visual_w = config.visual_weight if config else 0.6
+metadata_w = config.metadata_weight if config else 0.3
+business_w = config.business_weight if config else 0.1
+
+final_score = (
+    visual_w * clip_similarity +
+    metadata_w * metadata_score +  # Color/brand matching
+    business_w * business_score    # Stock + featured
+)
+```
+
+**Requiere**:
+- Reactivar sliders en `search_config/edit.html`
+- Agregar función `calculate_metadata_score()` y `calculate_business_score()`
+- Actualizar endpoints para usar scoring multi-capa
+
+---
+
+#### 2. Detección Multi-Prenda en Queries de Texto
+**Estado**: 💡 IDEA / DISEÑO
+**Prioridad**: MEDIA
+**Complejidad**: MEDIA
+**Estimación**: 4-5 horas
+
+**Funcionalidad**:
+- Usuario escribe: "remera blanca y jean azul"
+- Sistema detecta múltiples tipos de prenda en una sola query
+- Retorna resultados por cada categoría detectada (remeras + jeans)
+
+**Beneficio**: UX más natural para búsquedas combinadas (outfits completos).
+
+**Implementación Actual**:
+- `llm_query_normalizer.py` ya tiene `_semantic_match_multiple()` pero solo se usa para contextos
+- Necesita extender para tipos de prenda:
+```python
+tipos_detectados = _semantic_match_multiple(query, tipos, threshold=0.50, top_k=3)
+# Ejecutar búsqueda por cada tipo y consolidar resultados
+```
+
+**Requiere**:
+- Modificar `text_search()` para procesar múltiples tipos
+- Ajustar widget para mostrar resultados agrupados por categoría
+- UI con tabs/secciones para cada tipo de prenda
 
 ---
 

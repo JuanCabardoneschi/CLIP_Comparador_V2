@@ -56,8 +56,82 @@
                 opacity: 0.95;
             }
 
-            .clip-content {
+            /* Tabs */
+            .clip-tabs {
+                display: flex;
+                border-bottom: 2px solid #f1f5f9;
+                background: #fafbfc;
+            }
+
+            .clip-tab {
+                flex: 1;
+                padding: 1.5rem 2rem;
+                background: transparent;
+                border: none;
+                cursor: pointer;
+                font-size: 1.1rem;
+                font-weight: 600;
+                color: #64748b;
+                transition: all 0.3s;
+                position: relative;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.75rem;
+            }
+
+            .clip-tab:hover {
+                background: #f8fafc;
+                color: #475569;
+            }
+
+            .clip-tab.active {
+                color: #667eea;
+                background: white;
+            }
+
+            .clip-tab.active::after {
+                content: '';
+                position: absolute;
+                bottom: -2px;
+                left: 0;
+                right: 0;
+                height: 3px;
+                background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            }
+
+            .clip-tab-icon {
+                font-size: 1.5rem;
+            }
+
+            .clip-tab-content {
+                display: none;
                 padding: 2.5rem;
+                animation: clipFadeIn 0.3s ease;
+            }
+
+            .clip-tab-content.active {
+                display: block;
+            }
+
+            @keyframes clipFadeIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+
+            .clip-search-title {
+                font-size: 1.8rem;
+                color: #1e293b;
+                margin-bottom: 0.5rem;
+                font-weight: 700;
+                text-align: center;
+            }
+
+            .clip-search-subtitle {
+                color: #64748b;
+                font-size: 1.05rem;
+                margin-bottom: 2rem;
+                text-align: center;
             }
 
             /* Upload Area */
@@ -177,6 +251,38 @@
                 cursor: not-allowed;
                 transform: none;
                 box-shadow: none;
+            }
+
+            /* Text Search Input */
+            .clip-input-wrap {
+                position: relative;
+                margin-bottom: 1rem;
+            }
+
+            .clip-input {
+                width: 100%;
+                padding: 1.25rem 1.5rem 1.25rem 3.5rem;
+                font-size: 1.1rem;
+                border: 2px solid #e5e7eb;
+                border-radius: 16px;
+                transition: all 0.3s;
+                font-family: inherit;
+                box-sizing: border-box;
+            }
+
+            .clip-input:focus {
+                outline: none;
+                border-color: #667eea;
+                box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+            }
+
+            .clip-input-icon {
+                position: absolute;
+                left: 1.25rem;
+                top: 50%;
+                transform: translateY(-50%);
+                font-size: 1.3rem;
+                color: #94a3b8;
             }
 
             /* Loading */
@@ -440,11 +546,27 @@
         container.innerHTML = `
             <div class="clip-widget-wrap">
                 <div class="clip-header">
-                    <h2>🤖 Búsqueda Visual Inteligente</h2>
-                    <p>Detección automática con IA + Búsqueda por similitud</p>
+                    <h2>🤖 Búsqueda Inteligente</h2>
+                    <p>Encuentra productos similares con IA</p>
                 </div>
 
-                <div class="clip-content">
+                <!-- Tabs -->
+                <div class="clip-tabs">
+                    <button class="clip-tab active" data-tab="visual">
+                        <span class="clip-tab-icon">📸</span>
+                        <span>Búsqueda Visual</span>
+                    </button>
+                    <button class="clip-tab" data-tab="text">
+                        <span class="clip-tab-icon">💬</span>
+                        <span>Búsqueda por Descripción</span>
+                    </button>
+                </div>
+
+                <!-- Tab Content: Visual Search -->
+                <div class="clip-tab-content active" id="clip-visual-tab">
+                    <h2 class="clip-search-title">Encuentra productos con una foto</h2>
+                    <p class="clip-search-subtitle">Sube una imagen y encontraremos productos similares</p>
+
                     <div class="clip-upload-area" id="clip-upload">
                         <div class="clip-upload-icon">📸</div>
                         <div class="clip-upload-text">Arrastra una imagen aquí</div>
@@ -457,32 +579,46 @@
                             <img id="clip-preview-img" class="clip-preview-img" alt="Preview">
                             <button class="clip-remove-btn" id="clip-remove-btn">✕</button>
                         </div>
-                        <button class="clip-search-btn" id="clip-search-btn">
+                        <button class="clip-search-btn" id="clip-visual-search-btn">
                             🔍 Buscar Productos Similares
                         </button>
                     </div>
-
-                    <div class="clip-error" id="clip-error"></div>
-
-                    <div class="clip-loading" id="clip-loading">
-                        <div class="clip-spinner"></div>
-                        <div class="clip-loading-text">Analizando imagen con IA...</div>
-                        <div class="clip-loading-steps">
-                            <div>⏳ Detectando categorías con GPT-4 Vision</div>
-                            <div>⏳ Buscando productos similares</div>
-                        </div>
-                    </div>
-
-                    <div class="clip-detection" id="clip-detection">
-                        <div class="clip-detection-title">
-                            <span>🎯 Categorías Detectadas</span>
-                        </div>
-                        <div class="clip-detection-items" id="clip-detection-items"></div>
-                        <div class="clip-detection-cost" id="clip-detection-cost"></div>
-                    </div>
-
-                    <div class="clip-results" id="clip-results"></div>
                 </div>
+
+                <!-- Tab Content: Text Search -->
+                <div class="clip-tab-content" id="clip-text-tab">
+                    <h2 class="clip-search-title">Busca por descripción</h2>
+                    <p class="clip-search-subtitle">Describe lo que buscas y encuentra productos que coincidan</p>
+
+                    <div class="clip-input-wrap">
+                        <span class="clip-input-icon">🔍</span>
+                        <input type="text" class="clip-input" id="clip-text-input"
+                               placeholder="Ej: camisa blanca, remera azul, pantalón negro...">
+                    </div>
+                    <button class="clip-search-btn" id="clip-text-search-btn">Buscar productos</button>
+                </div>
+
+                <!-- Common sections -->
+                <div class="clip-error" id="clip-error"></div>
+
+                <div class="clip-loading" id="clip-loading">
+                    <div class="clip-spinner"></div>
+                    <div class="clip-loading-text" id="clip-loading-text">Analizando...</div>
+                    <div class="clip-loading-steps" id="clip-loading-steps">
+                        <div>⏳ Detectando categorías con GPT-4 Vision</div>
+                        <div>⏳ Buscando productos similares</div>
+                    </div>
+                </div>
+
+                <div class="clip-detection" id="clip-detection">
+                    <div class="clip-detection-title">
+                        <span>🎯 Categorías Detectadas</span>
+                    </div>
+                    <div class="clip-detection-items" id="clip-detection-items"></div>
+                    <div class="clip-detection-cost" id="clip-detection-cost"></div>
+                </div>
+
+                <div class="clip-results" id="clip-results"></div>
             </div>
         `;
 
@@ -494,7 +630,37 @@
         const preview = container.querySelector('#clip-preview');
         const previewImg = container.querySelector('#clip-preview-img');
         const removeBtn = container.querySelector('#clip-remove-btn');
-        const searchBtn = container.querySelector('#clip-search-btn');
+        const visualSearchBtn = container.querySelector('#clip-visual-search-btn');
+        const textSearchBtn = container.querySelector('#clip-text-search-btn');
+        const textInput = container.querySelector('#clip-text-input');
+
+        // Tab switching
+        const tabs = container.querySelectorAll('.clip-tab');
+        const tabContents = container.querySelectorAll('.clip-tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabName = tab.dataset.tab;
+
+                // Update active states
+                tabs.forEach(t => t.classList.remove('active'));
+                tabContents.forEach(tc => tc.classList.remove('active'));
+
+                tab.classList.add('active');
+                container.querySelector(`#clip-${tabName}-tab`).classList.add('active');
+
+                // Clear results when switching tabs
+                clearResults();
+            });
+        });
+
+        // Clear results helper
+        function clearResults() {
+            container.querySelector('#clip-detection').classList.remove('active');
+            container.querySelector('#clip-results').classList.remove('active');
+            container.querySelector('#clip-error').classList.remove('active');
+            container.querySelector('#clip-loading').classList.remove('active');
+        }
 
         // Upload area click
         upload.addEventListener('click', () => fileInput.click());
@@ -540,16 +706,28 @@
             preview.classList.remove('active');
             upload.style.display = 'block';
             fileInput.value = '';
-
-            // Clear results
-            container.querySelector('#clip-detection').classList.remove('active');
-            container.querySelector('#clip-results').classList.remove('active');
-            container.querySelector('#clip-error').classList.remove('active');
+            clearResults();
         });
 
-        searchBtn.addEventListener('click', () => {
+        // Visual search button
+        visualSearchBtn.addEventListener('click', () => {
             if (!selectedFile) return;
             performGPT4VSearch(selectedFile);
+        });
+
+        // Text search button
+        textSearchBtn.addEventListener('click', () => {
+            const query = textInput.value.trim();
+            if (!query) return;
+            performTextSearch(query);
+        });
+
+        // Text input Enter key
+        textInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const query = textInput.value.trim();
+                if (query) performTextSearch(query);
+            }
         });
 
         // API Call
@@ -593,6 +771,97 @@
                 showError('Error de conexión. Intenta nuevamente.');
                 console.error(err);
             });
+        }
+
+        // Text Search API
+        function performTextSearch(query) {
+            showLoading();
+            const loadingText = container.querySelector('#clip-loading-text');
+            const loadingSteps = container.querySelector('#clip-loading-steps');
+
+            // Cambiar texto de carga para búsqueda por texto
+            if (loadingText) loadingText.textContent = 'Buscando productos...';
+            if (loadingSteps) loadingSteps.style.display = 'none';
+
+            const currentApiKey = window.CLIPWidget?.apiKey || config.apiKey;
+
+            fetch(`${config.serverUrl}/api/search/text`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': currentApiKey
+                },
+                body: JSON.stringify({ query, limit: 20 })
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideLoading();
+
+                if (!data.success) {
+                    showError(data.message || data.error || 'Error en la búsqueda');
+                    return;
+                }
+
+                // La búsqueda por texto NO tiene detección GPT-4V, ocultar esa sección
+                container.querySelector('#clip-detection').classList.remove('active');
+
+                // Mostrar resultados
+                if (data.results && data.results.length > 0) {
+                    displayTextResults(data.results, data.total_results || data.results.length);
+                } else {
+                    showNoResults();
+                }
+            })
+            .catch(err => {
+                hideLoading();
+                showError('Error de conexión. Intenta nuevamente.');
+                console.error(err);
+            })
+            .finally(() => {
+                // Restaurar textos de loading para próxima búsqueda visual
+                if (loadingText) loadingText.textContent = 'Analizando imagen con IA...';
+                if (loadingSteps) loadingSteps.style.display = 'block';
+            });
+        }
+
+        // Display text search results (sin agrupación por categoría)
+        function displayTextResults(results, total) {
+            const resultsDiv = container.querySelector('#clip-results');
+
+            const html = `
+                <div class="clip-category-section">
+                    <div class="clip-category-header">
+                        <div class="clip-category-name">Resultados de Búsqueda</div>
+                        <div class="clip-category-count">${total} producto${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}</div>
+                    </div>
+                    <div class="clip-product-grid">
+                        ${results.map(p => `
+                            <div class="clip-product">
+                                <div class="clip-product-img-wrap">
+                                    <img src="${p.image_url}" alt="${p.name}" class="clip-product-img">
+                                    <div class="clip-similarity-badge">
+                                        ${Math.round(p.similarity * 100)}% Match
+                                    </div>
+                                </div>
+                                <div class="clip-product-info">
+                                    <div class="clip-product-name">${p.name}</div>
+                                    <div class="clip-product-price">
+                                        ${p.price ? `$${p.price.toFixed(2)}` : 'Consultar'}
+                                    </div>
+                                    ${p.stock !== undefined ? `
+                                        <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}">
+                                            ${p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock'}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            resultsDiv.innerHTML = html;
+            resultsDiv.classList.add('active');
         }
 
         // Display detection

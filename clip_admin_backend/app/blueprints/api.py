@@ -3516,6 +3516,12 @@ def gpt4v_unified_search():
 
         railway_log(f"✅ Cliente autenticado: {client.name}")
 
+        # Usar product_similarity_threshold del cliente (convertir de % a 0.0-1.0)
+        default_threshold = (client.product_similarity_threshold or 30) / 100.0
+        
+        # Max results desde system_config
+        default_max_results = system_config.get('search', 'max_results', 10)
+
         # Obtener imagen (multipart o JSON)
         # image_data: se usará luego para generar el embedding (acepta bytes o str)
         # image_for_detection: será bytes o PIL.Image para GPT-4V
@@ -3528,8 +3534,8 @@ def gpt4v_unified_search():
                 # Mantener bytes para detección y para carga posterior
                 image_data = image_bytes
                 image_for_detection = image_bytes
-            max_results = int(request.form.get('max_results_per_category', 5))
-            threshold = float(request.form.get('similarity_threshold', 0.7))
+            max_results = int(request.form.get('max_results_per_category', default_max_results))
+            threshold = float(request.form.get('similarity_threshold', default_threshold))
         else:
             data = request.get_json()
             if not data:
@@ -3539,8 +3545,8 @@ def gpt4v_unified_search():
                     "message": "Body JSON o multipart/form-data requerido"
                 }), 400
             image_data = data.get('image')
-            max_results = int(data.get('max_results_per_category', 5))
-            threshold = float(data.get('similarity_threshold', 0.7))
+            max_results = int(data.get('max_results_per_category', default_max_results))
+            threshold = float(data.get('similarity_threshold', default_threshold))
             # Para JSON, convertir a PIL.Image para detección (admite data URL/base64)
             from app.blueprints.embeddings import load_image_from_source
             image_for_detection = load_image_from_source(image_data)
@@ -3557,7 +3563,7 @@ def gpt4v_unified_search():
         # Respetar el límite del sistema si el usuario pide más
         max_results = min(max_results, max_results_config)
 
-        railway_log(f"📊 Parámetros: max_results={max_results} (límite sistema: {max_results_config}), threshold={threshold}")
+        railway_log(f"📊 Parámetros: max_results={max_results} (límite sistema: {max_results_config}), threshold={threshold} (config: {default_threshold})")
 
         # ===================================================================
         # PASO 1: Detectar categorías con GPT-4 Vision (opcional)

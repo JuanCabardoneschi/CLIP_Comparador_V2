@@ -40,77 +40,64 @@
 
             <div class="card-body">
                 {% if item.config %}
-                <!-- Sensibilidad de Detección -->
+                <!-- Parámetros Activos -->
                 <div class="mb-3 pb-3 border-bottom">
                     <h6 class="text-muted mb-3">
-                        <i class="bi bi-bullseye text-info me-1"></i>
-                        Sensibilidad de Detección:
+                        <i class="bi bi-bullseye text-success me-1"></i>
+                        Parámetros de Búsqueda:
                     </h6>
 
-                    <!-- Category Confidence -->
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <label class="form-label mb-0 small">
-                                <i class="bi bi-tags text-info"></i>
-                                Confianza de Categoría
-                            </label>
-                            <span class="badge bg-info">{{ item.client.category_confidence_threshold or 70 }}%</span>
-                        </div>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-info"
-                                 role="progressbar"
-                                 style="width: {{ item.client.category_confidence_threshold or 70 }}%"
-                                 aria-valuenow="{{ item.client.category_confidence_threshold or 70 }}"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Product Similarity -->
+                    <!-- Similitud Visual Mínima (product_similarity_threshold del Client) - EDITABLE -->
                     <div class="mb-0">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <label class="form-label mb-0 small">
-                                <i class="bi bi-diagram-3 text-info"></i>
-                                Similitud de Productos
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label for="similarity-slider-{{ item.client.id }}" class="form-label mb-0 small">
+                                <i class="bi bi-eye-fill text-success"></i>
+                                Similitud Visual Mínima
                             </label>
-                            <span class="badge bg-info">{{ item.client.product_similarity_threshold or 30 }}%</span>
+                            <span class="badge bg-success similarity-badge" id="similarity-value-{{ item.client.id }}">
+                                {{ item.client.product_similarity_threshold }}%
+                            </span>
                         </div>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-info"
-                                 role="progressbar"
-                                 style="width: {{ item.client.product_similarity_threshold or 30 }}%"
-                                 aria-valuenow="{{ item.client.product_similarity_threshold or 30 }}"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100">
-                            </div>
-                        </div>
+                        <input type="range"
+                               class="form-range similarity-slider"
+                               id="similarity-slider-{{ item.client.id }}"
+                               min="10"
+                               max="100"
+                               step="5"
+                               value="{{ item.client.product_similarity_threshold }}"
+                               data-client-id="{{ item.client.id }}"
+                               data-original-value="{{ item.client.product_similarity_threshold }}">
+                        <small class="text-muted">
+                            <i class="bi bi-info-circle"></i>
+                            Qué tan parecidos deben ser los productos a la imagen subida
+                        </small>
                     </div>
                 </div>
 
-                <!-- Pesos del Optimizer -->
-                <div class="mb-3">
+                <!-- Pesos del Optimizer (DESHABILITADOS - Disponible próximamente) -->
+                <div class="mb-3 opacity-50">
                     <h6 class="text-muted mb-3">
-                        <i class="bi bi-sliders text-primary me-1"></i>
-                        Pesos del Optimizer:
+                        <i class="bi bi-sliders text-secondary me-1"></i>
+                        Balanceo de Resultados
+                        <span class="badge bg-secondary ms-2" data-bs-toggle="tooltip" title="Disponible en versión SearchOptimizer Lite">
+                            <i class="bi bi-lock-fill"></i>
+                            Próximamente
+                        </span>
                     </h6>
 
                     <!-- Visual Weight -->
                     <div class="mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-1">
-                            <label class="form-label mb-0 small">
-                                <i class="bi bi-eye text-primary"></i>
-                                Visual
+                            <label class="form-label mb-0 small text-muted">
+                                <i class="bi bi-eye text-secondary"></i>
+                                Peso Visual
                             </label>
-                            <span class="badge bg-primary">{{ (item.config.visual_weight * 100)|int }}%</span>
+                            <span class="badge bg-secondary">{{ (item.config.visual_weight * 100)|int }}%</span>
                         </div>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-primary"
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar bg-secondary"
                                  role="progressbar"
-                                 style="width: {{ (item.config.visual_weight * 100)|int }}%"
-                                 aria-valuenow="{{ (item.config.visual_weight * 100)|int }}"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100">
+                                 style="width: {{ (item.config.visual_weight * 100)|int }}%">
                             </div>
                         </div>
                     </div>
@@ -118,51 +105,34 @@
                     <!-- Metadata Weight -->
                     <div class="mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-1">
-                            <label class="form-label mb-0 small">
-                                <i class="bi bi-tags text-success"></i>
-                                Metadata
+                            <label class="form-label mb-0 small text-muted">
+                                <i class="bi bi-tags text-secondary"></i>
+                                Peso Metadata
                             </label>
-                            <span class="badge bg-success">{{ (item.config.metadata_weight * 100)|int }}%</span>
+                            <span class="badge bg-secondary">{{ (item.config.metadata_weight * 100)|int }}%</span>
                         </div>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-success"
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar bg-secondary"
                                  role="progressbar"
-                                 style="width: {{ (item.config.metadata_weight * 100)|int }}%"
-                                 aria-valuenow="{{ (item.config.metadata_weight * 100)|int }}"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100">
+                                 style="width: {{ (item.config.metadata_weight * 100)|int }}%">
                             </div>
                         </div>
                     </div>
 
                     <!-- Business Weight -->
-                    <div class="mb-3">
+                    <div class="mb-0">
                         <div class="d-flex justify-content-between align-items-center mb-1">
-                            <label class="form-label mb-0 small">
-                                <i class="bi bi-shop text-warning"></i>
-                                Business
+                            <label class="form-label mb-0 small text-muted">
+                                <i class="bi bi-shop text-secondary"></i>
+                                Peso Business
                             </label>
-                            <span class="badge bg-warning text-dark">{{ (item.config.business_weight * 100)|int }}%</span>
+                            <span class="badge bg-secondary">{{ (item.config.business_weight * 100)|int }}%</span>
                         </div>
-                        <div class="progress" style="height: 8px;">
-                            <div class="progress-bar bg-warning"
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar bg-secondary"
                                  role="progressbar"
-                                 style="width: {{ (item.config.business_weight * 100)|int }}%"
-                                 aria-valuenow="{{ (item.config.business_weight * 100)|int }}"
-                                 aria-valuemin="0"
-                                 aria-valuemax="100">
+                                 style="width: {{ (item.config.business_weight * 100)|int }}%">
                             </div>
-                        </div>
-                    </div>
-
-                    <!-- Suma Total -->
-                    <div class="alert alert-light border mb-0">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="small text-muted">
-                                <i class="bi bi-calculator me-1"></i>
-                                Suma Total:
-                            </span>
-                            <strong>{{ (item.config.visual_weight + item.config.metadata_weight + item.config.business_weight)|round(2) }}</strong>
                         </div>
                     </div>
                 </div>
@@ -186,11 +156,16 @@
 
             <div class="card-footer bg-white border-top-0">
                 <div class="d-flex gap-2">
-                    <a href="{{ url_for('search_config.edit', client_id=item.client.id) }}"
-                       class="btn btn-primary flex-grow-1">
-                        <i class="bi bi-sliders me-2"></i>
-                        Configurar Pesos
-                    </a>
+                    <!-- Botón Guardar (oculto por defecto, aparece al modificar) -->
+                    <button type="button"
+                            class="btn btn-success flex-grow-1 save-btn d-none"
+                            id="save-btn-{{ item.client.id }}"
+                            data-client-id="{{ item.client.id }}">
+                        <i class="bi bi-check-circle me-2"></i>
+                        Guardar Cambios
+                    </button>
+                    
+                    <!-- Botón Ayuda -->
                     <button type="button"
                             class="btn btn-outline-info"
                             data-bs-toggle="modal"
@@ -228,80 +203,74 @@
             </div>
             <div class="modal-body">
                 <p class="lead mb-4">
-                    Este panel te permite ajustar cómo se comporta el buscador visual de tu tienda para que muestre los productos más relevantes a tus clientes.
+                    Este panel te permite ajustar los parámetros principales del buscador visual para controlar la relevancia y cantidad de resultados.
                 </p>
 
-                <!-- Sensibilidad de Detección -->
+                <!-- Similitud Visual Mínima -->
                 <div class="mb-4">
-                    <h6 class="text-primary mb-3">
-                        <i class="bi bi-funnel-fill me-2"></i>
-                        1. Sensibilidad de Detección
+                    <h6 class="text-success mb-3">
+                        <i class="bi bi-eye-fill me-2"></i>
+                        Similitud Visual Mínima
                     </h6>
                     <p class="mb-3">
-                        <strong>¿Qué hace?</strong> Define qué tan exigente será el sistema al buscar productos similares.
+                        <strong>¿Qué hace?</strong> Define qué tan parecido debe ser un producto a la imagen subida para aparecer en los resultados.
                     </p>
 
                     <div class="alert alert-light border">
                         <p class="mb-2">
-                            <strong><i class="bi bi-tags text-info me-1"></i> Confianza de Categoría (60-80% recomendado):</strong>
+                            <strong>Rango recomendado: 60-80%</strong>
                         </p>
                         <p class="mb-3 small">
-                            Cuando un cliente sube una foto, el sistema intenta adivinar qué tipo de producto es (zapatos, vestidos, etc.).
-                            Este valor indica qué tan seguro debe estar antes de buscar. <br>
-                            <strong>Más alto</strong> = Solo busca si está muy seguro (menos resultados, más precisos) <br>
-                            <strong>Más bajo</strong> = Busca aunque no esté tan seguro (más resultados, menos precisos)
+                            <strong>Más alto (80%+)</strong>: Solo muestra productos MUY similares visualmente. Menos resultados pero más precisos. <br>
+                            <strong>Medio (65-75%)</strong>: Balance entre precisión y variedad. <br>
+                            <strong>Más bajo (50-65%)</strong>: Muestra más opciones, aunque menos parecidas. Más resultados pero menos precisos.
                         </p>
 
-                        <p class="mb-2">
-                            <strong><i class="bi bi-diagram-3 text-info me-1"></i> Similitud de Productos (20-40% recomendado):</strong>
-                        </p>
-                        <p class="mb-0 small">
-                            Una vez encontrada la categoría, este valor indica qué tan parecido debe ser un producto a la foto para mostrarlo. <br>
-                            <strong>Más alto</strong> = Solo muestra productos MUY parecidos (pocos resultados) <br>
-                            <strong>Más bajo</strong> = Muestra productos medianamente parecidos (más resultados)
-                        </p>
+                        <div class="alert alert-info mb-0">
+                            <i class="bi bi-lightbulb me-2"></i>
+                            <strong>Consejo:</strong> Si tus clientes se quejan de "muy pocos resultados", baja este valor. 
+                            Si ven "productos que no se parecen", súbelo.
+                        </div>
                     </div>
                 </div>
 
-                <!-- Pesos del Optimizer -->
+                <!-- Balanceo de Resultados (Próximamente) -->
                 <div class="mb-4">
-                    <h6 class="text-success mb-3">
-                        <i class="bi bi-sort-down-alt me-2"></i>
-                        2. Pesos del Optimizer (Ordenamiento)
+                    <h6 class="text-secondary mb-3">
+                        <i class="bi bi-sliders me-2"></i>
+                        Balanceo de Resultados
+                        <span class="badge bg-secondary ms-2">Próximamente</span>
                     </h6>
                     <p class="mb-3">
-                        <strong>¿Qué hace?</strong> Decide qué criterios son más importantes para ordenar los productos encontrados.
+                        <strong>¿Qué hará?</strong> Permitirá ajustar el peso de diferentes criterios al ordenar los resultados.
                     </p>
 
                     <div class="alert alert-light border">
                         <p class="mb-2">
-                            <strong><i class="bi bi-eye text-primary me-1"></i> Visual:</strong>
+                            <strong><i class="bi bi-eye text-secondary me-1"></i> Peso Visual:</strong>
                         </p>
                         <p class="mb-3 small">
-                            Prioriza productos que se parezcan visualmente a la foto (color, forma, estilo).
-                            Ideal si vendes productos donde la apariencia es lo más importante (ropa, decoración).
+                            Priorizará productos que se parezcan visualmente (color, forma, estilo).
                         </p>
 
                         <p class="mb-2">
-                            <strong><i class="bi bi-tags text-success me-1"></i> Metadata:</strong>
+                            <strong><i class="bi bi-tags text-secondary me-1"></i> Peso Metadata:</strong>
                         </p>
                         <p class="mb-3 small">
-                            Prioriza productos con características similares (misma marca, mismo color exacto, mismo material).
-                            Útil si tus clientes buscan especificaciones técnicas precisas.
+                            Priorizará productos con atributos coincidentes (marca, color exacto, material).
                         </p>
 
                         <p class="mb-2">
-                            <strong><i class="bi bi-shop text-warning me-1"></i> Business:</strong>
+                            <strong><i class="bi bi-shop text-secondary me-1"></i> Peso Business:</strong>
                         </p>
                         <p class="mb-0 small">
-                            Prioriza productos según tu estrategia de negocio (productos en stock, destacados, con descuento).
-                            Útil para promover lo que más te interesa vender.
+                            Priorizará productos según tu estrategia (stock disponible, destacados, promociones).
                         </p>
                     </div>
 
-                    <div class="alert alert-warning">
-                        <i class="bi bi-exclamation-triangle me-2"></i>
-                        <strong>Importante:</strong> Los tres pesos deben sumar exactamente <code>1.0</code> (ej: 0.6 + 0.3 + 0.1 = 1.0)
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        Esta funcionalidad estará disponible en la próxima versión del sistema (SearchOptimizer Lite).
                     </div>
                 </div>
 
@@ -309,14 +278,10 @@
                 <div class="alert alert-success">
                     <h6 class="mb-2">
                         <i class="bi bi-stars me-2"></i>
-                        Ejemplo Práctico
+                        Configuración Recomendada
                     </h6>
-                    <p class="mb-2 small">
-                        <strong>Tienda de Moda:</strong> Visual: 0.7, Metadata: 0.2, Business: 0.1
-                    </p>
                     <p class="mb-0 small">
-                        El buscador priorizará productos que "se vean similares" (70%), luego considerará si coinciden atributos como color o marca (20%),
-                        y finalmente dará un pequeño empujón a productos destacados o en stock (10%).
+                        <strong>Similitud Visual Mínima:</strong> 70% (balance entre precisión y variedad)
                     </p>
                 </div>
             </div>
@@ -347,8 +312,112 @@
         box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
     }
 
-    .progress {
-        background-color: #e9ecef;
+    .similarity-slider {
+        cursor: pointer;
+    }
+
+    .similarity-slider::-webkit-slider-thumb {
+        cursor: grab;
+    }
+
+    .similarity-slider:active::-webkit-slider-thumb {
+        cursor: grabbing;
     }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Manejar cambios en los sliders
+    const sliders = document.querySelectorAll('.similarity-slider');
+    
+    sliders.forEach(slider => {
+        const clientId = slider.dataset.clientId;
+        const originalValue = parseInt(slider.dataset.originalValue);
+        const badge = document.getElementById(`similarity-value-${clientId}`);
+        const saveBtn = document.getElementById(`save-btn-${clientId}`);
+        
+        // Actualizar badge y mostrar/ocultar botón al mover slider
+        slider.addEventListener('input', function() {
+            const newValue = this.value;
+            badge.textContent = `${newValue}%`;
+            
+            // Mostrar botón solo si cambió el valor
+            if (parseInt(newValue) !== originalValue) {
+                saveBtn.classList.remove('d-none');
+            } else {
+                saveBtn.classList.add('d-none');
+            }
+        });
+    });
+    
+    // Manejar clic en botones de guardar
+    const saveButtons = document.querySelectorAll('.save-btn');
+    
+    saveButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const clientId = this.dataset.clientId;
+            const slider = document.getElementById(`similarity-slider-${clientId}`);
+            const newValue = parseInt(slider.value);
+            
+            // Deshabilitar botón mientras se guarda
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
+            
+            // Enviar petición AJAX
+            fetch(`/search-config/update-threshold/${clientId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    product_similarity_threshold: newValue
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Actualizar valor original
+                    slider.dataset.originalValue = newValue;
+                    
+                    // Ocultar botón
+                    this.classList.add('d-none');
+                    
+                    // Mostrar mensaje de éxito
+                    const toast = document.createElement('div');
+                    toast.className = 'position-fixed top-0 end-0 p-3';
+                    toast.style.zIndex = '11';
+                    toast.innerHTML = `
+                        <div class="toast show" role="alert">
+                            <div class="toast-header bg-success text-white">
+                                <i class="bi bi-check-circle me-2"></i>
+                                <strong class="me-auto">Guardado</strong>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+                            </div>
+                            <div class="toast-body">
+                                Similitud visual actualizada a ${newValue}%
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
+                } else {
+                    alert('Error al guardar: ' + data.message);
+                }
+                
+                // Restaurar botón
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-check-circle me-2"></i>Guardar Cambios';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error de conexión al guardar');
+                this.disabled = false;
+                this.innerHTML = '<i class="bi bi-check-circle me-2"></i>Guardar Cambios';
+            });
+        });
+    });
+});
+</script>
 {% endblock %}

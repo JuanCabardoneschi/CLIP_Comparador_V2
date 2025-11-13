@@ -14,6 +14,73 @@ from sqlalchemy.exc import SQLAlchemyError
 bp = Blueprint("search_config", __name__, url_prefix="/search-config")
 
 
+@bp.route("/update-threshold/<client_id>", methods=["POST"])
+@login_required
+def update_threshold(client_id):
+    """
+    Actualizar threshold de similitud visual (AJAX)
+    
+    Request JSON:
+        {
+            "product_similarity_threshold": 70
+        }
+    
+    Response JSON:
+        {
+            "success": true,
+            "message": "Threshold actualizado",
+            "new_value": 70
+        }
+    """
+    # Verificar permisos
+    if not current_user.is_super_admin and str(current_user.client_id) != client_id:
+        return jsonify({
+            "success": False,
+            "message": "No tienes permisos para modificar esta configuración"
+        }), 403
+
+    # Obtener cliente
+    client = Client.query.get(client_id)
+    if not client:
+        return jsonify({
+            "success": False,
+            "message": "Cliente no encontrado"
+        }), 404
+
+    try:
+        data = request.get_json()
+        new_threshold = int(data.get('product_similarity_threshold', 70))
+        
+        # Validar rango (10-100%)
+        if not (10 <= new_threshold <= 100):
+            return jsonify({
+                "success": False,
+                "message": "El threshold debe estar entre 10% y 100%"
+            }), 400
+        
+        # Actualizar
+        client.product_similarity_threshold = new_threshold
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Threshold actualizado a {new_threshold}%",
+            "new_value": new_threshold
+        })
+        
+    except ValueError as e:
+        return jsonify({
+            "success": False,
+            "message": f"Valor inválido: {str(e)}"
+        }), 400
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "message": f"Error de base de datos: {str(e)}"
+        }), 500
+
+
 @bp.route("/")
 @login_required
 def index():
