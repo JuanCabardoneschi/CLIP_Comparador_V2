@@ -296,24 +296,24 @@ def detect_category_smart(image_data, client_id, threshold):
     single-crop para el resto.
     """
     mode = system_config.get('multicrop_mode', 'auto')
-    
+
     if mode == 'off':
         return detect_image_category_with_centroids(image_data, client_id, threshold)
-    
+
     if mode == 'always':
         results = detect_categories_multi_crop(image_data, client_id, threshold, top_k=5, apply_pair_exclusion=True)
         return (Category.query.get(results[0]['category_id']), results[0]['score']) if results else (None, 0)
-    
+
     # mode == 'auto'
     detected_category, confidence = detect_image_category_with_centroids(image_data, client_id, threshold)
-    
+
     ambiguous = system_config.get('ambiguous_categories', [])
     if detected_category and detected_category.name.upper() in [c.upper() for c in ambiguous]:
         results = detect_categories_multi_crop(image_data, client_id, threshold, top_k=3, apply_pair_exclusion=True)
         if results:
             detected_category = Category.query.get(results[0]['category_id'])
             confidence = results[0]['score']
-    
+
     return detected_category, confidence
 ```
 
@@ -427,7 +427,7 @@ Ver archivo complementario: `INTEGRATION_MULTICROP_CODE.md` (próximo documento)
 
 ---
 
-**Fecha**: 12 Noviembre 2025  
-**Versión**: v2.4.0-pair-exclusion → v2.5.0-multicrop-production  
-**Autor**: GitHub Copilot + Usuario  
+**Fecha**: 12 Noviembre 2025
+**Versión**: v2.4.0-pair-exclusion → v2.5.0-multicrop-production
+**Autor**: GitHub Copilot + Usuario
 **Estado**: ✅ Análisis completo - Pendiente decisión de modo

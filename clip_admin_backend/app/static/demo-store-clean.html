@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demo Store - CLIP Visual Search</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 2rem;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        header p {
+            font-size: 1.2rem;
+            opacity: 0.95;
+        }
+
+        .client-selector {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .client-selector h3 {
+            margin: 0 0 1rem 0;
+            color: #333;
+            font-size: 1.2rem;
+        }
+
+        .client-options {
+            display: grid;
+            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        }
+
+        .client-card {
+            padding: 1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .client-card:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .client-card.active {
+            border-color: #667eea;
+            background: #f0f3ff;
+        }
+
+        .client-card h4 {
+            margin: 0 0 0.5rem 0;
+            color: #333;
+            font-size: 1.1rem;
+        }
+
+        .client-card .api-key {
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #666;
+            background: #f5f5f5;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+
+        .client-card .info {
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+            color: #888;
+        }
+
+        footer {
+            text-align: center;
+            color: white;
+            margin-top: 3rem;
+            opacity: 0.9;
+        }
+
+        footer a {
+            color: white;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🛍️ Demo Store</h1>
+            <p>Búsqueda Visual Inteligente con GPT-4 Vision + CLIP</p>
+        </header>
+
+        <!-- Selector de Cliente -->
+        <div class="client-selector">
+            <h3>🏪 Selecciona un cliente para buscar:</h3>
+            <div class="client-options">
+                <div class="client-card active" data-client="goody">
+                    <h4>Goody Store (Demo Fashion)</h4>
+                    <div class="api-key">test-api-key-demo-fashion-store-2024</div>
+                    <div class="info">Cliente de prueba con catálogo completo</div>
+                </div>
+                <div class="client-card" data-client="eve">
+                    <h4>Eve's Store</h4>
+                    <div class="api-key">clip_fe117bcd62de8a1e05a214c5</div>
+                    <div class="info">Cliente de producción con catálogo real</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- CLIP Widget V3: GPT-4 Vision Integration -->
+        <!-- ============================================ -->
+        <div id="clip-widget"></div>
+        <script>
+            // Configuración inicial (Goody Store)
+            let currentClient = {
+                name: 'Goody Store',
+                apiKey: 'test-api-key-demo-fashion-store-2024',
+                slug: 'demo_fashion_store'
+            };
+
+            // Detectar entorno
+            const isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+            window.CLIPWidget = {
+                apiKey: currentClient.apiKey,
+                serverUrl: isLocal
+                    ? 'http://localhost:5000'
+                    : 'https://clipcomparadorv2-production.up.railway.app',
+                clientName: currentClient.name
+            };
+
+            // Selector de clientes
+            document.addEventListener('DOMContentLoaded', () => {
+                const cards = document.querySelectorAll('.client-card');
+                cards.forEach(card => {
+                    card.addEventListener('click', () => {
+                        // Remover active de todos
+                        cards.forEach(c => c.classList.remove('active'));
+                        // Activar el clickeado
+                        card.classList.add('active');
+
+                        // Actualizar configuración
+                        const clientType = card.dataset.client;
+                        if (clientType === 'goody') {
+                            currentClient = {
+                                name: 'Goody Store',
+                                apiKey: 'test-api-key-demo-fashion-store-2024',
+                                slug: 'demo_fashion_store'
+                            };
+                        } else if (clientType === 'eve') {
+                            currentClient = {
+                                name: "Eve's Store",
+                                apiKey: 'clip_fe117bcd62de8a1e05a214c5',
+                                slug: 'eve-s-store'
+                            };
+                        }
+
+                        // Actualizar widget config
+                        window.CLIPWidget.apiKey = currentClient.apiKey;
+                        window.CLIPWidget.clientName = currentClient.name;
+
+                        console.log('Cliente cambiado a:', currentClient.name);
+
+                        // Limpiar productos mostrados (mantener estructura del widget)
+                        const widgetContainer = document.getElementById('clip-widget');
+                        if (widgetContainer) {
+                            // Limpiar productos en #clip-results
+                            const resultsGrid = widgetContainer.querySelector('#clip-results .clip-results-grid');
+                            if (resultsGrid) {
+                                resultsGrid.innerHTML = '';
+                            }
+                            // Limpiar detección previa
+                            const detectionItems = widgetContainer.querySelector('#clip-detection-items');
+                            if (detectionItems) {
+                                detectionItems.innerHTML = '';
+                            }
+                            // Limpiar intención del usuario
+                            const userIntent = widgetContainer.querySelector('.clip-user-intent');
+                            if (userIntent) {
+                                userIntent.remove();
+                            }
+                            // Ocultar secciones
+                            const detection = widgetContainer.querySelector('#clip-detection');
+                            const results = widgetContainer.querySelector('#clip-results');
+                            if (detection) detection.classList.remove('active');
+                            if (results) results.classList.remove('active');
+                        }
+                    });
+                });
+            });
+        </script>
+        <script src="/static/js/clip-widget-embed-v3.js"></script>
+        <!-- ============================================ -->
+
+        <footer>
+            <p>Powered by <a href="https://platform.openai.com/docs/guides/vision" target="_blank">GPT-4 Vision</a> &amp; <a href="https://github.com/openai/CLIP" target="_blank">OpenAI CLIP</a></p>
+        </footer>
+    </div>
+</body>
+</html>

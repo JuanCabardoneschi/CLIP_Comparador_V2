@@ -137,6 +137,11 @@ def edit(category_id):
         flash("No tienes permisos para editar esta categoría", "error")
         return redirect(url_for("categories.index"))
 
+    # Debug: Ver vision_hint al cargar
+    if request.method == "GET":
+        print(f"🏷️ CATEGORIES EDIT GET: Category: {category.name}")
+        print(f"🏷️ CATEGORIES EDIT GET: vision_hint value: {repr(category.vision_hint)}")
+
     if request.method == "POST":
         print("🏷️ CATEGORIES EDIT: Método POST")
         print(f"🏷️ CATEGORIES EDIT: Usuario autenticado: {current_user.is_authenticated}")
@@ -148,6 +153,7 @@ def edit(category_id):
         name_en = request.form.get("name_en", "").strip()
         description = request.form.get("description", "").strip()
         alternative_terms = request.form.get("alternative_terms", "").strip()
+        vision_hint = request.form.get("vision_hint", "").strip()
         color = request.form.get("color", "#007bff")
         is_active = request.form.get("is_active") == "on"
 
@@ -179,6 +185,7 @@ def edit(category_id):
         category.name_en = name_en
         category.description = description if description else None
         category.alternative_terms = alternative_terms if alternative_terms else None
+        category.vision_hint = vision_hint if vision_hint else None
         category.color = color
         category.is_active = is_active
 

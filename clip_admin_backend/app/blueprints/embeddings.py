@@ -46,19 +46,88 @@ from app.models.category import Category
 bp = Blueprint('embeddings', __name__)
 
 def load_image_from_source(source):
-    """Cargar imagen desde URL de Cloudinary"""
-    try:
-        import logging
-        logging.getLogger("clip_model").info(f"🌐 Descargando imagen desde Cloudinary: {source[:80]}...")
-        response = requests.get(source, timeout=30)
-        response.raise_for_status()
-        image = PILImage.open(BytesIO(response.content)).convert('RGB')
-        logging.getLogger("clip_model").info(f"✅ Imagen descargada exitosamente desde Cloudinary")
-        return image
-    except Exception as e:
-        import logging
-        logging.getLogger("clip_model").error(f"❌ Error cargando imagen desde Cloudinary {source}: {e}")
-        raise
+    """Cargar imagen desde múltiples fuentes.
+
+    Soporta:
+    - Objeto PIL.Image (lo retorna tal cual)
+    - Bytes (abre desde buffer)
+    - data URL (data:image/...;base64,AAAA)
+    - URL http/https
+    - Ruta local de archivo
+    - Base64 crudo (cadena larga sin prefijo data:)
+    """
+    import logging
+    log = logging.getLogger("clip_model")
+
+    # 1) PIL ya construido
+    if isinstance(source, PILImage.Image):
+        return source
+
+    # 2) Bytes en memoria
+    if isinstance(source, (bytes, bytearray)):
+        try:
+            return PILImage.open(BytesIO(source)).convert('RGB')
+        except Exception as e:
+            log.error(f"❌ Error abriendo imagen desde bytes: {e}")
+            raise
+
+    # 3) Cadena de texto: detectar tipo
+    if isinstance(source, str):
+        s = source.strip()
+
+        # 3.a) data URL base64
+        if s.lower().startswith('data:'):
+            try:
+                import base64
+                # Formato esperado: data:<mime>;base64,<payload>
+                # Buscar la coma que separa cabecera de payload
+                comma_idx = s.find(',')
+                if comma_idx == -1:
+                    raise ValueError('data URL inválida (sin coma)')
+                payload = s[comma_idx + 1:]
+                img_bytes = base64.b64decode(payload)
+                log.info("🧩 Cargando imagen desde data URL base64")
+                return PILImage.open(BytesIO(img_bytes)).convert('RGB')
+            except Exception as e:
+                log.error(f"❌ Error cargando imagen desde data URL: {e}")
+                raise
+
+        # 3.b) URL http/https
+        if s.lower().startswith('http://') or s.lower().startswith('https://'):
+            try:
+                log.info(f"🌐 Descargando imagen desde URL: {s[:80]}...")
+                response = requests.get(s, timeout=30)
+                response.raise_for_status()
+                image = PILImage.open(BytesIO(response.content)).convert('RGB')
+                log.info("✅ Imagen descargada exitosamente desde URL")
+                return image
+            except Exception as e:
+                log.error(f"❌ Error cargando imagen desde URL {s}: {e}")
+                raise
+
+        # 3.c) Ruta local existente
+        if os.path.exists(s):
+            try:
+                log.info(f"📁 Cargando imagen desde archivo local: {s}")
+                return PILImage.open(s).convert('RGB')
+            except Exception as e:
+                log.error(f"❌ Error abriendo imagen local {s}: {e}")
+                raise
+
+        # 3.d) Intentar como base64 crudo
+        try:
+            import base64
+            img_bytes = base64.b64decode(s, validate=True)
+            log.info("🧩 Cargando imagen desde base64 crudo")
+            return PILImage.open(BytesIO(img_bytes)).convert('RGB')
+        except Exception:
+            # No parece base64 válido; reportar error
+            log.error("❌ Fuente de imagen no reconocida (no es URL, archivo, data URL ni base64 válido)")
+            raise ValueError("Fuente de imagen no reconocida: use URL http/https, data URL o base64 válido")
+
+    # Tipo no soportado
+    log.error(f"❌ Tipo de fuente no soportado: {type(source)}")
+    raise TypeError("Tipo de fuente no soportado para imagen")
 
 # Variables globales para el modelo CLIP
 _clip_model = None
@@ -1282,9 +1351,16 @@ def generate_multi_scale_crops(image):
             'right_50': PIL.Image
         }
     """
-    # Cargar imagen si es ruta
+    # Cargar imagen si es ruta o bytes
     if isinstance(image, str):
         image = load_image_from_source(image)
+    elif isinstance(image, (bytes, bytearray)):
+        # Soporte para bytes provenientes de request.files['image'].read()
+        import io as _io
+        try:
+            image = PILImage.open(_io.BytesIO(image)).convert('RGB')
+        except Exception as _e:
+            raise ValueError(f"No se pudo cargar imagen desde bytes: {_e}")
     elif not isinstance(image, PILImage.Image):
         raise ValueError(f"Tipo de imagen inválido: {type(image)}")
 
@@ -1713,3 +1789,319 @@ def detect_categories_multi_crop(
 
     # Retornar sólo las que pasan (limitadas a top_k)
     return passed[:top_k]
+
+
+# ============================================================================
+# UNIFIED CENTROID-BASED DETECTION (V2 - SaaS Ready)
+# Sistema 100% dinámico basado en centroides + multi-crop
+# Sin hardcoding de prompts, region weights ni palabras específicas
+# ============================================================================
+
+def detect_categories_centroid_based(
+    image_path_or_url,
+    client_id,
+    threshold=None,
+    top_k=5,
+    model=None,
+    processor=None,
+    apply_pair_exclusion: bool = True
+):
+    """
+    Detecta categorías usando SOLO centroides + multi-crop.
+
+    Sistema 100% dinámico para SaaS multi-cliente:
+    - NO requiere prompts hardcoded
+    - NO requiere region weights específicos
+    - NO busca palabras específicas ("delantal", "gorro", etc.)
+    - Funciona con cualquier industria (ropa, muebles, electrónica, etc.)
+
+    Workflow:
+    1. Obtiene categorías del cliente que tienen centroides válidos
+    2. Genera 8 crops multi-escala de la imagen query
+    3. Genera embeddings de cada crop
+    4. Compara cada crop vs centroide de cada categoría
+    5. Score final = max similarity entre todos los crops
+    6. Aplica CategoryPairExclusion desde BD (dinámico)
+    7. Retorna top_k categorías sobre threshold
+
+    Args:
+        image_path_or_url: Ruta local o URL de imagen
+        client_id: UUID del cliente
+        threshold: Score mínimo (default: client.category_confidence_threshold / 100)
+        top_k: Número máximo de categorías a retornar
+        model: Modelo CLIP (opcional, se carga si no se provee)
+        processor: Procesador CLIP (opcional)
+        apply_pair_exclusion: Si aplica reglas de exclusión de pares desde BD
+
+    Returns:
+        list: [
+            {
+                'category_id': str,
+                'category_name': str,
+                'score': float,
+                'best_crop': str,
+                'crop_scores': dict,
+                'passes_threshold': bool,
+                'centroid_quality': dict  # metadata del centroide
+            }
+        ]
+    """
+    from app.models.client import Client
+    from app.models.category import Category
+    from app.models.product import Product
+
+    # Cargar modelo CLIP si no se proveyó
+    if model is None or processor is None:
+        model, processor = get_clip_model()
+        _touch_clip_last_used()
+
+    # Obtener cliente y threshold
+    client = Client.query.get(client_id)
+    if not client:
+        raise ValueError(f"Cliente {client_id} no encontrado")
+
+    if threshold is None:
+        threshold = (client.category_confidence_threshold or 70) / 100.0
+
+    clip_logger.info(f"🔍 [UNIFIED] Detectando categorías para cliente {client.name} (threshold={threshold:.2f})")
+
+    # Obtener categorías con centroides válidos
+    categories_query = db.session.query(Category).join(
+        Product, Product.category_id == Category.id
+    ).filter(
+        Product.client_id == client_id,
+        Product.is_active == True,
+        Category.centroid_embedding.isnot(None)  # CRÍTICO: solo categorías con centroide
+    ).distinct()
+
+    categories = categories_query.all()
+
+    if not categories:
+        clip_logger.warning(f"⚠️ Cliente {client.name} no tiene categorías con centroides válidos")
+        return []
+
+    clip_logger.info(f"📊 Evaluando {len(categories)} categorías con centroides válidos")
+
+    # Bloque de diagnóstico detallado: logs paso a paso + captura de errores
+    try:
+        clip_logger.info("[UNIFIED][STEP A] Generando crops multi-escala…")
+        # Generar crops multi-escala
+        crops = generate_multi_scale_crops(image_path_or_url)
+        clip_logger.info(f"✂️ Generados {len(crops)} crops: {list(crops.keys())}")
+
+        # (Opcional) Log de tamaños por crop para diagnosticar imágenes atípicas
+        try:
+            sizes = {k: getattr(v, 'size', None) for k, v in crops.items()}
+            clip_logger.info(f"[UNIFIED][STEP A.1] Tamaños de crops (ancho, alto): {sizes}")
+        except Exception as e_sizes:
+            clip_logger.warning(f"[UNIFIED][STEP A.1] No se pudieron loggear tamaños de crops: {e_sizes}")
+
+        clip_logger.info("[UNIFIED][STEP B] Generando embeddings por crop…")
+        # Generar embeddings para cada crop
+        crop_embeddings = {}
+        for crop_name, crop_img in crops.items():
+            try:
+                crop_emb = generate_image_only_embedding(crop_img, model, processor)
+                # Normalizar L2
+                crop_emb = crop_emb / np.linalg.norm(crop_emb)
+                crop_embeddings[crop_name] = crop_emb
+            except Exception as e_emb:
+                clip_logger.error(f"[UNIFIED][STEP B] Error generando embedding para crop '{crop_name}': {e_emb}")
+                import traceback as _tb
+                clip_logger.error(_tb.format_exc())
+                # Continuar con los otros crops para ver si el problema es específico
+                continue
+
+        clip_logger.info(f"📊 Embeddings generados para {len(crop_embeddings)} crops")
+
+        clip_logger.info(f"[UNIFIED][STEP C] Calculando score por categoría… (n={len(categories)})")
+        # Calcular scores por categoría
+        results = []
+        for idx, cat in enumerate(categories, start=1):
+            try:
+                # Cargar centroide
+                centroid_data = json.loads(cat.centroid_embedding)
+                centroid = np.array(centroid_data)
+                centroid = centroid / np.linalg.norm(centroid)  # Normalizar
+
+                # Calcular similarity de cada crop vs centroide
+                crop_scores = {}
+                for crop_name, crop_emb in crop_embeddings.items():
+                    similarity = float(np.dot(crop_emb, centroid))
+                    crop_scores[crop_name] = similarity
+
+                # Score final = mejor crop (sin weights hardcoded)
+                max_score = max(crop_scores.values())
+                best_crop = max(crop_scores, key=crop_scores.get)
+
+                results.append({
+                    'category_id': str(cat.id),
+                    'category_name': cat.name,
+                    'score': max_score,
+                    'best_crop': best_crop,
+                    'crop_scores': crop_scores,
+                    'passes_threshold': max_score >= threshold,
+                    'centroid_quality': {
+                        'image_count': cat.centroid_image_count or 0,
+                        'last_updated': cat.centroid_updated_at.isoformat() if cat.centroid_updated_at else None
+                    }
+                })
+
+                # Log de progreso cada 5 categorías
+                if idx % 5 == 0:
+                    clip_logger.info(f"[UNIFIED][STEP C] Progreso: {idx}/{len(categories)} categorías procesadas")
+
+            except Exception as e_cat:
+                clip_logger.error(f"❌ Error procesando categoría {cat.name}: {e_cat}")
+                import traceback as _tb
+                clip_logger.error(_tb.format_exc())
+                continue
+
+        # Ordenar por score descendente
+        clip_logger.info(f"[UNIFIED][STEP D] Ordenando resultados… (n={len(results)})")
+        results = sorted(results, key=lambda x: x['score'], reverse=True)
+
+        # Aplicar CategoryPairExclusion desde BD (si está habilitado)
+        if apply_pair_exclusion:
+            before = len(results)
+            results = apply_category_pair_exclusion(results, client_id, crop_embeddings)
+            after = len(results)
+            clip_logger.info(f"[UNIFIED][STEP E] Pair exclusion aplicado: {before} -> {after}")
+
+    except Exception as e_top:
+        # Log detallado del fallo y re-lanzar para que el endpoint devuelva 500 (con logs en servidor)
+        clip_logger.error(f"[UNIFIED][ERROR] Fallo en pipeline unificado: {e_top}")
+        import traceback as _tb
+        clip_logger.error(_tb.format_exc())
+        raise
+
+    # Logging de resultados
+    clip_logger.info(f"🔎 TOP 5 categorías detectadas:")
+    for r in results[:5]:
+        status = "✅" if r['passes_threshold'] else "⚠️"
+        clip_logger.info(
+            f"   {status} {r['category_name']:<30s} "
+            f"score={r['score']:.3f} "
+            f"best_crop={r['best_crop']} "
+            f"(centroid: {r['centroid_quality']['image_count']} imgs)"
+        )
+
+    # Filtrar por threshold
+    passed = [r for r in results if r['passes_threshold']]
+
+    if not passed:
+        clip_logger.warning("⚠️ Ninguna categoría supera threshold. Aplicando fallback.")
+        if results:
+            # Threshold adaptativo: 85% del mejor score
+            winner_score = results[0]['score']
+            adaptive_threshold = winner_score * 0.85
+            for r in results[:top_k]:
+                r['passes_threshold'] = r['score'] >= adaptive_threshold
+                r['adaptive_threshold_applied'] = True
+            clip_logger.info(f"🔧 Threshold adaptativo: {adaptive_threshold:.3f}")
+        return results[:top_k]
+
+    clip_logger.info(f"✅ Detección completa: {len(passed)}/{len(results)} categorías sobre threshold")
+    return passed[:top_k]
+
+
+def apply_category_pair_exclusion(results, client_id, crop_embeddings):
+    """
+    Aplica reglas de exclusión de pares desde CategoryPairExclusion (BD).
+
+    100% dinámico: Lee reglas desde BD, no tiene lógica hardcoded.
+
+    Args:
+        results: Lista de resultados de detección
+        client_id: ID del cliente
+        crop_embeddings: Dict con embeddings de crops (para análisis regional)
+
+    Returns:
+        list: Resultados con exclusiones aplicadas
+    """
+    try:
+        from app.models.category_pair_exclusion import CategoryPairExclusion
+
+        # Cargar reglas activas para este cliente
+        rules = CategoryPairExclusion.query.filter_by(
+            client_id=client_id,
+            is_active=True
+        ).all()
+
+        if not rules:
+            clip_logger.info("ℹ️ No hay reglas de exclusión de pares configuradas")
+            return results
+
+        clip_logger.info(f"🔧 Aplicando {len(rules)} reglas de exclusión de pares")
+
+        # Obtener configuración default desde system_config
+        default_config = system_config.get('pair_exclusion_rules', {}).get('delantal', {})
+
+        for rule in rules:
+            # Buscar categorías primaria y secundaria en resultados
+            primary = next((r for r in results if r['category_id'] == str(rule.primary_category_id)), None)
+            secondary = next((r for r in results if r['category_id'] == str(rule.secondary_category_id)), None)
+
+            if not primary or not secondary:
+                continue
+
+            # Parámetros de la regla (con fallback a defaults)
+            params = rule.params or {}
+            tie_margin = params.get('tie_margin', default_config.get('tie_margin', 0.02))
+
+            # Lógica de exclusión según tipo de regla
+            if rule.exclusion_rule == 'torso_evidence':
+                # Comparar evidencia en crops de torso vs cintura
+                torso_crops = ['chest_focus', 'upper_torso', 'upper_50']
+                waist_crops = ['lower_50', 'center_60']
+
+                torso_primary = max([primary['crop_scores'].get(c, 0.0) for c in torso_crops])
+                waist_secondary = max([secondary['crop_scores'].get(c, 0.0) for c in waist_crops])
+
+                torso_advantage_min = params.get('torso_advantage_min', default_config.get('torso_advantage_min', 0.06))
+
+                # Si scores similares, decidir por evidencia regional
+                if abs(primary['score'] - secondary['score']) <= tie_margin:
+                    if torso_primary >= waist_secondary + torso_advantage_min:
+                        chosen, excluded = primary, secondary
+                        reason = 'torso_evidence_tie'
+                    else:
+                        chosen, excluded = secondary, primary
+                        reason = 'waist_evidence_tie'
+                else:
+                    # Elegir por score mayor
+                    if primary['score'] > secondary['score']:
+                        chosen, excluded = primary, secondary
+                        reason = 'higher_score'
+                    else:
+                        chosen, excluded = secondary, primary
+                        reason = 'higher_score'
+
+                # Marcar excluida
+                excluded['excluded_by_pair_rule'] = True
+                excluded['exclusion_reason'] = reason
+                excluded['excluded_in_favor_of'] = chosen['category_name']
+
+                # Remover de resultados
+                results = [r for r in results if r['category_id'] != excluded['category_id']]
+
+                clip_logger.info(
+                    f"🚫 Exclusión aplicada: {excluded['category_name']} "
+                    f"(score={excluded['score']:.3f}) excluida en favor de "
+                    f"{chosen['category_name']} (score={chosen['score']:.3f}), razón={reason}"
+                )
+
+            elif rule.exclusion_rule == 'score_threshold':
+                # Exclusión simple por diferencia de score
+                min_score_diff = params.get('min_score_diff', 0.05)
+                if primary['score'] > secondary['score'] + min_score_diff:
+                    secondary['excluded_by_pair_rule'] = True
+                    secondary['exclusion_reason'] = 'score_threshold'
+                    results = [r for r in results if r['category_id'] != secondary['category_id']]
+                    clip_logger.info(f"🚫 {secondary['category_name']} excluida por score_threshold")
+
+        return results
+
+    except Exception as e:
+        clip_logger.error(f"❌ Error aplicando exclusión de pares: {e}")
+        return results

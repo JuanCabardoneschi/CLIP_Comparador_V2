@@ -1,6 +1,6 @@
 # Código de Integración: Multi-Crop → Producción
 
-> **Complemento de**: INTEGRATION_MULTICROP_PRODUCTION.md  
+> **Complemento de**: INTEGRATION_MULTICROP_PRODUCTION.md
 > **Código listo para copiar/pegar** en implementación Fase 1-2
 
 ---
@@ -14,7 +14,7 @@
 ```json
 {
   "// ... otras configuraciones existentes ...": "",
-  
+
   "pair_exclusion_rules": {
     "delantal": {
       "tie_margin": 0.02,
@@ -82,11 +82,11 @@ def detect_category_smart(image_data, client_id, confidence_threshold=0.2):
         Exception: Si ambos métodos fallan
     """
     from app.utils.system_config import SystemConfig
-    
+
     # Cargar configuración de multi-crop
     config = SystemConfig()
     multicrop_config = config.get('multicrop_detection', {})
-    
+
     enabled = multicrop_config.get('enabled', False)
     mode = multicrop_config.get('mode', 'auto')
     ambiguous = multicrop_config.get('ambiguous_categories', [])
@@ -112,21 +112,21 @@ def detect_category_smart(image_data, client_id, confidence_threshold=0.2):
                 top_k=top_k,
                 apply_pair_exclusion=apply_exclusion
             )
-            
+
             if results and len(results) > 0:
                 # Filtrar resultados que no pasen threshold o estén excluidos
                 valid_results = [
-                    r for r in results 
+                    r for r in results
                     if r.get('passes_threshold', True) and not r.get('excluded_pair', False)
                 ]
-                
+
                 if valid_results:
                     best = valid_results[0]
                     category = Category.query.get(best['category_id'])
                     confidence = best['score']
                     railway_log(f"✅ Multi-crop SUCCESS: {category.name} (conf={confidence:.3f})")
                     return category, confidence
-            
+
             # Si no hay resultados válidos, fallback
             if fallback:
                 railway_log("⚠️ Multi-crop sin resultados, fallback a single-crop")
@@ -134,7 +134,7 @@ def detect_category_smart(image_data, client_id, confidence_threshold=0.2):
             else:
                 railway_log("❌ Multi-crop sin resultados, fallback deshabilitado")
                 return None, 0.0
-                
+
         except Exception as e:
             railway_log(f"❌ Multi-crop ERROR: {e}")
             if fallback:
@@ -146,29 +146,29 @@ def detect_category_smart(image_data, client_id, confidence_threshold=0.2):
     # Modo 'auto': usar multi-crop solo para categorías ambiguas
     if mode == 'auto':
         railway_log("🔄 Multi-crop AUTO mode")
-        
+
         # Primera pasada: detección rápida con single-crop
         detected_category, confidence = detect_image_category_with_centroids(
             image_data, client_id, confidence_threshold
         )
-        
+
         if detected_category is None:
             railway_log("❌ Single-crop no detectó categoría")
             return None, 0.0
-        
+
         # Verificar si la categoría detectada es ambigua
         is_ambiguous = any(
-            amb.upper() in detected_category.name.upper() 
+            amb.upper() in detected_category.name.upper()
             for amb in ambiguous
         )
-        
+
         if not is_ambiguous:
             railway_log(f"✅ Categoría NO ambigua: {detected_category.name}, usando single-crop")
             return detected_category, confidence
-        
+
         # Categoría ambigua: re-detectar con multi-crop
         railway_log(f"🔄 Categoría AMBIGUA detectada: {detected_category.name}, aplicando multi-crop")
-        
+
         try:
             results = detect_categories_multi_crop(
                 image_data,
@@ -177,38 +177,38 @@ def detect_category_smart(image_data, client_id, confidence_threshold=0.2):
                 top_k=top_k,
                 apply_pair_exclusion=apply_exclusion
             )
-            
+
             if results and len(results) > 0:
                 valid_results = [
-                    r for r in results 
+                    r for r in results
                     if r.get('passes_threshold', True) and not r.get('excluded_pair', False)
                 ]
-                
+
                 if valid_results:
                     best = valid_results[0]
                     multi_category = Category.query.get(best['category_id'])
                     multi_confidence = best['score']
-                    
+
                     # Logging comparativo
                     railway_log(f"📊 COMPARACIÓN:")
                     railway_log(f"   Single-crop: {detected_category.name} (conf={confidence:.3f})")
                     railway_log(f"   Multi-crop:  {multi_category.name} (conf={multi_confidence:.3f})")
-                    
+
                     # Si multi-crop cambió la categoría, loggear la razón
                     if multi_category.id != detected_category.id:
                         exclusion_reason = best.get('exclusion_reason', 'N/A')
                         railway_log(f"🔀 CAMBIO DE CATEGORÍA: {detected_category.name} → {multi_category.name} (reason={exclusion_reason})")
-                    
+
                     return multi_category, multi_confidence
-            
+
             # Si multi-crop falla, mantener resultado single-crop
             railway_log("⚠️ Multi-crop sin resultados válidos, manteniendo single-crop")
             return detected_category, confidence
-            
+
         except Exception as e:
             railway_log(f"❌ Multi-crop ERROR: {e}, manteniendo single-crop")
             return detected_category, confidence
-    
+
     # Modo desconocido: fallback a single-crop
     railway_log(f"⚠️ Modo desconocido '{mode}', usando single-crop")
     return detect_image_category_with_centroids(image_data, client_id, confidence_threshold)
@@ -352,11 +352,11 @@ from pathlib import Path
 
 class MultiCropLogger:
     """Logger para trackear performance de multi-crop vs single-crop"""
-    
+
     def __init__(self, log_file='logs/multicrop_stats.jsonl'):
         self.log_file = Path(log_file)
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     def log_detection(
         self,
         client_id,
@@ -388,32 +388,32 @@ class MultiCropLogger:
             'category_changed': category_changed,
             'exclusion_reason': exclusion_reason
         }
-        
+
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write(json.dumps(entry, ensure_ascii=False) + '\n')
-    
+
     def get_stats(self, client_id=None):
         """
         Calcular estadísticas de uso
         """
         if not self.log_file.exists():
             return {}
-        
+
         entries = []
         with open(self.log_file, 'r', encoding='utf-8') as f:
             for line in f:
                 entry = json.loads(line)
                 if client_id is None or entry['client_id'] == str(client_id):
                     entries.append(entry)
-        
+
         if not entries:
             return {}
-        
+
         total = len(entries)
         mode_auto = len([e for e in entries if e['mode'] == 'auto'])
         category_changes = len([e for e in entries if e['category_changed']])
         avg_latency = sum(e['latency_ms'] for e in entries) / total
-        
+
         return {
             'total_detections': total,
             'mode_auto_count': mode_auto,
@@ -530,19 +530,19 @@ git push origin v2.5.0-multicrop-production
 ## 🔍 Troubleshooting
 
 ### Problema: Multi-crop siempre usa single-crop
-**Causa**: `enabled=false` o `mode='off'`  
+**Causa**: `enabled=false` o `mode='off'`
 **Solución**: Verificar `system_config.json` y variables de entorno Railway
 
 ### Problema: Latencia > 3s
-**Causa**: Todos los requests usan multi-crop (`mode='always'`)  
+**Causa**: Todos los requests usan multi-crop (`mode='always'`)
 **Solución**: Cambiar a `mode='auto'` para reducir latencia promedio
 
 ### Problema: Categoría incorrecta con multi-crop
-**Causa**: Pesos regionales mal calibrados o pair exclusion demasiado agresivo  
+**Causa**: Pesos regionales mal calibrados o pair exclusion demasiado agresivo
 **Solución**: Ajustar `region_weights` en `detect_categories_multi_crop()` o revisar parámetros de exclusión
 
 ### Problema: Errores de import `detect_categories_multi_crop`
-**Causa**: Función está en `embeddings.py`, necesita import  
+**Causa**: Función está en `embeddings.py`, necesita import
 **Solución**: Agregar en `api.py`:
 ```python
 from app.blueprints.embeddings import detect_categories_multi_crop
@@ -550,7 +550,7 @@ from app.blueprints.embeddings import detect_categories_multi_crop
 
 ---
 
-**Fecha**: 12 Noviembre 2025  
-**Versión**: v2.4.0 → v2.5.0  
-**Autor**: GitHub Copilot + Usuario  
+**Fecha**: 12 Noviembre 2025
+**Versión**: v2.4.0 → v2.5.0
+**Autor**: GitHub Copilot + Usuario
 **Estado**: ✅ Código listo para implementación

@@ -19,7 +19,6 @@ from flask import Flask, render_template, request, flash
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_login import LoginManager, current_user
-from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
 # Cargar variables de entorno
@@ -42,7 +41,7 @@ def create_app(config_name=None):
     """Factory pattern para crear la aplicación Flask"""
 
     # Importar extensiones DENTRO de create_app para evitar imports circulares
-    from app import db, migrate, login_manager, jwt
+    from app import db, login_manager, jwt
 
     # Configurar paths absolutos para templates y static
     template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app', 'templates'))
@@ -94,7 +93,6 @@ def create_app(config_name=None):
 
     # Inicializar extensiones con la app
     db.init_app(app)
-    migrate.init_app(app, db)
     login_manager.init_app(app)
     jwt.init_app(app)
 

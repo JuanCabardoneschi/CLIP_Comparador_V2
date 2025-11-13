@@ -18,7 +18,7 @@ from app.models.client import Client
 from app.models.category import Category
 from app.models.product import Product
 from app.models.image import Image
-# from app.models.search_log import SearchLog  # Deshabilitado - no se usa logging de búsquedas
+from app.models.search_log import SearchLog
 from app.models.store_search_config import StoreSearchConfig
 from app.services.image_manager import image_manager
 from app.core.search_optimizer import SearchOptimizer
@@ -27,7 +27,7 @@ from app.core.modifier_expander import expand_color_modifiers
 from app.utils.colors import normalize_color
 from app.utils.llm_query_normalizer import normalize_query
 from sqlalchemy import func, or_, text
-# from googletrans import Translator  # DESHABILITADO - googletrans 4.0.0rc1 roto con httpcore
+from googletrans import Translator
 
 # 🚀 IMPORTAR CLIP AL INICIO PARA CACHE GLOBAL
 from app.blueprints.embeddings import get_clip_model
@@ -243,10 +243,9 @@ def dashboard_stats():
             "new_products_this_month": Product.query.filter(
                 func.extract("month", Product.created_at) == func.extract("month", func.now())
             ).count(),
-            # "searches_today": SearchLog.query.filter(
-            #     func.date(SearchLog.created_at) == func.current_date()
-            # ).count()
-            "searches_today": 0  # Deshabilitado - no se registran búsquedas
+            "searches_today": SearchLog.query.filter(
+                func.date(SearchLog.created_at) == func.current_date()
+            ).count()
         },
 
         # Top categorÃ­as por productos
@@ -458,20 +457,16 @@ def translate_text():
             })
 
         # Crear instancia del traductor
-        # translator = Translator()  # DESHABILITADO - googletrans roto
-
-        # TODO: Migrar a deep-translator (ver BACKLOG_MEJORAS.md)
-        # Por ahora retornar texto sin traducir
-        translated_text = text.lower()
+        translator = Translator()
 
         # Obtener el contexto de la industria del cliente
         industry_context = ""
         if current_user.client and current_user.client.industry:
             industry_context = current_user.client.industry.lower()
 
-        # # Traducir el texto
-        # translation = translator.translate(text, dest=target_language)
-        # translated_text = translation.text.lower()
+        # Traducir el texto
+        translation = translator.translate(text, dest=target_language)
+        translated_text = translation.text.lower()
 
         # Post-procesar basado en la industria (como en el modelo Category)
         if industry_context == "textil":
@@ -3160,36 +3155,42 @@ def api_internal_error(error):
 @bp.route("/search/unified", methods=["POST", "OPTIONS"])
 def unified_search():
     """
-    Endpoint simplificado de búsqueda visual (requiere categoría pre-detectada).
+    Endpoint unificado de búsqueda visual con detección dinámica de categorías.
 
-    La detección de categoría se realiza previamente con GPT-4 Vision en /api/gpt4v/detect.
-    Este endpoint solo busca productos similares dentro de la categoría especificada.
+    Sistema 100% basado en centroides + multi-crop:
+    - NO requiere prompts hardcoded
+    - Funciona con cualquier cliente/industria
+    - Retorna datos enriquecidos para análisis
 
     Headers:
         X-API-Key: API Key del cliente
 
     JSON Body:
-        image: Base64 de imagen O URL de imagen (requerido)
-        category: Nombre de categoría (requerido, debe existir en BD)
-        max_results: Productos a retornar (default: 5)
+        image: Base64 de imagen O URL de imagen
+        top_k: Número de categorías a detectar (default: 5)
+        max_results: Productos por categoría (default: 3)
+        apply_pair_exclusion: Aplicar reglas de exclusión (default: true)
 
     Response:
         {
             "success": true,
             "client": {...},
-            "category_used": "Delantal Completo",
-            "products": [
+            "categories_detected": [
                 {
-                    "id": "...",
-                    "name": "...",
-                    "similarity_score": 0.xx,
-                    "image_url": "...",
-                    ...
+                    "category_id": "...",
+                    "category_name": "...",
+                    "score": 0.xx,
+                    "best_crop": "chest_focus",
+                    "crop_scores": {...},
+                    "products": [...],
+                    "centroid_quality": {...}
                 }
             ],
             "metadata": {
+                "total_categories_evaluated": N,
+                "threshold_used": 0.xx,
                 "processing_time_ms": xxx,
-                "total_products_in_category": N
+                "crops_generated": [...]
             }
         }
     """
@@ -3204,7 +3205,7 @@ def unified_search():
     start_time = time.time()
 
     try:
-        railway_log(f"🔍 UNIFIED SEARCH (GPT-4V): Request from {request.remote_addr}")
+        railway_log(f"🔍 UNIFIED SEARCH: Request from {request.remote_addr}")
 
         # Validar API Key
         api_key = request.headers.get('X-API-Key')
@@ -3234,10 +3235,8 @@ def unified_search():
                 "message": "Body JSON requerido"
             }), 400
 
-        # Validar parámetros requeridos
+        # Obtener imagen (base64 o URL)
         image_data = data.get('image')
-        category_name = data.get('category')
-
         if not image_data:
             return jsonify({
                 "success": False,
@@ -3245,36 +3244,14 @@ def unified_search():
                 "message": "Campo 'image' requerido (base64 o URL)"
             }), 400
 
-        if not category_name:
-            return jsonify({
-                "success": False,
-                "error": "missing_category",
-                "message": "Campo 'category' requerido (debe ser detectado previamente con /api/gpt4v/detect)"
-            }), 400
+        top_k = int(data.get('top_k', 5))
+        max_results_per_category = int(data.get('max_results', 3))
+        apply_pair_exclusion = data.get('apply_pair_exclusion', True)
 
-        max_results = int(data.get('max_results', 5))
+        railway_log(f"📊 Parámetros: top_k={top_k}, max_results={max_results_per_category}, pair_exclusion={apply_pair_exclusion}")
 
-        railway_log(f"📊 Parámetros: category={category_name}, max_results={max_results}")
-
-        # Buscar categoría en BD
-        from app.models.category import Category
-        category = Category.query.filter_by(
-            client_id=client.id,
-            name=category_name,
-            is_active=True
-        ).first()
-
-        if not category:
-            return jsonify({
-                "success": False,
-                "error": "category_not_found",
-                "message": f"Categoría '{category_name}' no encontrada para este cliente"
-            }), 404
-
-        railway_log(f"✅ Categoría encontrada: {category.name} (ID: {category.id})")
-
-        # Procesar imagen y generar embedding
-        from app.blueprints.embeddings import load_image_from_source, get_clip_model
+        # Procesar imagen
+        from app.blueprints.embeddings import detect_categories_centroid_based, load_image_from_source
 
         try:
             image = load_image_from_source(image_data)
@@ -3285,75 +3262,48 @@ def unified_search():
                 "message": f"Error procesando imagen: {str(e)}"
             }), 400
 
-        # Generar embedding de imagen query
-        model, preprocess = get_clip_model()
-        import torch
-        from PIL import Image as PILImage
-
-        with torch.no_grad():
-            image_input = preprocess(image).unsqueeze(0)
-            query_embedding = model.encode_image(image_input)
-            query_embedding = query_embedding / query_embedding.norm(dim=-1, keepdim=True)
-            query_embedding = query_embedding.cpu().numpy().flatten()
-
-        # Buscar productos similares en la categoría
-        products_query = Product.query.filter_by(
+        # Detectar categorías con nuevo sistema unificado
+        detection_start = time.time()
+        categories_detected = detect_categories_centroid_based(
+            image_path_or_url=image,
             client_id=client.id,
-            category_id=category.id,
-            is_active=True
-        ).join(Image).filter(
-            Image.is_processed == True,
-            Image.embedding != None
-        ).distinct()
+            threshold=None,  # Usa threshold del cliente
+            top_k=top_k,
+            apply_pair_exclusion=apply_pair_exclusion
+        )
+        detection_time = (time.time() - detection_start) * 1000
 
-        total_products = products_query.count()
-        products = products_query.all()
+        railway_log(f"🎯 Categorías detectadas: {len(categories_detected)}")
 
-        railway_log(f"🔍 Evaluando {len(products)} productos en categoría '{category.name}'")
+    # Para cada categoría detectada, buscar productos similares
 
-        # Calcular similitudes
-        from app.utils.similarity import cosine_similarity
-        import numpy as np
+        for cat_result in categories_detected:
+            category_id = cat_result['category_id']
 
-        product_similarities = []
-        for product in products:
-            if not product.images.first() or product.images.first().embedding is None:
-                continue
+            # Obtener productos de esta categoría
+            products_query = Product.query.filter_by(
+                client_id=client.id,
+                category_id=category_id,
+                is_active=True
+            ).join(Image).filter(
+                Image.is_processed == True
+            ).distinct().limit(max_results_per_category)
 
-            # Obtener embedding del producto
-            product_embedding = np.frombuffer(product.images.first().embedding, dtype=np.float32)
+            products = products_query.all()
 
-            # Calcular similitud
-            similarity = cosine_similarity(query_embedding, product_embedding)
-
-            product_similarities.append({
-                'product': product,
-                'similarity': float(similarity),
-                'image': product.images.first()
-            })
-
-        # Ordenar por similitud descendente
-        product_similarities.sort(key=lambda x: x['similarity'], reverse=True)
-
-        # Tomar top N resultados
-        top_results = product_similarities[:max_results]
-
-        # Serializar resultados
-        products_data = []
-        for result in top_results:
-            p = result['product']
-            img = result['image']
-
-            products_data.append({
-                'id': str(p.id),
-                'name': p.name,
-                'sku': p.sku,
-                'category': category.name,
-                'price': float(p.price) if p.price else None,
-                'image_url': img.display_url if img else None,
-                'similarity_score': result['similarity'],
-                'attributes': (p.attributes or {})
-            })
+            # Serializar productos
+            cat_result['products'] = [
+                {
+                    'id': str(p.id),
+                    'name': p.name,
+                    'sku': p.sku,
+                    'category': p.category.name if p.category else None,
+                    'price': float(p.price) if p.price else None,
+                    'image_url': (p.primary_image.display_url if getattr(p, 'primary_image', None) else (p.images.first().display_url if hasattr(p, 'images') and p.images.first() else None)),
+                    'attributes': (p.attributes or {})
+                }
+                for p in products
+            ]
 
         # Metadata de respuesta
         processing_time = (time.time() - start_time) * 1000
@@ -3364,17 +3314,21 @@ def unified_search():
                 "id": str(client.id),
                 "name": client.name
             },
-            "category_used": category.name,
-            "products": products_data,
+            "categories_detected": categories_detected,
             "metadata": {
-                "total_products_in_category": total_products,
-                "products_evaluated": len(products),
-                "results_returned": len(products_data),
-                "processing_time_ms": round(processing_time, 2)
+                "total_categories_evaluated": len(categories_detected),
+                "threshold_used": (client.category_confidence_threshold or 70) / 100.0,
+                "processing_time_ms": round(processing_time, 2),
+                "detection_time_ms": round(detection_time, 2),
+                "crops_generated": [
+                    "full", "center_60", "upper_50", "lower_50",
+                    "left_50", "right_50", "upper_torso", "chest_focus"
+                ],
+                "pair_exclusion_applied": apply_pair_exclusion
             }
         }
 
-        railway_log(f"✅ Búsqueda completada: {len(products_data)} productos en {processing_time:.0f}ms")
+        railway_log(f"✅ Búsqueda completada en {processing_time:.0f}ms")
 
         return jsonify(response_data), 200
 
@@ -3434,482 +3388,6 @@ def list_clients():
         return jsonify({
             "success": False,
             "error": str(e)
-        }), 500
-
-
-# ============================================================================
-# GPT-4V UNIFIED SEARCH (V3 - Vision + CLIP Integration)
-# Flujo: Imagen → GPT-4V detecta categorías → Búsqueda CLIP en cada categoría
-# ============================================================================
-
-@bp.route("/search/gpt4v-unified", methods=["POST", "OPTIONS"])
-def gpt4v_unified_search():
-    """
-    Endpoint unificado con GPT-4 Vision para detección automática de categorías.
-
-    Flujo:
-    1. Recibe imagen del cliente
-    2. GPT-4V detecta prendas y categorías automáticamente
-    3. Para cada categoría detectada, busca productos similares con CLIP
-    4. Retorna resultados agrupados por categoría
-
-    Headers:
-        X-API-Key: API Key del cliente
-
-    Body (multipart/form-data o JSON):
-        image: Archivo imagen o base64 (requerido)
-        max_results_per_category: Productos por categoría (default: 5)
-        similarity_threshold: Umbral de similitud 0-1 (default: 0.7)
-
-    Response:
-        {
-            "success": true,
-            "client": {...},
-            "detection": {
-                "prendas": [{tipo, color, confianza, categoria_sugerida}],
-                "categories_detected": ["Delantal Completo", "..."],
-                "cost_usd": 0.0025
-            },
-            "results_by_category": {
-                "Delantal Completo": {
-                    "products": [{...}],
-                    "total_in_category": N
-                }
-            },
-            "metadata": {
-                "total_products_found": N,
-                "categories_searched": N,
-                "processing_time_ms": xxx
-            }
-        }
-    """
-    # Manejar preflight OPTIONS
-    if request.method == 'OPTIONS':
-        response = jsonify({'status': 'ok'})
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
-        return response
-
-    start_time = time.time()
-
-    try:
-        railway_log(f"🔍 GPT4V-UNIFIED SEARCH: Request from {request.remote_addr}")
-
-        # Validar API Key
-        api_key = request.headers.get('X-API-Key')
-        if not api_key:
-            return jsonify({
-                "success": False,
-                "error": "missing_api_key",
-                "message": "X-API-Key header requerido"
-            }), 401
-
-        # Validar API Key usando el modelo Client
-        client = Client.query.filter_by(api_key=api_key, is_active=True).first()
-        if not client:
-            return jsonify({
-                "success": False,
-                "error": "invalid_api_key",
-                "message": "API Key inválido o cliente inactivo"
-            }), 401
-
-        railway_log(f"✅ Cliente autenticado: {client.name}")
-
-        # Obtener imagen (multipart o JSON)
-        # image_data: se usará luego para generar el embedding (acepta bytes o str)
-        # image_for_detection: será bytes o PIL.Image para GPT-4V
-        image_data = None
-        image_for_detection = None
-        if request.content_type and 'multipart/form-data' in request.content_type:
-            file = request.files.get('image')
-            if file:
-                image_bytes = file.read()
-                # Mantener bytes para detección y para carga posterior
-                image_data = image_bytes
-                image_for_detection = image_bytes
-            max_results = int(request.form.get('max_results_per_category', 5))
-            threshold = float(request.form.get('similarity_threshold', 0.7))
-        else:
-            data = request.get_json()
-            if not data:
-                return jsonify({
-                    "success": False,
-                    "error": "missing_body",
-                    "message": "Body JSON o multipart/form-data requerido"
-                }), 400
-            image_data = data.get('image')
-            max_results = int(data.get('max_results_per_category', 5))
-            threshold = float(data.get('similarity_threshold', 0.7))
-            # Para JSON, convertir a PIL.Image para detección (admite data URL/base64)
-            from app.blueprints.embeddings import load_image_from_source
-            image_for_detection = load_image_from_source(image_data)
-
-        if not image_data:
-            return jsonify({
-                "success": False,
-                "error": "missing_image",
-                "message": "Campo 'image' requerido (archivo o base64)"
-            }), 400
-
-        # Obtener max_results desde configuración del sistema
-        max_results_config = system_config.get('search', 'max_results', 10)
-        # Respetar el límite del sistema si el usuario pide más
-        max_results = min(max_results, max_results_config)
-
-        railway_log(f"📊 Parámetros: max_results={max_results} (límite sistema: {max_results_config}), threshold={threshold}")
-
-        # ===================================================================
-        # PASO 1: Detectar categorías con GPT-4 Vision (opcional)
-        # ===================================================================
-        from app.blueprints.gpt4v_detection import detect_categories_with_gpt4v
-        from app.models.category import Category
-        from app.models.product import Product
-        from app.models.image import Image
-
-        # Obtener SOLO categorías leaf que tengan imágenes procesadas con embedding
-        # (evita enviar a Vision categorías sin inventario/embeddings)
-        try:
-            category_id_rows = db.session.query(Product.category_id)\
-                .join(Image, Image.product_id == Product.id)\
-                .filter(
-                    Product.client_id == client.id
-                )\
-                .distinct()\
-                .all()
-
-            category_ids = [row[0] for row in category_id_rows]
-
-            categories = []
-            if category_ids:
-                # No limitar a leaf: enviar toda categoría activa que tenga imágenes
-                categories = Category.query.filter(
-                    Category.id.in_(category_ids),
-                    Category.client_id == client.id,
-                    Category.is_active == True
-                ).all()
-            categories_list = [cat.name for cat in categories]
-        except Exception as e:
-            railway_log(f"⚠️ Error obteniendo categorías con imágenes: {e}")
-            # Fallback a comportamiento anterior (todas las leaf activas)
-            categories = Category.query.filter_by(
-                client_id=client.id,
-                is_active=True,
-                is_leaf=True
-            ).all()
-            categories_list = [cat.name for cat in categories]
-
-        # Bandera para NO mandar fotos a Vision (por privacidad o pruebas)
-        disable_header = request.headers.get('X-Disable-Vision', '').lower() in ('1', 'true', 'yes')
-        # Vision habilitado por defecto; obtener de config si existe la sección
-        vision_cfg = system_config.get_section('vision') or {}
-        vision_enabled = bool(vision_cfg.get('enabled', True)) and not disable_header
-
-        prendas = []
-        categories_detected = []
-        categories_detected_raw = []
-
-        if vision_enabled:
-            railway_log(f"🤖 Detectando categorías con GPT-4V")
-
-            gpt4v_result = detect_categories_with_gpt4v(
-                image_for_detection,
-                categories_list,
-                str(client.id)
-            )
-
-            prendas = gpt4v_result.get('prendas', [])
-            # Lista RAW tal como la devuelve Vision (mantener orden y posibles duplicados)
-            categories_detected_raw = [
-                p['categoria_sugerida']
-                for p in prendas
-                if p.get('categoria_sugerida')
-            ]
-            # Versión única para fines de búsqueda (sin afectar UI)
-            categories_detected = list(dict.fromkeys(categories_detected_raw))
-
-            railway_log(f"✅ GPT-4V detectó {len(categories_detected)} categorías: {categories_detected}")
-        else:
-            railway_log("🛡️ Vision deshabilitado: no se envía imagen a GPT-4V. Se hará pre-búsqueda CLIP por categorías.")
-
-        # ===================================================================
-        # PASO 2: Buscar productos similares en cada categoría detectada
-        # ===================================================================
-        from app.blueprints.embeddings import load_image_from_source, get_clip_model
-        import torch
-        import numpy as np
-
-        # Compat: similitud coseno local (evita dependencia a app.utils.similarity)
-        def cosine_similarity(a, b):
-            a = np.asarray(a, dtype=np.float32)
-            b = np.asarray(b, dtype=np.float32)
-            na = np.linalg.norm(a)
-            nb = np.linalg.norm(b)
-            if na == 0 or nb == 0:
-                return 0.0
-            return float(np.dot(a, b) / (na * nb))
-
-        # Generar embedding de imagen query (usar CLIPProcessor como en el resto del sistema)
-        image = load_image_from_source(image_data)
-        model, processor = get_clip_model()
-
-        with torch.no_grad():
-            inputs = processor(images=image, return_tensors="pt")
-            image_features = model.get_image_features(**inputs)
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-            query_embedding = image_features.cpu().numpy().flatten()
-
-        railway_log(f"🔍 Embedding generado, buscando productos...")
-
-        results_by_category = {}
-        total_products_found = 0
-
-        # Si Vision está deshabilitado o no detectó categorías, buscar en todas las categorías disponibles
-        categories_to_search = list(set(categories_detected)) if categories_detected else categories_list
-
-        for category_name in categories_to_search:
-            # Buscar categoría en BD
-            # Resolver categoría con tolerancia mínima (case-insensitive y fallback singular/plural/contiene)
-            from sqlalchemy import func
-
-            def _resolve_category(name: str):
-                # 1) Igualdad case-insensitive
-                cat = Category.query.filter(
-                    Category.client_id == client.id,
-                    Category.is_active == True,
-                    func.lower(Category.name) == name.lower()
-                ).first()
-                if cat:
-                    return cat
-                # 2) Singular/plural simple
-                alt = name[:-1] if name.lower().endswith('s') else (name + 's')
-                cat = Category.query.filter(
-                    Category.client_id == client.id,
-                    Category.is_active == True,
-                    func.lower(Category.name) == alt.lower()
-                ).first()
-                if cat:
-                    return cat
-                # 3) Contiene (evita perder por guiones o espacios)
-                like_pat = f"%{name.lower()}%"
-                cat = Category.query.filter(
-                    Category.client_id == client.id,
-                    Category.is_active == True,
-                    func.lower(Category.name).like(like_pat)
-                ).first()
-                return cat
-
-            category = _resolve_category(category_name)
-
-            if not category:
-                railway_log(f"⚠️ Categoría '{category_name}' no encontrada en BD")
-                continue
-
-            # Buscar productos en esta categoría
-            products_query = Product.query.filter_by(
-                client_id=client.id,
-                category_id=category.id,
-                is_active=True
-            ).join(Image).filter(
-                Image.is_processed == True,
-                Image.clip_embedding != None
-            ).distinct()
-
-            products = products_query.all()
-            total_in_category = products_query.count()
-
-            railway_log(f"   📦 {category_name}: {len(products)} productos")
-
-            # Calcular similitudes
-            product_similarities = []
-            for product in products:
-                # Seleccionar una imagen procesada con embedding válido para este producto
-                try:
-                    img_obj = product.images.filter_by(is_processed=True).filter(Image.clip_embedding != None).first()
-                except Exception:
-                    img_obj = product.images.first()
-                if not img_obj or not img_obj.embedding_vector:
-                    continue
-
-                # embedding_vector es lista de floats (JSON); convertir a np.array
-                product_embedding = np.asarray(img_obj.embedding_vector, dtype=np.float32)
-
-                similarity = cosine_similarity(query_embedding, product_embedding)
-
-                # Log temporal para debug de gorras
-                if 'gorro' in category_name.lower() or 'gorra' in category_name.lower():
-                    railway_log(f"      → {product.name} (SKU: {product.sku}): similarity={similarity:.4f}, threshold={threshold:.4f}, pass={'✅' if similarity >= threshold else '❌'}")
-
-                # Aplicar threshold
-                if similarity >= threshold:
-                    product_similarities.append({
-                        'product': product,
-                        'similarity': float(similarity),
-                        'image': product.images.first()
-                    })
-
-            # Ordenar por similitud descendente
-            product_similarities.sort(key=lambda x: x['similarity'], reverse=True)
-
-            # Tomar top N resultados
-            top_results = product_similarities[:max_results]
-
-            # Serializar resultados usando lógica enriquecida similar a _build_search_results
-            products_data = []
-
-            # Cache de configuración de atributos (una consulta por categoría)
-            exposed_keys_cache = None
-            checked_config = False
-
-            for result in top_results:
-                p = result['product']
-                img = result['image']
-
-                # Primera vez: cargar configuración de atributos visibles
-                if not checked_config:
-                    try:
-                        client_id = p.client_id
-                        total_configs = db.session.execute(
-                            text(
-                                """
-                                SELECT COUNT(*) as total
-                                FROM product_attribute_config
-                                WHERE client_id = :client_id
-                                """
-                            ),
-                            {"client_id": client_id},
-                        ).fetchone()
-
-                        if total_configs and total_configs[0] == 0:
-                            exposed_keys_cache = None  # Sin configuración, exponer todo
-                        else:
-                            rows = db.session.execute(
-                                text(
-                                    """
-                                    SELECT key
-                                    FROM product_attribute_config
-                                    WHERE client_id = :client_id AND expose_in_search = true
-                                    """
-                                ),
-                                {"client_id": client_id},
-                            ).fetchall()
-                            exposed_keys_cache = {r[0] for r in rows}
-                    except Exception as e:
-                        railway_log(f"⚠️ Error consultando product_attribute_config: {e}")
-                        db.session.rollback()
-                        exposed_keys_cache = None
-                    finally:
-                        checked_config = True
-
-                # Obtener imagen primaria en lugar de la que hizo match
-                primary_image = None
-                try:
-                    primary_image = Image.query.filter_by(
-                        product_id=p.id,
-                        is_primary=True
-                    ).first()
-                    if not primary_image:
-                        primary_image = img
-                    image_url = primary_image.display_url if primary_image else None
-                except Exception as e:
-                    railway_log(f"⚠️ Error obteniendo imagen primaria: {e}")
-                    db.session.rollback()
-                    image_url = img.display_url if img else None
-
-                # Preparar atributos filtrados y extraer product_url
-                product_attrs = {}
-                product_url_value = None
-                try:
-                    if hasattr(p, 'attributes') and p.attributes:
-                        # 1) Extraer url_producto del JSONB (siempre, ignorar filtros)
-                        raw_url = p.attributes.get('url_producto')
-                        if isinstance(raw_url, dict):
-                            product_url_value = raw_url.get('value') or raw_url.get('url') or None
-                        else:
-                            product_url_value = raw_url
-
-                        # 2) Filtrar atributos según configuración
-                        if exposed_keys_cache is not None:
-                            product_attrs = {
-                                k: v for k, v in p.attributes.items() if k in exposed_keys_cache
-                            }
-                        else:
-                            product_attrs = dict(p.attributes)
-                except Exception as e:
-                    railway_log(f"⚠️ Error procesando atributos de {p.id}: {e}")
-                    product_attrs = {}
-
-                products_data.append({
-                    'id': str(p.id),
-                    'name': p.name,
-                    'sku': p.sku,
-                    'category': category_name,
-                    'price': float(p.price) if p.price else None,
-                    'image_url': image_url,  # ✅ Imagen primaria con fallback
-                    'similarity_score': result['similarity'],
-                    'attributes': product_attrs,  # ✅ Filtrado por config
-                    'stock': p.stock if hasattr(p, 'stock') and p.stock is not None else 0,
-                    'product_url': product_url_value  # ✅ URL del producto
-                })
-
-            total_products_found += len(products_data)
-
-            results_by_category[category_name] = {
-                'products': products_data,
-                'total_in_category': total_in_category,
-                'results_returned': len(products_data)
-            }
-
-        # Marcar como detectadas las categorías con resultados si Vision está deshabilitado
-        # o como refuerzo cuando Vision no devolvió alguna categoría evidente.
-        if not vision_enabled:
-            categories_detected = [
-                name for name, data in results_by_category.items() if data['results_returned'] > 0
-            ]
-
-        # ===================================================================
-        # PASO 3: Preparar respuesta final
-        # ===================================================================
-        processing_time = (time.time() - start_time) * 1000
-
-        response_data = {
-            "success": True,
-            "client": {
-                "id": str(client.id),
-                "name": client.name
-            },
-            "detection": {
-                "prendas": prendas,
-                "categories_detected": categories_detected,
-                "categories_detected_raw": categories_detected_raw,
-                "cost_usd": 0.0025,  # Costo GPT-4o
-                "mensaje_usuario": gpt4v_result.get('mensaje_usuario', '') if vision_enabled else '',
-                "user_intent": gpt4v_result.get('mensaje_usuario', '') if vision_enabled else ''  # Alias para compatibilidad
-            },
-            "results_by_category": results_by_category,
-            "metadata": {
-                "total_products_found": total_products_found,
-                "categories_searched": len(results_by_category),
-                "max_results_per_category": max_results,
-                "max_results_config": max_results_config,
-                "processing_time_ms": round(processing_time, 2),
-                "similarity_threshold": threshold
-            }
-        }
-
-        railway_log(f"✅ Búsqueda completada: {total_products_found} productos en {processing_time:.0f}ms")
-
-        return jsonify(response_data), 200
-
-    except Exception as e:
-        railway_log(f"❌ Error en gpt4v_unified_search: {str(e)}")
-        import traceback
-        traceback.print_exc()
-
-        return jsonify({
-            "success": False,
-            "error": "internal_error",
-            "message": str(e)
         }), 500
 
 

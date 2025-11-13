@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Completo - Sistema Unificado V2</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .header-content {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1rem;
+        }
+
+        /* Client Selector */
+        .client-selector {
+            background: white;
+            padding: 1.5rem;
+            margin: 2rem auto;
+            max-width: 1600px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .client-selector label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #374151;
+        }
+
+        .client-selector select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 1rem;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .client-selector select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .client-info {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #f9fafb;
+            border-radius: 6px;
+            display: none;
+        }
+
+        .client-info.active {
+            display: block;
+        }
+
+        .client-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .client-info-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .client-info-label {
+            font-size: 0.85rem;
+            color: #6b7280;
+            margin-bottom: 0.25rem;
+        }
+
+        .client-info-value {
+            font-weight: 600;
+            color: #111827;
+        }
+
+        /* Tabs */
+        .tabs-container {
+            max-width: 1600px;
+            margin: 2rem auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .tabs-header {
+            display: flex;
+            background: #f9fafb;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 1rem 2rem;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            color: #6b7280;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .tab-button:hover {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .tab-button.active {
+            color: #667eea;
+            background: white;
+        }
+
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .tabs-content {
+            padding: 2rem;
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        /* Upload Area */
+        .upload-area {
+            border: 3px dashed #d1d5db;
+            border-radius: 12px;
+            padding: 3rem;
+            text-align: center;
+            background: #f9fafb;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 2rem;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #ede9fe;
+        }
+
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #ede9fe;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .upload-text {
+            font-size: 1.1rem;
+            color: #374151;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-hint {
+            font-size: 0.9rem;
+            color: #6b7280;
+        }
+
+        .image-preview {
+            display: none;
+            margin-top: 1rem;
+            text-align: center;
+        }
+
+        .image-preview.active {
+            display: block;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .search-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 1rem 3rem;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 1.5rem;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .search-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .search-button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Results - Vista Cliente */
+        .results-client {
+            display: none;
+        }
+
+        .results-client.active {
+            display: block;
+        }
+
+        .category-section {
+            margin-bottom: 3rem;
+        }
+
+        .category-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .category-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .category-confidence {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .product-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+        }
+
+        .product-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+
+        .product-image-container {
+            position: relative;
+            width: 100%;
+            padding-top: 133%;
+            background: #f9fafb;
+            overflow: hidden;
+        }
+
+        .product-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .product-info {
+            padding: 1.25rem;
+        }
+
+        .product-category {
+            color: #6b7280;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .product-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 0.75rem;
+        }
+
+        .product-price {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #000;
+        }
+
+        /* Results - Vista Análisis */
+        .results-analysis {
+            display: none;
+        }
+
+        .results-analysis.active {
+            display: block;
+        }
+
+        .analysis-metadata {
+            background: #f9fafb;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .metadata-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .metadata-label {
+            font-size: 0.85rem;
+            color: #6b7280;
+            margin-bottom: 0.25rem;
+        }
+
+        .metadata-value {
+            font-weight: 600;
+            color: #111827;
+            font-size: 1.1rem;
+        }
+
+        .category-analysis {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .category-analysis-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .analysis-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+
+        .score-badge {
+            padding: 0.5rem 1.5rem;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .score-badge.high {
+            background: #10b981;
+            color: white;
+        }
+
+        .score-badge.medium {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .score-badge.low {
+            background: #6b7280;
+            color: white;
+        }
+
+        .crop-scores {
+            margin-top: 1rem;
+        }
+
+        .crop-scores-title {
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #374151;
+        }
+
+        .crop-score-bar {
+            margin-bottom: 0.75rem;
+        }
+
+        .crop-score-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.25rem;
+            font-size: 0.9rem;
+        }
+
+        .crop-name {
+            color: #374151;
+            font-weight: 500;
+        }
+
+        .crop-value {
+            color: #6b7280;
+        }
+
+        .crop-bar-container {
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .crop-bar-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+        }
+
+        .best-crop-indicator {
+            display: inline-block;
+            margin-left: 0.5rem;
+            color: #10b981;
+            font-weight: 700;
+        }
+
+        .centroid-quality {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-top: 1rem;
+        }
+
+        .centroid-quality-title {
+            font-weight: 600;
+            color: #065f46;
+            margin-bottom: 0.5rem;
+        }
+
+        .centroid-quality-info {
+            color: #047857;
+            font-size: 0.9rem;
+        }
+
+        /* Loading */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 3rem;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            font-size: 1.1rem;
+            color: #6b7280;
+        }
+
+        /* Error */
+        .error {
+            display: none;
+            background: #fef2f2;
+            border: 2px solid #fecaca;
+            padding: 1.5rem;
+            border-radius: 8px;
+            color: #991b1b;
+            margin-top: 1rem;
+        }
+
+        .error.active {
+            display: block;
+        }
+
+        .error-title {
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-content">
+            <h1>🧪 Test Completo - Sistema Unificado V2</h1>
+            <p>Detección dinámica de categorías basada en centroides + multi-crop</p>
+        </div>
+    </div>
+
+    <!-- Client Selector -->
+    <div class="client-selector" style="margin: 2rem; max-width: 1600px; margin-left: auto; margin-right: auto;">
+        <label for="clientSelect">Seleccionar Cliente:</label>
+        <select id="clientSelect">
+            <option value="">Cargando clientes...</option>
+        </select>
+
+        <div id="clientInfo" class="client-info">
+            <div class="client-info-grid">
+                <div class="client-info-item">
+                    <span class="client-info-label">Nombre</span>
+                    <span class="client-info-value" id="clientName">-</span>
+                </div>
+                <div class="client-info-item">
+                    <span class="client-info-label">API Key</span>
+                    <span class="client-info-value" id="clientApiKey">-</span>
+                </div>
+                <div class="client-info-item">
+                    <span class="client-info-label">Categorías</span>
+                    <span class="client-info-value" id="clientCategories">-</span>
+                </div>
+                <div class="client-info-item">
+                    <span class="client-info-label">Productos</span>
+                    <span class="client-info-value" id="clientProducts">-</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs Container -->
+    <div class="tabs-container" style="margin: 0 2rem; max-width: 1600px; margin-left: auto; margin-right: auto;">
+        <!-- Tabs Header -->
+        <div class="tabs-header">
+            <button class="tab-button active" data-tab="cliente">
+                👁️ Vista Cliente
+            </button>
+            <button class="tab-button" data-tab="analisis">
+                📊 Vista Análisis
+            </button>
+        </div>
+
+        <!-- Tabs Content -->
+        <div class="tabs-content">
+            <!-- Tab 1: Vista Cliente -->
+            <div id="tabCliente" class="tab-panel active">
+                <!-- Upload Area -->
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📸</div>
+                    <div class="upload-text">Arrastra una imagen aquí o haz clic para seleccionar</div>
+                    <div class="upload-hint">Soporta JPG, PNG, WebP (máx 10MB)</div>
+                    <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                </div>
+
+                <div class="image-preview" id="imagePreview">
+                    <img id="previewImage" class="preview-image" alt="Preview">
+                    <button class="search-button" id="searchButton" disabled>🔍 Buscar Productos Similares</button>
+                </div>
+
+                <!-- Loading -->
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <div class="loading-text">Analizando imagen con CLIP...</div>
+                </div>
+
+                <!-- Error -->
+                <div class="error" id="error">
+                    <div class="error-title">Error</div>
+                    <div id="errorMessage"></div>
+                </div>
+
+                <!-- Results -->
+                <div class="results-client" id="resultsClient">
+                    <!-- Se llenará dinámicamente con JavaScript -->
+                </div>
+            </div>
+
+            <!-- Tab 2: Vista Análisis -->
+            <div id="tabAnalisis" class="tab-panel">
+                <!-- Upload Area (duplicado para esta pestaña) -->
+                <div class="upload-area" id="uploadAreaAnalysis">
+                    <div class="upload-icon">📸</div>
+                    <div class="upload-text">Arrastra una imagen aquí o haz clic para seleccionar</div>
+                    <div class="upload-hint">Soporta JPG, PNG, WebP (máx 10MB)</div>
+                    <input type="file" id="fileInputAnalysis" accept="image/*" style="display: none;">
+                </div>
+
+                <div class="image-preview" id="imagePreviewAnalysis">
+                    <img id="previewImageAnalysis" class="preview-image" alt="Preview">
+                    <button class="search-button" id="searchButtonAnalysis" disabled>🔍 Analizar Categorías</button>
+                </div>
+
+                <!-- Loading -->
+                <div class="loading" id="loadingAnalysis">
+                    <div class="spinner"></div>
+                    <div class="loading-text">Procesando multi-crop + centroides...</div>
+                </div>
+
+                <!-- Error -->
+                <div class="error" id="errorAnalysis">
+                    <div class="error-title">Error</div>
+                    <div id="errorMessageAnalysis"></div>
+                </div>
+
+                <!-- Results -->
+                <div class="results-analysis" id="resultsAnalysis">
+                    <!-- Se llenará dinámicamente con JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let currentClient = null;
+        let currentImageBase64 = null;
+        let serverUrl;
+
+        // Auto-detect environment de forma robusta
+        // - Si se sirve desde el backend (http/https), usar mismo origin (localhost, 127.0.0.1 o 192.168.x.x)
+        // - Si se abre directamente como file://, fallback a backend local por defecto
+        const origin = window.location.origin;
+        if (origin && origin.startsWith('http')) {
+            serverUrl = origin;
+        } else {
+            // Abierto como file:// — usar backend local por defecto
+            serverUrl = 'http://127.0.0.1:5000';
+        }
+
+        // ============================================================================
+        // CLIENT SELECTOR
+        // ============================================================================
+
+        async function loadClients() {
+            const select = document.getElementById('clientSelect');
+            try {
+                const response = await fetch(`${serverUrl}/api/clients/list`, { method: 'GET' });
+                if (!response.ok) {
+                    console.error('HTTP error fetching clients:', response.status, response.statusText);
+                    select.innerHTML = '<option value="">Error cargando clientes</option>';
+                    return;
+                }
+                const data = await response.json();
+
+                if (data && data.success && Array.isArray(data.clients) && data.clients.length > 0) {
+                    select.innerHTML = '<option value="">-- Seleccionar cliente --</option>';
+
+                    data.clients.forEach(client => {
+                        const option = document.createElement('option');
+                        option.value = JSON.stringify(client);
+                        option.textContent = `${client.name} (${client.category_count} categorías, ${client.product_count} productos)`;
+                        select.appendChild(option);
+                    });
+                } else {
+                    console.warn('Sin clientes o respuesta inválida:', data);
+                    select.innerHTML = '<option value="">No se encontraron clientes activos</option>';
+                }
+            } catch (error) {
+                console.error('Error cargando clientes:', error);
+                select.innerHTML = '<option value="">Error cargando clientes</option>';
+            }
+        }
+
+        document.getElementById('clientSelect').addEventListener('change', function(e) {
+            if (!e.target.value) {
+                currentClient = null;
+                document.getElementById('clientInfo').classList.remove('active');
+                return;
+            }
+
+            currentClient = JSON.parse(e.target.value);
+
+            // Mostrar info del cliente
+            document.getElementById('clientName').textContent = currentClient.name;
+            document.getElementById('clientApiKey').textContent = currentClient.api_key;
+            document.getElementById('clientCategories').textContent = currentClient.category_count;
+            document.getElementById('clientProducts').textContent = currentClient.product_count;
+            document.getElementById('clientInfo').classList.add('active');
+        });
+
+        // ============================================================================
+        // TABS
+        // ============================================================================
+
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', function() {
+                const tabName = this.dataset.tab;
+
+                // Update buttons
+                document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                this.classList.add('active');
+
+                // Update panels
+                document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
+                if (tabName === 'cliente') {
+                    document.getElementById('tabCliente').classList.add('active');
+                } else {
+                    document.getElementById('tabAnalisis').classList.add('active');
+                }
+            });
+        });
+
+        // ============================================================================
+        // FILE UPLOAD - Vista Cliente
+        // ============================================================================
+
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const previewImage = document.getElementById('previewImage');
+        const searchButton = document.getElementById('searchButton');
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                handleImageUpload(file);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleImageUpload(file);
+            }
+        });
+
+        function handleImageUpload(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                currentImageBase64 = e.target.result;
+                previewImage.src = currentImageBase64;
+                imagePreview.classList.add('active');
+                searchButton.disabled = !currentClient;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        searchButton.addEventListener('click', () => performSearch('cliente'));
+
+        // ============================================================================
+        // FILE UPLOAD - Vista Análisis
+        // ============================================================================
+
+        const uploadAreaAnalysis = document.getElementById('uploadAreaAnalysis');
+        const fileInputAnalysis = document.getElementById('fileInputAnalysis');
+        const imagePreviewAnalysis = document.getElementById('imagePreviewAnalysis');
+        const previewImageAnalysis = document.getElementById('previewImageAnalysis');
+        const searchButtonAnalysis = document.getElementById('searchButtonAnalysis');
+
+        uploadAreaAnalysis.addEventListener('click', () => fileInputAnalysis.click());
+
+        uploadAreaAnalysis.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadAreaAnalysis.classList.add('dragover');
+        });
+
+        uploadAreaAnalysis.addEventListener('dragleave', () => {
+            uploadAreaAnalysis.classList.remove('dragover');
+        });
+
+        uploadAreaAnalysis.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadAreaAnalysis.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                handleImageUploadAnalysis(file);
+            }
+        });
+
+        fileInputAnalysis.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleImageUploadAnalysis(file);
+            }
+        });
+
+        function handleImageUploadAnalysis(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                currentImageBase64 = e.target.result;
+                previewImageAnalysis.src = currentImageBase64;
+                imagePreviewAnalysis.classList.add('active');
+                searchButtonAnalysis.disabled = !currentClient;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        searchButtonAnalysis.addEventListener('click', () => performSearch('analisis'));
+
+        // ============================================================================
+        // SEARCH
+        // ============================================================================
+
+        async function performSearch(view) {
+            if (!currentClient) {
+                alert('Por favor selecciona un cliente primero');
+                return;
+            }
+
+            if (!currentImageBase64) {
+                alert('Por favor selecciona una imagen primero');
+                return;
+            }
+
+            const loadingId = view === 'cliente' ? 'loading' : 'loadingAnalysis';
+            const errorId = view === 'cliente' ? 'error' : 'errorAnalysis';
+            const resultsId = view === 'cliente' ? 'resultsClient' : 'resultsAnalysis';
+
+            document.getElementById(loadingId).classList.add('active');
+            document.getElementById(errorId).classList.remove('active');
+            document.getElementById(resultsId).classList.remove('active');
+
+            try {
+                const response = await fetch(`${serverUrl}/api/search/unified`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': currentClient.api_key
+                    },
+                    body: JSON.stringify({
+                        image: currentImageBase64,
+                        top_k: 5,
+                        max_results: 6,
+                        apply_pair_exclusion: true
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.message || 'Error en la búsqueda');
+                }
+
+                console.log('Search results:', data);
+
+                if (view === 'cliente') {
+                    renderClientView(data);
+                } else {
+                    renderAnalysisView(data);
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                const errorMessageId = view === 'cliente' ? 'errorMessage' : 'errorMessageAnalysis';
+                document.getElementById(errorMessageId).textContent = error.message;
+                document.getElementById(errorId).classList.add('active');
+            } finally {
+                document.getElementById(loadingId).classList.remove('active');
+            }
+        }
+
+        // ============================================================================
+        // RENDER CLIENT VIEW
+        // ============================================================================
+
+        function renderClientView(data) {
+            const container = document.getElementById('resultsClient');
+            container.innerHTML = '';
+
+            if (!data.categories_detected || data.categories_detected.length === 0) {
+                container.innerHTML = '<p style="text-align: center; padding: 3rem; color: #6b7280;">No se detectaron categorías que cumplan el umbral de confianza.</p>';
+                container.classList.add('active');
+                return;
+            }
+
+            data.categories_detected.forEach(category => {
+                const section = document.createElement('div');
+                section.className = 'category-section';
+
+                const header = document.createElement('div');
+                header.className = 'category-header';
+                header.innerHTML = `
+                    <h2 class="category-title">${category.category_name}</h2>
+                    <div class="category-confidence">${(category.score * 100).toFixed(1)}% confianza</div>
+                `;
+                section.appendChild(header);
+
+                if (category.products && category.products.length > 0) {
+                    const grid = document.createElement('div');
+                    grid.className = 'products-grid';
+
+                    category.products.forEach(product => {
+                        const card = document.createElement('div');
+                        card.className = 'product-card';
+                        card.innerHTML = `
+                            <div class="product-image-container">
+                                <img src="${product.image_url || '/static/placeholder.png'}"
+                                     alt="${product.name}"
+                                     class="product-image"
+                                     onerror="this.src='/static/placeholder.png'">
+                            </div>
+                            <div class="product-info">
+                                <div class="product-category">${category.category_name}</div>
+                                <div class="product-name">${product.name}</div>
+                                ${product.price ? `<div class="product-price">$${product.price.toFixed(2)}</div>` : ''}
+                            </div>
+                        `;
+                        grid.appendChild(card);
+                    });
+
+                    section.appendChild(grid);
+                } else {
+                    section.innerHTML += '<p style="color: #6b7280; padding: 1rem 0;">No hay productos disponibles en esta categoría.</p>';
+                }
+
+                container.appendChild(section);
+            });
+
+            container.classList.add('active');
+        }
+
+        // ============================================================================
+        // RENDER ANALYSIS VIEW
+        // ============================================================================
+
+        function renderAnalysisView(data) {
+            const container = document.getElementById('resultsAnalysis');
+            container.innerHTML = '';
+
+            // Metadata
+            const metadataDiv = document.createElement('div');
+            metadataDiv.className = 'analysis-metadata';
+            metadataDiv.innerHTML = `
+                <h3 style="margin-bottom: 1rem; color: #111827;">Metadata de Procesamiento</h3>
+                <div class="metadata-grid">
+                    <div class="metadata-item">
+                        <span class="metadata-label">Categorías Evaluadas</span>
+                        <span class="metadata-value">${data.metadata.total_categories_evaluated}</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Threshold Usado</span>
+                        <span class="metadata-value">${(data.metadata.threshold_used * 100).toFixed(1)}%</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Tiempo Total</span>
+                        <span class="metadata-value">${data.metadata.processing_time_ms.toFixed(0)}ms</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Tiempo Detección</span>
+                        <span class="metadata-value">${data.metadata.detection_time_ms.toFixed(0)}ms</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Crops Generados</span>
+                        <span class="metadata-value">${data.metadata.crops_generated.length}</span>
+                    </div>
+                    <div class="metadata-item">
+                        <span class="metadata-label">Pair Exclusion</span>
+                        <span class="metadata-value">${data.metadata.pair_exclusion_applied ? 'Sí' : 'No'}</span>
+                    </div>
+                </div>
+            `;
+            container.appendChild(metadataDiv);
+
+            // Categories Analysis
+            if (!data.categories_detected || data.categories_detected.length === 0) {
+                container.innerHTML += '<p style="text-align: center; padding: 3rem; color: #6b7280;">No se detectaron categorías.</p>';
+                container.classList.add('active');
+                return;
+            }
+
+            data.categories_detected.forEach(category => {
+                const analysisDiv = document.createElement('div');
+                analysisDiv.className = 'category-analysis';
+
+                const scoreClass = category.score >= 0.7 ? 'high' : category.score >= 0.5 ? 'medium' : 'low';
+
+                analysisDiv.innerHTML = `
+                    <div class="category-analysis-header">
+                        <h3 class="analysis-title">${category.category_name}</h3>
+                        <span class="score-badge ${scoreClass}">${(category.score * 100).toFixed(2)}%</span>
+                    </div>
+
+                    <div class="crop-scores">
+                        <div class="crop-scores-title">📊 Scores por Región (Crop):</div>
+                        ${Object.entries(category.crop_scores)
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([cropName, score]) => `
+                                <div class="crop-score-bar">
+                                    <div class="crop-score-label">
+                                        <span class="crop-name">
+                                            ${cropName}
+                                            ${cropName === category.best_crop ? '<span class="best-crop-indicator">⭐ MEJOR</span>' : ''}
+                                        </span>
+                                        <span class="crop-value">${(score * 100).toFixed(2)}%</span>
+                                    </div>
+                                    <div class="crop-bar-container">
+                                        <div class="crop-bar-fill" style="width: ${score * 100}%"></div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                    </div>
+
+                    <div class="centroid-quality">
+                        <div class="centroid-quality-title">🎯 Calidad del Centroide</div>
+                        <div class="centroid-quality-info">
+                            <strong>${category.centroid_quality.image_count}</strong> imágenes usadas para calcular el centroide
+                            ${category.centroid_quality.last_updated ?
+                                `<br>Última actualización: ${new Date(category.centroid_quality.last_updated).toLocaleDateString()}` :
+                                ''}
+                        </div>
+                    </div>
+
+                    ${category.excluded_by_pair_rule ? `
+                        <div style="background: #fef2f2; border: 1px solid #fecaca; padding: 1rem; border-radius: 6px; margin-top: 1rem;">
+                            <strong style="color: #991b1b;">⚠️ Excluida por regla de pares:</strong>
+                            <div style="color: #7f1d1d; margin-top: 0.5rem;">
+                                Razón: ${category.exclusion_reason}<br>
+                                En favor de: ${category.excluded_in_favor_of}
+                            </div>
+                        </div>
+                    ` : ''}
+                `;
+
+                container.appendChild(analysisDiv);
+            });
+
+            container.classList.add('active');
+        }
+
+        // ============================================================================
+        // INIT
+        // ============================================================================
+
+        // Load clients on page load
+        loadClients();
+    </script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 # Resumen Ejecutivo: Integración Multi-Crop en Producción
 
-> **Fecha**: 12 Noviembre 2025  
-> **Tag Git**: `v2.4.0-pair-exclusion` → `v2.5.0-multicrop-production` (pendiente)  
+> **Fecha**: 12 Noviembre 2025
+> **Tag Git**: `v2.4.0-pair-exclusion` → `v2.5.0-multicrop-production` (pendiente)
 > **Estado**: ✅ Análisis completo - Pendiente decisión de implementación
 
 ---
@@ -170,6 +170,6 @@ Opciones:
 
 ---
 
-**Tag actual**: v2.4.0-pair-exclusion  
-**Tag siguiente**: v2.5.0-multicrop-production (pendiente)  
+**Tag actual**: v2.4.0-pair-exclusion
+**Tag siguiente**: v2.5.0-multicrop-production (pendiente)
 **Estado git**: Todo committeado, listo para nuevos cambios

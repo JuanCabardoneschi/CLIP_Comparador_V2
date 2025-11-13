@@ -56,9 +56,9 @@ clip_admin_backend/           # Aplicación Flask Unificada
 
 │   │   ├── images.py        # Gestión de imágenesÔöé   ÔööÔöÇÔöÇ utils/               # Utilidades
 
-│   │   ├── categories.py    # Gestión de categoríasÔö£ÔöÇÔöÇ migrations/              # Migraciones de base de datos
+│   │   ├── categories.py    # Gestión de categorías
 
-│   │   └── ...              # Otros módulosÔö£ÔöÇÔöÇ requirements.txt         # Dependencias espec├¡ficas
+│   │   └── ...              # Otros módulosÔö£ÔöÇÔöÇ requirements.txt         # Dependencias específicas
 
 │   ├── utils/               ÔööÔöÇÔöÇ app.py                   # Aplicaci├│n principal Flask
 
@@ -70,9 +70,7 @@ clip_admin_backend/           # Aplicación Flask Unificada
 
 │   ├── static/              # CSS, JS, imágenes, widgetÔöé   Ôö£ÔöÇÔöÇ core/               # CLIP Engine + Search Engine
 
-│   └── services/            # Cloudinary, Image ManagerÔöé   Ôö£ÔöÇÔöÇ middleware/         # Autenticaci├│n + Rate Limiting
-
-├── migrations/              # Alembic migrationsÔöé   Ôö£ÔöÇÔöÇ models/             # Modelos Pydantic
+│   └── services/            # Cloudinary, Image ManagerÔöé   Ôö£ÔöÇÔöÇ middleware/         # Autenticación + Rate Limiting
 
 ├── requirements.txt         # Dependencias PythonÔöé   ÔööÔöÇÔöÇ utils/              # Database + Utilidades
 

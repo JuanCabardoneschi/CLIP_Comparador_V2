@@ -1,14 +1,17 @@
 # Web Frameworks
 Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.5
 Flask-CORS==4.0.0
 
 # Database
 SQLAlchemy==2.0.23
+alembic==1.12.1
 psycopg2-binary==2.9.9
 
 # Database Tools & Management
 Flask-Admin==1.6.1
+# sqlite-utils==3.35  # REMOVIDO - Solo PostgreSQL soportado
 sqlalchemy-utils==0.41.1
 
 # Redis
@@ -28,12 +31,18 @@ passlib[bcrypt]==1.7.4
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.1.1+cpu
 torchvision==0.16.1+cpu
-transformers==4.45.0
-huggingface-hub==0.23.0
+transformers==4.35.2
+huggingface-hub==0.20.3
 Pillow==10.1.0
 numpy==1.25.2
 sentence-transformers>=2.3.0
 scikit-learn==1.3.2  # Para matching semántico en LLM query normalizer
+
+# Visual Detection / Grounding (pruebas)
+groundingdino-py==0.1.2  # Wrapper simplificado Grounding DINO (detección zero-shot)
+opencv-python==4.9.0.80  # Requerido por groundingdino
+pyyaml==6.0.1  # Config parsing para modelos grounding
+timm==0.9.12  # Backbones vision (SwinT) usados por Grounding DINO
 
 # Image Processing & Storage
 cloudinary==1.36.0  # Cloudinary para almacenamiento en la nube
@@ -49,10 +58,11 @@ certifi>=2023.7.22  # Certificados SSL para descargas de modelos
 
 # Development & Validation
 pytest==7.4.3
+black==23.11.0
+isort==5.12.0
+flake8==6.1.0
 
-# GPT-4 Vision Integration (Nov 2025)
-openai>=1.3.0  # Cliente oficial OpenAI para GPT-4o Vision
-
-# Otras dependencias del sistema
-gunicorn==21.2.0  # WSGI server para producción
-Werkzeug==3.0.1  # Utilidades WSGI (incluido con Flask pero fijamos versión)
+# Utils - Railway compatible
+python-slugify==8.0.1
+validators==0.22.0
+googletrans==4.0.0rc1

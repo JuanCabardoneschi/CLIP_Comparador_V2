@@ -1,6 +1,161 @@
 # BACKLOG DE MEJORAS Y PENDIENTES
 **Fecha de Creación**: 22 Octubre 2025
-**Última Actualización**: 2 Noviembre 2025
+**Última Actualización**: 13 Noviembre 2025
+
+---
+
+## 🎯 ENDPOINT GPT4V-UNIFIED - FUNCIONALIDADES PENDIENTES (Agregado 13 Nov 2025)
+
+### Estado Actual
+El endpoint `/api/search/gpt4v-unified` usa GPT-4V para detección de categorías + CLIP para búsqueda visual.
+
+**✅ IMPLEMENTADO (13 Nov 2025)**:
+- Imagen primaria (`is_primary=True`) con fallback
+- Filtrado de atributos por `product_attribute_config` (`expose_in_search=true`)
+- Extracción de `url_producto` del JSONB (link a ficha externa)
+- Stock con manejo de valores `None`
+- Autenticación por API Key
+- CORS para widget cross-origin
+- Threshold y max_results configurables
+
+### 🟡 MEDIA PRIORIDAD - Para Evaluar
+
+#### 1. Color Matching Simplificado
+**Estado**: 📋 PENDIENTE
+**Prioridad**: MEDIA
+**Complejidad**: BAJA
+**Estimación**: 2-3 horas
+
+**Funcionalidad**:
+- Parsear `user_intent` de GPT-4V para detectar colores mencionados (ej: "camisa negra", "vestido rojo")
+- Aplicar boost +0.30 a productos que tengan ese color en `attributes->>'color'`
+- Mejora el ranking cuando GPT-4V menciona colores específicos
+
+**Razón**: GPT-4V ya menciona colores en `mensaje_usuario`, no necesitamos detección separada.
+
+**Implementación**:
+```python
+# En gpt4v_unified_search(), después de calcular similitudes:
+detected_colors = _extract_colors_from_user_intent(gpt4v_result.get('mensaje_usuario', ''))
+if detected_colors:
+    for result in product_similarities:
+        product_color = result['product'].attributes.get('color', '').lower()
+        if any(color in product_color for color in detected_colors):
+            result['similarity'] += 0.30  # Color boost
+```
+
+---
+
+#### 2. SearchOptimizer Lite (Sistema de Scoring 3 Capas)
+**Estado**: 📋 PENDIENTE
+**Prioridad**: MEDIA
+**Complejidad**: MEDIA
+**Estimación**: 4-5 horas
+
+**Funcionalidad**:
+Recalcular score final combinando 3 dimensiones:
+- **Visual Layer (70%)**: Similitud CLIP (ya calculada)
+- **Metadata Layer (20%)**: Color matching si GPT-4V lo detecta
+- **Business Layer (10%)**:
+  - Boost por `stock > 0`
+  - Boost por `is_featured = True`
+  - Boost por descuentos activos
+
+**Beneficio**: Rankings más sofisticados considerando aspectos de negocio, no solo similitud visual.
+
+**Versión Simplificada** (sin `StoreSearchConfig`, pesos fijos):
+```python
+final_score = (
+    0.70 * visual_similarity +
+    0.20 * metadata_score +  # Solo color matching
+    0.10 * business_score    # stock + featured
+)
+```
+
+**Migración Futura**: Usar `StoreSearchConfig` para pesos configurables por cliente.
+
+---
+
+### 🔵 FUTURO - Diseño Estratégico
+
+#### 3. Búsqueda Híbrida Texto + Imagen
+**Estado**: 💡 IDEA / DISEÑO
+**Prioridad**: BAJA (Post-MVP)
+**Complejidad**: ALTA
+**Estimación**: 8-10 horas
+
+**Funcionalidad**:
+- Usuario sube foto + escribe texto adicional
+- Ejemplo: Foto de camisa roja + texto "pero en azul"
+- GPT-4V analiza imagen + texto simultáneamente
+- Detecta categoría (camisa) + override de atributos (color: azul)
+
+**Beneficios**:
+- UX avanzada: refinamiento de búsqueda visual con lenguaje natural
+- Casos de uso: "igual pero más barato", "similar pero en talla L"
+
+**Requiere**:
+- Modificar widget para campo de texto opcional
+- Ajustar prompt de GPT-4V para procesar ambos inputs
+- Lógica de merging: imagen (categoría) + texto (filtros/modificadores)
+
+**Bloqueantes**:
+- Validar con usuarios si necesitan esta feature
+- Definir casos de uso prioritarios
+
+---
+
+### ❌ NO IMPLEMENTAR (Redundantes con GPT-4V)
+
+- **Category Boost** (+15%): GPT-4V ya filtra por categoría explícitamente antes de CLIP
+- **Normalización LLM de queries**: No hay input de texto actualmente
+- **Detección de color separada**: GPT-4V ya lo menciona en `mensaje_usuario`
+- **Nombre/SKU matching**: Solo relevante para búsqueda por texto (no implementada)
+- **Búsqueda multi-categoría con centroides**: GPT-4V ya detecta múltiples categorías
+
+---
+
+## 🔧 MEJORAS TÉCNICAS PENDIENTES (Agregado 13 Nov 2025)
+
+### 1. Reemplazar googletrans por deep-translator
+**Estado**: 📋 PENDIENTE
+**Prioridad**: MEDIA
+**Complejidad**: BAJA
+**Estimación**: 1-2 horas
+
+**Problema**:
+- `googletrans==4.0.0rc1` (release candidate) está roto con versiones modernas de httpcore
+- Requiere fijar `httpcore==0.18.0` y `httpx==0.25.0` (versiones viejas)
+- Genera conflictos de dependencias en pip
+
+**Solución Propuesta**:
+Migrar a `deep-translator` que es más moderna, estable y mantenida:
+```python
+# Antes (googletrans)
+from googletrans import Translator
+translator = Translator()
+result = translator.translate("camisa", src='es', dest='en')
+
+# Después (deep-translator)
+from deep_translator import GoogleTranslator
+result = GoogleTranslator(source='es', target='en').translate("camisa")
+```
+
+**Beneficios**:
+- ✅ Librería activamente mantenida (última versión 2024)
+- ✅ Sin dependencias problemáticas
+- ✅ Soporta múltiples servicios de traducción (Google, DeepL, etc.)
+- ✅ API más simple y limpia
+
+**Archivos a Modificar**:
+- `clip_admin_backend/app/blueprints/api.py` (línea 30: import googletrans)
+- `requirements.txt` (reemplazar googletrans + httpcore por deep-translator)
+
+**Testing**:
+```bash
+pip install deep-translator
+# Probar endpoint de búsqueda con categorías en español
+```
 
 ---
 

@@ -18,7 +18,6 @@ from flask import Flask, render_template, request, flash
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_login import LoginManager, current_user
-from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
 # Cargar variables de entorno
@@ -41,7 +40,7 @@ else:
 redis_client = None
 
 # Importar extensiones y modelos del paquete app
-from app import db, migrate, login_manager, jwt
+from app import db, login_manager, jwt
 def create_app(config_name=None):
     """Factory pattern para crear la aplicación Flask"""
 
@@ -108,7 +107,6 @@ def create_app(config_name=None):
 
     # Inicializar extensiones con la app
     db.init_app(app)
-    migrate.init_app(app, db)
     login_manager.init_app(app)
     jwt.init_app(app)
 
@@ -299,6 +297,16 @@ def register_blueprints(app):
     except ImportError as e:
         print(f"✗ Error importando categories blueprint: {e}")
 
+    # Blueprint de exclusiones de pares de categorías
+    try:
+        from app.blueprints.category_exclusions import bp as category_exclusions_bp
+        app.register_blueprint(category_exclusions_bp, url_prefix="/categories/exclusions")
+        print("✓ Blueprint category_exclusions registrado")
+    except ImportError as e:
+        print(f"✗ Error importando category_exclusions blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando category_exclusions blueprint: {e}")
+
     # Blueprint de productos
     try:
         from app.blueprints.products import bp as products_bp
@@ -381,6 +389,15 @@ def register_blueprints(app):
     except Exception as e:
         print(f"✗ Error registrando system_config_admin blueprint: {e}")
 
+    # Blueprint GPT-4 Vision (detección de categorías)
+    try:
+        from app.blueprints.gpt4v_detection import gpt4v_bp
+        app.register_blueprint(gpt4v_bp)
+        print("✓ Blueprint gpt4v_detection registrado")
+    except ImportError as e:
+        print(f"✗ Error importando gpt4v_detection blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando gpt4v_detection blueprint: {e}")
 
 # Crear instancia de la aplicación
 app = create_app()

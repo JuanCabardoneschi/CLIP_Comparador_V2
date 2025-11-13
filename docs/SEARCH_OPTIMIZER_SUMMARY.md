@@ -68,7 +68,7 @@ Semana 1        Semana 2         Semana 3              Semana 4
 **Objetivo**: Base de datos lista
 **Tareas principales**:
 - ✅ Crear modelo `StoreSearchConfig`
-- ✅ Migración Alembic
+- ✅ Script SQL para crear tabla
 - ✅ Seed de configuraciones default
 - ✅ Tests unitarios
 

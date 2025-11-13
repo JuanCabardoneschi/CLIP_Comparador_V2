@@ -53,8 +53,8 @@ try:
         status = "✅" if r['passes_threshold'] else "❌"
         print(f"{i}. {status} {r['category_name']:30s} score={r['score']:.3f}")
         print(f"   Best crop: {r['best_crop']}")
-    crop_scores_str = ', '.join([f"{k}={v:.2f}" for k,v in r['crop_scores'].items()])
-    print(f"   Crop scores: {crop_scores_str}")
+        crop_scores_str = ', '.join([f"{k}={v:.2f}" for k,v in r['crop_scores'].items()])
+        print(f"   Crop scores: {crop_scores_str}")
         print()
 
 except Exception as e:

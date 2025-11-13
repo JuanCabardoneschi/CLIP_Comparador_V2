@@ -35,6 +35,26 @@ def favicon():
     )
 
 
+@bp.route("/demo")
+@bp.route("/demo/<path:filename>")
+def demo(filename=None):
+    """Servir páginas demo desde static/"""
+    if filename is None:
+        filename = "demo-store-clean.html"
+
+    # Seguridad: solo permitir archivos .html
+    if not filename.endswith('.html'):
+        abort(404)
+
+    try:
+        return send_from_directory(
+            os.path.join(current_app.root_path, 'static'),
+            filename
+        )
+    except FileNotFoundError:
+        abort(404)
+
+
 @bp.route("/debug/routes")
 def debug_routes():
     """Debug endpoint para listar todas las rutas"""

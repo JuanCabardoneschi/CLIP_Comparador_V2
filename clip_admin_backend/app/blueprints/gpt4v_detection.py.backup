@@ -1,0 +1,244 @@
+"""
+Blueprint para detección de categorías con GPT-4 Vision
+Reemplaza detección por CLIP centroids con llamada a OpenAI Vision API
+"""
+import os
+import io
+import base64
+import logging
+from flask import Blueprint, request, jsonify
+from PIL import Image
+from openai import OpenAI
+
+logger = logging.getLogger(__name__)
+
+gpt4v_bp = Blueprint('gpt4v_detection', __name__, url_prefix='/api/gpt4v')
+
+# Cliente OpenAI (lazy loading)
+_openai_client = None
+
+
+def get_openai_client():
+    """Obtener cliente OpenAI (lazy loading)"""
+    global _openai_client
+
+    if _openai_client is not None:
+        return _openai_client
+
+    api_key = os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY no configurada en .env")
+
+    _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
+
+
+def detect_category_with_gpt4v(image_data, categories_list, client_id=None):
+    """
+    Detectar categoría de una imagen usando GPT-4 Vision
+
+    Args:
+        image_data: bytes o PIL.Image
+        categories_list: list[str] - Categorías disponibles
+        client_id: str (opcional) - ID del cliente para logging
+
+    Returns:
+        dict: {
+            'category': str,
+            'confidence': str ('High'|'Medium'|'Low'),
+            'reasoning': str,
+            'raw_response': str
+        }
+    """
+    try:
+        client = get_openai_client()
+
+        # Convertir imagen a base64
+        if isinstance(image_data, bytes):
+            image_bytes = image_data
+        elif isinstance(image_data, Image.Image):
+            buffer = io.BytesIO()
+            image_data.save(buffer, format='PNG')
+            image_bytes = buffer.getvalue()
+        else:
+            raise ValueError(f"Tipo de imagen inválido: {type(image_data)}")
+
+        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+
+        # Construir prompt estructurado
+        categories_str = ", ".join(categories_list)
+
+        prompt = f"""Analiza esta imagen de ropa/indumentaria y determina a cuál de las siguientes categorías pertenece:
+
+Categorías disponibles: {categories_str}
+
+Responde en ESPAÑOL con el siguiente formato EXACTO:
+CATEGORÍA: [nombre exacto de la categoría]
+CONFIANZA: [Alta/Media/Baja]
+RAZÓN: [breve explicación de por qué elegiste esta categoría]
+
+IMPORTANTE:
+- Elige SOLO UNA categoría de la lista
+- Usa el nombre EXACTO de la lista (respeta mayúsculas/minúsculas)
+- Si la imagen no coincide claramente con ninguna, elige la más cercana y marca confianza Baja"""
+
+        logger.info(f"🔍 GPT-4V detectando categoría para cliente {client_id or 'N/A'}...")
+
+        # Llamada a GPT-4 Vision
+        response = client.chat.completions.create(
+            model="gpt-4-vision-preview",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{image_b64}",
+                                "detail": "high"  # Alta calidad para mejor detección
+                            }
+                        }
+                    ]
+                }
+            ],
+            max_tokens=300,
+            temperature=0.2  # Baja temperatura para respuestas más consistentes
+        )
+
+        answer = response.choices[0].message.content
+        logger.info(f"💬 Respuesta GPT-4V:\n{answer}")
+
+        # Parsear respuesta estructurada
+        result = {
+            'raw_response': answer,
+            'category': None,
+            'confidence': 'Unknown',
+            'reasoning': ''
+        }
+
+        lines = answer.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line.startswith('CATEGORÍA:') or line.startswith('CATEGORIA:'):
+                result['category'] = line.split(':', 1)[1].strip()
+            elif line.startswith('CONFIANZA:'):
+                result['confidence'] = line.split(':', 1)[1].strip()
+            elif line.startswith('RAZÓN:') or line.startswith('RAZON:'):
+                result['reasoning'] = line.split(':', 1)[1].strip()
+
+        # Fallback: buscar categoría en texto libre
+        if not result['category']:
+            answer_lower = answer.lower()
+            for cat in categories_list:
+                if cat.lower() in answer_lower:
+                    result['category'] = cat
+                    result['confidence'] = 'Media'
+                    result['reasoning'] = 'Encontrada en respuesta de texto libre'
+                    logger.warning(f"⚠️ Categoría extraída por fallback: {cat}")
+                    break
+
+        if not result['category']:
+            logger.error(f"❌ No se pudo extraer categoría de respuesta GPT-4V")
+            raise ValueError("GPT-4V no devolvió una categoría válida")
+
+        logger.info(f"✅ Categoría detectada: {result['category']} ({result['confidence']})")
+        return result
+
+    except Exception as e:
+        logger.error(f"❌ Error en detección GPT-4V: {str(e)}", exc_info=True)
+        raise
+
+
+@gpt4v_bp.route('/detect', methods=['POST'])
+def detect_category():
+    """
+    Endpoint para detectar categoría con GPT-4 Vision
+
+    Body (multipart/form-data):
+        - image: archivo de imagen (required)
+        - client_id: ID del cliente (opcional, para cargar sus categorías)
+        - categories: categorías custom separadas por coma (opcional)
+
+    Returns:
+        JSON: {
+            "success": bool,
+            "category": str,
+            "confidence": str,
+            "reasoning": str,
+            "categories_available": [str, ...]
+        }
+    """
+    try:
+        # Validar imagen
+        if 'image' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No se envió imagen'
+            }), 400
+
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({
+                'success': False,
+                'error': 'Archivo vacío'
+            }), 400
+
+        # Leer imagen
+        image_bytes = file.read()
+
+        # Obtener categorías
+        client_id = request.form.get('client_id')
+        custom_categories = request.form.get('categories')
+
+        if custom_categories:
+            categories_list = [cat.strip() for cat in custom_categories.split(',')]
+        elif client_id:
+            # Cargar categorías de BD
+            from app.models.category import Category
+            categories = Category.query.filter_by(
+                client_id=client_id,
+                is_active=True
+            ).all()
+            categories_list = [cat.name for cat in categories]
+
+            if not categories_list:
+                return jsonify({
+                    'success': False,
+                    'error': f'Cliente {client_id} no tiene categorías activas'
+                }), 400
+        else:
+            # Categorías por defecto
+            categories_list = [
+                'Delantal Completo',
+                'Medio Delantal',
+                'Camisas',
+                'Zuecos',
+                'Chaquetas',
+                'Gorros',
+                'Cardigan',
+                'Ambo'
+            ]
+
+        # Detectar categoría
+        result = detect_category_with_gpt4v(
+            image_data=image_bytes,
+            categories_list=categories_list,
+            client_id=client_id
+        )
+
+        return jsonify({
+            'success': True,
+            'category': result['category'],
+            'confidence': result['confidence'],
+            'reasoning': result['reasoning'],
+            'categories_available': categories_list
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Error en /gpt4v/detect: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': 'Error en detección',
+            'details': str(e)
+        }), 500

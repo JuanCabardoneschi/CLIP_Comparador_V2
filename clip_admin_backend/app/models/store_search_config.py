@@ -4,6 +4,7 @@ Configuración de optimizadores de búsqueda por tienda
 """
 from datetime import datetime
 from typing import Dict, Any, Optional, Tuple
+from sqlalchemy.dialects.postgresql import UUID
 from . import db
 
 
@@ -35,7 +36,7 @@ class StoreSearchConfig(db.Model):
 
     # Clave primaria: ID de la tienda (FK a clients) - UUID nativo
     store_id = db.Column(
-        db.dialects.postgresql.UUID(as_uuid=False),  # Guardado como string pero compatible con UUID
+        UUID(as_uuid=False),  # Guardado como string pero compatible con UUID
         db.ForeignKey('clients.id', ondelete='CASCADE'),
         primary_key=True,
         nullable=False

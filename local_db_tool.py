@@ -3,12 +3,13 @@ Local DB Admin Tool - Punto único para modificaciones de BD en desarrollo local
 
 Uso (ejemplos):
   - Ver conteos:            python local_db_tool.py counts
-  - Ejecutar SQL directo:   python local_db_tool.py sql -e "SELECT * FROM clients LIMIT 5"
+  - Ejecutar SQL directo:   python local_db_tool.py sql -e "SELECT * FROM clients LIMIT 5" --yes
   - Ejecutar archivo SQL:   python local_db_tool.py sql -f script.sql --yes
   - Crear tablas training:  python local_db_tool.py create-training-tables --yes
 
 Flags de seguridad:
   --yes  Confirma y hace COMMIT. Sin --yes se hace ROLLBACK (modo seguro).
+         Ahora se coloca AL FINAL del comando.
 
 Conexión: Usa PostgreSQL local. Lee configuración de .env.local
 (LOCAL_DATABASE_URL) o usa defaults de desarrollo.
@@ -291,23 +292,26 @@ def cmd_sql(args):
 
 def build_parser():
     parser = argparse.ArgumentParser(description='Local DB Admin Tool')
-    parser.add_argument('--yes', action='store_true', help='Confirmar cambios (COMMIT)')
 
     subparsers = parser.add_subparsers(dest='command', help='Comando a ejecutar')
 
     # Comando: counts
-    subparsers.add_parser('counts', help='Mostrar conteos de imágenes')
+    counts_parser = subparsers.add_parser('counts', help='Mostrar conteos de imágenes')
+    counts_parser.add_argument('--yes', action='store_true', help='Confirmar cambios (COMMIT)')
 
     # Comando: create-training-tables
-    subparsers.add_parser('create-training-tables', help='Crear tablas del módulo de entrenamiento')
+    training_parser = subparsers.add_parser('create-training-tables', help='Crear tablas del módulo de entrenamiento')
+    training_parser.add_argument('--yes', action='store_true', help='Confirmar cambios (COMMIT)')
 
     # Comando: create-calibration-tables
-    subparsers.add_parser('create-calibration-tables', help='Crear tablas del módulo de calibración')
+    calibration_parser = subparsers.add_parser('create-calibration-tables', help='Crear tablas del módulo de calibración')
+    calibration_parser.add_argument('--yes', action='store_true', help='Confirmar cambios (COMMIT)')
 
     # Comando: sql
     sql_parser = subparsers.add_parser('sql', help='Ejecutar SQL directo')
     sql_parser.add_argument('-e', type=str, help='SQL inline')
     sql_parser.add_argument('-f', type=str, help='Archivo SQL')
+    sql_parser.add_argument('--yes', action='store_true', help='Confirmar cambios (COMMIT)')
 
     return parser
 

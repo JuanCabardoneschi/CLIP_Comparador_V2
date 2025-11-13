@@ -98,16 +98,16 @@ assert sum([config.visual_weight, config.metadata_weight, config.business_weight
 
 ---
 
-### Task 1.2: Migración Alembic
+### Task 1.2: Crear Tabla en Base de Datos
 **Estimación**: 1 hora
 
 **Checklist**:
-- [ ] Generar migración: `flask db migrate -m "Add store_search_config table"`
+- [ ] Crear SQL usando `local_db_tool.py`
 - [ ] Revisar SQL generado para PostgreSQL
 - [ ] Verificar constraints (FK a clients.id, checks de pesos)
-- [ ] Aplicar localmente: `flask db upgrade`
+- [ ] Ejecutar en DB local: `python local_db_tool.py`
 - [ ] Validar que tabla existe en PostgreSQL local
-- [ ] Commit de migración
+- [ ] Commit de script SQL
 
 **Criterios de Aceptación**:
 ```sql
@@ -518,7 +518,7 @@ return product_best_match
 - [ ] Push a main (Railway auto-deploys)
 - [ ] Verificar que build completa exitosamente
 - [ ] Verificar logs de Railway sin errores
-- [ ] Aplicar migración en Railway: `flask db upgrade`
+- [ ] Aplicar SQL en Railway usando `railway_db_tool.py`
 - [ ] Ejecutar seed_search_config.py en Railway
 - [ ] Validar que tabla existe y tiene datos
 
@@ -528,8 +528,8 @@ git add .
 git commit -m "feat: Implement search optimizers system"
 git push origin main
 
-# En Railway CLI o dashboard
-flask db upgrade
+# En local para Railway
+python railway_db_tool.py
 python seed_search_config.py
 ```
 
