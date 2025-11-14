@@ -25,7 +25,7 @@ from app.core.search_optimizer import SearchOptimizer
 from app.utils.system_config import system_config
 from app.core.modifier_expander import expand_color_modifiers
 from app.utils.colors import normalize_color
-from app.utils.llm_query_normalizer import normalize_query
+from app.utils.llm_query_normalizer import normalize_query, get_model
 from sqlalchemy import func, or_, text
 # from googletrans import Translator  # DESHABILITADO - googletrans 4.0.0rc1 roto con httpcore
 
@@ -2445,6 +2445,21 @@ def text_search():
         # Extraer campos del normalizador para usar en boosts
         detected_color = llm_norm.get('color', '').lower() if llm_norm.get('color') else None
         detected_tipo = llm_norm.get('tipo', '').lower() if llm_norm.get('tipo') else None
+
+        # Extraer color directamente de la query (prioritario si existe)
+        COLORES_BASICOS = {
+            'rojo', 'azul', 'verde', 'amarillo', 'negro', 'blanco', 'gris',
+            'rosa', 'morado', 'naranja', 'marron', 'beige', 'celeste', 'turquesa',
+            'dorado', 'plateado', 'violeta', 'cafe', 'crema', 'coral', 'fucsia'
+        }
+        query_colors = [word for word in query_text.lower().split() if word in COLORES_BASICOS]
+        if query_colors:
+            # Priorizar color explícito en query sobre LLM normalizer
+            if detected_color != query_colors[0]:
+                print(f"[REQ {request_id}] 🎨 Color query ('{query_colors[0]}') difiere de LLM ('{detected_color}') → usando query")
+                detected_color = query_colors[0]
+                llm_norm['color'] = detected_color  # Actualizar también el dict que se devuelve
+
         # Contexto puede ser lista o string
         contexto_raw = llm_norm.get('contexto')
         if isinstance(contexto_raw, list):
@@ -2452,9 +2467,7 @@ def text_search():
         elif isinstance(contexto_raw, str):
             detected_context = [contexto_raw.lower()]
         else:
-            detected_context = None
-
-        # Expandir modificadores de color con colores del cliente
+            detected_context = None        # Expandir modificadores de color con colores del cliente
         expanded_query = expand_color_modifiers(query_text, client_id=str(client.id))
         if expanded_query != query_text:
             print(f"ðŸ”„ Query expandido: '{query_text}' -> '{expanded_query}'")
@@ -2480,6 +2493,8 @@ def text_search():
 
         # Intentar detectar categorÃ­a en el query mediante tokens normalizados
         detected_category = None
+        detected_category_via = None  # 'name' | 'name_en' | 'alt' | 'tokens' | 'llm'
+        category_substitution_info = None  # Mensaje para UI cuando hay sustitución/similitud
         categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
 
         import re, unicodedata
@@ -2532,11 +2547,13 @@ def text_search():
             # Verificar en nombre (PRIORIDAD ALTA: nombre exacto de categorÃ­a)
             if query_normalized in category.name.lower() or category.name.lower() in query_normalized:
                 detected_category = category
+                detected_category_via = 'name'
                 print(f"[REQ {request_id}] Categoría detectada por nombre exacto: {category.name}")
                 break
             # Verificar en name_en tambiÃ©n con alta prioridad
             if category.name_en and (query_normalized in category.name_en.lower() or category.name_en.lower() in query_normalized):
                 detected_category = category
+                detected_category_via = 'name_en'
                 print(f"[REQ {request_id}] Categoría detectada por name_en exacto: {category.name}")
                 break
 
@@ -2548,6 +2565,7 @@ def text_search():
                     alt_terms = [t.strip().lower() for t in str(alt).split(',')]
                     if query_normalized in alt_terms:
                         detected_category = category
+                        detected_category_via = 'alt'
                         print(f"[REQ {request_id}] Categoría detectada por alternative_term exacto: {category.name}")
                         break
 
@@ -2574,22 +2592,90 @@ def text_search():
 
             if best_category and best_score > 0:
                 detected_category = best_category
+                detected_category_via = 'tokens'
                 print(f"[REQ {request_id}] Categoría detectada por tokens (score={best_score:.2f}): {detected_category.name}")
 
+        # Si detectamos por tokens (no literal), exponer mensaje de sustitución como 'similar'
+        if detected_category and detected_category_via == 'tokens':
+            try:
+                token_sim = float(max(0.0, min(1.0, best_score))) if 'best_score' in locals() else None
+            except Exception:
+                token_sim = None
+            category_substitution_info = {
+                "match_type": "similar",
+                "requested_text": query_text,
+                "matched_category": detected_category.name,
+                **({"similarity": round(token_sim, 3)} if token_sim is not None else {})
+            }
+            print(f"[REQ {request_id}] ⚠️ Match similar por tokens: '{query_text}' → '{detected_category.name}' score={best_score:.3f}")
 
-        # Si NO detectamos categorÃ­a: decidir si es fuera de catÃ¡logo o si permitimos bÃºsqueda global
+
+        # Nueva lógica de selección de categoría con LLM: exacta / similar / ninguna
         if not detected_category:
-            all_cat_tokens = set()
-            for _, name_toks, alt_toks in cat_tokens_list:
-                all_cat_tokens |= name_toks
-                all_cat_tokens |= alt_toks
+            from sentence_transformers import util
+            llm_model = get_model()
+            query_emb = llm_model.encode(expanded_query.lower(), convert_to_tensor=False)
 
-            if query_tokens and query_tokens.isdisjoint(all_cat_tokens):
-                # Antes devolvÃ­amos 400. Ahora permitimos BÃšSQUEDA GLOBAL para casos como nombres de modelo (ej: "monaco").
-                print(f"[REQ {request_id}] TEXT SEARCH: tokens sin cruce con categorías → continuamos en búsqueda GLOBAL por nombre/SKU/tags")
+            cat_sims = []
+            for cat in categories:
+                # Solo categorías con productos activos
+                if Product.query.filter_by(category_id=cat.id, client_id=client.id).count() == 0:
+                    continue
+                cat_emb = llm_model.encode(cat.name.lower(), convert_to_tensor=False)
+                sim = float(util.cos_sim(query_emb, cat_emb)[0][0])
+                cat_sims.append((cat, sim))
+
+            if not cat_sims:
+                print(f"[REQ {request_id}] ❌ Sin categorías con productos para este cliente")
+                return jsonify({
+                    "success": False,
+                    "error": "no_categories",
+                    "message": "El cliente no tiene categorías con productos activos.",
+                    "processing_time": round(time.time() - start_time, 3)
+                }), 404
+
+            # Ordenar por similitud
+            cat_sims.sort(key=lambda x: x[1], reverse=True)
+            best_cat, best_sim = cat_sims[0]
+            print(f"[REQ {request_id}] LLM categoría top: {best_cat.name} sim={best_sim:.3f}")
+
+            LITERAL_THRESHOLD = 0.90
+            SIMILAR_THRESHOLD = 0.65
+
+            # Preparar contenedor para información de sustitución (similar match por LLM)
+
+            # Normalización simple para comparación literal
+            import re, unicodedata
+            def _norm(s: str) -> str:
+                s = ''.join(c for c in unicodedata.normalize('NFD', s.lower()) if unicodedata.category(c) != 'Mn')
+                s = re.sub(r"[^a-z0-9]+", " ", s).strip()
+                return s
+
+            literal_match = _norm(best_cat.name) == _norm(expanded_query)
+
+            if literal_match or best_sim >= LITERAL_THRESHOLD:
+                detected_category = best_cat
+                print(f"[REQ {request_id}] ✅ Match literal categoría: {best_cat.name}")
+            elif best_sim >= SIMILAR_THRESHOLD:
+                detected_category = best_cat
+                category_substitution_info = {
+                    "match_type": "similar",
+                    "requested_text": query_text,
+                    "matched_category": best_cat.name,
+                    "similarity": round(best_sim, 3)
+                }
+                print(f"[REQ {request_id}] ⚠️ Match similar categoría: '{query_text}' → '{best_cat.name}' sim={best_sim:.3f}")
             else:
-                # Si hay alguna coincidencia dÃ©bil (e.g., tokens genÃ©ricos), continuar sin filtrar por categorÃ­a
-                print(f"[REQ {request_id}] TEXT SEARCH: Sin categoría inequívoca, continuando sin filtro por categoría")
+                print(f"[REQ {request_id}] ❌ Ninguna categoría relevante (max_sim={best_sim:.3f})")
+                available_categories = [c.name for c,_ in cat_sims[:10]]
+                return jsonify({
+                    "success": False,
+                    "error": "product_not_in_catalog",
+                    "message": f"No comercializamos productos relacionados con '{query_text}'.",
+                    "query": query_text,
+                    "available_categories": available_categories,
+                    "processing_time": round(time.time() - start_time, 3)
+                }), 404
 
         # --- Enriquecimiento opcional de query con tags inferidos (feature flag) ---
         try:
@@ -2671,34 +2757,19 @@ def text_search():
         products = products_query.all()
         print(f"[REQ {request_id}] DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
 
-        # Fallback 1: Si no hay productos en la categorÃ­a detectada, rehacer bÃºsqueda global
+        # 🚫 NO FALLBACK GLOBAL: Si categoría detectada está vacía, retornar error 404
         if detected_category and len(products) == 0:
-            print("âš ï¸ TEXT SEARCH: 0 productos en categorÃ­a detectada â†’ Fallback a bÃºsqueda global")
-            detected_category = None
-            # reconstruir query sin filtro de categorÃ­a
-            products_query = db.session.query(
-                Product.id,
-                Product.name,
-                Product.sku,
-                Product.price,
-                Product.attributes,
-                Product.tags,
-                Category.name.label('category_name'),
-                Image.clip_embedding,
-                Image.cloudinary_url
-            ).join(
-                Category, Product.category_id == Category.id
-            ).join(
-                Image, db.and_(
-                    Product.id == Image.product_id,
-                    Image.is_primary == True
-                )
-            ).filter(
-                Product.client_id == client.id,
-                Image.clip_embedding.isnot(None)
-            )
-            products = products_query.all()
-        print(f"[REQ {request_id}] DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
+            print(f"⚠️ TEXT SEARCH: Categoría '{detected_category.name}' sin productos → Retornando error 404")
+            available_categories = [cat.name for cat in categories if Product.query.filter_by(category_id=cat.id, client_id=client.id).count() > 0]
+            return jsonify({
+                "success": False,
+                "error": "category_empty",
+                "message": f"No tenemos productos en '{detected_category.name}' actualmente.",
+                "detected_category": detected_category.name,
+                "available_categories": available_categories[:10],
+                "suggestion_message": "Explora nuestras categorías disponibles.",
+                "processing_time": round(time.time() - start_time, 3)
+            }), 404
 
         print(f"[REQ {request_id}] TEXT SEARCH: Analizando {len(products)} productos...")
         _post_sql_t = _t.time()
@@ -2721,10 +2792,15 @@ def text_search():
                     print(f"[REQ {request_id}] SCORING: ERROR parseando embedding para '{prod.name}': {e}", flush=True)
                     continue  # Skip si no se puede parsear
 
-            # Score CLIP (similitud visual/semÃ¡ntica)
+            # Score CLIP (similitud visual/semántica) con guardas contra valores no finitos
             emb = np.array(embedding, dtype=np.float32)
-            clip_similarity = float(np.dot(query_embedding, emb) / (np.linalg.norm(query_embedding) * np.linalg.norm(emb)))
-            print(f"[REQ {request_id}] SCORING: dot-product OK para '{prod.name}'", flush=True)
+            den = float(np.linalg.norm(query_embedding) * np.linalg.norm(emb))
+            if not np.all(np.isfinite(emb)) or not np.all(np.isfinite(query_embedding)) or not np.isfinite(den) or den == 0.0:
+                clip_similarity = 0.0
+                print(f"[REQ {request_id}] SCORING: dot-product SKIPPED (valores no finitos o norma cero) para '{prod.name}'", flush=True)
+            else:
+                clip_similarity = float(np.dot(query_embedding, emb) / den)
+                print(f"[REQ {request_id}] SCORING: dot-product OK para '{prod.name}'", flush=True)
 
             # Boost por atributos (incluye match de categorÃ­a y color del LLM)
             attr_boost = _calculate_attribute_match(query_lower, prod.attributes, prod.category_name, detected_color, detected_tipo)
@@ -2857,7 +2933,8 @@ def text_search():
 
             best_result = results[0]
             best_color_sim = best_result.get('color_similarity', 0.0)
-            best_attr_score = best_result.get('attribute_match_score', 0.0)
+            # 'attribute_match_score' no existe en los resultados; usar 'attr_boost' (presente en cada item)
+            best_attr_score = best_result.get('attr_boost', 0.0)
 
             # Determinar calidad del match
             print(f"[REQ {request_id}] QUALITY CHECK: best_color_sim={best_color_sim:.3f} (thresholds: exact≥0.75, partial≥0.60)")
@@ -2933,7 +3010,8 @@ def text_search():
 
                 if available_colors:
                     colors_list = sorted(list(available_colors))
-                    category_text = detected_tipo or (detected_category.name.lower() if detected_category else 'productos')
+                    # Priorizar detected_category sobre LLM's detected_tipo
+                    category_text = (detected_category.name.lower() if detected_category else None) or detected_tipo or 'productos'
 
                     # Detectar el color de los productos que estamos mostrando (el "más cercano")
                     shown_colors = set()
@@ -3004,6 +3082,10 @@ def text_search():
         # Agregar información de match parcial si existe
         if partial_match_info:
             response['partial_match_info'] = partial_match_info
+
+        # Agregar información de sustitución de categoría (match similar)
+        if 'category_substitution_info' in locals() and category_substitution_info:
+            response['category_substitution_info'] = category_substitution_info
 
         # Agregar sugerencias si la query es ambigua
         if llm_norm.get('needs_refinement'):

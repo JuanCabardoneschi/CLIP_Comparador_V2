@@ -478,6 +478,18 @@
                 font-size: 1rem;
             }
 
+            .clip-category-substitution {
+                flex: 1 1 100%;
+                background: #fff3cd;
+                border: 1px solid #ffeeba;
+                color: #856404;
+                padding: 0.75rem 1rem;
+                border-radius: 8px;
+                font-size: 0.95rem;
+                font-weight: 500;
+                display: none;
+            }
+
             .clip-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -774,6 +786,7 @@
                     <div class="clip-results-header">
                         <h2 class="clip-results-title">✨ Productos Encontrados</h2>
                         <div class="clip-results-count" id="clip-results-count"></div>
+                        <div class="clip-category-substitution" id="clip-category-substitution"></div>
                     </div>
                     <div class="clip-grid" id="clip-grid"></div>
                 </div>
@@ -980,6 +993,18 @@
                 }
 
                 if (data.success && data.results && data.results.length > 0) {
+                    // Mostrar mensaje de sustitución de categoría si aplica
+                    const subsDiv = container.querySelector('#clip-category-substitution');
+                    if (subsDiv) {
+                        if (data.category_substitution_info) {
+                            const info = data.category_substitution_info;
+                            const simText = (typeof info.similarity === 'number') ? ` (similitud ${info.similarity})` : '';
+                            subsDiv.textContent = `La categoría más cercana a '${info.requested_text}' es '${info.matched_category}'${simText}.`;
+                            subsDiv.style.display = 'block';
+                        } else {
+                            subsDiv.style.display = 'none';
+                        }
+                    }
                     displayResults(data.results, data.total_results);
                 } else if (data.error === 'category_not_detected') {
                     showCategoryNotDetectedError(data.message, data.details, data.available_categories);

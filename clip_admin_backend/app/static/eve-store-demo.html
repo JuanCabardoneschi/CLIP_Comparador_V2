@@ -61,11 +61,13 @@
 
     <div class="widget-container">
         <script>
+            // Configuración estricta solo para producción Railway (evitar ambigüedad)
             window.CLIPWidget = {
                 apiKey: 'clip_fe117bcd62de8a1e05a214c5',
                 serverUrl: 'https://clipcomparadorv2-production.up.railway.app'
             };
         </script>
+        <!-- Widget V3 ya soporta banner de sustitución de categoría en búsquedas de texto -->
         <script src="./js/clip-widget-embed-v3.js"></script>
         <div id="clip-widget"></div>
     </div>
