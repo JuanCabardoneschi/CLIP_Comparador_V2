@@ -108,16 +108,20 @@
 
         <!-- Widget completo -->
         <div class="widget-wrapper">
-            <script>
-                window.CLIPWidget = {
-                    apiKey: '{{ api_key }}',
-                    serverUrl: '{{ request.url_root.rstrip('/') }}',
-                    mode: 'full' // Modo completo, no botón flotante
-                };
-            </script>
             <div id="clip-widget"></div>
-            <script src="{{ url_for('static', filename='js/clip-widget-embed-v3.js') }}"></script>
         </div>
     </div>
+
+    <!-- Configuración del Widget -->
+    <script>
+        window.CLIPWidget = {
+            apiKey: '{{ api_key }}',
+            serverUrl: '{{ request.url_root.rstrip("/") }}',
+            containerId: 'clip-widget'
+        };
+    </script>
+
+    <!-- Cargar el widget JavaScript -->
+    <script src="{{ url_for('static', filename='js/clip-widget-embed-unified.js') }}"></script>
 </body>
 </html>
