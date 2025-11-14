@@ -1,18 +1,18 @@
 /**
  * CLIP Widget V3 - Redirección a Página de Búsqueda
- * 
+ *
  * El cliente usa su propio botón y llama a window.CLIPWidget.open()
- * 
+ *
  * Uso:
  * <script>
- *   window.CLIPWidget = { 
- *     apiKey: "YOUR_KEY", 
- *     serverUrl: "https://..." 
+ *   window.CLIPWidget = {
+ *     apiKey: "YOUR_KEY",
+ *     serverUrl: "https://..."
  *   };
  * </script>
  * <div id="clip-widget"></div>
  * <script src="/static/js/clip-widget-embed-v3.js"></script>
- * 
+ *
  * Luego desde el botón del cliente:
  * <button onclick="window.CLIPWidget.open()">Buscar con IA</button>
  */
@@ -35,7 +35,7 @@
     window.CLIPWidget.open = function() {
         const returnUrl = encodeURIComponent(window.location.href);
         const searchUrl = `${config.serverUrl}/widget/search?api_key=${config.apiKey}&return_url=${returnUrl}`;
-        
+
         console.log('🔍 Abriendo búsqueda CLIP en:', searchUrl);
         window.location.href = searchUrl;
     };
