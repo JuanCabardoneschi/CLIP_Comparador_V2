@@ -2704,6 +2704,8 @@ def text_search():
         print(f"🔍 DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
 
         print(f"ðŸ” TEXT SEARCH: Analizando {len(products)} productos...")
+        _post_sql_t = _t.time()
+        print(f"🔍 DEBUG: post-SQL → iniciando scoring de productos", flush=True)
 
         # Calcular scores hÃ­bridos
 
@@ -2791,14 +2793,18 @@ def text_search():
             })
 
         # Si la query incluye color, priorizar match/color mÃ¡s cercano antes que score puro.
+        _scoring_elapsed = _t.time() - _post_sql_t
+        print(f"🔍 DEBUG: scoring completado en {_scoring_elapsed:.2f}s para {len(results)} productos", flush=True)
+        _sort_t = _t.time()
         if detected_color:
             results.sort(key=lambda x: (x.get('color_priority', 0), x.get('color_similarity', 0.0), x['final_score']), reverse=True)
         else:
             results.sort(key=lambda x: x['final_score'], reverse=True)
 
-
+        _sort_elapsed = _t.time() - _sort_t
         # Limitar resultados
         results = results[:limit]
+        print(f"🔍 DEBUG: ordenamiento y limit completados en {_sort_elapsed:.2f}s (top={limit})", flush=True)
 
         elapsed_time = time.time() - start_time
 
@@ -3003,6 +3009,7 @@ def text_search():
             response['refinement_message'] = "Tu bÃºsqueda es muy general. Â¿PodrÃ­as ser mÃ¡s especÃ­fico?"
 
         # AÃ±adir CORS para consistencia cuando este handler es invocado desde /api/search
+        _resp_t = _t.time()
         resp = jsonify(response)
         try:
             resp.headers['Access-Control-Allow-Origin'] = '*'
@@ -3010,6 +3017,7 @@ def text_search():
             resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
         except Exception:
             pass
+        print(f"🔍 DEBUG: respuesta JSON construida en {(_t.time()-_resp_t):.2f}s | post-SQL total={( _t.time()-_post_sql_t):.2f}s", flush=True)
         return resp
 
     except Exception as e:
