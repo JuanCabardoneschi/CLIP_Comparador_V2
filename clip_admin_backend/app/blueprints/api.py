@@ -2383,14 +2383,13 @@ def text_search():
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
         return response
 
+    import uuid
     start_time = time.time()
+    request_id = str(uuid.uuid4())
 
     try:
         # Log temprano para verificar llegada de requests incluso si falla la API Key
-        print(
-            f"ðŸ‘‰ TEXT SEARCH HIT: path={request.path} from={request.remote_addr} has_key={'X-API-Key' in request.headers}",
-            flush=True
-        )
+        print(f"[REQ {request_id}] TEXT SEARCH HIT: path={request.path} from={request.remote_addr} has_key={'X-API-Key' in request.headers}", flush=True)
         # Validar API Key
         api_key = request.headers.get('X-API-Key')
         if not api_key:
@@ -2436,14 +2435,12 @@ def text_search():
         except Exception:
             limit = max_results
 
-        print(f"ðŸ“ TEXT SEARCH: Query='{query_text}' Client={client.name} Limit={limit}", flush=True)
+        print(f"[REQ {request_id}] TEXT SEARCH: Query='{query_text}' Client={client.name} Limit={limit}", flush=True)
 
         # --- LLM Normalization (con vocabulario dinÃ¡mico del cliente) ---
         llm_norm = normalize_query(query_text, client_id=client.id)
-        print(f"🔍 DEBUG: normalize_query completado", flush=True)
-        # TODO: Mover a nivel de logs DEBUG
-        # print(f"ðŸ§  LLM Normalizer: {llm_norm}")
-        print(f"ðŸ§  LLM Normalizer: tipo={llm_norm.get('tipo')}, color={llm_norm.get('color')}, contexto={llm_norm.get('contexto')}")
+        print(f"[REQ {request_id}] DEBUG: normalize_query completado", flush=True)
+        print(f"[REQ {request_id}] LLM Normalizer: tipo={llm_norm.get('tipo')}, color={llm_norm.get('color')}, contexto={llm_norm.get('contexto')}")
 
         # Extraer campos del normalizador para usar en boosts
         detected_color = llm_norm.get('color', '').lower() if llm_norm.get('color') else None
@@ -2465,9 +2462,9 @@ def text_search():
         # Generar embedding CLIP del texto de búsqueda (usar query expandido)
         import time as _t
         _t0 = _t.time()
-        print("🔍 DEBUG: entrando a get_clip_model()", flush=True)
+        print(f"[REQ {request_id}] DEBUG: entrando a get_clip_model()", flush=True)
         model, processor = get_clip_model()
-        print(f"🔍 DEBUG: get_clip_model listo en {(_t.time()-_t0):.2f}s", flush=True)
+        print(f"[REQ {request_id}] DEBUG: get_clip_model listo en {(_t.time()-_t0):.2f}s", flush=True)
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
         _t1 = _t.time()
@@ -2476,7 +2473,7 @@ def text_search():
             text_features = model.get_text_features(**text_inputs)
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
             query_embedding = text_features.cpu().numpy()[0]
-        print(f"🔍 DEBUG: embedding texto generado en {(_t.time()-_t1):.2f}s", flush=True)
+        print(f"[REQ {request_id}] DEBUG: embedding texto generado en {(_t.time()-_t1):.2f}s", flush=True)
 
         # Usar query expandido para matching de atributos tambiÃ©n
         query_lower = expanded_query.lower()
@@ -2505,7 +2502,7 @@ def text_search():
             return { _norm_token(t) for t in toks if _norm_token(t) and _norm_token(t) not in STOPWORDS }
 
         query_tokens = tokenize(expanded_query)
-        print(f"ðŸ” Query tokens: {query_tokens}")
+        print(f"[REQ {request_id}] Query tokens: {query_tokens}")
 
         # Construir tokens por categorÃ­a (nombre, name_en y alternative_terms si existe)
         cat_tokens_list = []
@@ -2535,12 +2532,12 @@ def text_search():
             # Verificar en nombre (PRIORIDAD ALTA: nombre exacto de categorÃ­a)
             if query_normalized in category.name.lower() or category.name.lower() in query_normalized:
                 detected_category = category
-                print(f"ðŸ“ CategorÃ­a detectada por nombre exacto: {category.name}")
+                print(f"[REQ {request_id}] Categoría detectada por nombre exacto: {category.name}")
                 break
             # Verificar en name_en tambiÃ©n con alta prioridad
             if category.name_en and (query_normalized in category.name_en.lower() or category.name_en.lower() in query_normalized):
                 detected_category = category
-                print(f"ðŸ“ CategorÃ­a detectada por name_en exacto: {category.name}")
+                print(f"[REQ {request_id}] Categoría detectada por name_en exacto: {category.name}")
                 break
 
         # Segundo pase: alternative_terms si no hubo match en nombre
@@ -2551,7 +2548,7 @@ def text_search():
                     alt_terms = [t.strip().lower() for t in str(alt).split(',')]
                     if query_normalized in alt_terms:
                         detected_category = category
-                        print(f"ðŸ“ CategorÃ­a detectada por alternative_term exacto: {category.name}")
+                        print(f"[REQ {request_id}] Categoría detectada por alternative_term exacto: {category.name}")
                         break
 
         # 2. Si no hay coincidencia exacta, usar scoring de tokens (mÃ¡xima superposiciÃ³n)
@@ -2573,11 +2570,11 @@ def text_search():
                         best_category = category
 
             if candidates:
-                print(f"ðŸŽ¯ Candidatos de categorÃ­a: {[(c[0], f'{c[1]:.2f}', c[2], c[3]) for c in sorted(candidates, key=lambda x: x[1], reverse=True)[:5]]}")
+                print(f"[REQ {request_id}] Candidatos de categoría: {[(c[0], f'{c[1]:.2f}', c[2], c[3]) for c in sorted(candidates, key=lambda x: x[1], reverse=True)[:5]]}")
 
             if best_category and best_score > 0:
                 detected_category = best_category
-                print(f"ðŸ“ CategorÃ­a detectada por tokens (score={best_score:.2f}): {detected_category.name}")
+                print(f"[REQ {request_id}] Categoría detectada por tokens (score={best_score:.2f}): {detected_category.name}")
 
 
         # Si NO detectamos categorÃ­a: decidir si es fuera de catÃ¡logo o si permitimos bÃºsqueda global
@@ -2589,10 +2586,10 @@ def text_search():
 
             if query_tokens and query_tokens.isdisjoint(all_cat_tokens):
                 # Antes devolvÃ­amos 400. Ahora permitimos BÃšSQUEDA GLOBAL para casos como nombres de modelo (ej: "monaco").
-                print("â„¹ï¸ TEXT SEARCH: tokens sin cruce con categorÃ­as â†’ continuamos en bÃºsqueda GLOBAL por nombre/SKU/tags")
+                print(f"[REQ {request_id}] TEXT SEARCH: tokens sin cruce con categorías → continuamos en búsqueda GLOBAL por nombre/SKU/tags")
             else:
                 # Si hay alguna coincidencia dÃ©bil (e.g., tokens genÃ©ricos), continuar sin filtrar por categorÃ­a
-                print("â„¹ï¸ TEXT SEARCH: Sin categorÃ­a inequÃ­voca, continuando sin filtro por categorÃ­a")
+                print(f"[REQ {request_id}] TEXT SEARCH: Sin categoría inequívoca, continuando sin filtro por categoría")
 
         # --- Enriquecimiento opcional de query con tags inferidos (feature flag) ---
         try:
@@ -2631,7 +2628,7 @@ def text_search():
                         query_embedding = fused.cpu().numpy()
 
                     inferred_tags = enrichment.get('inferred_tags', [])
-                    print(f"ðŸ§ª FUSION: alpha={alpha} beta_tag={beta_tag} phrases={len(tag_phrases)} tags={len(inferred_tags)}")
+                    print(f"[REQ {request_id}] FUSION: alpha={alpha} beta_tag={beta_tag} phrases={len(tag_phrases)} tags={len(inferred_tags)}")
         except Exception as _e:
             # Fallback silencioso: si algo falla seguimos con embedding original
             print(f"âš ï¸ FUSION skip: {_e}")
@@ -2641,7 +2638,7 @@ def text_search():
 
         # Consultar productos con embeddings (de imágenes principales), atributos y tags
         _t2 = _t.time()
-        print(f"🔍 DEBUG: iniciando query SQL de productos...", flush=True)
+        print(f"[REQ {request_id}] DEBUG: iniciando query SQL de productos...", flush=True)
         products_query = db.session.query(
             Product.id,
             Product.name,
@@ -2667,12 +2664,12 @@ def text_search():
         # FILTRAR por categorÃ­a si fue detectada
         if detected_category:
             products_query = products_query.filter(Product.category_id == detected_category.id)
-            print(f"ðŸ”Ž Filtrando productos por categorÃ­a: {detected_category.name}")
+            print(f"[REQ {request_id}] Filtrando productos por categoría: {detected_category.name}")
         else:
-            print(f"ðŸ”Ž BÃºsqueda SIN filtro de categorÃ­a (global)")
+            print(f"[REQ {request_id}] Búsqueda SIN filtro de categoría (global)")
 
         products = products_query.all()
-        print(f"🔍 DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
+        print(f"[REQ {request_id}] DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
 
         # Fallback 1: Si no hay productos en la categorÃ­a detectada, rehacer bÃºsqueda global
         if detected_category and len(products) == 0:
@@ -2701,31 +2698,37 @@ def text_search():
                 Image.clip_embedding.isnot(None)
             )
             products = products_query.all()
-        print(f"🔍 DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
+        print(f"[REQ {request_id}] DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
 
-        print(f"ðŸ” TEXT SEARCH: Analizando {len(products)} productos...")
+        print(f"[REQ {request_id}] TEXT SEARCH: Analizando {len(products)} productos...")
         _post_sql_t = _t.time()
-        print(f"🔍 DEBUG: post-SQL → iniciando scoring de productos", flush=True)
+        print(f"[REQ {request_id}] DEBUG: post-SQL → iniciando scoring de productos | query='{query_text}'", flush=True)
 
         # Calcular scores hÃ­bridos
 
         results = []
-        for prod in products:
+        for idx, prod in enumerate(products):
+            _score_t0 = _t.time()
+            print(f"[REQ {request_id}] SCORING: producto {idx+1}/{len(products)} | name='{prod.name}' | query='{query_text}'", flush=True)
             # Parse embedding (puede estar como string JSON)
             embedding = prod.clip_embedding
             if isinstance(embedding, str):
                 import json
                 try:
                     embedding = json.loads(embedding)
-                except:
+                    print(f"[REQ {request_id}] SCORING: embedding parseado OK para '{prod.name}'", flush=True)
+                except Exception as e:
+                    print(f"[REQ {request_id}] SCORING: ERROR parseando embedding para '{prod.name}': {e}", flush=True)
                     continue  # Skip si no se puede parsear
 
             # Score CLIP (similitud visual/semÃ¡ntica)
             emb = np.array(embedding, dtype=np.float32)
             clip_similarity = float(np.dot(query_embedding, emb) / (np.linalg.norm(query_embedding) * np.linalg.norm(emb)))
+            print(f"[REQ {request_id}] SCORING: dot-product OK para '{prod.name}'", flush=True)
 
             # Boost por atributos (incluye match de categorÃ­a y color del LLM)
             attr_boost = _calculate_attribute_match(query_lower, prod.attributes, prod.category_name, detected_color, detected_tipo)
+            print(f"[REQ {request_id}] SCORING: attribute match OK para '{prod.name}'", flush=True)
             # Debug de atributos clave: color declarado vs color detectado
             try:
                 prod_color_dbg = None
@@ -2735,9 +2738,9 @@ def text_search():
                             prod_color_dbg = prod.attributes[k]
                             break
                 if detected_color:
-                    print(f"  ðŸ”Ž ATTR DEBUG: {prod.name} | attr.color={prod_color_dbg} | detected_color={detected_color} | attr_boost={attr_boost:.3f}")
+                    print(f"[REQ {request_id}] ATTR DEBUG: {prod.name} | attr.color={prod_color_dbg} | detected_color={detected_color} | attr_boost={attr_boost:.3f}")
             except Exception:
-                pass
+                print(f"[REQ {request_id}] ATTR DEBUG: error en color debug para '{prod.name}'", flush=True)
 
             # Boost por nombre de producto y SKU (nuevo) + tags
             name_boost = _calculate_name_match(query_lower, prod.name, getattr(prod, 'sku', None))
@@ -2771,7 +2774,8 @@ def text_search():
                 tag_name_boost * 0.1
             )
 
-            print(f"Producto: {prod.name} | CLIP: {clip_similarity:.3f} | Attr: {attr_boost:.3f} | ColorSim: {color_sim:.3f} | Tag: {tag_boost:.3f} | Name: {name_boost:.3f} | Score: {final_score:.3f}")
+            print(f"[REQ {request_id}] Producto: {prod.name} | CLIP: {clip_similarity:.3f} | Attr: {attr_boost:.3f} | ColorSim: {color_sim:.3f} | Tag: {tag_boost:.3f} | Name: {name_boost:.3f} | Score: {final_score:.3f}")
+            print(f"[REQ {request_id}] SCORING: producto {idx+1}/{len(products)} terminado en {(_t.time()-_score_t0):.2f}s", flush=True)
 
             results.append({
                 'product_id': str(prod.id),
@@ -2794,7 +2798,7 @@ def text_search():
 
         # Si la query incluye color, priorizar match/color mÃ¡s cercano antes que score puro.
         _scoring_elapsed = _t.time() - _post_sql_t
-        print(f"🔍 DEBUG: scoring completado en {_scoring_elapsed:.2f}s para {len(results)} productos", flush=True)
+        print(f"[REQ {request_id}] DEBUG: scoring completado en {_scoring_elapsed:.2f}s para {len(results)} productos", flush=True)
         _sort_t = _t.time()
         if detected_color:
             results.sort(key=lambda x: (x.get('color_priority', 0), x.get('color_similarity', 0.0), x['final_score']), reverse=True)
@@ -2804,7 +2808,7 @@ def text_search():
         _sort_elapsed = _t.time() - _sort_t
         # Limitar resultados
         results = results[:limit]
-        print(f"🔍 DEBUG: ordenamiento y limit completados en {_sort_elapsed:.2f}s (top={limit})", flush=True)
+        print(f"[REQ {request_id}] DEBUG: ordenamiento y limit completados en {_sort_elapsed:.2f}s (top={limit})", flush=True)
 
         elapsed_time = time.time() - start_time
 
@@ -2856,7 +2860,7 @@ def text_search():
             best_attr_score = best_result.get('attribute_match_score', 0.0)
 
             # Determinar calidad del match
-            print(f"🎨 QUALITY CHECK: best_color_sim={best_color_sim:.3f} (thresholds: exact≥0.75, partial≥0.60)")
+            print(f"[REQ {request_id}] QUALITY CHECK: best_color_sim={best_color_sim:.3f} (thresholds: exact≥0.75, partial≥0.60)")
             if detected_color:
                 if best_color_sim >= COLOR_EXACT_THRESHOLD:
                     match_quality = "exact"
@@ -2883,11 +2887,11 @@ def text_search():
                 # Consultar colores reales disponibles en la categoría detectada
                 available_colors = set()
 
-                print(f"\n🔍 DEBUG: Iniciando consulta de colores disponibles")
-                print(f"   - match_quality: {match_quality}")
-                print(f"   - detected_color: {detected_color}")
-                print(f"   - detected_category: {detected_category.name if detected_category else None}")
-                print(f"   - client_id: {client.id}")
+                print(f"[REQ {request_id}] Iniciando consulta de colores disponibles")
+                print(f"[REQ {request_id}]   - match_quality: {match_quality}")
+                print(f"[REQ {request_id}]   - detected_color: {detected_color}")
+                print(f"[REQ {request_id}]   - detected_category: {detected_category.name if detected_category else None}")
+                print(f"[REQ {request_id}]   - client_id: {client.id}")
 
                 try:
                     # Query directa a BD para obtener colores únicos de productos en esta categoría
@@ -2900,16 +2904,16 @@ def text_search():
                         func.jsonb_extract_path_text(Product.attributes, 'color') != ''
                     ).distinct()
 
-                    print(f"   - Ejecutando query SQL...")
+                    print(f"[REQ {request_id}]   - Ejecutando query SQL...")
                     color_results = color_query.all()
-                    print(f"   - Resultados obtenidos: {len(color_results)} rows")
+                    print(f"[REQ {request_id}]   - Resultados obtenidos: {len(color_results)} rows")
 
                     for row in color_results:
-                        print(f"   - Row color: '{row.color}'")
+                        print(f"[REQ {request_id}]   - Row color: '{row.color}'")
                         if row.color and row.color.strip():
                             available_colors.add(row.color.strip().upper())
 
-                    print(f"🎨 Colores disponibles en categoría: {available_colors}")
+                    print(f"[REQ {request_id}] Colores disponibles en categoría: {available_colors}")
 
                 except Exception as e:
                     print(f"⚠️ Error consultando colores: {e}")
@@ -2917,13 +2921,13 @@ def text_search():
                     traceback.print_exc()
 
                     # Fallback: extraer de los resultados actuales
-                    print(f"   - Usando fallback: extraer de resultados actuales")
+                    print(f"[REQ {request_id}]   - Usando fallback: extraer de resultados actuales")
                     for r in results[:10]:
                         prod_id = r['product_id']
                         product = next((p for p in products if str(p.id) == prod_id), None)
                         if product and product.attributes:
                             prod_color = product.attributes.get('color')
-                            print(f"   - Producto {product.name}: color={prod_color}")
+                            print(f"[REQ {request_id}]   - Producto {product.name}: color={prod_color}")
                             if prod_color:
                                 available_colors.add(prod_color)
 
@@ -2977,10 +2981,10 @@ def text_search():
                             "reason": "partial_color_match"
                         }
 
-        print(f"âœ… TEXT SEARCH: {len(results)} resultados en {elapsed_time:.3f}s")
-        print(f"ðŸŽ¯ MATCH QUALITY: {match_quality}")
-        print(f"ðŸŽ¨ DETECTED COLOR: {detected_color}")
-        print(f"ðŸ'¬ PARTIAL MATCH INFO: {partial_match_info}")
+        print(f"[REQ {request_id}] TEXT SEARCH: {len(results)} resultados en {elapsed_time:.3f}s | query='{query_text}'", flush=True)
+        print(f"[REQ {request_id}] MATCH QUALITY: {match_quality}", flush=True)
+        print(f"[REQ {request_id}] DETECTED COLOR: {detected_color}", flush=True)
+        print(f"[REQ {request_id}] PARTIAL MATCH INFO: {partial_match_info}", flush=True)
 
         response = {
             "success": True,
@@ -3017,7 +3021,7 @@ def text_search():
             resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
         except Exception:
             pass
-        print(f"🔍 DEBUG: respuesta JSON construida en {(_t.time()-_resp_t):.2f}s | post-SQL total={( _t.time()-_post_sql_t):.2f}s", flush=True)
+        print(f"[REQ {request_id}] DEBUG: respuesta JSON construida en {(_t.time()-_resp_t):.2f}s | post-SQL total={( _t.time()-_post_sql_t):.2f}s | query='{query_text}'", flush=True)
         return resp
 
     except Exception as e:
