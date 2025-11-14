@@ -544,34 +544,16 @@ def test_endpoint():
     return response
 
 def verify_api_key():
-    """
-    Verificar autenticación del cliente
-    
-    Soporta dos métodos:
-    1. API Key en header X-API-Key (para APIs externas)
-    2. Sesión de widget (para búsquedas desde /widget/search)
-    
-    Returns:
-        tuple: (client, error_message)
-    """
-    # Método 1: API Key en header (APIs externas)
+    """Verificar API Key del header"""
     api_key = request.headers.get('X-API-Key')
-    if api_key:
-        client = Client.query.filter_by(api_key=api_key, is_active=True).first()
-        if not client:
-            return None, "API Key inválida"
-        return client, None
-    
-    # Método 2: Sesión de widget (búsquedas desde página de widget)
-    widget_client_id = session.get('widget_client_id')
-    if widget_client_id:
-        client = Client.query.filter_by(id=widget_client_id, is_active=True).first()
-        if not client:
-            return None, "Sesión de widget inválida"
-        return client, None
-    
-    # Sin autenticación válida
-    return None, "Autenticación requerida (X-API-Key header o sesión de widget)"
+    if not api_key:
+        return None, "API Key requerida en header X-API-Key"
+
+    client = Client.query.filter_by(api_key=api_key, is_active=True).first()
+    if not client:
+        return None, "API Key inválida"
+
+    return client, None
 
 
 
