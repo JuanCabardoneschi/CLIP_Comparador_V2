@@ -146,6 +146,23 @@
                         </div>
                     </div>
 
+                    <div class="mb-3">
+                        <label for="vision_hint" class="form-label">
+                            <i class="bi bi-lightbulb me-1"></i>
+                            Aclaración para GPT-4 Vision (opcional)
+                        </label>
+                        <textarea class="form-control"
+                                  id="vision_hint"
+                                  name="vision_hint"
+                                  rows="3"
+                                  placeholder="Ej:\n- SHORT DE TIRO ALTO: cintura por encima del ombligo\n- SHORT DE TIRO BAJO: cintura por debajo del ombligo\n- Diferenciar del bermuda por el largo (bermuda llega a la rodilla)"
+                                  maxlength="1000"></textarea>
+                        <div class="form-text">
+                            Texto libre para desambiguación visual en el prompt (ej.: diferencias de tiro alto/bajo, presencia de pechera, etc.).
+                            Se agregará al prompt de Vision solo si está presente.
+                        </div>
+                    </div>
+
                     <!-- Configuración CLIP -->
                     <div class="card mb-3">
                         <div class="card-header bg-light">

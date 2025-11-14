@@ -1,5 +1,6 @@
 # GPT-4 Vision + CLIP Integration - Widget V3
 
+Actualizado Nov 2025: el sistema usa categorías planas (sin jerarquías `parent_id/level/is_leaf`). Se mantiene `vision_hint` por categoría para desambiguaciones visuales en el prompt de GPT‑4 Vision.
 ## 🎯 Flujo Completo
 
 ### 1. Usuario sube imagen en widget
@@ -216,7 +217,7 @@ curl -X POST http://localhost:5000/api/search/gpt4v-unified \
 
 ### Error: "category_not_found"
 - **Causa:** GPT-4V detectó categoría que no existe en BD
-- **Solución:** Revisar categorías del cliente con `is_leaf=True`
+- **Solución:** Revisar que la categoría exista y esté activa para el cliente (categorías planas)
 
 ### No se encuentran productos
 - **Causa:** Threshold muy alto o productos sin embeddings

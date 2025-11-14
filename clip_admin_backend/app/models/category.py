@@ -19,6 +19,8 @@ class Category(db.Model):
     name_en = db.Column(db.String(100), nullable=False)  # Nombre en inglés (CLIP)
     alternative_terms = db.Column(db.Text)  # Términos alternativos separados por coma
     description = db.Column(db.Text)
+    # Aclaraciones específicas para GPT-4 Vision (desambiguaciones visuales)
+    vision_hint = db.Column(db.Text)
 
     # Campos específicos para CLIP
     clip_prompt = db.Column(db.Text)  # Prompt optimizado para CLIP en inglés
@@ -34,18 +36,9 @@ class Category(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Jerarquía de categorías (agregado Nov 2025)
-    parent_id = db.Column(db.String(36), db.ForeignKey('categories.id', ondelete='CASCADE'), nullable=True)
-    level = db.Column(db.Integer, default=0)  # Nivel en jerarquía (0=raíz)
-    is_leaf = db.Column(db.Boolean, default=True)  # True si no tiene subcategorías
-
-    # GPT-4 Vision hints (agregado Nov 2025)
-    vision_hint = db.Column(db.Text, nullable=True)  # Aclaración para mejorar detección de Vision
-
     # Relaciones
     client = db.relationship('Client', backref='categories')
     products = db.relationship('Product', backref='category', lazy='dynamic')
-    children = db.relationship('Category', backref=db.backref('parent', remote_side='Category.id'), lazy='dynamic')
 
     def __init__(self, **kwargs):
         if 'id' not in kwargs:

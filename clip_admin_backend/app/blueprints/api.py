@@ -3689,7 +3689,7 @@ def gpt4v_unified_search():
         from app.models.product import Product
         from app.models.image import Image
 
-        # Obtener SOLO categorías leaf que tengan imágenes procesadas con embedding
+        # Obtener categorías activas que tengan imágenes procesadas con embedding
         # (evita enviar a Vision categorías sin inventario/embeddings)
         try:
             category_id_rows = db.session.query(Product.category_id)\
@@ -3704,7 +3704,7 @@ def gpt4v_unified_search():
 
             categories = []
             if category_ids:
-                # No limitar a leaf: enviar toda categoría activa que tenga imágenes
+                # Enviar toda categoría activa que tenga imágenes
                 categories = Category.query.filter(
                     Category.id.in_(category_ids),
                     Category.client_id == client.id,
@@ -3713,11 +3713,10 @@ def gpt4v_unified_search():
             categories_list = [cat.name for cat in categories]
         except Exception as e:
             railway_log(f"⚠️ Error obteniendo categorías con imágenes: {e}")
-            # Fallback a comportamiento anterior (todas las leaf activas)
+            # Fallback: categorías activas del cliente
             categories = Category.query.filter_by(
                 client_id=client.id,
-                is_active=True,
-                is_leaf=True
+                is_active=True
             ).all()
             categories_list = [cat.name for cat in categories]
 

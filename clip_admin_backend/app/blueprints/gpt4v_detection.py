@@ -36,7 +36,7 @@ def get_openai_client():
 
 def build_categories_catalog_with_hints(categories_list, client_id):
     """
-    Construir catálogo de categorías con aclaraciones selectivas para Vision
+    Construir catálogo de categorías con aclaraciones selectivas (vision_hint) para Vision.
 
     Args:
         categories_list: list[str] - Nombres de categorías
@@ -112,7 +112,7 @@ def detect_categories_with_gpt4v(image_data, categories_list, client_id=None):
 
         image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
-        # Construir catálogo con hints dinámicos desde BD
+        # Construir catálogo (hints eliminados)
         catalog, hints_section = build_categories_catalog_with_hints(categories_list, client_id)
 
         # Prompt optimizado del usuario (multi-categoría con mapeo dinámico)
@@ -169,12 +169,8 @@ RESPUESTA (JSON ESTRICTO):
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             log_file = os.path.join(logs_dir, f'gpt4v_prompt_{timestamp}.txt')
 
+            # Guardar prompt sin hints (vision_hint eliminado Nov 2025)
             with open(log_file, 'w', encoding='utf-8') as f:
-                f.write("=" * 80 + "\n")
-                f.write(f"GPT-4V PROMPT LOG - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"Cliente: {client_id or 'N/A'}\n")
-                f.write(f"Categorías disponibles: {len(categories_list)}\n")
-                f.write("=" * 80 + "\n\n")
                 f.write(prompt)
                 f.write("\n\n" + "=" * 80 + "\n")
 

@@ -47,7 +47,7 @@ def detect_categories_single_scale(image_path: str, client_id: str, threshold: f
         Product, Product.category_id == Category.id
     ).filter(
         Product.client_id == client_id,
-        Category.is_leaf == True
+        1 == 1  # categorías planas; condición neutralizada
     ).distinct().all()
 
     # Encode prompts

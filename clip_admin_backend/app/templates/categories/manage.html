@@ -1,53 +1,13 @@
 {% extends "layouts/base.html" %}
 
-{% block title %}Gestionar {{ category.name }}{% endblock %}
+{% block title %}Gestión de categoría deshabilitada{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <!-- Breadcrumb -->
-    <nav aria-label="breadcrumb" class="mb-4">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{{ url_for('categories.index') }}">Categorías</a></li>
-            {% for parent in category.get_path()[:-1] %}
-            <li class="breadcrumb-item">{{ parent }}</li>
-            {% endfor %}
-            <li class="breadcrumb-item active">{{ category.name }}</li>
-        </ol>
-    </nav>
-
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h1 class="h3 mb-1">
-                <i class="bi bi-diagram-3 me-2"></i>
-                {{ category.name }}
-            </h1>
-            <p class="text-muted mb-0">
-                Nivel {{ category.level }} |
-                {% if category.is_leaf %}
-                    <span class="badge bg-success">Categoría Hoja (Búsqueda)</span>
-                {% else %}
-                    <span class="badge bg-info">Categoría Agrupadora</span>
-                {% endif %}
-            </p>
-        </div>
-        <div>
-            <button class="btn btn-primary" onclick="showCreateSubcategoryModal()">
-                <i class="bi bi-plus-circle me-2"></i>
-                Nueva Subcategoría
-            </button>
-        </div>
-    </div>
-
-    <!-- Subcategorías -->
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">
-                <i class="bi bi-folder-symlink me-2"></i>
-                Subcategorías ({{ subcategories|length }})
-            </h5>
-        </div>
-        <div class="card-body">
+<div class="container py-5">
+  <div class="alert alert-info">
+    <i class="bi bi-info-circle me-2"></i>
+    La vista de jerarquías de categorías fue deshabilitada. Las categorías son planas.
+  </div>
             {% if subcategories %}
             <div class="row">
                 {% for sub in subcategories %}
@@ -72,259 +32,21 @@
                     </div>
                 </div>
                 {% endfor %}
-            </div>
-            {% else %}
-            <div class="text-center py-4 text-muted">
-                <i class="bi bi-inbox fs-1"></i>
-                <p class="mb-0">No hay subcategorías creadas</p>
-            </div>
-            {% endif %}
-        </div>
-    </div>
+            {% extends "layouts/base.html" %}
 
-    <!-- Productos -->
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">
-                <i class="bi bi-box-seam me-2"></i>
-                Productos ({{ products|length }})
-            </h5>
+            {% block title %}Gestión de categorías deshabilitada{% endblock %}
+
+            {% block content %}
+            <div class="container py-5">
+              <div class="alert alert-info">
+                <i class="bi bi-info-circle me-2"></i>
+                La gestión jerárquica de categorías fue deshabilitada. El sistema ahora usa categorías planas.
+              </div>
+              <p class="text-muted mb-0">
+                Esta vista permanecerá mínima hasta definir el nuevo flujo de administración.
+              </p>
+            </div>
+            {% endblock %}
+
+            {% block extra_js %}{% endblock %}
             <div id="bulk-actions" style="display: none;">
-                <select id="target-category" class="form-select form-select-sm d-inline-block w-auto me-2">
-                    <option value="">Mover a...</option>
-                    {% if category.parent %}
-                        {% for sibling in category.get_siblings() %}
-                        <option value="{{ sibling.id }}">{{ sibling.name }}</option>
-                        {% endfor %}
-                    {% endif %}
-                    {% for sub in subcategories %}
-                    <option value="{{ sub.id }}">{{ sub.name }}</option>
-                    {% endfor %}
-                </select>
-                <button class="btn btn-sm btn-primary" onclick="bulkMoveProducts()">
-                    <i class="bi bi-arrow-right-circle me-1"></i>
-                    Mover Seleccionados
-                </button>
-            </div>
-        </div>
-        <div class="card-body p-0">
-            {% if products %}
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width: 40px;">
-                                <input type="checkbox" id="select-all" onchange="toggleSelectAll()">
-                            </th>
-                            <th style="width: 80px;">Imagen</th>
-                            <th>Nombre</th>
-                            <th>SKU</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for product in products %}
-                        <tr>
-                            <td>
-                                <input type="checkbox" class="product-checkbox"
-                                       value="{{ product.id }}" onchange="updateBulkActions()">
-                            </td>
-                            <td>
-                                {% if product.images %}
-                                <img src="{{ product.images[0].thumbnail_url }}"
-                                     alt="{{ product.name }}"
-                                     class="img-thumbnail"
-                                     style="width: 50px; height: 50px; object-fit: cover;">
-                                {% else %}
-                                <div class="bg-light d-flex align-items-center justify-content-center"
-                                     style="width: 50px; height: 50px;">
-                                    <i class="bi bi-image text-muted"></i>
-                                </div>
-                                {% endif %}
-                            </td>
-                            <td>{{ product.name }}</td>
-                            <td><code>{{ product.sku }}</code></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="text-center py-5 text-muted">
-                <i class="bi bi-inbox fs-1"></i>
-                <p class="mb-0">
-                    {% if not category.is_leaf %}
-                        No hay productos asignados directamente a esta categoría agrupadora.<br>
-                        <small>Los productos se asignan normalmente a las subcategorías (hojas).</small>
-                    {% else %}
-                        No hay productos en esta categoría
-                    {% endif %}
-                </p>
-            </div>
-            {% endif %}
-        </div>
-    </div>
-</div>
-
-<!-- Modal Crear Subcategoría -->
-<div class="modal fade" id="createSubcategoryModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Nueva Subcategoría</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Nombre (Español)</label>
-                    <input type="text" class="form-control" id="subcategory-name"
-                           placeholder="ej: Delantal Completo">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Nombre (Inglés) <span class="text-muted">(opcional)</span></label>
-                    <input type="text" class="form-control" id="subcategory-name-en"
-                           placeholder="ej: Full Apron">
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" onclick="createSubcategory()">
-                    <i class="bi bi-plus-circle me-2"></i>
-                    Crear
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-{% endblock %}
-
-{% block extra_js %}
-<script>
-const categoryId = '{{ category.id }}';
-let createModal = null;
-
-document.addEventListener('DOMContentLoaded', function() {
-    createModal = new bootstrap.Modal(document.getElementById('createSubcategoryModal'));
-});
-
-function showCreateSubcategoryModal() {
-    document.getElementById('subcategory-name').value = '';
-    document.getElementById('subcategory-name-en').value = '';
-    createModal.show();
-}
-
-async function createSubcategory() {
-    const name = document.getElementById('subcategory-name').value.trim();
-    const nameEn = document.getElementById('subcategory-name-en').value.trim();
-
-    if (!name) {
-        alert('El nombre es requerido');
-        return;
-    }
-
-    try {
-        const response = await fetch(`/admin/categories/${categoryId}/subcategories`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ name, name_en: nameEn })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            createModal.hide();
-            location.reload();
-        } else {
-            alert('Error: ' + data.error);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('Error al crear subcategoría');
-    }
-}
-
-async function deleteSubcategory(subcategoryId, subcategoryName) {
-    if (!confirm(`¿Eliminar "${subcategoryName}"?\n\nSolo se puede eliminar si no tiene productos ni subcategorías.`)) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/admin/categories/${subcategoryId}`, {
-            method: 'DELETE'
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            location.reload();
-        } else {
-            alert('Error: ' + data.error);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('Error al eliminar subcategoría');
-    }
-}
-
-function toggleSelectAll() {
-    const selectAll = document.getElementById('select-all').checked;
-    document.querySelectorAll('.product-checkbox').forEach(cb => {
-        cb.checked = selectAll;
-    });
-    updateBulkActions();
-}
-
-function updateBulkActions() {
-    const checked = document.querySelectorAll('.product-checkbox:checked').length;
-    document.getElementById('bulk-actions').style.display = checked > 0 ? 'block' : 'none';
-}
-
-async function bulkMoveProducts() {
-    const targetCategoryId = document.getElementById('target-category').value;
-
-    if (!targetCategoryId) {
-        alert('Selecciona una categoría destino');
-        return;
-    }
-
-    const productIds = Array.from(document.querySelectorAll('.product-checkbox:checked'))
-        .map(cb => cb.value);
-
-    if (productIds.length === 0) {
-        alert('No hay productos seleccionados');
-        return;
-    }
-
-    if (!confirm(`¿Mover ${productIds.length} producto(s)?`)) {
-        return;
-    }
-
-    try {
-        const response = await fetch('/admin/categories/products/bulk-move', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                product_ids: productIds,
-                target_category_id: targetCategoryId
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            alert(`${data.moved_count} producto(s) movido(s) exitosamente`);
-            location.reload();
-        } else {
-            alert('Error: ' + data.error);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('Error al mover productos');
-    }
-}
-</script>
-{% endblock %}

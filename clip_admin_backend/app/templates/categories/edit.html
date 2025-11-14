@@ -125,21 +125,21 @@
                     <div class="mb-3">
                         <label for="vision_hint" class="form-label">
                             <i class="bi bi-lightbulb me-1"></i>
-                            Aclaración para Vision (GPT-4)
+                            Aclaración para GPT-4 Vision (opcional)
                         </label>
                         <textarea class="form-control"
                                   id="vision_hint"
                                   name="vision_hint"
-                                  rows="2"
-                                  placeholder='Ej: vs "SHORES TIRO ALTO": Tiro bajo = ombligo visible, Tiro alto = ombligo cubierto'
-                                  maxlength="300">{{ category.vision_hint or '' }}</textarea>
+                                  rows="3"
+                                  placeholder="Ej: \n- SHORT DE TIRO ALTO: cintura por encima del ombligo\n- SHORT DE TIRO BAJO: cintura por debajo del ombligo\n- Diferenciar del bermuda por el largo (bermuda llega a la rodilla)"
+                                  maxlength="1000">{{ category.vision_hint or '' }}</textarea>
                         <div class="form-text">
-                            <i class="bi bi-info-circle me-1"></i>
-                            Aclaración opcional para ayudar a GPT-4 Vision a identificar mejor esta categoría.
-                            Usa "vs" para comparar con otra categoría, o describe características visuales clave.
-                            <strong>Deja vacío si no necesita aclaración.</strong>
+                            Texto libre para desambiguación visual en el prompt (ej.: diferencias de tiro alto/bajo, presencia de pechera, etc.).
+                            Se agregará al prompt de Vision solo si está presente.
                         </div>
                     </div>
+
+
 
                     <div class="mb-3">
                         <div class="form-check">

@@ -65,6 +65,7 @@ def create():
         alternative_terms = request.form.get("alternative_terms", "")
         description = request.form.get("description", "")
         color = request.form.get("color", "#007bff")
+        vision_hint = request.form.get("vision_hint", "").strip()
         is_active = request.form.get("is_active") == "on"
 
         if not name:
@@ -96,6 +97,7 @@ def create():
             name_en=name_en,
             alternative_terms=alternative_terms,
             description=description,
+            vision_hint=vision_hint if vision_hint else None,
             clip_prompt=clip_prompt,
             visual_features=visual_features,
             confidence_threshold=float(request.form.get("confidence_threshold", "0.75")),
@@ -137,10 +139,8 @@ def edit(category_id):
         flash("No tienes permisos para editar esta categoría", "error")
         return redirect(url_for("categories.index"))
 
-    # Debug: Ver vision_hint al cargar
     if request.method == "GET":
         print(f"🏷️ CATEGORIES EDIT GET: Category: {category.name}")
-        print(f"🏷️ CATEGORIES EDIT GET: vision_hint value: {repr(category.vision_hint)}")
 
     if request.method == "POST":
         print("🏷️ CATEGORIES EDIT: Método POST")
@@ -185,8 +185,8 @@ def edit(category_id):
         category.name_en = name_en
         category.description = description if description else None
         category.alternative_terms = alternative_terms if alternative_terms else None
-        category.vision_hint = vision_hint if vision_hint else None
         category.color = color
+        category.vision_hint = vision_hint if vision_hint else None
         category.is_active = is_active
 
         db.session.commit()
