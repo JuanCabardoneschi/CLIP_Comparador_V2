@@ -2365,26 +2365,7 @@ def visual_search():
 
 @bp.route("/search/text", methods=["POST", "OPTIONS"])
 def text_search():
-    """Endpoint de búsqueda por texto con logging MINIMAL.
-    Solo registra inicio y fin. Se silencian todos los prints internos para diagnosticar impacto del logging.
-    """
-    import sys, io, time as _time_min
-    _start_ts = _time_min.time()
-    _orig_stdout, _orig_stderr = sys.stdout, sys.stderr
-    class _SilentIO:
-        def write(self, *a, **k):
-            pass
-        def flush(self):
-            pass
-    # Log inicial (query aún no parseada, se añade más abajo cuando esté disponible)
-    _orig_stderr.write("[TEXT_SEARCH] START (minimal logging)\n")
-    # Silenciar todo salvo los dos logs mínimos
-    sys.stdout = _SilentIO()
-    sys.stderr = _SilentIO()
-    def _restore_streams(final_msg: str):
-        sys.stdout, sys.stderr = _orig_stdout, _orig_stderr
-        _orig_stderr.write(final_msg + "\n")
-    # A partir de aquí el cuerpo original (prints internos quedarán silenciados)
+    """Endpoint de búsqueda por texto con vectorización optimizada."""
     """
     Endpoint de bÃºsqueda textual hÃ­brida (CLIP + Atributos + Tags)
 
@@ -2647,7 +2628,7 @@ def text_search():
 
             if not cat_sims:
                 print(f"[REQ {request_id}] ❌ Sin categorías con productos para este cliente")
-                _restore_streams(f"[TEXT_SEARCH] END 404 no_categories in {round(time.time()-start_time,3)}s")
+                print(f"[TEXT_SEARCH] END 404 no_categories in {round(time.time()-start_time,3)}s")
                 return jsonify({
                     "success": False,
                     "error": "no_categories",
@@ -2689,7 +2670,7 @@ def text_search():
             else:
                 print(f"[REQ {request_id}] ❌ Ninguna categoría relevante (max_sim={best_sim:.3f})")
                 available_categories = [c.name for c,_ in cat_sims[:10]]
-                _restore_streams(f"[TEXT_SEARCH] END 404 product_not_in_catalog in {round(time.time()-start_time,3)}s")
+                print(f"[TEXT_SEARCH] END 404 product_not_in_catalog in {round(time.time()-start_time,3)}s")
                 return jsonify({
                     "success": False,
                     "error": "product_not_in_catalog",
@@ -2783,7 +2764,7 @@ def text_search():
         if detected_category and len(products) == 0:
             print(f"⚠️ TEXT SEARCH: Categoría '{detected_category.name}' sin productos → Retornando error 404")
             available_categories = [cat.name for cat in categories if Product.query.filter_by(category_id=cat.id, client_id=client.id).count() > 0]
-            _restore_streams(f"[TEXT_SEARCH] END 404 category_empty '{detected_category.name}' in {round(time.time()-start_time,3)}s")
+            print(f"[TEXT_SEARCH] END 404 category_empty '{detected_category.name}' in {round(time.time()-start_time,3)}s")
             return jsonify({
                 "success": False,
                 "error": "category_empty",
@@ -2824,7 +2805,7 @@ def text_search():
                 continue
 
         if not embeddings_matrix:
-            _restore_streams(f"[TEXT_SEARCH] END 404 no_valid_embeddings in {round(time.time()-start_time,3)}s")
+            print(f"[TEXT_SEARCH] END 404 no_valid_embeddings in {round(time.time()-start_time,3)}s")
             return jsonify({
                 "success": False,
                 "error": "no_valid_embeddings",
@@ -3157,12 +3138,12 @@ def text_search():
         except Exception:
             pass
         print(f"[REQ {request_id}] DEBUG: respuesta JSON construida en {(_t.time()-_resp_t):.2f}s | post-SQL total={( _t.time()-_post_sql_t):.2f}s | query='{query_text}'", flush=True)
-        _restore_streams(f"[TEXT_SEARCH] END OK {len(results)} results match_quality={match_quality} time={round(time.time()-start_time,3)}s")
+        print(f"[TEXT_SEARCH] END OK {len(results)} results match_quality={match_quality} time={round(time.time()-start_time,3)}s")
         return resp
 
     except Exception as e:
         import traceback
-        _restore_streams(f"[TEXT_SEARCH] END 500 error='{e}' time={round(time.time()-start_time,3)}s")
+        print(f"[TEXT_SEARCH] END 500 error='{e}' time={round(time.time()-start_time,3)}s")
         return jsonify({
             "success": False,
             "error": "internal_error",
