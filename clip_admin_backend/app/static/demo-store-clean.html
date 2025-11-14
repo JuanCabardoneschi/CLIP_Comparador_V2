@@ -115,6 +115,21 @@
             <p>Búsqueda Visual Inteligente con GPT-4 Vision + CLIP</p>
         </header>
 
+        <!-- Selector de Entorno -->
+        <div class="client-selector" style="margin-bottom: 20px;">
+            <h3>🌍 Entorno:</h3>
+            <div class="client-options">
+                <div class="client-card" data-env="local" style="cursor: pointer;">
+                    <h4>🔧 Development (Local)</h4>
+                    <div class="info">http://localhost:5000</div>
+                </div>
+                <div class="client-card active" data-env="railway" style="cursor: pointer;">
+                    <h4>🚀 Production (Railway)</h4>
+                    <div class="info">https://clipcomparadorv2-production.up.railway.app</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Selector de Cliente -->
         <div class="client-selector">
             <h3>🏪 Selecciona un cliente para buscar:</h3>
@@ -133,92 +148,86 @@
         </div>
 
         <!-- ============================================ -->
-        <!-- CLIP Widget V3: GPT-4 Vision Integration -->
+        <!-- CLIP Widget - Solo 3 líneas de integración -->
         <!-- ============================================ -->
-        <div id="clip-widget"></div>
+
         <script>
-            // Configuración inicial (Goody Store)
-            let currentClient = {
-                name: 'Goody Store',
-                apiKey: 'test-api-key-demo-fashion-store-2024',
-                slug: 'demo_fashion_store'
-            };
-
-            // Detectar entorno
-            const isLocal = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-
+            // Configuración del widget (detecta local vs Railway automáticamente)
             window.CLIPWidget = {
-                apiKey: currentClient.apiKey,
-                serverUrl: isLocal
+                apiKey: 'test-api-key-demo-fashion-store-2024', // Default: Goody Store
+                serverUrl: (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
                     ? 'http://localhost:5000'
-                    : 'https://clipcomparadorv2-production.up.railway.app',
-                clientName: currentClient.name
+                    : 'https://clipcomparadorv2-production.up.railway.app'
             };
 
-            // Selector de clientes
+            // Selector de clientes (cambio de API key)
             document.addEventListener('DOMContentLoaded', () => {
-                const cards = document.querySelectorAll('.client-card');
-                cards.forEach(card => {
+                const envCards = document.querySelectorAll('[data-env]');
+                const clientCards = document.querySelectorAll('[data-client]');
+
+                // Selector de entorno
+                envCards.forEach(card => {
                     card.addEventListener('click', () => {
-                        // Remover active de todos
-                        cards.forEach(c => c.classList.remove('active'));
-                        // Activar el clickeado
+                        envCards.forEach(c => c.classList.remove('active'));
                         card.classList.add('active');
 
-                        // Actualizar configuración
-                        const clientType = card.dataset.client;
-                        if (clientType === 'goody') {
-                            currentClient = {
-                                name: 'Goody Store',
-                                apiKey: 'test-api-key-demo-fashion-store-2024',
-                                slug: 'demo_fashion_store'
-                            };
-                        } else if (clientType === 'eve') {
-                            currentClient = {
-                                name: "Eve's Store",
-                                apiKey: 'clip_fe117bcd62de8a1e05a214c5',
-                                slug: 'eve-s-store'
-                            };
-                        }
+                        const env = card.dataset.env;
+                        window.CLIPWidget.serverUrl = env === 'local'
+                            ? 'http://localhost:5000'
+                            : 'https://clipcomparadorv2-production.up.railway.app';
 
-                        // Actualizar widget config
-                        window.CLIPWidget.apiKey = currentClient.apiKey;
-                        window.CLIPWidget.clientName = currentClient.name;
+                        console.log('🌍 Entorno:', window.CLIPWidget.serverUrl);
+                        if (window.CLIPWidget.init) window.CLIPWidget.init();
+                    });
+                });
 
-                        console.log('Cliente cambiado a:', currentClient.name);
+                // Selector de clientes
+                clientCards.forEach(card => {
+                    card.addEventListener('click', () => {
+                        clientCards.forEach(c => c.classList.remove('active'));
+                        card.classList.add('active');
 
-                        // Limpiar productos mostrados (mantener estructura del widget)
-                        const widgetContainer = document.getElementById('clip-widget');
-                        if (widgetContainer) {
-                            // Limpiar productos en #clip-results
-                            const resultsGrid = widgetContainer.querySelector('#clip-results .clip-results-grid');
-                            if (resultsGrid) {
-                                resultsGrid.innerHTML = '';
-                            }
-                            // Limpiar detección previa
-                            const detectionItems = widgetContainer.querySelector('#clip-detection-items');
-                            if (detectionItems) {
-                                detectionItems.innerHTML = '';
-                            }
-                            // Limpiar intención del usuario
-                            const userIntent = widgetContainer.querySelector('.clip-user-intent');
-                            if (userIntent) {
-                                userIntent.remove();
-                            }
-                            // Ocultar secciones
-                            const detection = widgetContainer.querySelector('#clip-detection');
-                            const results = widgetContainer.querySelector('#clip-results');
-                            if (detection) detection.classList.remove('active');
-                            if (results) results.classList.remove('active');
-                        }
+                        const client = card.dataset.client;
+                        window.CLIPWidget.apiKey = client === 'goody'
+                            ? 'test-api-key-demo-fashion-store-2024'
+                            : 'clip_fe117bcd62de8a1e05a214c5';
+
+                        console.log('🔑 Cliente:', client === 'goody' ? 'Goody Store' : "Eve's Store");
+                        if (window.CLIPWidget.init) window.CLIPWidget.init();
                     });
                 });
             });
         </script>
-        <script src="/static/js/clip-widget-embed-v3.js"></script>
-        <!-- ============================================ -->
 
-        <footer>
+        <div id="clip-widget"></div>
+
+        <script>
+            // Cargar el script del widget según el entorno
+            (function() {
+                const isLocal = window.location.hostname === 'localhost' ||
+                                window.location.hostname === '127.0.0.1' ||
+                                window.location.protocol === 'file:';
+
+                const scriptSrc = isLocal
+                    ? 'js/clip-widget-embed-v3.js'  // Ruta relativa para file://
+                    : 'https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed-v3.js';
+
+                const script = document.createElement('script');
+                script.src = scriptSrc;
+                script.onerror = function() {
+                    console.error('❌ Error cargando widget desde:', scriptSrc);
+                    document.getElementById('clip-widget').innerHTML =
+                        '<div style="padding: 2rem; text-align: center; color: red;">' +
+                        '<h3>⚠️ Error al cargar el widget</h3>' +
+                        '<p>No se pudo cargar el script del widget desde: ' + scriptSrc + '</p>' +
+                        '<p>Verifica la ruta o prueba abriendo desde el servidor local.</p>' +
+                        '</div>';
+                };
+                document.head.appendChild(script);
+            })();
+        </script>
+
+        <!-- ============================================ -->        <footer>
             <p>Powered by <a href="https://platform.openai.com/docs/guides/vision" target="_blank">GPT-4 Vision</a> &amp; <a href="https://github.com/openai/CLIP" target="_blank">OpenAI CLIP</a></p>
         </footer>
     </div>

@@ -36,13 +36,29 @@ class SystemConfig:
             default_config = {
                 "clip": {
                     "preload": False,
-                    "idle_timeout_minutes": 30,
-                    "model_name": "openai/clip-vit-base-patch16"
+                    "idle_timeout_minutes": 5,
+                    "model_name": "ViT-B/16"
                 },
                 "search": {
                     "max_results": 3,
                     "enable_category_detection": True,
-                    "enable_visual_search": True
+                    "enable_visual_search": True,
+                    "enable_inferred_tags": True,
+                    "weight_inferred_tags": 0.05,
+                    "clip_fusion": {
+                        "alpha": 1.0,
+                        "beta_tag": 0.5
+                    }
+                },
+                "pair_exclusion_rules": {
+                    "apply_pair_exclusion_default": True,
+                    "delantal": {
+                        "override_gap_max": 0.10,
+                        "torso_evidence_min": 0.24,
+                        "torso_advantage_min": 0.06,
+                        "suppression_evidence_threshold": 0.22,
+                        "tie_margin": 0.02
+                    }
                 },
                 "system": {
                     "environment": "production",
