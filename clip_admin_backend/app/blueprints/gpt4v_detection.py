@@ -162,20 +162,8 @@ RESPUESTA (JSON ESTRICTO):
         # 📝 LOGGING: Guardar prompt completo en archivo .txt
         try:
             from datetime import datetime
-            # Ruta absoluta a logs en la raíz del proyecto
-            logs_dir = r'C:\Personal\CLIP_Comparador_V2\logs'
-            os.makedirs(logs_dir, exist_ok=True)
-
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            log_file = os.path.join(logs_dir, f'gpt4v_prompt_{timestamp}.txt')
-
-            # Guardar prompt sin hints (vision_hint eliminado Nov 2025)
-            with open(log_file, 'w', encoding='utf-8') as f:
-                f.write(prompt)
-                f.write("\n\n" + "=" * 80 + "\n")
-
-            print(f"📝 Prompt guardado en: {log_file}")
-            logger.info(f"📝 Prompt guardado en: {log_file}")
+            # DEBUG: Log de prompt deshabilitado en producción (no existe carpeta logs en Railway)
+            pass
         except Exception as log_err:
             print(f"⚠️ Error guardando prompt: {log_err}")
             logger.warning(f"⚠️ No se pudo guardar log del prompt: {log_err}")

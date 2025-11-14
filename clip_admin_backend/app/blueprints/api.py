@@ -2440,6 +2440,7 @@ def text_search():
 
         # --- LLM Normalization (con vocabulario dinÃ¡mico del cliente) ---
         llm_norm = normalize_query(query_text, client_id=client.id)
+        print(f"🔍 DEBUG: normalize_query completado", flush=True)
         # TODO: Mover a nivel de logs DEBUG
         # print(f"ðŸ§  LLM Normalizer: {llm_norm}")
         print(f"ðŸ§  LLM Normalizer: tipo={llm_norm.get('tipo')}, color={llm_norm.get('color')}, contexto={llm_norm.get('contexto')}")
