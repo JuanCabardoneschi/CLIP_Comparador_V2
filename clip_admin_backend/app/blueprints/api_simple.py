@@ -5,7 +5,12 @@ Solo endpoints esenciales para el admin panel
 
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
-from googletrans import Translator
+try:
+    from googletrans import Translator
+    HAS_GOOGLETRANS = True
+except ImportError:
+    from deep_translator import GoogleTranslator
+    HAS_GOOGLETRANS = False
 
 bp = Blueprint("api", __name__)
 
@@ -26,16 +31,19 @@ def translate_text():
             })
 
         # Crear instancia del traductor
-        translator = Translator()
+        if HAS_GOOGLETRANS:
+            translator = Translator()
+            translation = translator.translate(text, dest=target_language)
+            translated_text = translation.text.lower()
+        else:
+            # Usar deep-translator como fallback
+            translator = GoogleTranslator(source='auto', target=target_language)
+            translated_text = translator.translate(text).lower()
 
         # Obtener el contexto de la industria del cliente
         industry_context = ""
         if current_user.client and current_user.client.industry:
             industry_context = current_user.client.industry.lower()
-
-        # Traducir el texto
-        translation = translator.translate(text, dest=target_language)
-        translated_text = translation.text.lower()
 
         # Post-procesar basado en la industria (como en el modelo Category)
         if industry_context == "textil":
