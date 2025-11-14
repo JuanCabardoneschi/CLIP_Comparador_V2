@@ -2639,7 +2639,9 @@ def text_search():
             traceback.print_exc()
 
 
-        # Consultar productos con embeddings (de imÃ¡genes principales), atributos y tags
+        # Consultar productos con embeddings (de imágenes principales), atributos y tags
+        _t2 = _t.time()
+        print(f"🔍 DEBUG: iniciando query SQL de productos...", flush=True)
         products_query = db.session.query(
             Product.id,
             Product.name,
@@ -2670,6 +2672,7 @@ def text_search():
             print(f"ðŸ”Ž BÃºsqueda SIN filtro de categorÃ­a (global)")
 
         products = products_query.all()
+        print(f"🔍 DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
 
         # Fallback 1: Si no hay productos en la categorÃ­a detectada, rehacer bÃºsqueda global
         if detected_category and len(products) == 0:
@@ -2698,6 +2701,7 @@ def text_search():
                 Image.clip_embedding.isnot(None)
             )
             products = products_query.all()
+        print(f"🔍 DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
 
         print(f"ðŸ” TEXT SEARCH: Analizando {len(products)} productos...")
 
@@ -3430,6 +3434,7 @@ def unified_search():
 
         total_products = products_query.count()
         products = products_query.all()
+        print(f"🔍 DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
 
         railway_log(f"🔍 Evaluando {len(products)} productos en categoría '{category.name}'")
 
@@ -3843,6 +3848,7 @@ def gpt4v_unified_search():
             ).distinct()
 
             products = products_query.all()
+        print(f"🔍 DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
             total_in_category = products_query.count()
 
             railway_log(f"   📦 {category_name}: {len(products)} productos")
