@@ -114,11 +114,19 @@
 
     <!-- Configuración del Widget -->
     <script>
+        // 🔒 SEGURIDAD: NO exponemos la API key al cliente
+        // La autenticación se maneja por sesión server-side
+        const serverUrl = window.location.protocol === 'https:' 
+            ? 'https://' + window.location.host 
+            : window.location.protocol + '//' + window.location.host;
+        
         window.CLIPWidget = {
-            apiKey: '{{ api_key }}',
-            serverUrl: '{{ request.url_root.rstrip("/") }}',
+            apiKey: 'widget-session', // Placeholder - no se usa, autenticación por sesión
+            serverUrl: serverUrl,
             containerId: 'clip-widget'
         };
+        
+        console.log('🔒 Widget iniciado con autenticación por sesión (secure)');
     </script>
 
     <!-- Cargar el widget JavaScript -->
