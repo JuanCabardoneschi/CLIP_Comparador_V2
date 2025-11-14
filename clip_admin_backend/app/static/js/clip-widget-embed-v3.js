@@ -1,6 +1,6 @@
 /**
  * CLIP Widget V3 - GPT-4 Vision Integration
- * Flujo: Imagen ÔåÆ GPT-4V detecta categor├¡as ÔåÆ B├║squeda CLIP ÔåÆ Resultados agrupados
+ * Flujo: Imagen → GPT-4V detecta categorías → Búsqueda CLIP → Resultados agrupados
  *
  * Uso:
  * <script>
@@ -546,19 +546,19 @@
         container.innerHTML = `
             <div class="clip-widget-wrap">
                 <div class="clip-header">
-                    <h2>­ƒñû B├║squeda Inteligente</h2>
+                    <h2>🤖 Búsqueda Inteligente</h2>
                     <p>Encuentra productos similares con IA</p>
                 </div>
 
                 <!-- Tabs -->
                 <div class="clip-tabs">
                     <button class="clip-tab active" data-tab="visual">
-                        <span class="clip-tab-icon">­ƒô©</span>
-                        <span>B├║squeda Visual</span>
+                        <span class="clip-tab-icon">📸</span>
+                        <span>Búsqueda Visual</span>
                     </button>
                     <button class="clip-tab" data-tab="text">
-                        <span class="clip-tab-icon">­ƒÆ¼</span>
-                        <span>B├║squeda por Descripci├│n</span>
+                        <span class="clip-tab-icon">💬</span>
+                        <span>Búsqueda por Descripción</span>
                     </button>
                 </div>
 
@@ -568,8 +568,8 @@
                     <p class="clip-search-subtitle">Sube una imagen y encontraremos productos similares</p>
 
                     <div class="clip-upload-area" id="clip-upload">
-                        <div class="clip-upload-icon">­ƒô©</div>
-                        <div class="clip-upload-text">Arrastra una imagen aqu├¡</div>
+                        <div class="clip-upload-icon">📸</div>
+                        <div class="clip-upload-text">Arrastra una imagen aquí</div>
                         <div class="clip-upload-hint">o haz clic para seleccionar</div>
                     </div>
                     <input type="file" id="clip-file-input" accept="image/*" style="display:none;">
@@ -577,23 +577,23 @@
                     <div class="clip-preview" id="clip-preview">
                         <div class="clip-preview-container">
                             <img id="clip-preview-img" class="clip-preview-img" alt="Preview">
-                            <button class="clip-remove-btn" id="clip-remove-btn">Ô£ò</button>
+                            <button class="clip-remove-btn" id="clip-remove-btn">✕</button>
                         </div>
                         <button class="clip-search-btn" id="clip-visual-search-btn">
-                            ­ƒöì Buscar Productos Similares
+                            🔍 Buscar Productos Similares
                         </button>
                     </div>
                 </div>
 
                 <!-- Tab Content: Text Search -->
                 <div class="clip-tab-content" id="clip-text-tab">
-                    <h2 class="clip-search-title">Busca por descripci├│n</h2>
+                    <h2 class="clip-search-title">Busca por descripción</h2>
                     <p class="clip-search-subtitle">Describe lo que buscas y encuentra productos que coincidan</p>
 
                     <div class="clip-input-wrap">
-                        <span class="clip-input-icon">­ƒöì</span>
+                        <span class="clip-input-icon">🔍</span>
                         <input type="text" class="clip-input" id="clip-text-input"
-                               placeholder="Ej: camisa blanca, remera azul, pantal├│n negro...">
+                               placeholder="Ej: camisa blanca, remera azul, pantalón negro...">
                     </div>
                     <button class="clip-search-btn" id="clip-text-search-btn">Buscar productos</button>
                 </div>
@@ -605,14 +605,14 @@
                     <div class="clip-spinner"></div>
                     <div class="clip-loading-text" id="clip-loading-text">Analizando...</div>
                     <div class="clip-loading-steps" id="clip-loading-steps">
-                        <div>ÔÅ│ Detectando categor├¡as con GPT-4 Vision</div>
-                        <div>ÔÅ│ Buscando productos similares</div>
+                        <div>⏳ Detectando categorías con GPT-4 Vision</div>
+                        <div>⏳ Buscando productos similares</div>
                     </div>
                 </div>
 
                 <div class="clip-detection" id="clip-detection">
                     <div class="clip-detection-title">
-                        <span>­ƒÄ» Categor├¡as Detectadas</span>
+                        <span>🎯 Categorías Detectadas</span>
                     </div>
                     <div class="clip-detection-items" id="clip-detection-items"></div>
                     <div class="clip-detection-cost" id="clip-detection-cost"></div>
@@ -752,11 +752,11 @@
                 hideLoading();
 
                 if (!data.success) {
-                    showError(data.message || 'Error en la b├║squeda');
+                    showError(data.message || 'Error en la búsqueda');
                     return;
                 }
 
-                // Mostrar detecci├│n
+                // Mostrar detección
                 displayDetection(data.detection);
 
                 // Mostrar resultados
@@ -768,7 +768,7 @@
             })
             .catch(err => {
                 hideLoading();
-                showError('Error de conexi├│n. Intenta nuevamente.');
+                showError('Error de conexión. Intenta nuevamente.');
                 console.error(err);
             });
         }
@@ -779,7 +779,7 @@
             const loadingText = container.querySelector('#clip-loading-text');
             const loadingSteps = container.querySelector('#clip-loading-steps');
 
-            // Cambiar texto de carga para b├║squeda por texto
+            // Cambiar texto de carga para búsqueda por texto
             if (loadingText) loadingText.textContent = 'Buscando productos...';
             if (loadingSteps) loadingSteps.style.display = 'none';
 
@@ -798,11 +798,11 @@
                 hideLoading();
 
                 if (!data.success) {
-                    showError(data.message || data.error || 'Error en la b├║squeda');
+                    showError(data.message || data.error || 'Error en la búsqueda');
                     return;
                 }
 
-                // La b├║squeda por texto NO tiene detecci├│n GPT-4V, ocultar esa secci├│n
+                // La búsqueda por texto NO tiene detección GPT-4V, ocultar esa sección
                 container.querySelector('#clip-detection').classList.remove('active');
 
                 // Mostrar resultados
@@ -814,24 +814,24 @@
             })
             .catch(err => {
                 hideLoading();
-                showError('Error de conexi├│n. Intenta nuevamente.');
+                showError('Error de conexión. Intenta nuevamente.');
                 console.error(err);
             })
             .finally(() => {
-                // Restaurar textos de loading para pr├│xima b├║squeda visual
+                // Restaurar textos de loading para próxima búsqueda visual
                 if (loadingText) loadingText.textContent = 'Analizando imagen con IA...';
                 if (loadingSteps) loadingSteps.style.display = 'block';
             });
         }
 
-        // Display text search results (sin agrupaci├│n por categor├¡a)
+        // Display text search results (sin agrupación por categoría)
         function displayTextResults(results, total) {
             const resultsDiv = container.querySelector('#clip-results');
 
             const html = `
                 <div class="clip-category-section">
                     <div class="clip-category-header">
-                        <div class="clip-category-name">Resultados de B├║squeda</div>
+                        <div class="clip-category-name">Resultados de Búsqueda</div>
                         <div class="clip-category-count">${total} producto${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}</div>
                     </div>
                     <div class="clip-product-grid">
@@ -850,7 +850,7 @@
                                     </div>
                                     ${p.stock !== undefined ? `
                                         <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}">
-                                            ${p.stock > 0 ? `Ô£ô Stock: ${p.stock}` : 'Ô£ù Sin stock'}
+                                            ${p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock'}
                                         </div>
                                     ` : ''}
                                 </div>
@@ -879,16 +879,16 @@
             const categories = detection.categories_detected_raw || detection.categories_detected || [];
             const userIntent = detection.user_intent || detection.mensaje_usuario || '';
 
-            // Tags de categor├¡as detectadas
+            // Tags de categorías detectadas
             itemsDiv.innerHTML = categories.map(cat =>
                 `<div class="clip-detection-tag">${cat}</div>`
             ).join('');
 
-            // Intenci├│n del usuario (debajo de las categor├¡as)
+            // Intención del usuario (debajo de las categorías)
             if (userIntent) {
                 const intentHtml = `
                     <div class="clip-user-intent">
-                        <strong>­ƒÆí Intenci├│n detectada:</strong><br>
+                        <strong>💡 Intención detectada:</strong><br>
                         ${userIntent}
                     </div>
                 `;
@@ -929,7 +929,7 @@
                                         </div>
                                         ${p.stock !== undefined ? `
                                             <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}">
-                                                ${p.stock > 0 ? `Ô£ô Stock: ${p.stock}` : 'Ô£ù Sin stock'}
+                                                ${p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock'}
                                             </div>
                                         ` : ''}
                                     </div>
@@ -949,7 +949,7 @@
             const resultsDiv = container.querySelector('#clip-results');
             resultsDiv.innerHTML = `
                 <div class="clip-no-results">
-                    <div class="clip-no-results-icon">­ƒÿö</div>
+                    <div class="clip-no-results-icon">😔</div>
                     <div class="clip-no-results-text">No se encontraron productos similares</div>
                     <div class="clip-no-results-hint">Intenta con otra imagen</div>
                 </div>
@@ -964,7 +964,7 @@
             container.querySelector('#clip-results').classList.remove('active');
             container.querySelector('#clip-error').classList.remove('active');
 
-            // Tambi├®n limpiar elementos din├ímicos para evitar duplicaci├│n en b├║squedas consecutivas
+            // También limpiar elementos dinámicos para evitar duplicación en búsquedas consecutivas
             const detectionDiv = container.querySelector('#clip-detection');
             const itemsDiv = container.querySelector('#clip-detection-items');
             const costDiv = container.querySelector('#clip-detection-cost');
@@ -982,7 +982,7 @@
 
         function showError(msg) {
             const errorDiv = container.querySelector('#clip-error');
-            errorDiv.textContent = `ÔØî ${msg}`;
+            errorDiv.textContent = `❌ ${msg}`;
             errorDiv.classList.add('active');
             container.querySelector('#clip-detection').classList.remove('active');
             container.querySelector('#clip-results').classList.remove('active');
