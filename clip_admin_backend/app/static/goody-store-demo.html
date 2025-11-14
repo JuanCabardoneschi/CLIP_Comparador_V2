@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -40,8 +40,8 @@
         }
 
         .footer {
-            text-align: center;
             color: white;
+            text-align: center;
             margin-top: 2rem;
             opacity: 0.9;
             font-size: 0.9rem;
@@ -55,31 +55,23 @@
 </head>
 <body>
     <div class="header">
-        <h1>ðŸ›ï¸ Goody Store</h1>
-        <p>BÃºsqueda Visual Inteligente</p>
+        <h1> Goody Store</h1>
+        <p>Búsqueda Visual Inteligente</p>
     </div>
 
     <div class="widget-container">
-        <!-- ============================================ -->
-        <!-- CLIP Widget - Solo 3 lÃ­neas de integraciÃ³n -->
-        <!-- ============================================ -->
-
         <script>
             window.CLIPWidget = {
                 apiKey: 'test-api-key-demo-fashion-store-2024',
                 serverUrl: 'https://clipcomparadorv2-production.up.railway.app'
             };
         </script>
-
-        <div id="clip-widget"></div>
-
-        <script src="https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed-v3.js"></script>
-
-        <!-- ============================================ -->
+        <script src="./js/clip-widget-embed-v3.js"></script>
+        <div id="clip-widget-root"></div>
     </div>
 
     <div class="footer">
-        <p>Powered by <a href="https://platform.openai.com/docs/guides/vision" target="_blank">GPT-4 Vision</a> & <a href="https://github.com/openai/CLIP" target="_blank">OpenAI CLIP</a></p>
+        <p>Powered by Red Sis SRL</p>
     </div>
 </body>
 </html>

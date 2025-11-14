@@ -884,9 +884,6 @@
                 `<div class="clip-detection-tag">${cat}</div>`
             ).join('');
 
-            // Costo
-            costDiv.textContent = `Costo detecci├│n: $${detection.cost_usd} USD`;
-
             // Intenci├│n del usuario (debajo de las categor├¡as)
             if (userIntent) {
                 const intentHtml = `
