@@ -378,6 +378,14 @@ def register_blueprints(app):
         print("✓ Blueprint system_config_admin registrado")
     except ImportError as e:
         print(f"✗ Error importando system_config_admin blueprint: {e}")
+
+    # Blueprint de búsqueda del widget (público)
+    try:
+        from app.blueprints.widget_search import widget_search_bp
+        app.register_blueprint(widget_search_bp)
+        print("✓ Blueprint widget_search registrado")
+    except ImportError as e:
+        print(f"✗ Error importando widget_search blueprint: {e}")
     except Exception as e:
         print(f"✗ Error registrando system_config_admin blueprint: {e}")
 

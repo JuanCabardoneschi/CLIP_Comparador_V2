@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Búsqueda Visual - {{ client_name }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 1rem;
+        }
+
+        .search-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header-title h1 {
+            font-size: 1.5rem;
+            color: #333;
+        }
+
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .back-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .widget-wrapper {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .header-title h1 {
+                font-size: 1.2rem;
+            }
+
+            .back-btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="search-container">
+        <!-- Header con botón de volver -->
+        <div class="header">
+            <div class="header-title">
+                <span style="font-size: 2rem;">🔍</span>
+                <h1>Búsqueda Visual - {{ client_name }}</h1>
+            </div>
+            {% if return_url %}
+            <a href="{{ return_url }}" class="back-btn">
+                ← Volver a la tienda
+            </a>
+            {% else %}
+            <button onclick="window.history.back()" class="back-btn" style="border: none; cursor: pointer;">
+                ← Volver
+            </button>
+            {% endif %}
+        </div>
+
+        <!-- Widget completo -->
+        <div class="widget-wrapper">
+            <script>
+                window.CLIPWidget = {
+                    apiKey: '{{ api_key }}',
+                    serverUrl: '{{ request.url_root.rstrip('/') }}',
+                    mode: 'full' // Modo completo, no botón flotante
+                };
+            </script>
+            <div id="clip-widget"></div>
+            <script src="{{ url_for('static', filename='js/clip-widget-embed-v3.js') }}"></script>
+        </div>
+    </div>
+</body>
+</html>
