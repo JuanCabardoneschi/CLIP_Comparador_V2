@@ -2365,6 +2365,26 @@ def visual_search():
 
 @bp.route("/search/text", methods=["POST", "OPTIONS"])
 def text_search():
+    """Endpoint de búsqueda por texto con logging MINIMAL.
+    Solo registra inicio y fin. Se silencian todos los prints internos para diagnosticar impacto del logging.
+    """
+    import sys, io, time as _time_min
+    _start_ts = _time_min.time()
+    _orig_stdout, _orig_stderr = sys.stdout, sys.stderr
+    class _SilentIO:
+        def write(self, *a, **k):
+            pass
+        def flush(self):
+            pass
+    # Log inicial (query aún no parseada, se añade más abajo cuando esté disponible)
+    _orig_stderr.write("[TEXT_SEARCH] START (minimal logging)\n")
+    # Silenciar todo salvo los dos logs mínimos
+    sys.stdout = _SilentIO()
+    sys.stderr = _SilentIO()
+    def _restore_streams(final_msg: str):
+        sys.stdout, sys.stderr = _orig_stdout, _orig_stderr
+        _orig_stderr.write(final_msg + "\n")
+    # A partir de aquí el cuerpo original (prints internos quedarán silenciados)
     """
     Endpoint de bÃºsqueda textual hÃ­brida (CLIP + Atributos + Tags)
 
@@ -2627,6 +2647,7 @@ def text_search():
 
             if not cat_sims:
                 print(f"[REQ {request_id}] ❌ Sin categorías con productos para este cliente")
+                _restore_streams(f"[TEXT_SEARCH] END 404 no_categories in {round(time.time()-start_time,3)}s")
                 return jsonify({
                     "success": False,
                     "error": "no_categories",
@@ -2668,6 +2689,7 @@ def text_search():
             else:
                 print(f"[REQ {request_id}] ❌ Ninguna categoría relevante (max_sim={best_sim:.3f})")
                 available_categories = [c.name for c,_ in cat_sims[:10]]
+                _restore_streams(f"[TEXT_SEARCH] END 404 product_not_in_catalog in {round(time.time()-start_time,3)}s")
                 return jsonify({
                     "success": False,
                     "error": "product_not_in_catalog",
@@ -2761,6 +2783,7 @@ def text_search():
         if detected_category and len(products) == 0:
             print(f"⚠️ TEXT SEARCH: Categoría '{detected_category.name}' sin productos → Retornando error 404")
             available_categories = [cat.name for cat in categories if Product.query.filter_by(category_id=cat.id, client_id=client.id).count() > 0]
+            _restore_streams(f"[TEXT_SEARCH] END 404 category_empty '{detected_category.name}' in {round(time.time()-start_time,3)}s")
             return jsonify({
                 "success": False,
                 "error": "category_empty",
@@ -2773,85 +2796,112 @@ def text_search():
 
         print(f"[REQ {request_id}] TEXT SEARCH: Analizando {len(products)} productos...")
         _post_sql_t = _t.time()
-        print(f"[REQ {request_id}] DEBUG: post-SQL → iniciando scoring de productos | query='{query_text}'", flush=True)
+        print(f"[REQ {request_id}] DEBUG: post-SQL → iniciando scoring VECTORIZADO de productos | query='{query_text}'", flush=True)
 
-        # Calcular scores hÃ­bridos
+        # ========================================================================
+        # OPTIMIZACIÓN VECTORIZADA: Parse todos los embeddings una sola vez
+        # ========================================================================
+        _parse_start = _t.time()
+        embeddings_matrix = []
+        valid_products = []
 
-        results = []
-        for idx, prod in enumerate(products):
-            _score_t0 = _t.time()
-            print(f"[REQ {request_id}] SCORING: producto {idx+1}/{len(products)} | name='{prod.name}' | query='{query_text}'", flush=True)
-            # Parse embedding (puede estar como string JSON)
+        for prod in products:
             embedding = prod.clip_embedding
             if isinstance(embedding, str):
                 import json
                 try:
                     embedding = json.loads(embedding)
-                    print(f"[REQ {request_id}] SCORING: embedding parseado OK para '{prod.name}'", flush=True)
-                except Exception as e:
-                    print(f"[REQ {request_id}] SCORING: ERROR parseando embedding para '{prod.name}': {e}", flush=True)
-                    continue  # Skip si no se puede parsear
+                except Exception:
+                    continue  # Skip productos con embeddings inválidos
 
-            # Score CLIP (similitud visual/semántica) con guardas contra valores no finitos
-            emb = np.array(embedding, dtype=np.float32)
-            den = float(np.linalg.norm(query_embedding) * np.linalg.norm(emb))
-            if not np.all(np.isfinite(emb)) or not np.all(np.isfinite(query_embedding)) or not np.isfinite(den) or den == 0.0:
-                clip_similarity = 0.0
-                print(f"[REQ {request_id}] SCORING: dot-product SKIPPED (valores no finitos o norma cero) para '{prod.name}'", flush=True)
-            else:
-                clip_similarity = float(np.dot(query_embedding, emb) / den)
-                print(f"[REQ {request_id}] SCORING: dot-product OK para '{prod.name}'", flush=True)
-
-            # Boost por atributos (incluye match de categorÃ­a y color del LLM)
-            attr_boost = _calculate_attribute_match(query_lower, prod.attributes, prod.category_name, detected_color, detected_tipo)
-            print(f"[REQ {request_id}] SCORING: attribute match OK para '{prod.name}'", flush=True)
-            # Debug de atributos clave: color declarado vs color detectado
             try:
-                prod_color_dbg = None
-                if isinstance(prod.attributes, dict):
-                    for k in ['color', 'colour', 'color_principal', 'color_secundario']:
-                        if k in prod.attributes and prod.attributes[k]:
-                            prod_color_dbg = prod.attributes[k]
-                            break
-                if detected_color:
-                    print(f"[REQ {request_id}] ATTR DEBUG: {prod.name} | attr.color={prod_color_dbg} | detected_color={detected_color} | attr_boost={attr_boost:.3f}")
+                emb = np.array(embedding, dtype=np.float32)
+                if not np.all(np.isfinite(emb)) or emb.shape[0] != 512:
+                    continue
+                embeddings_matrix.append(emb)
+                valid_products.append(prod)
             except Exception:
-                print(f"[REQ {request_id}] ATTR DEBUG: error en color debug para '{prod.name}'", flush=True)
+                continue
 
-            # Boost por nombre de producto y SKU (nuevo) + tags
+        if not embeddings_matrix:
+            _restore_streams(f"[TEXT_SEARCH] END 404 no_valid_embeddings in {round(time.time()-start_time,3)}s")
+            return jsonify({
+                "success": False,
+                "error": "no_valid_embeddings",
+                "message": "No se encontraron productos con embeddings válidos.",
+                "processing_time": round(time.time() - start_time, 3)
+            }), 404
+
+        # Convertir a matriz numpy (N x 512)
+        E = np.vstack(embeddings_matrix).astype(np.float32)
+        N = E.shape[0]
+        _parse_elapsed = _t.time() - _parse_start
+        print(f"[REQ {request_id}] VECTORIZED: parsed {N} embeddings in {_parse_elapsed:.3f}s", flush=True)
+
+        # ========================================================================
+        # CÁLCULO VECTORIZADO DE SIMILITUDES (una sola operación matricial)
+        # ========================================================================
+        _sim_start = _t.time()
+
+        # Normalizar query embedding (una vez)
+        q_norm = np.linalg.norm(query_embedding)
+        if q_norm == 0 or not np.isfinite(q_norm):
+            clip_similarities = np.zeros(N, dtype=np.float32)
+        else:
+            query_normalized = query_embedding / q_norm
+
+            # Normalizar cada embedding en la matriz
+            emb_norms = np.linalg.norm(E, axis=1, keepdims=True)
+            emb_norms[emb_norms == 0] = 1.0  # Evitar división por cero
+            E_normalized = E / emb_norms
+
+            # Producto matricial: (N x 512) @ (512 x 1) = (N x 1)
+            clip_similarities = E_normalized @ query_normalized
+            clip_similarities = clip_similarities.astype(np.float32)
+
+        _sim_elapsed = _t.time() - _sim_start
+        print(f"[REQ {request_id}] VECTORIZED: computed {N} similarities in {_sim_elapsed:.3f}s", flush=True)
+
+        # ========================================================================
+        # CÁLCULO DE BOOSTS (aún requiere loop pero sin parsing/dot-product)
+        # ========================================================================
+        _boost_start = _t.time()
+        results = []
+
+        for idx, (prod, clip_similarity) in enumerate(zip(valid_products, clip_similarities)):
+            # Boost por atributos
+            attr_boost = _calculate_attribute_match(query_lower, prod.attributes, prod.category_name, detected_color, detected_tipo)
+
+            # Boost por nombre y tags
             name_boost = _calculate_name_match(query_lower, prod.name, getattr(prod, 'sku', None))
             tag_boost = _calculate_tag_match(query_lower, prod.tags)
             tag_name_boost = min(1.0, tag_boost + name_boost)
 
-            # Score final hÃ­brido
-            # AÃ±adimos similitud de color como componente de ranking/desempate
+            # Similitud de color
             color_sim = _best_color_similarity(detected_color, prod.attributes) if detected_color else 0.0
-            # Clasificar productos por calidad de match de color (solo si la query tiene color)
-            # 0 = fuerte (>=0.75), 1 = medio (>=0.45), 2 = bajo (<0.45)
+
+            # Color group y priority
             if detected_color:
                 if color_sim >= 0.75:
                     color_group = 0
+                    color_priority = 2
                 elif color_sim >= 0.45:
                     color_group = 1
+                    color_priority = 1
                 else:
                     color_group = 2
-                # Prioridad de color para ordenar (mÃ¡s alto es mejor)
-                color_priority = 2 - color_group  # fuerte=2, medio=1, bajo=0
+                    color_priority = 0
             else:
                 color_group = 2
                 color_priority = 0
 
-            # Ponderaciones: CLIP 50%, Atributos 35%, Color 5%, Tags+Nombre 10%
-            # (Total 1.0). Color actÃºa como factor de desempate continuo.
+            # Score final híbrido
             final_score = (
-                clip_similarity * 0.5 +
+                float(clip_similarity) * 0.5 +
                 attr_boost * 0.35 +
                 color_sim * 0.05 +
                 tag_name_boost * 0.1
             )
-
-            print(f"[REQ {request_id}] Producto: {prod.name} | CLIP: {clip_similarity:.3f} | Attr: {attr_boost:.3f} | ColorSim: {color_sim:.3f} | Tag: {tag_boost:.3f} | Name: {name_boost:.3f} | Score: {final_score:.3f}")
-            print(f"[REQ {request_id}] SCORING: producto {idx+1}/{len(products)} terminado en {(_t.time()-_score_t0):.2f}s", flush=True)
 
             results.append({
                 'product_id': str(prod.id),
@@ -2862,7 +2912,7 @@ def text_search():
                 'attributes': prod.attributes,
                 'tags': prod.tags or "",
                 'image_url': prod.cloudinary_url,
-                'clip_similarity': round(clip_similarity, 4),
+                'clip_similarity': round(float(clip_similarity), 4),
                 'attr_boost': round(attr_boost, 4),
                 'tag_boost': round(tag_boost, 4),
                 'color_similarity': round(color_sim, 4),
@@ -2871,6 +2921,9 @@ def text_search():
                 'name_boost': round(name_boost, 4),
                 'final_score': round(final_score, 4)
             })
+
+        _boost_elapsed = _t.time() - _boost_start
+        print(f"[REQ {request_id}] VECTORIZED: computed boosts for {N} products in {_boost_elapsed:.3f}s", flush=True)
 
         # Si la query incluye color, priorizar match/color mÃ¡s cercano antes que score puro.
         _scoring_elapsed = _t.time() - _post_sql_t
@@ -3104,12 +3157,12 @@ def text_search():
         except Exception:
             pass
         print(f"[REQ {request_id}] DEBUG: respuesta JSON construida en {(_t.time()-_resp_t):.2f}s | post-SQL total={( _t.time()-_post_sql_t):.2f}s | query='{query_text}'", flush=True)
+        _restore_streams(f"[TEXT_SEARCH] END OK {len(results)} results match_quality={match_quality} time={round(time.time()-start_time,3)}s")
         return resp
 
     except Exception as e:
         import traceback
-        print(f"âŒ TEXT SEARCH ERROR: {e}")
-        print(traceback.format_exc())
+        _restore_streams(f"[TEXT_SEARCH] END 500 error='{e}' time={round(time.time()-start_time,3)}s")
         return jsonify({
             "success": False,
             "error": "internal_error",
