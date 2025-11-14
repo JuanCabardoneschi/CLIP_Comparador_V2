@@ -39,6 +39,42 @@ CORS(bp, origins=["*"],
      methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
      allow_headers=["Content-Type", "X-API-Key", "Authorization"])
 
+# 🔥 CACHÉ GLOBAL DE EMBEDDINGS (evita recalcular en cada request)
+_CATEGORY_EMBEDDINGS_CACHE = {}
+_COLOR_EMBEDDINGS_CACHE = {}
+
+def _get_category_embedding(category_name: str, client_id: str):
+    """
+    Obtiene embedding de categoría desde caché o lo calcula.
+    Key: (client_id, category_name) para evitar colisiones entre clientes.
+    """
+    cache_key = f"{client_id}:{category_name.lower()}"
+
+    if cache_key not in _CATEGORY_EMBEDDINGS_CACHE:
+        llm_model = get_model()
+        emb = llm_model.encode(category_name.lower(), convert_to_tensor=False)
+        _CATEGORY_EMBEDDINGS_CACHE[cache_key] = emb
+
+    return _CATEGORY_EMBEDDINGS_CACHE[cache_key]
+
+def _get_color_embedding(color_text: str):
+    """
+    Obtiene embedding de color desde caché o lo calcula.
+    Usa normalize_query() para obtener embedding semántico del color.
+    """
+    cache_key = color_text.lower()
+    
+    if cache_key not in _COLOR_EMBEDDINGS_CACHE:
+        from app.utils.llm_query_normalizer import normalize_query
+        result = normalize_query(color_text)
+        emb = result.get('embedding')
+        if emb:
+            _COLOR_EMBEDDINGS_CACHE[cache_key] = np.array(emb, dtype=np.float32)
+        else:
+            _COLOR_EMBEDDINGS_CACHE[cache_key] = None
+    
+    return _COLOR_EMBEDDINGS_CACHE[cache_key]
+
 
 # 🔍 Helper para logs que funcionen en Railway (Gunicorn)
 def railway_log(message):
@@ -2622,7 +2658,8 @@ def text_search():
                 # Solo categorías con productos activos
                 if Product.query.filter_by(category_id=cat.id, client_id=client.id).count() == 0:
                     continue
-                cat_emb = llm_model.encode(cat.name.lower(), convert_to_tensor=False)
+                # 🔥 USAR CACHÉ DE EMBEDDINGS en lugar de recalcular
+                cat_emb = _get_category_embedding(cat.name, str(client.id))
                 sim = float(util.cos_sim(query_emb, cat_emb)[0][0])
                 cat_sims.append((cat, sim))
 
@@ -2848,8 +2885,11 @@ def text_search():
         # ========================================================================
         _boost_start = _t.time()
         results = []
+        print(f"[REQ {request_id}] BOOST_LOOP: starting for {N} products", flush=True)
 
         for idx, (prod, clip_similarity) in enumerate(zip(valid_products, clip_similarities)):
+            if idx % 10 == 0:
+                print(f"[REQ {request_id}] BOOST_LOOP: processing product {idx}/{N}", flush=True)
             # Boost por atributos
             attr_boost = _calculate_attribute_match(query_lower, prod.attributes, prod.category_name, detected_color, detected_tipo)
 
@@ -2904,16 +2944,19 @@ def text_search():
             })
 
         _boost_elapsed = _t.time() - _boost_start
+        print(f"[REQ {request_id}] BOOST_LOOP: COMPLETED in {_boost_elapsed:.3f}s for {N} products", flush=True)
         print(f"[REQ {request_id}] VECTORIZED: computed boosts for {N} products in {_boost_elapsed:.3f}s", flush=True)
 
         # Si la query incluye color, priorizar match/color mÃ¡s cercano antes que score puro.
         _scoring_elapsed = _t.time() - _post_sql_t
         print(f"[REQ {request_id}] DEBUG: scoring completado en {_scoring_elapsed:.2f}s para {len(results)} productos", flush=True)
+        print(f"[REQ {request_id}] SORTING: starting with {len(results)} results", flush=True)
         _sort_t = _t.time()
         if detected_color:
             results.sort(key=lambda x: (x.get('color_priority', 0), x.get('color_similarity', 0.0), x['final_score']), reverse=True)
         else:
             results.sort(key=lambda x: x['final_score'], reverse=True)
+        print(f"[REQ {request_id}] SORTING: COMPLETED in {(_t.time()-_sort_t):.3f}s", flush=True)
 
         _sort_elapsed = _t.time() - _sort_t
         # Limitar resultados
@@ -3245,22 +3288,18 @@ def _calculate_attribute_match(query_lower: str, attributes: dict, category: str
                             print(f"  ðŸŽ¨ COLOR MATCH (LLM Semantic): '{detected_color}' â‰ˆ '{v}' (+0.50)")
                             break
 
-                        # SOFT-BOOST: aunque no supere el umbral, favorecer el color mÃ¡s cercano
+                        # SOFT-BOOST: aunque no supere el umbral, favorecer el color más cercano
                         try:
-                            from app.utils.llm_query_normalizer import normalize_query
-                            import numpy as np
-                            ra = normalize_query(detected_color)
-                            rb = normalize_query(v)
-                            ea, eb = ra.get('embedding'), rb.get('embedding')
-                            if ea and eb:
-                                ea = np.array(ea, dtype=np.float32)
-                                eb = np.array(eb, dtype=np.float32)
+                            # 🔥 USAR CACHÉ DE EMBEDDINGS en lugar de normalize_query()
+                            ea = _get_color_embedding(detected_color)
+                            eb = _get_color_embedding(v)
+                            if ea is not None and eb is not None:
                                 sim = float(np.dot(ea, eb) / (np.linalg.norm(ea) * np.linalg.norm(eb)))
                                 # Escalar hasta +0.20 cuando se acerca al umbral 0.75
                                 soft_boost = min(0.20, max(0.0, (sim / 0.75) * 0.20))
                                 if soft_boost > 0:
                                     score += soft_boost
-                                    print(f"  ðŸŽ¨ COLOR NEAREST (LLM Semantic): '{detected_color}' ~ '{v}' sim={sim:.3f} (+{soft_boost:.3f})")
+                                    print(f"  🎨 COLOR NEAREST (LLM Semantic): '{detected_color}' ~ '{v}' sim={sim:.3f} (+{soft_boost:.3f})")
                                     break
                         except Exception:
                             pass
@@ -3307,14 +3346,12 @@ def _best_color_similarity(detected_color: str, attributes: dict) -> float:
         return 0.0
 
     try:
-        from app.utils.llm_query_normalizer import normalize_query
         import numpy as np
 
-        q = normalize_query(detected_color)
-        ea = q.get('embedding')
-        if not ea:
+        # 🔥 USAR CACHÉ DE EMBEDDINGS en lugar de normalize_query()
+        ea = _get_color_embedding(detected_color)
+        if ea is None:
             return 0.0
-        ea = np.array(ea, dtype=np.float32)
 
         def _to_str_list(val):
             if val is None:
@@ -3332,10 +3369,9 @@ def _best_color_similarity(detected_color: str, attributes: dict) -> float:
         for attr_key, attr_value in attributes.items():
             if attr_key and attr_key.lower() in ['color', 'colour', 'color_principal', 'color_secundario']:
                 for v in _to_str_list(attr_value):
-                    rb = normalize_query(str(v))
-                    eb = rb.get('embedding')
-                    if eb:
-                        eb = np.array(eb, dtype=np.float32)
+                    # 🔥 USAR CACHÉ DE EMBEDDINGS en lugar de normalize_query()
+                    eb = _get_color_embedding(str(v))
+                    if eb is not None:
                         sim = float(np.dot(ea, eb) / (np.linalg.norm(ea) * np.linalg.norm(eb)))
                         if sim > best_sim:
                             best_sim = sim
