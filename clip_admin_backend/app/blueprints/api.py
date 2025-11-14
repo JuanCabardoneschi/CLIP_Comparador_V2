@@ -2462,15 +2462,21 @@ def text_search():
         if expanded_query != query_text:
             print(f"ðŸ”„ Query expandido: '{query_text}' -> '{expanded_query}'")
 
-        # Generar embedding CLIP del texto de bÃºsqueda (usar query expandido)
+        # Generar embedding CLIP del texto de búsqueda (usar query expandido)
+        import time as _t
+        _t0 = _t.time()
+        print("🔍 DEBUG: entrando a get_clip_model()", flush=True)
         model, processor = get_clip_model()
+        print(f"🔍 DEBUG: get_clip_model listo en {(_t.time()-_t0):.2f}s", flush=True)
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
+        _t1 = _t.time()
         with torch.no_grad():
             text_inputs = processor(text=[expanded_query], return_tensors="pt", padding=True)
             text_features = model.get_text_features(**text_inputs)
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
             query_embedding = text_features.cpu().numpy()[0]
+        print(f"🔍 DEBUG: embedding texto generado en {(_t.time()-_t1):.2f}s", flush=True)
 
         # Usar query expandido para matching de atributos tambiÃ©n
         query_lower = expanded_query.lower()
