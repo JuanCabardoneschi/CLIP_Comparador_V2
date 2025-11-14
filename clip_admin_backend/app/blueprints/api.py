@@ -3848,7 +3848,7 @@ def gpt4v_unified_search():
             ).distinct()
 
             products = products_query.all()
-        print(f"🔍 DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
+            print(f"🔍 DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
             total_in_category = products_query.count()
 
             railway_log(f"   📦 {category_name}: {len(products)} productos")
