@@ -352,7 +352,7 @@ def _semantic_match(query: str, vocabulary: list, threshold: float = 0.5) -> str
     # Si no hay embeddings en BD, calcular en vivo (fallback para vocabulario nuevo)
     missing_terms = [v for v in vocab_lower if v not in vocab_embeddings]
     if missing_terms:
-        print(f"⚠️ {len(missing_terms)} términos sin embedding en BD, calculando...")
+        print(f"⚠️ {len(missing_terms)} términos sin embedding en BD, calculando: {', '.join(missing_terms[:5])}{'...' if len(missing_terms) > 5 else ''}")
         missing_embs = model.encode(missing_terms)
         for term, emb in zip(missing_terms, missing_embs):
             vocab_embeddings[term] = emb
@@ -422,7 +422,7 @@ def _semantic_match_multiple(query: str, vocabulary: list, threshold: float = 0.
     # Si no hay embeddings en BD, calcular en vivo (fallback)
     missing_terms = [v for v in vocab_lower if v not in vocab_embeddings]
     if missing_terms:
-        print(f"⚠️ {len(missing_terms)} términos sin embedding en BD, calculando...")
+        print(f"⚠️ {len(missing_terms)} términos sin embedding en BD, calculando: {', '.join(missing_terms[:5])}{'...' if len(missing_terms) > 5 else ''}")
         missing_embs = model.encode(missing_terms)
         for term, emb in zip(missing_terms, missing_embs):
             vocab_embeddings[term] = emb

@@ -2722,7 +2722,7 @@ def text_search():
             # Preparar contenedor para información de sustitución (similar match por LLM)
 
             # Normalización simple para comparación literal
-            import re, unicodedata
+            import unicodedata
             def _norm(s: str) -> str:
                 s = ''.join(c for c in unicodedata.normalize('NFD', s.lower()) if unicodedata.category(c) != 'Mn')
                 s = re.sub(r"[^a-z0-9]+", " ", s).strip()
