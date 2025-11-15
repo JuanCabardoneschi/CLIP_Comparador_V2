@@ -2455,10 +2455,20 @@ def _is_simple_query(q: str, client_id: str = None):
 
     # Si tiene palabras complejas → compleja
     if any(t in COMPLEX_HINTS for t in tokens):
+        # Log diagnóstico para entender descarte por complejidad
+        try:
+            hints = [t for t in tokens if t in COMPLEX_HINTS]
+            print(f"[SEARCH_CLASSIFY] query='{q}' -> COMPLEJA por hints {hints}")
+        except Exception:
+            pass
         return False, None, None
 
     # Criterio de longitud: queries simples son cortas (2-4 tokens)
     if len(tokens) < 2 or len(tokens) > 4:
+        try:
+            print(f"[SEARCH_CLASSIFY] query='{q}' -> COMPLEJA por longitud tokens={len(tokens)} toks={tokens}")
+        except Exception:
+            pass
         return False, None, None
 
     colors = [t for t in tokens if t in SIMPLE_COLORS]
@@ -2470,8 +2480,16 @@ def _is_simple_query(q: str, client_id: str = None):
         tipo = types[0]
         if tipo.endswith('s') and tipo not in ['blusas']:  # excepción: blusas no tiene singular común
             tipo = tipo[:-1]
+        try:
+            print(f"[SEARCH_CLASSIFY] query='{q}' -> SIMPLE color={colors[0]} tipo={tipo} tokens={tokens}")
+        except Exception:
+            pass
         return True, colors[0], tipo
 
+    try:
+        print(f"[SEARCH_CLASSIFY] query='{q}' -> NO SIMPLE (colors={colors}, types={types}, tokens={tokens})")
+    except Exception:
+        pass
     return False, None, None
 
 
@@ -2544,7 +2562,7 @@ def text_search():
     import json
     import numpy as np
     from app.models.embedding import Embedding
-    
+
     # Manejar preflight OPTIONS request
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
@@ -2625,6 +2643,10 @@ def text_search():
                 if simple_tipo in cat_name_low or (simple_tipo + 's') in cat_name_low:
                     detected_category = cat
                     break
+            if detected_category:
+                print(f"[REQ {request_id}] FAST-PATH: categoría detectada por nombre='{detected_category.name}'", flush=True)
+            else:
+                print(f"[REQ {request_id}] FAST-PATH: SIN categoría detectada por tipo='{simple_tipo}' (no se aplica filtro de categoría)", flush=True)
             # Query de productos (sin embeddings de texto)
             products_query = db.session.query(
                 Product.id,
@@ -2647,6 +2669,10 @@ def text_search():
                 products_query = products_query.filter(Product.category_id == detected_category.id)
                 print(f"[REQ {request_id}] FAST-PATH: filtrando por categoría {detected_category.name}", flush=True)
             products = products_query.all()
+            try:
+                print(f"[REQ {request_id}] FAST-PATH: productos recuperados={len(products)} (tras join con imagen primaria)", flush=True)
+            except Exception:
+                pass
 
             # ===================================================================
             # FAST-PATH con similitud de color por embeddings (3 grupos)
@@ -2767,6 +2793,9 @@ def text_search():
                     "total_results": len(results),
                     "processing_time": round(time.time() - start_time, 3)
                 })
+        else:
+            # Log explícito cuando NO se activa fast-path
+            print(f"[REQ {request_id}] ℹ️ FAST-PATH NO ACTIVADO (query no clasificada como simple)", flush=True)
 
         # --- LLM Normalization (con vocabulario dinÃ¡mico del cliente) ---
         t_before_norm = time.time()
