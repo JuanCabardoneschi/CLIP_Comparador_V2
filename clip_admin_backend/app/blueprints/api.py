@@ -3155,10 +3155,12 @@ def text_search():
         skipped_count = 0
         skip_reasons = {"json_parse": 0, "invalid_array": 0, "wrong_shape": 0, "other": 0}
 
+        import json
+        import numpy as np
+
         for prod in products:
             embedding = prod.clip_embedding
             if isinstance(embedding, str):
-                import json
                 try:
                     embedding = json.loads(embedding)
                 except Exception as e:
