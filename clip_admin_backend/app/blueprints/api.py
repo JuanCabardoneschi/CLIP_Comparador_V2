@@ -2540,6 +2540,11 @@ def text_search():
         query: Texto de bÃºsqueda (ej: "camisa blanca", "delantal marrÃ³n")
         limit: NÃºmero de resultados (default: 10, max: 50)
     """
+    # Imports necesarios para el scope de la función
+    import json
+    import numpy as np
+    from app.models.embedding import Embedding
+    
     # Manejar preflight OPTIONS request
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
@@ -2647,10 +2652,6 @@ def text_search():
             # FAST-PATH con similitud de color por embeddings (3 grupos)
             # ===================================================================
             # Precargar embedding del color solicitado (normalizar a forma canónica)
-            from app.models.embedding import Embedding
-            import json
-            import numpy as np
-
             canonical_color = _normalize_color_for_embedding(simple_color)
             query_color_emb = None
             try:
@@ -3154,9 +3155,6 @@ def text_search():
         valid_products = []
         skipped_count = 0
         skip_reasons = {"json_parse": 0, "invalid_array": 0, "wrong_shape": 0, "other": 0}
-
-        import json
-        import numpy as np
 
         for prod in products:
             embedding = prod.clip_embedding
