@@ -2699,7 +2699,7 @@ def text_search():
                 # Clasificar en grupos (comparar con canonical para match exacto)
                 canonical_query = _normalize_color_for_embedding(simple_color)
                 canonical_prod = _normalize_color_for_embedding(prod_color) if prod_color else None
-                
+
                 # Grupo 1: Exacto (literal o muy similar)
                 if canonical_prod == canonical_query or color_sim >= 0.75:
                     exact_match.append((p, color_sim, True))
@@ -2738,26 +2738,34 @@ def text_search():
             near_count = len(near_match)
             others_count = len(others)
             print(f"[REQ {request_id}] FAST-PATH completado en {fp_total:.3f}s resultados={len(results)} (exact={exact_count}, near={near_count}, otros={others_count})", flush=True)
-            print(f"[TEXT_SEARCH_MODE] fast query='{query_text}' time={fp_total:.3f}s results={len(results)}", flush=True)
-            return jsonify({
-                "success": True,
-                "processing_mode": "fast",
-                "is_simple_query": True,
-                "detected_color": simple_color,
-                "detected_tipo": simple_tipo,
-                "color_thresholds": {
-                    "exact": 0.75,
-                    "near": 0.60
-                },
-                "color_match_breakdown": {
-                    "exact": exact_count,
-                    "near": near_count,
-                    "others": others_count
-                },
-                "results": results,
-                "total_results": len(results),
-                "processing_time": round(time.time() - start_time, 3)
-            })
+
+            # 🔄 FALLBACK: Si fast-path no encuentra resultados, pasar a full pipeline con LLM
+            if len(results) == 0:
+                print(f"[REQ {request_id}] ⚠️ FAST-PATH sin resultados → FALLBACK a FULL PIPELINE con LLM", flush=True)
+                print(f"[TEXT_SEARCH_MODE] fast-failed → fallback-to-full query='{query_text}' fast_time={fp_total:.3f}s", flush=True)
+                # NO hacer return, continuar con el código de full pipeline abajo
+            else:
+                # Fast-path exitoso: devolver resultados inmediatamente
+                print(f"[TEXT_SEARCH_MODE] fast query='{query_text}' time={fp_total:.3f}s results={len(results)}", flush=True)
+                return jsonify({
+                    "success": True,
+                    "processing_mode": "fast",
+                    "is_simple_query": True,
+                    "detected_color": simple_color,
+                    "detected_tipo": simple_tipo,
+                    "color_thresholds": {
+                        "exact": 0.75,
+                        "near": 0.60
+                    },
+                    "color_match_breakdown": {
+                        "exact": exact_count,
+                        "near": near_count,
+                        "others": others_count
+                    },
+                    "results": results,
+                    "total_results": len(results),
+                    "processing_time": round(time.time() - start_time, 3)
+                })
 
         # --- LLM Normalization (con vocabulario dinÃ¡mico del cliente) ---
         t_before_norm = time.time()

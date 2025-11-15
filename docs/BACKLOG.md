@@ -250,6 +250,217 @@ def sync_data():
 
 ---
 
+## 2) Sistema de Variantes de Colores Generadas por LLM
+**Estado**: Propuesta (Prioridad Media)
+**Fecha**: 15 Nov 2025
+
+### Problema Actual
+Actualmente las variaciones de colores (masculino/femenino/plural) están **hardcodeadas** en el código:
+```python
+def _normalize_color_for_embedding(color: str) -> str:
+    color_map = {
+        'blanca': 'blanco', 'blancos': 'blanco', 'blancas': 'blanco',
+        'negra': 'negro', 'negros': 'negro', 'negras': 'negro',
+        # ... más variaciones hardcodeadas
+    }
+```
+
+**Limitaciones**:
+- ❌ No escalable: cada nuevo color requiere agregar manualmente todas sus variaciones
+- ❌ No es multi-tenant: mismas variaciones para todos los clientes
+- ❌ No soporta otros idiomas fácilmente
+- ❌ Errores tipográficos o variaciones regionales requieren cambios en código
+
+### Solución Propuesta
+
+Crear un sistema que **pre-genere variaciones con LLM** y las almacene en BD.
+
+#### Nueva Tabla: `color_variants`
+```sql
+CREATE TABLE color_variants (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id UUID REFERENCES clients(id),
+    canonical_color VARCHAR(50) NOT NULL,     -- 'blanco', 'rojo', 'marron'
+    variant VARCHAR(50) NOT NULL,             -- 'blanca', 'blancos', 'blancas'
+    variant_type VARCHAR(20),                 -- 'masculino', 'femenino', 'plural_m', 'plural_f'
+    language VARCHAR(5) DEFAULT 'es',         -- 'es', 'en', 'pt'
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(client_id, variant, language)
+);
+
+CREATE INDEX idx_color_variants_lookup ON color_variants(client_id, variant, language);
+CREATE INDEX idx_color_variants_canonical ON color_variants(client_id, canonical_color);
+```
+
+#### Flujo de Generación (Offline)
+
+**Trigger**: Cuando se agrega/actualiza un color en `embeddings` (tipo='color'):
+
+1. **Detectar nuevo color canónico**:
+   ```python
+   # En app/blueprints/attributes.py al guardar color
+   # O en tools/populate_embeddings.py al procesar colores
+   if new_color_added:
+       generate_color_variants(client_id, color_name)
+   ```
+
+2. **Llamar LLM para generar variantes**:
+   ```python
+   def generate_color_variants(client_id: str, canonical_color: str):
+       prompt = f"""
+       Para el color '{canonical_color}' en español, genera TODAS las variaciones de género y número.
+       Formato JSON:
+       {{
+           "masculino_singular": "blanco",
+           "femenino_singular": "blanca",
+           "masculino_plural": "blancos",
+           "femenino_plural": "blancas"
+       }}
+       """
+       response = llm.complete(prompt)  # GPT-4o-mini barato
+       variants = json.loads(response)
+
+       # Guardar en BD
+       for variant_type, variant_value in variants.items():
+           ColorVariant.create(
+               client_id=client_id,
+               canonical_color=canonical_color,
+               variant=variant_value,
+               variant_type=variant_type
+           )
+   ```
+
+3. **Actualizar función de normalización**:
+   ```python
+   def _normalize_color_for_embedding(color: str, client_id: str) -> str:
+       """Consulta BD en lugar de mapa hardcodeado"""
+       variant = ColorVariant.query.filter_by(
+           client_id=client_id,
+           variant=color.lower().strip()
+       ).first()
+
+       if variant:
+           return variant.canonical_color
+
+       # Fallback: mapa hardcodeado (retrocompatibilidad)
+       return _legacy_color_map.get(color, color)
+   ```
+
+#### Admin Panel: Gestión de Variantes
+
+**Ruta**: `/admin/color-variants`
+
+**Funcionalidades**:
+- **Listar**: Todos los colores canónicos con sus variantes
+- **Regenerar**: Botón "Recalcular variantes" que:
+  - Obtiene todos los colores únicos del cliente desde `embeddings` (type='color')
+  - Llama LLM para cada uno
+  - Actualiza tabla `color_variants`
+- **Editar manual**: Permitir agregar/editar variantes específicas sin LLM
+- **Bulk import**: CSV con formato `canonical,variant,type`
+
+#### Optimización: Cache en Memoria
+
+Para evitar consultas BD en cada búsqueda:
+```python
+# Cache por cliente, TTL 1 hora
+_color_variants_cache = {}
+
+def get_color_variants(client_id: str) -> dict:
+    cache_key = f"color_variants:{client_id}"
+    if cache_key in _color_variants_cache:
+        cached, timestamp = _color_variants_cache[cache_key]
+        if time.time() - timestamp < 3600:  # 1 hora
+            return cached
+
+    # Cargar desde BD
+    variants = ColorVariant.query.filter_by(client_id=client_id).all()
+    variant_map = {v.variant: v.canonical_color for v in variants}
+    _color_variants_cache[cache_key] = (variant_map, time.time())
+    return variant_map
+```
+
+### Ventajas
+
+✅ **Escalable**: Agregar nuevo color → LLM genera variaciones automáticamente
+✅ **Multi-tenant**: Cada cliente puede tener variaciones personalizadas
+✅ **Multi-idioma**: Soportar inglés, portugués, etc. cambiando prompt
+✅ **Configurable**: Admin puede ajustar variantes manualmente si LLM falla
+✅ **Sin downtime**: Regenerar variantes no afecta búsquedas en curso
+✅ **Retrocompatible**: Fallback a mapa hardcodeado si BD falla
+
+### Costos Estimados
+
+**LLM (GPT-4o-mini)**:
+- ~20 tokens prompt + 50 tokens respuesta por color = 70 tokens total
+- Costo: $0.00001 por color (prácticamente gratis)
+- 100 colores = $0.001 USD
+
+**BD**:
+- ~4 filas por color × 100 colores = 400 filas (negligible)
+
+### Plan de Implementación
+
+**Fase 1**: Crear tabla y modelo
+- Migración SQL para tabla `color_variants`
+- Modelo SQLAlchemy `app/models/color_variant.py`
+- Script `tools/generate_color_variants.py`
+
+**Fase 2**: Integrar en pipeline
+- Modificar `_normalize_color_for_embedding()` para consultar BD
+- Hook en `populate_embeddings.py` para generar variantes
+- Cache en memoria para performance
+
+**Fase 3**: Admin panel
+- Blueprint `/admin/color-variants`
+- Vista listar/editar/regenerar
+- Botón "Recalcular todas las variantes"
+
+**Fase 4**: Testing y rollout
+- Tests unitarios de normalización
+- Validar multi-tenant (no mezclar variantes entre clientes)
+- Deploy gradual: primero solo lectura, luego generación
+
+### Criterios de Aceptación
+
+✅ Búsqueda con "camisa blanca" normaliza a "blanco" consultando `color_variants`
+✅ Búsqueda con "delantal rojo" normaliza a "rojo" consultando `color_variants`
+✅ Admin puede ver todas las variantes de un color
+✅ Admin puede regenerar variantes con 1 click
+✅ Sistema funciona sin BD (fallback a mapa hardcodeado)
+✅ Cache reduce consultas BD a <1 por minuto por cliente
+✅ Logs muestran si usó BD o fallback
+
+### Archivos a Crear/Modificar
+
+**Nuevos**:
+- `migrations/add_color_variants_table.sql`
+- `app/models/color_variant.py`
+- `tools/generate_color_variants.py`
+- `app/blueprints/color_variants_admin.py`
+- `app/templates/admin/color_variants.html`
+
+**Modificar**:
+- `app/blueprints/api.py` (función `_normalize_color_for_embedding`)
+- `tools/populate_embeddings.py` (hook post-creación de color)
+- `app/blueprints/attributes.py` (trigger al guardar color)
+
+### Estimación
+
+- **Tiempo**: 4-6 horas
+- **Prioridad**: Media (mejora calidad pero no urgente)
+- **Riesgo**: Bajo (tiene fallback robusto)
+
+### Notas Adicionales
+
+- Considerar también variantes de **tipos** (camisa/camisas, delantal/delantales)
+- LLM puede generar sinónimos (café→marrón, caramelo→marrón) en el mismo flujo
+- Evaluar usar modelo local (spaCy) en lugar de LLM para casos simples (más barato)
+- Documentar prompt de LLM para ajustes futuros
+
+---
+
 ## 2) Búsqueda de Texto en Modo Multi-Categoría (futuro)
 - Estado: Pendiente (no implementado). Mantener por ahora búsqueda de texto en una sola categoría.
 - Descripción: Permitir que la búsqueda textual recupere resultados organizados por múltiples categorías (similar al flujo visual multi-categoría), mostrando secciones por categoría candidata.

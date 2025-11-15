@@ -1015,6 +1015,15 @@
 
                 console.log('🎯 API Response:', data);
 
+                // 📊 Log del modo de procesamiento (fast vs full)
+                if (data.processing_mode) {
+                    const modeEmoji = data.processing_mode === 'fast' ? '⚡' : '🔄';
+                    console.log(`${modeEmoji} Modo de procesamiento: ${data.processing_mode.toUpperCase()}`);
+                    if (data.processing_time) {
+                        console.log(`⏱️ Tiempo total: ${data.processing_time}s`);
+                    }
+                }
+
                 // Refinement suggestions
                 if (data.needs_refinement) {
                     showRefinementSuggestions(data);
