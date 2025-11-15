@@ -111,7 +111,7 @@
                 from { opacity: 0; transform: translateY(10px); }
                 to { opacity: 1; transform: translateY(0); }
             }
-            
+
             @keyframes slideDown {
                 from { opacity: 0; transform: translate(-50%, -20px); }
                 to { opacity: 1; transform: translate(-50%, 0); }
@@ -975,7 +975,7 @@
         // Text search API con clasificación previa
         async function performTextSearch(query) {
             if (isProcessing) return;
-            
+
             try {
                 // Paso 1: Clasificar la query (fast endpoint sin costo)
                 const classifyUrl = `${config.serverUrl}/api/search/classify?q=${encodeURIComponent(query)}`;
@@ -983,15 +983,15 @@
                     headers: { 'X-API-Key': config.apiKey }
                 });
                 const classification = await classifyResp.json();
-                
+
                 console.log('🔍 Query clasificada:', classification);
-                
+
                 // Paso 2: Si es compleja, mostrar banner antes de comenzar procesamiento
                 let complexBanner = null;
                 if (classification.success && classification.classification === 'complex') {
                     complexBanner = showComplexQueryBanner();
                 }
-                
+
                 // Paso 3: Iniciar procesamiento real
                 beginProcessing('text');
 
@@ -1003,14 +1003,14 @@
                     },
                     body: JSON.stringify({ query })
                 });
-                
+
                 const data = await searchResp.json();
-                
+
                 // Ocultar banner si existía
                 if (complexBanner) {
                     complexBanner.remove();
                 }
-                
+
                 endProcessing('text');
 
                 console.log('🎯 API Response:', data);
@@ -1046,7 +1046,7 @@
                 console.error('❌ Search error:', err);
             }
         }
-        
+
         // Mostrar banner para consultas complejas
         function showComplexQueryBanner() {
             const banner = document.createElement('div');

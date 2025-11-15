@@ -2579,36 +2579,93 @@ def text_search():
                 products_query = products_query.filter(Product.category_id == detected_category.id)
                 print(f"[REQ {request_id}] FAST-PATH: filtrando por categoría {detected_category.name}", flush=True)
             products = products_query.all()
-            # Particionar por match de color en attributes['color']
-            matched = []
-            others = []
+
+            # ===================================================================
+            # FAST-PATH con similitud de color por embeddings (3 grupos)
+            # ===================================================================
+            # Precargar embedding del color solicitado
+            from app.models.embedding import Embedding
+            import json
+            import numpy as np
+
+            query_color_emb = None
+            try:
+                emb_obj = Embedding.query.filter_by(
+                    key=f"color:{simple_color}",
+                    type='color'
+                ).first()
+                if emb_obj:
+                    query_color_emb = np.array(json.loads(emb_obj.embedding), dtype=np.float32)
+            except Exception as e:
+                print(f"[REQ {request_id}] FAST-PATH: No se pudo cargar embedding de color '{simple_color}': {e}", flush=True)
+
+            # Particionar productos por similitud de color
+            exact_match = []    # color exacto o sim >= 0.75
+            near_match = []     # 0.60 <= sim < 0.75
+            others = []         # sim < 0.60 o sin color
+
             for p in products:
                 attrs = p.attributes or {}
                 prod_color = None
-                # color puede estar como string o dentro de dict
+                color_sim = 0.0
+
+                # Extraer color del producto
                 if isinstance(attrs, dict):
                     prod_color = (attrs.get('color') or attrs.get('Color') or '').lower().strip()
-                if prod_color == simple_color:
-                    matched.append(p)
+
+                # Calcular similitud si tenemos embeddings
+                if prod_color and query_color_emb is not None:
+                    try:
+                        prod_emb_obj = Embedding.query.filter_by(
+                            key=f"color:{prod_color}",
+                            type='color'
+                        ).first()
+                        if prod_emb_obj:
+                            prod_color_emb = np.array(json.loads(prod_emb_obj.embedding), dtype=np.float32)
+                            color_sim = float(np.dot(query_color_emb, prod_color_emb) /
+                                            (np.linalg.norm(query_color_emb) * np.linalg.norm(prod_color_emb)))
+                    except Exception:
+                        pass
+
+                # Clasificar en grupos
+                # Grupo 1: Exacto (literal o muy similar)
+                if prod_color == simple_color or color_sim >= 0.75:
+                    exact_match.append((p, color_sim, True))
+                # Grupo 2: Cercano (similar pero no exacto)
+                elif color_sim >= 0.60:
+                    near_match.append((p, color_sim, True))
+                # Grupo 3: Resto
                 else:
-                    others.append(p)
-            ordered = matched + others
+                    others.append((p, color_sim, False))
+
+            # Ordenar cada grupo por similitud descendente
+            exact_match.sort(key=lambda x: x[1], reverse=True)
+            near_match.sort(key=lambda x: x[1], reverse=True)
+
+            # Combinar: exactos + cercanos + resto
+            ordered = exact_match + near_match + others
             ordered = ordered[:limit]
+
             results = []
-            for prod in ordered:
+            for prod, color_sim, has_color_match in ordered:
                 results.append({
                     "id": prod.id,
                     "name": prod.name,
                     "sku": prod.sku,
                     "category": prod.category_name,
                     "price": float(prod.price) if prod.price else None,
-                    "match_color": (prod in matched),
+                    "match_color": (prod, color_sim, has_color_match) in exact_match,
+                    "near_attr_color_match": (prod, color_sim, has_color_match) in near_match,
+                    "color_sim": round(color_sim, 3) if color_sim > 0 else None,
                     "color": simple_color,
                     "image_url": prod.cloudinary_url,
                     "processing_mode": "fast"
                 })
             fp_total = time.time() - fp_start
-            print(f"[REQ {request_id}] FAST-PATH completado en {fp_total:.3f}s resultados={len(results)}", flush=True)
+            exact_count = len(exact_match)
+            near_count = len(near_match)
+            others_count = len(others)
+            print(f"[REQ {request_id}] FAST-PATH completado en {fp_total:.3f}s resultados={len(results)} (exact={exact_count}, near={near_count}, otros={others_count})", flush=True)
             print(f"[TEXT_SEARCH_MODE] fast query='{query_text}' time={fp_total:.3f}s results={len(results)}", flush=True)
             return jsonify({
                 "success": True,
@@ -2616,6 +2673,15 @@ def text_search():
                 "is_simple_query": True,
                 "detected_color": simple_color,
                 "detected_tipo": simple_tipo,
+                "color_thresholds": {
+                    "exact": 0.75,
+                    "near": 0.60
+                },
+                "color_match_breakdown": {
+                    "exact": exact_count,
+                    "near": near_count,
+                    "others": others_count
+                },
                 "results": results,
                 "total_results": len(results),
                 "processing_time": round(time.time() - start_time, 3)
