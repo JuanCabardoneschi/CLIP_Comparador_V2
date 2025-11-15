@@ -113,14 +113,20 @@ def _start_minilm_cleanup_thread_once():
 def get_model():
     """Cargar modelo MiniLM con singleton y auto-descarga por inactividad (mismo sistema que CLIP)."""
     global _model
+    import time
+    t_start = time.time()
 
     # Asegurar hilo de limpieza iniciado una vez
     _start_minilm_cleanup_thread_once()
 
     with _model_lock:
         if _model is None:
+            print(f"🔄 [MiniLM] Cargando modelo {MODEL_NAME} desde disco...", flush=True)
             _model = SentenceTransformer(MODEL_NAME)
             _model.loaded_at = _now_ts()  # Marcar timestamp de carga
+            print(f"✅ [MiniLM] Modelo cargado en {time.time()-t_start:.2f}s", flush=True)
+        else:
+            print(f"♻️ [MiniLM] Usando modelo YA CARGADO en memoria (singleton activo)", flush=True)
         # Marcar uso cada vez que se obtiene el modelo
         _touch_model_last_used()
         return _model
@@ -616,11 +622,10 @@ def normalize_query(query: str, client_id: int = None) -> dict:
     model = get_model()
     print(f"🔍 [normalize_query] get_model() completado en {time.time()-t0:.2f}s")
 
-    print(f"🔍 [normalize_query] Llamando model.encode() en {time.time()-t0:.2f}s")
+    print(f"🔍 [normalize_query] Llamando model.encode() para '{query_lower}' en {time.time()-t0:.2f}s")
+    t_encode_start = time.time()
     emb = model.encode(query_lower)
-    print(f"🔍 [normalize_query] model.encode() completado en {time.time()-t0:.2f}s")
-
-    # Obtener vocabulario dinámico del cliente
+    print(f"🔍 [normalize_query] model.encode() completado en {time.time()-t0:.2f}s (encode tomó {time.time()-t_encode_start:.2f}s)")
     print(f"🔍 [normalize_query] Llamando _extract_client_vocabulary() en {time.time()-t0:.2f}s")
     if client_id:
         vocab = _extract_client_vocabulary(client_id)
