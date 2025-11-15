@@ -369,15 +369,39 @@ def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: flo
     # 🔥 OPTIMIZACIÓN: Leer embeddings pre-calculados desde BD
     from app.models.embedding import Embedding
     from app import db
+    from sqlalchemy import text
     import json
 
     # Buscar embeddings de vocabulario en BD
     vocab_lower = [v.lower() for v in vocabulary]
     vocab_embeddings = {}
 
+    # 1) Intentar obtener desde client_vocabulary_cache.color_embeddings (específico por cliente)
+    try:
+        row = db.session.execute(
+            text("""
+                SELECT vocabulary
+                FROM client_vocabulary_cache
+                WHERE client_id = :cid
+            """),
+            {"cid": str(client_id)}
+        ).fetchone()
+        if row and row[0]:
+            vocab_row = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+            color_embs = vocab_row.get('color_embeddings') or {}
+            for term in vocab_lower:
+                if term in color_embs:
+                    try:
+                        vocab_embeddings[term] = np.array(color_embs[term], dtype=np.float32)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    # 2) Completar faltantes leyendo desde tabla Embedding
     # Query en batch para todos los términos del vocabulario
     db_embeddings = Embedding.query.filter(
-        Embedding.key.in_([f"vocab:{term}" for term in vocab_lower])
+        Embedding.key.in_([f"vocab:{term}" for term in vocab_lower if term not in vocab_embeddings])
     ).all()
 
     for emb_obj in db_embeddings:
@@ -446,15 +470,39 @@ def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, thres
     # 🔥 OPTIMIZACIÓN: Leer embeddings pre-calculados desde BD
     from app.models.embedding import Embedding
     from app import db
+    from sqlalchemy import text
     import json
 
     # Buscar embeddings de vocabulario en BD
     vocab_lower = [v.lower() for v in vocabulary]
     vocab_embeddings = {}
 
+    # 1) Intentar obtener desde client_vocabulary_cache.color_embeddings (específico por cliente)
+    try:
+        row = db.session.execute(
+            text("""
+                SELECT vocabulary
+                FROM client_vocabulary_cache
+                WHERE client_id = :cid
+            """),
+            {"cid": str(client_id)}
+        ).fetchone()
+        if row and row[0]:
+            vocab_row = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+            color_embs = vocab_row.get('color_embeddings') or {}
+            for term in vocab_lower:
+                if term in color_embs:
+                    try:
+                        vocab_embeddings[term] = np.array(color_embs[term], dtype=np.float32)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    # 2) Completar faltantes leyendo desde tabla Embedding
     # Query en batch para todos los términos del vocabulario
     db_embeddings = Embedding.query.filter(
-        Embedding.key.in_([f"vocab:{term}" for term in vocab_lower])
+        Embedding.key.in_([f"vocab:{term}" for term in vocab_lower if term not in vocab_embeddings])
     ).all()
 
     for emb_obj in db_embeddings:
