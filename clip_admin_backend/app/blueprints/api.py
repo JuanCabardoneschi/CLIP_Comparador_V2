@@ -2885,6 +2885,42 @@ def text_search():
         print(f"[REQ {request_id}] VECTORIZED: computed {N} similarities in {_sim_elapsed:.3f}s", flush=True)
 
         # ========================================================================
+        # PRE-CARGAR COLOR EMBEDDINGS (evitar N+1 queries en loop)
+        # ========================================================================
+        _preload_start = _t.time()
+        color_embeddings_map = {}  # {color_lower: np.array}
+
+        if detected_color:
+            # Extraer todos los colores únicos de productos
+            unique_colors = set()
+            unique_colors.add(detected_color.lower())
+
+            for prod in valid_products:
+                if prod.attributes:
+                    for attr_key, attr_value in prod.attributes.items():
+                        if attr_key and attr_key.lower() in ['color', 'colour', 'color_principal', 'color_secundario']:
+                            if isinstance(attr_value, str):
+                                unique_colors.add(attr_value.lower())
+                            elif isinstance(attr_value, list):
+                                for v in attr_value:
+                                    if v:
+                                        unique_colors.add(str(v).lower())
+
+            # Batch query de embeddings
+            if unique_colors:
+                color_keys = [f"color:{c}" for c in unique_colors]
+                emb_objects = Embedding.query.filter(Embedding.key.in_(color_keys), Embedding.type == 'color').all()
+
+                for emb in emb_objects:
+                    color_name = emb.key.replace('color:', '')
+                    try:
+                        color_embeddings_map[color_name] = np.array(json.loads(emb.embedding), dtype=np.float32)
+                    except Exception:
+                        pass
+
+                print(f"[REQ {request_id}] PRELOAD: {len(color_embeddings_map)}/{len(unique_colors)} color embeddings in {(_t.time()-_preload_start):.3f}s", flush=True)
+
+        # ========================================================================
         # CÁLCULO DE BOOSTS (aún requiere loop pero sin parsing/dot-product)
         # ========================================================================
         _boost_start = _t.time()
@@ -2894,16 +2930,19 @@ def text_search():
         for idx, (prod, clip_similarity) in enumerate(zip(valid_products, clip_similarities)):
             if idx % 10 == 0:
                 print(f"[REQ {request_id}] BOOST_LOOP: processing product {idx}/{N}", flush=True)
-            # Boost por atributos
-            attr_boost = _calculate_attribute_match(query_lower, prod.attributes, prod.category_name, detected_color, detected_tipo)
+            # Boost por atributos (pasamos el mapa de embeddings precargados)
+            attr_boost = _calculate_attribute_match(
+                query_lower, prod.attributes, prod.category_name,
+                detected_color, detected_tipo, color_embeddings_map
+            )
 
             # Boost por nombre y tags
             name_boost = _calculate_name_match(query_lower, prod.name, getattr(prod, 'sku', None))
             tag_boost = _calculate_tag_match(query_lower, prod.tags)
             tag_name_boost = min(1.0, tag_boost + name_boost)
 
-            # Similitud de color
-            color_sim = _best_color_similarity(detected_color, prod.attributes) if detected_color else 0.0
+            # Similitud de color (pasamos el mapa precargado)
+            color_sim = _best_color_similarity(detected_color, prod.attributes, color_embeddings_map) if detected_color else 0.0
 
             # Color group y priority
             if detected_color:
@@ -3224,7 +3263,9 @@ def _translate_query_to_english(query: str) -> str:
 ## normalize_color fue extraÃ­do a app.utils.colors.normalize_color
 
 
-def _calculate_attribute_match(query_lower: str, attributes: dict, category: str = None, detected_color: str = None, detected_tipo: str = None) -> float:
+def _calculate_attribute_match(query_lower: str, attributes: dict, category: str = None, 
+                               detected_color: str = None, detected_tipo: str = None, 
+                               color_embeddings_map: dict = None) -> float:
     """
     Calcula boost por matching de atributos JSONB + categorÃ­a.
 
@@ -3240,10 +3281,14 @@ def _calculate_attribute_match(query_lower: str, attributes: dict, category: str
         category: Nombre de categorÃ­a del producto
         detected_color: Color detectado por LLM normalizer
         detected_tipo: Tipo detectado por LLM normalizer
+        color_embeddings_map: Mapa precargado de embeddings {color_lower: np.array}
     """
     score = 0.0
     other_attr_score = 0.0  # Limitar contribuciÃ³n de atributos NO color
     query_words = set(query_lower.split())
+    
+    # Usar mapa precargado o dict vacío si no se provee
+    color_emb_map = color_embeddings_map or {}
 
     # 1. Match de categorÃ­a (importante para tipo de producto)
     if category:
@@ -3294,9 +3339,9 @@ def _calculate_attribute_match(query_lower: str, attributes: dict, category: str
 
                         # SOFT-BOOST: aunque no supere el umbral, favorecer el color más cercano
                         try:
-                            # 🔥 USAR CACHÉ DE EMBEDDINGS en lugar de normalize_query()
-                            ea = _get_color_embedding(detected_color)
-                            eb = _get_color_embedding(v)
+                            # 🔥 USAR MAPA PRECARGADO en lugar de query SQL
+                            ea = color_emb_map.get(detected_color.lower())
+                            eb = color_emb_map.get(v.lower())
                             if ea is not None and eb is not None:
                                 sim = float(np.dot(ea, eb) / (np.linalg.norm(ea) * np.linalg.norm(eb)))
                                 # Escalar hasta +0.20 cuando se acerca al umbral 0.75
@@ -3339,21 +3384,29 @@ def _calculate_attribute_match(query_lower: str, attributes: dict, category: str
     return min(score, 1.0)  # Cap a 1.0
 
 
-def _best_color_similarity(detected_color: str, attributes: dict) -> float:
+def _best_color_similarity(detected_color: str, attributes: dict, color_embeddings_map: dict = None) -> float:
     """
     Calcula la mejor similitud semÃ¡ntica (coseno) entre el color detectado por LLM
     y los valores de atributos de color del producto. Devuelve un valor en [0,1].
 
     Se usa como desempate/ranking cuando no hay match por encima del umbral.
+    
+    Args:
+        detected_color: Color detectado por LLM normalizer
+        attributes: Atributos JSONB del producto
+        color_embeddings_map: Mapa precargado de embeddings {color_lower: np.array}
     """
     if not detected_color or not attributes:
         return 0.0
 
     try:
         import numpy as np
+        
+        # Usar mapa precargado o dict vacío
+        color_emb_map = color_embeddings_map or {}
 
-        # 🔥 USAR CACHÉ DE EMBEDDINGS en lugar de normalize_query()
-        ea = _get_color_embedding(detected_color)
+        # 🔥 USAR MAPA PRECARGADO en lugar de query SQL
+        ea = color_emb_map.get(detected_color.lower())
         if ea is None:
             return 0.0
 
@@ -3373,8 +3426,8 @@ def _best_color_similarity(detected_color: str, attributes: dict) -> float:
         for attr_key, attr_value in attributes.items():
             if attr_key and attr_key.lower() in ['color', 'colour', 'color_principal', 'color_secundario']:
                 for v in _to_str_list(attr_value):
-                    # 🔥 USAR CACHÉ DE EMBEDDINGS en lugar de normalize_query()
-                    eb = _get_color_embedding(str(v))
+                    # 🔥 USAR MAPA PRECARGADO en lugar de query SQL
+                    eb = color_emb_map.get(str(v).lower())
                     if eb is not None:
                         sim = float(np.dot(ea, eb) / (np.linalg.norm(ea) * np.linalg.norm(eb)))
                         if sim > best_sim:

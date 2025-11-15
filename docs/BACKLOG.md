@@ -1,13 +1,13 @@
 # Backlog de Mejoras
 
 ## 🔄 1) Sistema de Recálculo Automático de Embeddings de Vocabulario [EN PROCESO]
-**Estado**: En Proceso (Prioridad Alta)  
-**Fecha inicio**: 15 Nov 2025  
+**Estado**: En Proceso (Prioridad Alta)
+**Fecha inicio**: 15 Nov 2025
 **Responsable**: Implementación pendiente
 
 ### Contexto y Problema Identificado
 
-Durante la optimización de performance del endpoint `/api/search/text` (que estaba tardando 80 segundos en Railway), se implementó un sistema de **caché de embeddings de vocabulario** en la tabla `embeddings` de PostgreSQL. 
+Durante la optimización de performance del endpoint `/api/search/text` (que estaba tardando 80 segundos en Railway), se implementó un sistema de **caché de embeddings de vocabulario** en la tabla `embeddings` de PostgreSQL.
 
 **El problema original**:
 - La función `normalize_query()` en `llm_query_normalizer.py` calculaba embeddings en tiempo real para ~84 términos de vocabulario en **cada request**
@@ -137,14 +137,14 @@ def sync_data():
 
 ### Criterios de Aceptación
 
-✅ Cuando se crea/edita/elimina una categoría → vocabulario se marca para refresh  
-✅ Cuando se modifica atributo de color → vocabulario se marca para refresh  
-✅ Cuando se crean/editan productos con tags → vocabulario se marca para refresh  
-✅ Cuando se procesan embeddings CLIP → vocabulario se marca para refresh  
-✅ Función `populate_vocabulary_embeddings()` puede ejecutarse para un solo cliente  
-✅ Background worker procesa cola de refresh periódicamente  
-✅ Logs claros cuando se detecta vocabulario desactualizado  
-✅ Fallback on-the-fly sigue funcionando si refresh falla  
+✅ Cuando se crea/edita/elimina una categoría → vocabulario se marca para refresh
+✅ Cuando se modifica atributo de color → vocabulario se marca para refresh
+✅ Cuando se crean/editan productos con tags → vocabulario se marca para refresh
+✅ Cuando se procesan embeddings CLIP → vocabulario se marca para refresh
+✅ Función `populate_vocabulary_embeddings()` puede ejecutarse para un solo cliente
+✅ Background worker procesa cola de refresh periódicamente
+✅ Logs claros cuando se detecta vocabulario desactualizado
+✅ Fallback on-the-fly sigue funcionando si refresh falla
 
 ### Archivos a Modificar
 
