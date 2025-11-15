@@ -2483,7 +2483,10 @@ def text_search():
         print(f"[REQ {request_id}] TEXT SEARCH: Query='{query_text}' Client={client.name} Limit={limit}", flush=True)
 
         # --- LLM Normalization (con vocabulario dinÃ¡mico del cliente) ---
+        t_before_norm = time.time()
+        print(f"[REQ {request_id}] ⏱️ ANTES normalize_query: t={time.time()-start_time:.3f}s", flush=True)
         llm_norm = normalize_query(query_text, client_id=client.id)
+        print(f"[REQ {request_id}] ⏱️ DESPUÉS normalize_query: t={time.time()-start_time:.3f}s (normalize tomó {time.time()-t_before_norm:.3f}s)", flush=True)
         print(f"[REQ {request_id}] DEBUG: normalize_query completado", flush=True)
         print(f"[REQ {request_id}] LLM Normalizer: tipo={llm_norm.get('tipo')}, color={llm_norm.get('color')}, contexto={llm_norm.get('contexto')}")
         t_norm_end = time.time()
