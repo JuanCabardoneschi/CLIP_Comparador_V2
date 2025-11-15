@@ -2427,6 +2427,9 @@ def text_search():
     import uuid
     start_time = time.time()
     request_id = str(uuid.uuid4())
+    # Contenedor de métricas por fase
+    t_norm_end = t_clip_model_end = t_text_embed_end = t_category_detection_end = t_sql_end = 0.0
+    original_N = final_N = 0
 
     try:
         # Log temprano para verificar llegada de requests incluso si falla la API Key
@@ -2482,6 +2485,7 @@ def text_search():
         llm_norm = normalize_query(query_text, client_id=client.id)
         print(f"[REQ {request_id}] DEBUG: normalize_query completado", flush=True)
         print(f"[REQ {request_id}] LLM Normalizer: tipo={llm_norm.get('tipo')}, color={llm_norm.get('color')}, contexto={llm_norm.get('contexto')}")
+        t_norm_end = time.time()
 
         # Extraer campos del normalizador para usar en boosts
         detected_color = llm_norm.get('color', '').lower() if llm_norm.get('color') else None
@@ -2520,6 +2524,7 @@ def text_search():
         model, processor = get_clip_model()
         print(f"[REQ {request_id}] DEBUG: get_clip_model listo en {(_t.time()-_t0):.2f}s", flush=True)
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        t_clip_model_end = time.time()
 
         _t1 = _t.time()
         with torch.no_grad():
@@ -2528,6 +2533,7 @@ def text_search():
             text_features = text_features / text_features.norm(dim=-1, keepdim=True)
             query_embedding = text_features.cpu().numpy()[0]
         print(f"[REQ {request_id}] DEBUG: embedding texto generado en {(_t.time()-_t1):.2f}s", flush=True)
+        t_text_embed_end = time.time()
 
         # Usar query expandido para matching de atributos tambiÃ©n
         query_lower = expanded_query.lower()
@@ -2721,6 +2727,9 @@ def text_search():
                     "processing_time": round(time.time() - start_time, 3)
                 }), 404
 
+        # Fin detección de categoría (tokens + LLM)
+        t_category_detection_end = time.time()
+
         # --- Enriquecimiento opcional de query con tags inferidos (feature flag) ---
         try:
             fusion_enabled = system_config.get('search', 'enable_inferred_tags', False)
@@ -2800,6 +2809,7 @@ def text_search():
 
         products = products_query.all()
         print(f"[REQ {request_id}] DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
+        t_sql_end = time.time()
 
         # 🚫 NO FALLBACK GLOBAL: Si categoría detectada está vacía, retornar error 404
         if detected_category and len(products) == 0:
@@ -2884,6 +2894,58 @@ def text_search():
         _sim_elapsed = _t.time() - _sim_start
         print(f"[REQ {request_id}] VECTORIZED: computed {N} similarities in {_sim_elapsed:.3f}s", flush=True)
 
+        # =============================================================
+        # TOP-K TEMPRANO (memoria) PARA REDUCIR COSTO DEL BOOST LOOP
+        # =============================================================
+        # --------------------------------------------------------------------
+        # [BACKLOG OPCIONAL] pgvector / Indexado en BD
+        # Contexto: Con los volúmenes actuales (< ~200 productos activos por cliente)
+        # el filtrado TOP-K en memoria + embeddings en JSON/text es suficiente y
+        # mantiene la latencia muy baja (el parsing y cálculo vectorizado es << 0.2s).
+        # Escenario futuro: cuando se escale a miles (1k+) de productos por cliente o
+        # decenas de miles globales multi‑tenant, convendrá mover embeddings a una
+        # columna vector (pgvector) y ejecutar el TOP-K directamente en PostgreSQL para
+        # reducir transferencia y parsing.
+        # Pasos estimados para futura migración:
+        #   1. ALTER TABLE images ADD COLUMN clip_embedding_vec vector(512);
+        #   2. Backfill: UPDATE images SET clip_embedding_vec = to_vector(JSON/array);
+        #   3. Crear índice apropiado (ej: ivfflat u hnsw) según patrón de consultas:
+        #        CREATE INDEX ON images USING ivfflat (clip_embedding_vec vector_cosine_ops)
+        #        WITH (lists = 100);
+        #   4. Ajustar query:
+        #        SELECT ... FROM images
+        #        WHERE product_id IN (...) AND clip_embedding_vec IS NOT NULL
+        #        ORDER BY clip_embedding_vec <-> :query_embedding
+        #        LIMIT :topk_limit;
+        #   5. Medir latencia y comparar: parsing_embeddings + similarities actuales
+        #        vs tiempo de ejecución del ORDER BY <-> LIMIT en PostgreSQL.
+        # Criterio de activación: cuando parse_embeddings > 0.15s de forma consistente
+        # o N promedio por cliente supere ~1000 y latencia total se acerque a >1.5s.
+        # Nota: Mantener esta sección como referencia; no implementar hasta cumplir
+        # condiciones anteriores.
+        # --------------------------------------------------------------------
+        # Recuperar topk_limit con fallback seguro (algunas implementaciones de system_config.get lanzan excepción si la clave no existe)
+        try:
+            topk_limit_cfg = system_config.get('search', 'topk_limit')  # sin valor por defecto para evitar error interno
+            topk_limit = int(topk_limit_cfg) if topk_limit_cfg is not None else 300
+        except Exception:
+            topk_limit = 300
+        original_N = N
+        topk_elapsed = 0.0
+        if N > topk_limit:
+            _topk_start = _t.time()
+            # Selección parcial sin ordenar todo el array completo (argpartition) y luego orden descendente dentro del Top-K
+            top_indices = np.argpartition(clip_similarities, -topk_limit)[-topk_limit:]
+            top_indices = top_indices[np.argsort(clip_similarities[top_indices])[::-1]]
+            E = E[top_indices]
+            clip_similarities = clip_similarities[top_indices]
+            valid_products = [valid_products[i] for i in top_indices]
+            N = len(valid_products)
+            topk_elapsed = _t.time() - _topk_start
+            print(f"[REQ {request_id}] TOPK: reducido de {original_N} a {N} en {topk_elapsed:.3f}s (limite={topk_limit})", flush=True)
+        else:
+            print(f"[REQ {request_id}] TOPK: sin reducción (N={N} ≤ limite={topk_limit})", flush=True)
+
         # ========================================================================
         # PRE-CARGAR COLOR EMBEDDINGS (evitar N+1 queries en loop)
         # ========================================================================
@@ -2928,8 +2990,6 @@ def text_search():
         print(f"[REQ {request_id}] BOOST_LOOP: starting for {N} products", flush=True)
 
         for idx, (prod, clip_similarity) in enumerate(zip(valid_products, clip_similarities)):
-            if idx % 10 == 0:
-                print(f"[REQ {request_id}] BOOST_LOOP: processing product {idx}/{N}", flush=True)
             # Boost por atributos (pasamos el mapa de embeddings precargados)
             attr_boost = _calculate_attribute_match(
                 query_lower, prod.attributes, prod.category_name,
@@ -3225,6 +3285,33 @@ def text_search():
             pass
         print(f"[REQ {request_id}] DEBUG: respuesta JSON construida en {(_t.time()-_resp_t):.2f}s | post-SQL total={( _t.time()-_post_sql_t):.2f}s | query='{query_text}'", flush=True)
         print(f"[TEXT_SEARCH] END OK {len(results)} results match_quality={match_quality} time={round(time.time()-start_time,3)}s")
+
+        # ================= METRICS JSON CONSOLIDADO =====================
+        try:
+            metrics_payload = {
+                "request_id": request_id,
+                "query": query_text,
+                "original_N": original_N,
+                "final_N": N,
+                "topk_limit": topk_limit,
+                "times": {
+                    "normalize": round(t_norm_end - start_time, 3),
+                    "clip_model": round(t_clip_model_end - t_norm_end, 3),
+                    "text_embed": round(t_text_embed_end - t_clip_model_end, 3),
+                    "category_detect": round(t_category_detection_end - t_text_embed_end, 3),
+                    "sql_products": round(t_sql_end - t_category_detection_end, 3),
+                    "parse_embeddings": round(_parse_elapsed, 3),
+                    "similarities": round(_sim_elapsed, 3),
+                    "topk": round(topk_elapsed, 3),
+                    "preload_colors": round(((_t.time()-_preload_start) if detected_color else 0.0), 3),
+                    "boost_loop": round(_boost_elapsed, 3),
+                    "sort": round(_sort_elapsed, 3),
+                    "total": round(elapsed_time, 3)
+                }
+            }
+            print(f"[TEXT_SEARCH_METRICS] {json.dumps(metrics_payload, ensure_ascii=False)}", flush=True)
+        except Exception as _m_err:
+            print(f"[TEXT_SEARCH_METRICS] ERROR serializando métricas: {_m_err}")
         return resp
 
     except Exception as e:
@@ -3262,6 +3349,10 @@ def _translate_query_to_english(query: str) -> str:
 
 ## normalize_color fue extraÃ­do a app.utils.colors.normalize_color
 
+# Caché ligera en memoria POR PROCESO para evitar recomputar embeddings repetidos
+# durante una única request en llamadas a colors_are_similar dentro de _calculate_attribute_match.
+# Clave: ('detected', color_a, color_b) o ('query', word, color_b)
+_color_sim_cache = {}
 
 def _calculate_attribute_match(query_lower: str, attributes: dict, category: str = None,
                                detected_color: str = None, detected_tipo: str = None,
@@ -3329,12 +3420,17 @@ def _calculate_attribute_match(query_lower: str, attributes: dict, category: str
                 if is_color_attr:
                     # PRIORIDAD 1: Usar color del LLM normalizer si estÃ¡ disponible
                     if detected_color:
-                        # Usar colors_are_similar() para comparaciÃ³n semÃ¡ntica (embeddings)
+                        # Usar colors_are_similar() para comparaciÃ³n semÃ¡ntica (embeddings) con memoización
                         from app.utils.colors import colors_are_similar
+                        cache_key = ('detected', detected_color.lower(), v_lower)
+                        sim_bool = _color_sim_cache.get(cache_key)
+                        if sim_bool is None:
+                            sim_bool = colors_are_similar(detected_color, v, threshold=0.75)
+                            _color_sim_cache[cache_key] = sim_bool
 
-                        if colors_are_similar(detected_color, v, threshold=0.75):
+                        if sim_bool:
                             score += 0.50  # Boost fuerte por color del LLM
-                            print(f"  ðŸŽ¨ COLOR MATCH (LLM Semantic): '{detected_color}' â‰ˆ '{v}' (+0.50)")
+                            print(f"  🎨 COLOR MATCH (LLM Semantic CACHED): '{detected_color}' ≈ '{v}' (+0.50)")
                             break  # Solo una vez
 
                         # SOFT-BOOST: aunque no supere el umbral, favorecer el color más cercano
@@ -3358,9 +3454,14 @@ def _calculate_attribute_match(query_lower: str, attributes: dict, category: str
                     for word in query_words:
                         if len(word) >= 3:  # Solo palabras significativas
                             from app.utils.colors import colors_are_similar
-                            if colors_are_similar(word, v, threshold=0.75):
+                            cache_key = ('query', word.lower(), v_lower)
+                            sim_bool = _color_sim_cache.get(cache_key)
+                            if sim_bool is None:
+                                sim_bool = colors_are_similar(word, v, threshold=0.75)
+                                _color_sim_cache[cache_key] = sim_bool
+                            if sim_bool:
                                 score += 0.40  # Match de color por palabra
-                                print(f"  ðŸŽ¨ COLOR MATCH (Query Semantic): '{word}' â‰ˆ '{v}' (+0.40)")
+                                print(f"  🎨 COLOR MATCH (Query Semantic CACHED): '{word}' ≈ '{v}' (+0.40)")
                                 matched_color = True
                                 break
 
