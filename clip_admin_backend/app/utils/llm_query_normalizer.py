@@ -606,13 +606,25 @@ def normalize_query(query: str, client_id: int = None) -> dict:
     Returns:
         dict: {'tipo': ..., 'color': ..., 'contexto': [...], 'query': ..., 'embedding': [...]}
     """
+    import time
+    t0 = time.time()
+    print(f"🔍 [normalize_query] INICIO para '{query}'")
+
     query_lower = query.lower()
+    print(f"🔍 [normalize_query] Llamando get_model() en {time.time()-t0:.2f}s")
+
     model = get_model()
+    print(f"🔍 [normalize_query] get_model() completado en {time.time()-t0:.2f}s")
+
+    print(f"🔍 [normalize_query] Llamando model.encode() en {time.time()-t0:.2f}s")
     emb = model.encode(query_lower)
+    print(f"🔍 [normalize_query] model.encode() completado en {time.time()-t0:.2f}s")
 
     # Obtener vocabulario dinámico del cliente
+    print(f"🔍 [normalize_query] Llamando _extract_client_vocabulary() en {time.time()-t0:.2f}s")
     if client_id:
         vocab = _extract_client_vocabulary(client_id)
+        print(f"🔍 [normalize_query] _extract_client_vocabulary() completado en {time.time()-t0:.2f}s")
         colores_db = vocab['colores']
         tipos = vocab['tipos']
         contextos = vocab['contextos']
