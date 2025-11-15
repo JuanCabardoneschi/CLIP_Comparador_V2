@@ -421,13 +421,20 @@ if __name__ == "__main__":
         )
 
         if should_preload:
-            print("⚡ Precargando modelo CLIP al iniciar (modo producción)")
+            print("⚡ Precargando modelos al iniciar (modo producción)")
             from app.blueprints.embeddings import get_clip_model
+            from app.utils.llm_query_normalizer import get_model as get_minilm_model
+
+            # Precargar CLIP (búsqueda visual)
             get_clip_model()
             print("✅ CLIP precargado correctamente")
+
+            # Precargar MiniLM (normalización de texto)
+            get_minilm_model()
+            print("✅ MiniLM precargado correctamente")
         else:
             # Lazy load en desarrollo
-            print("⚡ CLIP se cargará al primer uso (lazy loading)")
+            print("⚡ Modelos se cargarán al primer uso (lazy loading)")
     except Exception as e:
         # En caso de fallo de precarga, continuar para no bloquear el arranque
         print(f"❌ Error precargando CLIP (continuando con lazy load): {e}")

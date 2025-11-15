@@ -8,20 +8,122 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import re
 import time
+import json
+import threading
+import os
 
 # Modelo liviano multilingüe
 MODEL_NAME = 'paraphrase-multilingual-MiniLM-L12-v2'
 _model = None
+_model_last_used_ts = None  # Timestamp de último uso
+_model_cleanup_thread_started = False
+_model_lock = threading.Lock()
 
 # Caché de vocabulario por cliente (evita queries repetidas)
 _VOCABULARY_CACHE = {}
 _VOCABULARY_CACHE_TTL = 300  # 5 minutos de TTL
 
+
+def _now_ts() -> float:
+    return time.time()
+
+
+def _touch_model_last_used():
+    """Marca el último uso del modelo MiniLM"""
+    global _model_last_used_ts
+    _model_last_used_ts = _now_ts()
+
+
+def _get_minilm_idle_timeout_seconds() -> int:
+    """
+    Obtiene el timeout de inactividad para descargar MiniLM.
+    Usa el MISMO timeout que CLIP para consistencia.
+    
+    Prioridad:
+    1) system_config.json: clip.idle_timeout_minutes
+    2) Env var CLIP_IDLE_TIMEOUT_MINUTES
+    3) Env var CLIP_IDLE_TIMEOUT_SECONDS
+    4) Default: 120 minutos (2 horas)
+    """
+    try:
+        from app.utils.system_config import system_config
+        minutes = system_config.get('clip', 'idle_timeout_minutes', 120)
+        return int(minutes) * 60
+    except Exception:
+        pass
+
+    # Variables de entorno
+    minutes_env = os.getenv('CLIP_IDLE_TIMEOUT_MINUTES')
+    if minutes_env and minutes_env.isdigit():
+        return int(minutes_env) * 60
+
+    seconds_env = os.getenv('CLIP_IDLE_TIMEOUT_SECONDS')
+    if seconds_env and seconds_env.isdigit():
+        return int(seconds_env)
+
+    # Default: 2 horas
+    return 120 * 60
+
+
+def _start_minilm_cleanup_thread_once():
+    """Inicia un hilo daemon que descarga MiniLM tras inactividad (mismo sistema que CLIP)."""
+    global _model_cleanup_thread_started
+    if _model_cleanup_thread_started:
+        return
+
+    _model_cleanup_thread_started = True
+    import logging
+    logging.getLogger("minilm_model").info("[MiniLM] Hilo de limpieza iniciado")
+
+    def _worker():
+        global _model, _model_last_used_ts
+        while True:
+            try:
+                idle_timeout = _get_minilm_idle_timeout_seconds()
+                check_every = 300  # 5 minutos
+                time.sleep(check_every)
+                with _model_lock:
+                    if _model is None:
+                        continue
+                    now = _now_ts()
+                    if _model_last_used_ts is None:
+                        # Nunca usado desde carga: descargar si pasó el timeout
+                        if hasattr(_model, 'loaded_at'):
+                            idle_for = now - _model.loaded_at
+                        else:
+                            idle_for = idle_timeout + 1
+                        if idle_for >= idle_timeout:
+                            _model = None
+                            print(f"🧹 MiniLM descargado por inactividad tras arranque (sin uso, timeout {idle_timeout}s)")
+                            logging.getLogger("minilm_model").info(f"[MiniLM] Modelo descargado de memoria por inactividad tras arranque (timeout {idle_timeout}s)")
+                        continue
+                    idle_for = now - _model_last_used_ts
+                    if idle_for >= idle_timeout:
+                        _model = None
+                        print(f"🧹 MiniLM descargado por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
+                        logging.getLogger("minilm_model").info(f"[MiniLM] Modelo descargado de memoria por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
+            except Exception as _e:
+                logging.getLogger("minilm_model").error(f"[MiniLM] Error en hilo de limpieza: {_e}")
+                continue
+
+    t = threading.Thread(target=_worker, name="minilm-idle-cleanup", daemon=True)
+    t.start()
+
+
 def get_model():
+    """Cargar modelo MiniLM con singleton y auto-descarga por inactividad (mismo sistema que CLIP)."""
     global _model
-    if _model is None:
-        _model = SentenceTransformer(MODEL_NAME)
-    return _model
+    
+    # Asegurar hilo de limpieza iniciado una vez
+    _start_minilm_cleanup_thread_once()
+    
+    with _model_lock:
+        if _model is None:
+            _model = SentenceTransformer(MODEL_NAME)
+            _model.loaded_at = _now_ts()  # Marcar timestamp de carga
+        # Marcar uso cada vez que se obtiene el modelo
+        _touch_model_last_used()
+        return _model
 
 
 def _extract_client_vocabulary(client_id: int) -> dict:
@@ -38,12 +140,44 @@ def _extract_client_vocabulary(client_id: int) -> dict:
         if time.time() - cached_time < _VOCABULARY_CACHE_TTL:
             print(f"📦 VOCAB CACHE HIT: {client_id}")
             return cached_vocab
-    
+
     from app import db
     from app.models.category import Category
     from app.models.product import Product
     from app.models.product_attribute_config import ProductAttributeConfig
     from sqlalchemy import text, func
+
+    # 0) Intentar leer desde client_vocabulary_cache (DB cache persistente)
+    try:
+        row = db.session.execute(
+            text("""
+                SELECT vocabulary
+                FROM client_vocabulary_cache
+                WHERE client_id = :client_id
+            """),
+            {"client_id": str(client_id)}
+        ).fetchone()
+
+        if row and row[0]:
+            vocab_value = row[0]
+            if isinstance(vocab_value, str):
+                try:
+                    vocab_value = json.loads(vocab_value)
+                except Exception:
+                    vocab_value = None
+
+            if isinstance(vocab_value, dict):
+                # Normalizar a listas seguras
+                result = {
+                    'colores': list(vocab_value.get('colores', []) or []),
+                    'tipos': list(vocab_value.get('tipos', []) or []),
+                    'contextos': list(vocab_value.get('contextos', []) or []),
+                }
+                _VOCABULARY_CACHE[cache_key] = (result, time.time())
+                print(f"💾 VOCAB (DB cache) cargado: {client_id} → c={len(result['colores'])} t={len(result['tipos'])} x={len(result['contextos'])}")
+                return result
+    except Exception as e:
+        print(f"⚠️ Error leyendo client_vocabulary_cache: {e}")
 
     vocabulary = {
         'colores_especificos': set(),  # Colores de productos (azul, rojo, violeta)
@@ -166,12 +300,11 @@ def _extract_client_vocabulary(client_id: int) -> dict:
         'tipos': list(vocabulary['tipos']),
         'contextos': list(vocabulary['contextos'])
     }
-    
-    # Guardar en caché
-    cache_key = f"vocab_{client_id}"
+
+    # Guardar en caché (fallback dinámico si no existía en DB cache)
     _VOCABULARY_CACHE[cache_key] = (result, time.time())
-    print(f"💾 VOCAB CACHED: {client_id} ({len(result['colores'])} colors, {len(result['tipos'])} tipos, {len(result['contextos'])} contextos)")
-    
+    print(f"💾 VOCAB CACHED (fallback dinámico): {client_id} ({len(result['colores'])} colors, {len(result['tipos'])} tipos, {len(result['contextos'])} contextos)")
+
     return result
 
 

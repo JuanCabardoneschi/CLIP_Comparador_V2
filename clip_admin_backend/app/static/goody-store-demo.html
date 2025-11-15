@@ -70,6 +70,44 @@
         <!-- Widget V3 soporta banner de sustitución de categoría para texto -->
         <script src="./js/clip-widget-embed-v3.js"></script>
         <div id="clip-widget"></div>
+        <div id="request-timing" style="margin-top:12px;color:#fff;font-size:0.95rem;font-weight:500;">
+            ⏱ Esperando primera búsqueda...
+        </div>
+        <script>
+            (function(){
+                const timingEl = document.getElementById('request-timing');
+                if(!timingEl) return;
+                const originalFetch = window.fetch;
+                window.fetch = async function(...args){
+                    const url = (args[0] && args[0].toString()) || '';
+                    const isSearch = /\/api\/(search|search\/text|search\/unified)/.test(url);
+                    const start = performance.now();
+                    let roundTripMs = 0;
+                    try {
+                        const resp = await originalFetch(...args);
+                        roundTripMs = performance.now() - start;
+                        if(isSearch){
+                            let serverTime = null;
+                            try {
+                                const cloned = resp.clone();
+                                const data = await cloned.json();
+                                serverTime = data.search_time_seconds || data.processing_time || null;
+                                const cat = data.detected_category ? (data.detected_category.name || '') : '';
+                                timingEl.textContent = `⏱ Última búsqueda: ${(roundTripMs).toFixed(0)} ms (red)${serverTime!==null?` | servidor: ${serverTime.toFixed(3)}s`:''}${cat?` | categoría: ${cat}`:''}`;
+                            } catch(e){
+                                timingEl.textContent = `⏱ Última búsqueda: ${(roundTripMs).toFixed(0)} ms (sin parse JSON)`;
+                            }
+                        }
+                        return resp;
+                    } catch(err){
+                        if(isSearch){
+                            timingEl.textContent = `⏱ Error en búsqueda tras ${(performance.now()-start).toFixed(0)} ms: ${err}`;
+                        }
+                        throw err;
+                    }
+                };
+            })();
+        </script>
     </div>
 
     <div class="footer">

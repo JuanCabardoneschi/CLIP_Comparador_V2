@@ -1,5 +1,82 @@
 # Backlog de Mejoras
 
+## 🔹 Vocabulario por Cliente en BD (client_vocabulary_cache)
+**Estado**: Lectura en runtime integrada; faltan hooks de invalidación
+
+### Qué
+- Tabla `client_vocabulary_cache` con JSONB `{colores, tipos, contextos}` por `client_id`.
+
+### Por qué
+- Evitar recálculo costoso de vocabulario por request.
+- Consistencia entre instancias, persistencia entre deploys y reinicios.
+
+### Cuándo regenerar (igual criterio que embeddings LLM)
+- Productos: create/update/delete que afecten `tags` o atributos relevantes.
+- Importaciones/bulk updates de productos.
+- Categorías: create/update/delete que afecten `name`, `name_en`, `alternative_terms`.
+- Manual: botón en Admin o script CLI.
+- TTL opcional como red de seguridad (p. ej., 5 minutos) si se habilita.
+
+### Cómo
+- Pre-carga inicial: `python tools/populate_vocabulary_cache.py` (local) y sincronizar a Railway.
+- Invalidación en CRUD: borrar fila por `client_id`; el próximo uso la regenerará.
+- Alternativa futura: triggers en BD (pospuesto, decisión abierta).
+
+### Pendiente
+- Hooks de invalidación automática de `client_vocabulary_cache` en CRUD de productos/tags/categorías.
+- Métricas de cache hit/miss y tiempos.
+- Tests de carga multi-cliente.
+
+### Nueva tarea: Invalidación automática del vocabulario (client_vocabulary_cache)
+**Objetivo**: Mantener consistente el vocabulario por cliente sin tareas manuales.
+
+**Disparadores (por cliente)**
+- Productos: create/update/delete que modifiquen `attributes->'color'`, `tags`, `name` o `sku` (si participan en vocabulario/tokens).
+- Categorías: create/update/delete que modifiquen `name`, `name_en`, `alternative_terms`, `is_active`.
+- Configuración de atributos: cambios en `ProductAttributeConfig` cuando `type='list'` y `key='color'`.
+
+**Estrategia**
+- Opción A (recomendada): ORM hooks (post-commit) que marquen invalidación por `client_id` y regeneren en background o en el próximo acceso.
+- Opción B: Triggers en BD + canal `NOTIFY/LISTEN` para invalidar en memoria y forzar reconstrucción.
+- En ambos casos: invalidar fila de `client_vocabulary_cache` (DELETE/UPDATE `updated_at`) para provocar rebuild determinístico.
+
+**Criterios de aceptación**
+- CA1: Un cambio en categorías/atributos/productos del cliente invalida su fila en `client_vocabulary_cache` en < 1s.
+- CA2: En el siguiente `normalize_query(...)`, si falta la fila, se reconstruye y persiste sin bloquear más de 1 request.
+- CA3: Logs con eventos `vocab_cache.invalidate` y `vocab_cache.rebuild` por cliente.
+- CA4: Métricas básicas: tiempo de rebuild, tamaño del vocabulario, cache hit/miss.
+
+**Riesgos/Notas**
+- Evitar tormenta de invalidaciones en updates masivos: aplicar coalescencia por ventana (p. ej., 30s).
+- Limitar rebuild concurrente por cliente (lock per client_id).
+- Mantener fallback en memoria (TTL corto) para resiliencia si BD no está disponible.
+
+### Nueva tarea: Precarga Masiva de Embeddings de Vocabulario
+**Estado**: Implementado script `tools/populate_embeddings.py` ampliado.
+
+**Objetivo**: Eliminar cálculos on-the-fly de embeddings para términos (colores/tipos/contextos) que causan latencias >400s en BOOST_LOOP en primer uso.
+
+**Cómo**:
+- Ejecutar en cada deploy (local y Railway):
+  - `python tools/populate_embeddings.py --target railway`
+- Genera embeddings con claves `vocab:<term>` para todas las variantes morfológicas (singular/plural/género) y paleta extendida de colores.
+- Reutiliza `client_vocabulary_cache` si existe; si no, construye dinámicamente.
+
+**Pendiente**:
+- Memoización per-request en `text_search` para evitar requery de los mismos embeddings.
+- Prefijo opcional por cliente si se detectan colisiones semánticas entre clientes (evaluar necesidad real).
+- Métricas de: porcentaje términos cubiertos, misses residuales.
+- Integrar en pipeline de deploy (hook automático).
+
+**Riesgos**:
+- Crecimiento descontrolado si el vocabulario excede ~5000 términos → implementar límite + pruning.
+- Diferencias de significado cross-cliente para mismo término (‘camisa’ vs contexto específico) → evaluar segregación futura `vocab:<client_id>:<term>`.
+
+**Criterios de aceptación**:
+✅ Primer request de `text_search` no supera 3s (sin reconstrucción completa de vocabulario).
+✅ BOOST_LOOP < 1s para ≤500 productos cuando embeddings existentes.
+✅ Misses de embeddings <5% de términos en primeros 10 requests tras deploy.
+
 ## 🔄 1) Sistema de Recálculo Automático de Embeddings de Vocabulario [EN PROCESO]
 **Estado**: En Proceso (Prioridad Alta)
 **Fecha inicio**: 15 Nov 2025
