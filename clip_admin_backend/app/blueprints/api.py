@@ -2950,6 +2950,7 @@ def text_search():
         # PRE-CARGAR COLOR EMBEDDINGS (evitar N+1 queries en loop)
         # ========================================================================
         _preload_start = _t.time()
+        _preload_elapsed = 0.0
         color_embeddings_map = {}  # {color_lower: np.array}
 
         if detected_color:
@@ -2980,7 +2981,8 @@ def text_search():
                     except Exception:
                         pass
 
-                print(f"[REQ {request_id}] PRELOAD: {len(color_embeddings_map)}/{len(unique_colors)} color embeddings in {(_t.time()-_preload_start):.3f}s", flush=True)
+                _preload_elapsed = (_t.time()-_preload_start)
+                print(f"[REQ {request_id}] PRELOAD: {len(color_embeddings_map)}/{len(unique_colors)} color embeddings in {_preload_elapsed:.3f}s", flush=True)
 
         # ========================================================================
         # CÁLCULO DE BOOSTS (aún requiere loop pero sin parsing/dot-product)
@@ -3303,7 +3305,7 @@ def text_search():
                     "parse_embeddings": round(_parse_elapsed, 3),
                     "similarities": round(_sim_elapsed, 3),
                     "topk": round(topk_elapsed, 3),
-                    "preload_colors": round(((_t.time()-_preload_start) if detected_color else 0.0), 3),
+                    "preload_colors": round((_preload_elapsed if detected_color else 0.0), 3),
                     "boost_loop": round(_boost_elapsed, 3),
                     "sort": round(_sort_elapsed, 3),
                     "total": round(elapsed_time, 3)
@@ -3418,55 +3420,29 @@ def _calculate_attribute_match(query_lower: str, attributes: dict, category: str
                 v_lower = v.lower()
 
                 if is_color_attr:
-                    # PRIORIDAD 1: Usar color del LLM normalizer si estÃ¡ disponible
+                    # PRIORIDAD: NO llamar LLM/normalizador aquí. Usar solo mapa precargado.
                     if detected_color:
-                        # Usar colors_are_similar() para comparaciÃ³n semÃ¡ntica (embeddings) con memoización
-                        from app.utils.colors import colors_are_similar
-                        cache_key = ('detected', detected_color.lower(), v_lower)
-                        sim_bool = _color_sim_cache.get(cache_key)
-                        if sim_bool is None:
-                            sim_bool = colors_are_similar(detected_color, v, threshold=0.75)
-                            _color_sim_cache[cache_key] = sim_bool
+                        dc = detected_color.lower()
+                        # Match exacto rápido
+                        if dc == v_lower:
+                            score += 0.50
+                            break
 
-                        if sim_bool:
-                            score += 0.50  # Boost fuerte por color del LLM
-                            print(f"  🎨 COLOR MATCH (LLM Semantic CACHED): '{detected_color}' ≈ '{v}' (+0.50)")
-                            break  # Solo una vez
-
-                        # SOFT-BOOST: aunque no supere el umbral, favorecer el color más cercano
-                        try:
-                            # 🔥 USAR MAPA PRECARGADO en lugar de query SQL
-                            ea = color_emb_map.get(detected_color.lower())
-                            eb = color_emb_map.get(v.lower())
-                            if ea is not None and eb is not None:
-                                sim = float(np.dot(ea, eb) / (np.linalg.norm(ea) * np.linalg.norm(eb)))
-                                # Escalar hasta +0.20 cuando se acerca al umbral 0.75
-                                soft_boost = min(0.20, max(0.0, (sim / 0.75) * 0.20))
-                                if soft_boost > 0:
-                                    score += soft_boost
-                                    print(f"  🎨 COLOR NEAREST (LLM Semantic): '{detected_color}' ~ '{v}' sim={sim:.3f} (+{soft_boost:.3f})")
-                                    break
-                        except Exception:
-                            pass
-
-                    # FALLBACK: Match tradicional por query con similitud semÃ¡ntica
-                    matched_color = False
-                    for word in query_words:
-                        if len(word) >= 3:  # Solo palabras significativas
-                            from app.utils.colors import colors_are_similar
-                            cache_key = ('query', word.lower(), v_lower)
-                            sim_bool = _color_sim_cache.get(cache_key)
-                            if sim_bool is None:
-                                sim_bool = colors_are_similar(word, v, threshold=0.75)
-                                _color_sim_cache[cache_key] = sim_bool
-                            if sim_bool:
-                                score += 0.40  # Match de color por palabra
-                                print(f"  🎨 COLOR MATCH (Query Semantic CACHED): '{word}' ≈ '{v}' (+0.40)")
-                                matched_color = True
+                        # Comparación por embeddings precargados (coseno)
+                        ea = color_emb_map.get(dc)
+                        eb = color_emb_map.get(v_lower)
+                        if ea is not None and eb is not None:
+                            denom = (np.linalg.norm(ea) * np.linalg.norm(eb))
+                            sim = float(np.dot(ea, eb) / denom) if denom else 0.0
+                            if sim >= 0.75:
+                                score += 0.50
                                 break
-
-                    if matched_color:
-                        break
+                            # Soft-boost proporcional hasta +0.20
+                            soft_boost = min(0.20, max(0.0, (sim / 0.75) * 0.20))
+                            if soft_boost > 0:
+                                score += soft_boost
+                                break
+                    # Si no hay detected_color o no hay embedding disponible, no sumar por color aquí
                 else:
                     # Para otros atributos, permitir aporte HASTA +0.20 en total
                     if other_attr_score < 0.20:
