@@ -3263,8 +3263,8 @@ def _translate_query_to_english(query: str) -> str:
 ## normalize_color fue extraÃ­do a app.utils.colors.normalize_color
 
 
-def _calculate_attribute_match(query_lower: str, attributes: dict, category: str = None, 
-                               detected_color: str = None, detected_tipo: str = None, 
+def _calculate_attribute_match(query_lower: str, attributes: dict, category: str = None,
+                               detected_color: str = None, detected_tipo: str = None,
                                color_embeddings_map: dict = None) -> float:
     """
     Calcula boost por matching de atributos JSONB + categorÃ­a.
@@ -3286,7 +3286,7 @@ def _calculate_attribute_match(query_lower: str, attributes: dict, category: str
     score = 0.0
     other_attr_score = 0.0  # Limitar contribuciÃ³n de atributos NO color
     query_words = set(query_lower.split())
-    
+
     # Usar mapa precargado o dict vacío si no se provee
     color_emb_map = color_embeddings_map or {}
 
@@ -3390,7 +3390,7 @@ def _best_color_similarity(detected_color: str, attributes: dict, color_embeddin
     y los valores de atributos de color del producto. Devuelve un valor en [0,1].
 
     Se usa como desempate/ranking cuando no hay match por encima del umbral.
-    
+
     Args:
         detected_color: Color detectado por LLM normalizer
         attributes: Atributos JSONB del producto
@@ -3401,7 +3401,7 @@ def _best_color_similarity(detected_color: str, attributes: dict, color_embeddin
 
     try:
         import numpy as np
-        
+
         # Usar mapa precargado o dict vacío
         color_emb_map = color_embeddings_map or {}
 

@@ -7,10 +7,15 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import re
+import time
 
 # Modelo liviano multilingüe
 MODEL_NAME = 'paraphrase-multilingual-MiniLM-L12-v2'
 _model = None
+
+# Caché de vocabulario por cliente (evita queries repetidas)
+_VOCABULARY_CACHE = {}
+_VOCABULARY_CACHE_TTL = 300  # 5 minutos de TTL
 
 def get_model():
     global _model
@@ -21,11 +26,19 @@ def get_model():
 
 def _extract_client_vocabulary(client_id: int) -> dict:
     """
-    Extrae vocabulario dinámico desde la BD del cliente
+    Extrae vocabulario dinámico desde la BD del cliente CON CACHÉ en memoria
 
     Returns:
         dict con 'colores', 'colores_especificos', 'tipos', 'contextos' basados en datos reales
     """
+    # Check caché
+    cache_key = f"vocab_{client_id}"
+    if cache_key in _VOCABULARY_CACHE:
+        cached_vocab, cached_time = _VOCABULARY_CACHE[cache_key]
+        if time.time() - cached_time < _VOCABULARY_CACHE_TTL:
+            print(f"📦 VOCAB CACHE HIT: {client_id}")
+            return cached_vocab
+    
     from app import db
     from app.models.category import Category
     from app.models.product import Product
@@ -124,22 +137,42 @@ def _extract_client_vocabulary(client_id: int) -> dict:
 
     # 3. CONTEXTOS: Desde tags de productos del cliente
     try:
-        products = Product.query.filter_by(client_id=client_id).all()
+        # 🔥 OPTIMIZACIÓN: Usar SQL directo en lugar de cargar todos los productos
+        # Extraer tags únicos con agregación SQL (mucho más rápido que Python loop)
+        tag_rows = db.session.execute(
+            text("""
+                SELECT DISTINCT UNNEST(string_to_array(tags, ',')) as tag
+                FROM products
+                WHERE client_id = :client_id
+                  AND tags IS NOT NULL
+                  AND tags != ''
+            """),
+            {"client_id": client_id}
+        ).fetchall()
 
-        for product in products:
-            if product.tags:
-                tags = [t.strip().lower() for t in product.tags.split(',')]
-                vocabulary['contextos'].update(t for t in tags if len(t) > 2)
+        for row in tag_rows:
+            tag = row[0].strip().lower() if row[0] else None
+            if tag and len(tag) > 2:
+                vocabulary['contextos'].add(tag)
+
+        print(f"🏷️ Contextos extraídos: {len(vocabulary['contextos'])} tags únicos")
 
     except Exception as e:
         print(f"⚠️ Error extrayendo contextos: {e}")
 
     # Convertir sets a listas
-    return {
+    result = {
         'colores': list(vocabulary['colores_especificos']),
         'tipos': list(vocabulary['tipos']),
         'contextos': list(vocabulary['contextos'])
     }
+    
+    # Guardar en caché
+    cache_key = f"vocab_{client_id}"
+    _VOCABULARY_CACHE[cache_key] = (result, time.time())
+    print(f"💾 VOCAB CACHED: {client_id} ({len(result['colores'])} colors, {len(result['tipos'])} tipos, {len(result['contextos'])} contextos)")
+    
+    return result
 
 
 def _semantic_match(query: str, vocabulary: list, threshold: float = 0.5) -> str:
