@@ -86,7 +86,54 @@ def _build_vocabulary_from_db(client_id: str) -> dict:
         if row and row[0]:
             vocabulary['tipos'].add(_norm(row[0]))
 
-    # 3) Colores básicos desde tags (heurística rápida)
+    # 3A) Colores desde ProductAttributeConfig (key='color', type='list')
+    try:
+        color_config_rows = db.session.execute(
+            text(
+                """
+                SELECT options
+                FROM product_attribute_config
+                WHERE client_id = :client_id
+                  AND key = 'color'
+                  AND type = 'list'
+                """
+            ),
+            {"client_id": str(client_id)}
+        ).fetchall()
+
+        for row in color_config_rows:
+            if row and row[0]:
+                options_data = row[0]
+                # options puede ser dict JSONB con 'values'
+                if isinstance(options_data, dict) and 'values' in options_data:
+                    for color in options_data['values']:
+                        if color and len(color) > 2:
+                            vocabulary['colores'].add(_norm(color))
+    except Exception as e:
+        print(f"⚠️ Error extrayendo colores desde ProductAttributeConfig: {e}")
+
+    # 3B) Colores desde products.attributes->>'color'
+    try:
+        product_color_rows = db.session.execute(
+            text(
+                """
+                SELECT DISTINCT TRIM(LOWER(attributes->>'color')) as color
+                FROM products
+                WHERE client_id = :client_id
+                  AND attributes ? 'color'
+                  AND TRIM(attributes->>'color') <> ''
+                """
+            ),
+            {"client_id": str(client_id)}
+        ).fetchall()
+
+        for row in product_color_rows:
+            if row and row[0]:
+                vocabulary['colores'].add(_norm(row[0]))
+    except Exception as e:
+        print(f"⚠️ Error extrayendo colores desde products.attributes: {e}")
+
+    # 3C) Colores básicos desde tags (heurística de respaldo)
     COLORES_BASICOS = {
         'rojo','azul','verde','amarillo','negro','blanco','gris','rosa','morado','naranja','marron','beige','celeste','turquesa','dorado','plateado','violeta','cafe','crema','coral','fucsia'
     }

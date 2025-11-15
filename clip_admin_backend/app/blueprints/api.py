@@ -5,6 +5,7 @@ Endpoints internos para el admin panel y búsqueda visual
 
 import sys
 import time
+import re
 from app.blueprints.embeddings import _get_idle_timeout_seconds
 import hashlib
 import numpy as np
