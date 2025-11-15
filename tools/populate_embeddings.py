@@ -62,9 +62,68 @@ def populate_color_embeddings():
     db.session.commit()
     print("Embeddings de colores generados.")
 
+# --- Poblar vocabulario (tipos y contextos) ---
+def populate_vocabulary_embeddings():
+    """Genera embeddings para todo el vocabulario usado en normalize_query()"""
+    from app.utils.llm_query_normalizer import _extract_client_vocabulary
+    llm_model = get_model()
+
+    # Obtener vocabulario de todos los clientes
+    for client in Client.query.all():
+        print(f"Procesando vocabulario de cliente: {client.name}")
+        vocab = _extract_client_vocabulary(client.id)
+
+        # Agregar paleta estándar a colores (como en normalize_query)
+        paleta_estandar = [
+            'negro', 'blanco', 'gris', 'azul', 'rojo', 'verde', 'amarillo',
+            'naranja', 'rosa', 'violeta', 'morado', 'marrón', 'beige', 'celeste',
+            'marino', 'turquesa', 'fucsia', 'bordó', 'dorado', 'plateado'
+        ]
+
+        all_terms = {
+            'colores': list(set(vocab['colores'] + paleta_estandar)),
+            'tipos': vocab['tipos'],
+            'contextos': vocab['contextos']
+        }
+
+        # Generar embeddings para cada categoría de vocabulario
+        for category, terms in all_terms.items():
+            print(f"  - {category}: {len(terms)} términos")
+            for term in terms:
+                key = f"vocab:{term.lower()}"
+
+                # Verificar si ya existe
+                exists = Embedding.query.filter_by(key=key).first()
+                if exists:
+                    continue
+
+                # Generar embedding
+                emb = llm_model.encode(term.lower(), convert_to_tensor=False)
+                emb_json = json.dumps([float(x) for x in emb])
+
+                # Guardar en BD
+                db.session.add(Embedding(
+                    id=str(uuid.uuid4()),
+                    key=key,
+                    embedding=emb_json,
+                    type="vocabulary"
+                ))
+
+        db.session.commit()
+
+    print("✅ Embeddings de vocabulario generados.")
+
 if __name__ == "__main__":
     from app import create_app
     app = create_app()
     with app.app_context():
+        print("🔄 Generando embeddings de categorías...")
         populate_category_embeddings()
+
+        print("🔄 Generando embeddings de colores...")
         populate_color_embeddings()
+
+        print("🔄 Generando embeddings de vocabulario (tipos y contextos)...")
+        populate_vocabulary_embeddings()
+
+        print("✅ Proceso completado.")

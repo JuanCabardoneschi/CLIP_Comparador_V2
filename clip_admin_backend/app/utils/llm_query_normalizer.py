@@ -144,7 +144,7 @@ def _extract_client_vocabulary(client_id: int) -> dict:
 
 def _semantic_match(query: str, vocabulary: list, threshold: float = 0.5) -> str:
     """
-    Encuentra la mejor coincidencia semántica usando embeddings del LLM.
+    Encuentra la mejor coincidencia semántica usando embeddings cacheados.
 
     Args:
         query: Texto de búsqueda
@@ -159,12 +159,46 @@ def _semantic_match(query: str, vocabulary: list, threshold: float = 0.5) -> str
 
     model = get_model()
 
-    # Encodear query y vocabulario
-    query_emb = model.encode([query.lower()])
-    vocab_embs = model.encode([v.lower() for v in vocabulary])
+    # Encodear SOLO la query (rápido: 1 item)
+    query_emb = model.encode([query.lower()])[0]
+
+    # 🔥 OPTIMIZACIÓN: Leer embeddings pre-calculados desde BD
+    from app.models.embedding import Embedding
+    from app import db
+    import json
+
+    # Buscar embeddings de vocabulario en BD
+    vocab_lower = [v.lower() for v in vocabulary]
+    vocab_embeddings = {}
+
+    # Query en batch para todos los términos del vocabulario
+    db_embeddings = Embedding.query.filter(
+        Embedding.key.in_([f"vocab:{term}" for term in vocab_lower])
+    ).all()
+
+    for emb_obj in db_embeddings:
+        term = emb_obj.key.replace("vocab:", "")
+        try:
+            vocab_embeddings[term] = np.array(json.loads(emb_obj.embedding), dtype=np.float32)
+        except Exception:
+            continue
+
+    # Si no hay embeddings en BD, calcular en vivo (fallback para vocabulario nuevo)
+    missing_terms = [v for v in vocab_lower if v not in vocab_embeddings]
+    if missing_terms:
+        print(f"⚠️ {len(missing_terms)} términos sin embedding en BD, calculando...")
+        missing_embs = model.encode(missing_terms)
+        for term, emb in zip(missing_terms, missing_embs):
+            vocab_embeddings[term] = emb
+
+    # Construir matriz de embeddings en el orden original
+    vocab_embs = np.array([vocab_embeddings[v] for v in vocab_lower if v in vocab_embeddings])
+
+    if len(vocab_embs) == 0:
+        return None
 
     # Calcular similitudes coseno
-    similarities = cosine_similarity(query_emb, vocab_embs)[0]
+    similarities = cosine_similarity([query_emb], vocab_embs)[0]
 
     # Encontrar el mejor match
     max_idx = np.argmax(similarities)
@@ -179,7 +213,7 @@ def _semantic_match(query: str, vocabulary: list, threshold: float = 0.5) -> str
 
 def _semantic_match_multiple(query: str, vocabulary: list, threshold: float = 0.4, top_k: int = 3) -> list:
     """
-    Encuentra múltiples coincidencias semánticas.
+    Encuentra múltiples coincidencias semánticas usando embeddings cacheados.
 
     Args:
         query: Texto de búsqueda
@@ -195,12 +229,46 @@ def _semantic_match_multiple(query: str, vocabulary: list, threshold: float = 0.
 
     model = get_model()
 
-    # Encodear query y vocabulario
-    query_emb = model.encode([query.lower()])
-    vocab_embs = model.encode([v.lower() for v in vocabulary])
+    # Encodear SOLO la query (rápido: 1 item)
+    query_emb = model.encode([query.lower()])[0]
+
+    # 🔥 OPTIMIZACIÓN: Leer embeddings pre-calculados desde BD
+    from app.models.embedding import Embedding
+    from app import db
+    import json
+
+    # Buscar embeddings de vocabulario en BD
+    vocab_lower = [v.lower() for v in vocabulary]
+    vocab_embeddings = {}
+
+    # Query en batch para todos los términos del vocabulario
+    db_embeddings = Embedding.query.filter(
+        Embedding.key.in_([f"vocab:{term}" for term in vocab_lower])
+    ).all()
+
+    for emb_obj in db_embeddings:
+        term = emb_obj.key.replace("vocab:", "")
+        try:
+            vocab_embeddings[term] = np.array(json.loads(emb_obj.embedding), dtype=np.float32)
+        except Exception:
+            continue
+
+    # Si no hay embeddings en BD, calcular en vivo (fallback)
+    missing_terms = [v for v in vocab_lower if v not in vocab_embeddings]
+    if missing_terms:
+        print(f"⚠️ {len(missing_terms)} términos sin embedding en BD, calculando...")
+        missing_embs = model.encode(missing_terms)
+        for term, emb in zip(missing_terms, missing_embs):
+            vocab_embeddings[term] = emb
+
+    # Construir matriz de embeddings en el orden original
+    vocab_embs = np.array([vocab_embeddings[v] for v in vocab_lower if v in vocab_embeddings])
+
+    if len(vocab_embs) == 0:
+        return []
 
     # Calcular similitudes
-    similarities = cosine_similarity(query_emb, vocab_embs)[0]
+    similarities = cosine_similarity([query_emb], vocab_embs)[0]
 
     # Filtrar por threshold y ordenar
     matches = []
