@@ -364,13 +364,18 @@ def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: flo
     Returns:
         Mejor match o None si no supera threshold
     """
+    import time
+    t_start = time.time()
+
     if not vocabulary:
         return None
 
     model = get_model()
 
     # Encodear SOLO la query (rápido: 1 item)
+    t_encode = time.time()
     query_emb = model.encode([query.lower()])[0]
+    print(f"⏱️ [_semantic_match] query encode: {time.time()-t_encode:.3f}s", flush=True)
 
     # 🔥 OPTIMIZACIÓN: Leer embeddings pre-calculados desde BD
     from app.models.embedding import Embedding
@@ -445,6 +450,8 @@ def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: flo
     max_idx = np.argmax(similarities)
     max_sim = similarities[max_idx]
 
+    print(f"⏱️ [_semantic_match] TOTAL: {time.time()-t_start:.3f}s (vocab={len(vocabulary)}, cached={len(vocab_embeddings)}, missing={len(missing_terms)})", flush=True)
+
     if max_sim >= threshold:
         print(f"  🎯 Match: '{query}' → '{vocabulary[max_idx]}' (sim={max_sim:.3f})")
         return vocabulary[max_idx]
@@ -465,12 +472,18 @@ def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, thres
     Returns:
         Lista de matches ordenados por similitud
     """
+    import time
+    t_start = time.time()
+
     if not vocabulary:
         return []
 
     model = get_model()
 
     # Encodear SOLO la query (rápido: 1 item)
+    t_encode = time.time()
+    query_emb = model.encode([query.lower()])[0]
+    print(f"⏱️ [_semantic_match_multiple] query encode: {time.time()-t_encode:.3f}s", flush=True)
     query_emb = model.encode([query.lower()])[0]
 
     # 🔥 OPTIMIZACIÓN: Leer embeddings pre-calculados desde BD
@@ -550,6 +563,8 @@ def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, thres
 
     # Ordenar por similitud descendente y tomar top_k
     matches.sort(key=lambda x: x[1], reverse=True)
+
+    print(f"⏱️ [_semantic_match_multiple] TOTAL: {time.time()-t_start:.3f}s (vocab={len(vocabulary)}, cached={len(vocab_embeddings)}, missing={len(missing_terms)})", flush=True)
 
     if matches:
         print(f"  🎯 Matches contextos: {[(m[0], f'{m[1]:.3f}') for m in matches[:top_k]]}")
