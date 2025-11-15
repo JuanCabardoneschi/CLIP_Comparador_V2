@@ -270,3 +270,27 @@ def sync_data():
   - Documentación de thresholds y métricas para ajuste.
 - Riesgos:
   - Ambigüedad alta en consultas cortas puede generar ruido. Mitigar con límites de N, umbrales y mensajes de guía/refinamiento.
+
+---
+
+## 3) Normalización de Colores y Sinónimos (configurable)
+Estado: Parcialmente implementado (hardcoded en `text_search()`)
+
+Qué hacer
+- Mover lista de colores canónicos a `system_config.json` (p. ej. `search.color_canonical_list`).
+- Exponer diccionario de sinónimos/typos en config (p. ej. `search.color_synonyms`: {"caramelo":"marron","chocolate":"marron","cafe":"marron","camel":"marron","castano":"marron","baige":"beige"}).
+- Centralizar helpers usando `app.utils.colors.normalize_color` para evitar duplicación en blueprints.
+- Incluir pruebas unitarias para normalización y mapping de sinónimos.
+
+Pesos/umbrales
+- Hacer configurables los pesos de `color_similarity` cuando el usuario especifica color (default 0.10) y cuando no (default 0.05).
+- Hacer configurables los umbrales de `color_priority` (default: exact_attr=3, high=0.75, mid=0.45).
+
+Criterios de aceptación
+- Queries con color explícito priorizan productos cuyo `attributes.color` coincide normalizado.
+- Sinónimos definidos (caramelo/chocolate/café/camel/castaño→marron; baige→beige) funcionan sin tocar código.
+- Los pesos/umbrales pueden ajustarse desde config sin redeploy.
+
+Notas de despliegue
+- Mantener compatibilidad con valores existentes en BD (string o lista en `attributes.color`).
+- Documentar en `TEXT_SEARCH_IMPLEMENTATION.md` la estrategia y claves de configuración nuevas.

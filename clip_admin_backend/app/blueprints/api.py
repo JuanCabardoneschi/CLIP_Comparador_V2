@@ -2491,19 +2491,53 @@ def text_search():
         detected_color = llm_norm.get('color', '').lower() if llm_norm.get('color') else None
         detected_tipo = llm_norm.get('tipo', '').lower() if llm_norm.get('tipo') else None
 
+        # Helpers para normalizar colores y detectar color explícito
+        def _strip_accents(s: str) -> str:
+            try:
+                import unicodedata as _ud
+                return ''.join(c for c in _ud.normalize('NFD', s) if _ud.category(c) != 'Mn')
+            except Exception:
+                return s
+
+        def _canonical_color(s: str) -> str:
+            if not s:
+                return s
+            s0 = _strip_accents(str(s).lower()).strip()
+            # typos comunes
+            if s0 == 'baige':
+                s0 = 'beige'
+            # sinónimos → canon
+            SYN = {
+                'caramelo': 'marron',
+                'chocolate': 'marron',
+                'cafe': 'marron',
+                'castano': 'marron',
+                'camel': 'marron',
+            }
+            return SYN.get(s0, s0)
+
         # Extraer color directamente de la query (prioritario si existe)
-        COLORES_BASICOS = {
+        COLORES_CANONICOS = {
             'rojo', 'azul', 'verde', 'amarillo', 'negro', 'blanco', 'gris',
             'rosa', 'morado', 'naranja', 'marron', 'beige', 'celeste', 'turquesa',
             'dorado', 'plateado', 'violeta', 'cafe', 'crema', 'coral', 'fucsia'
         }
-        query_colors = [word for word in query_text.lower().split() if word in COLORES_BASICOS]
+        tokens = [t for t in re.split(r"\s+", query_text.strip().lower()) if t]
+        canon_tokens = [_canonical_color(t) for t in tokens]
+        query_colors = [t for t in canon_tokens if t in COLORES_CANONICOS]
+        explicit_color_from_query = False
         if query_colors:
             # Priorizar color explícito en query sobre LLM normalizer
-            if detected_color != query_colors[0]:
-                print(f"[REQ {request_id}] 🎨 Color query ('{query_colors[0]}') difiere de LLM ('{detected_color}') → usando query")
+            canon_llm_color = _canonical_color(detected_color) if detected_color else None
+            if canon_llm_color != query_colors[0]:
+                print(f"[REQ {request_id}] 🎨 Color query ('{query_colors[0]}') difiere de LLM ('{canon_llm_color}') → usando query")
                 detected_color = query_colors[0]
                 llm_norm['color'] = detected_color  # Actualizar también el dict que se devuelve
+            else:
+                detected_color = canon_llm_color
+            explicit_color_from_query = True
+        else:
+            detected_color = _canonical_color(detected_color) if detected_color else None
 
         # Contexto puede ser lista o string
         contexto_raw = llm_norm.get('contexto')
@@ -2956,18 +2990,18 @@ def text_search():
         if detected_color:
             # Extraer todos los colores únicos de productos
             unique_colors = set()
-            unique_colors.add(detected_color.lower())
+            unique_colors.add(_canonical_color(detected_color))
 
             for prod in valid_products:
                 if prod.attributes:
                     for attr_key, attr_value in prod.attributes.items():
                         if attr_key and attr_key.lower() in ['color', 'colour', 'color_principal', 'color_secundario']:
                             if isinstance(attr_value, str):
-                                unique_colors.add(attr_value.lower())
+                                unique_colors.add(_canonical_color(attr_value))
                             elif isinstance(attr_value, list):
                                 for v in attr_value:
                                     if v:
-                                        unique_colors.add(str(v).lower())
+                                        unique_colors.add(_canonical_color(str(v)))
 
             # Batch query de embeddings
             if unique_colors:
@@ -3006,9 +3040,25 @@ def text_search():
             # Similitud de color (pasamos el mapa precargado)
             color_sim = _best_color_similarity(detected_color, prod.attributes, color_embeddings_map) if detected_color else 0.0
 
+            # Prioridad por match exacto de atributo de color si el usuario pidió color
+            exact_attr_color_match = False
+            if detected_color and prod.attributes:
+                try:
+                    attr_val = prod.attributes.get('color')
+                    if isinstance(attr_val, str):
+                        exact_attr_color_match = (_canonical_color(attr_val) == _canonical_color(detected_color))
+                    elif isinstance(attr_val, list):
+                        exact_attr_color_match = any(_canonical_color(v) == _canonical_color(detected_color) for v in attr_val)
+                except Exception:
+                    exact_attr_color_match = False
+
             # Color group y priority
             if detected_color:
-                if color_sim >= 0.75:
+                if exact_attr_color_match:
+                    # Forzar mayor prioridad si el atributo coincide exactamente con el color pedido
+                    color_group = 0
+                    color_priority = 3
+                elif color_sim >= 0.75:
                     color_group = 0
                     color_priority = 2
                 elif color_sim >= 0.45:
@@ -3022,10 +3072,11 @@ def text_search():
                 color_priority = 0
 
             # Score final híbrido
+            color_weight = 0.1 if detected_color and explicit_color_from_query else 0.05
             final_score = (
                 float(clip_similarity) * 0.5 +
                 attr_boost * 0.35 +
-                color_sim * 0.05 +
+                color_sim * color_weight +
                 tag_name_boost * 0.1
             )
 
@@ -3044,6 +3095,7 @@ def text_search():
                 'color_similarity': round(color_sim, 4),
                 'color_group': color_group,
                 'color_priority': color_priority,
+                'exact_attr_color_match': exact_attr_color_match,
                 'name_boost': round(name_boost, 4),
                 'final_score': round(final_score, 4)
             })

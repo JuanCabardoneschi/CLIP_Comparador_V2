@@ -38,7 +38,7 @@ def _get_minilm_idle_timeout_seconds() -> int:
     """
     Obtiene el timeout de inactividad para descargar MiniLM.
     Usa el MISMO timeout que CLIP para consistencia.
-    
+
     Prioridad:
     1) system_config.json: clip.idle_timeout_minutes
     2) Env var CLIP_IDLE_TIMEOUT_MINUTES
@@ -113,10 +113,10 @@ def _start_minilm_cleanup_thread_once():
 def get_model():
     """Cargar modelo MiniLM con singleton y auto-descarga por inactividad (mismo sistema que CLIP)."""
     global _model
-    
+
     # Asegurar hilo de limpieza iniciado una vez
     _start_minilm_cleanup_thread_once()
-    
+
     with _model_lock:
         if _model is None:
             _model = SentenceTransformer(MODEL_NAME)
