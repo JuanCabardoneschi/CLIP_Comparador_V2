@@ -111,6 +111,11 @@
                 from { opacity: 0; transform: translateY(10px); }
                 to { opacity: 1; transform: translateY(0); }
             }
+            
+            @keyframes slideDown {
+                from { opacity: 0; transform: translate(-50%, -20px); }
+                to { opacity: 1; transform: translate(-50%, 0); }
+            }
 
             .clip-search-title {
                 font-size: 1.8rem;
@@ -967,21 +972,45 @@
             });
         }
 
-        // Text search API
-        function performTextSearch(query) {
+        // Text search API con clasificación previa
+        async function performTextSearch(query) {
             if (isProcessing) return;
-            beginProcessing('text');
+            
+            try {
+                // Paso 1: Clasificar la query (fast endpoint sin costo)
+                const classifyUrl = `${config.serverUrl}/api/search/classify?q=${encodeURIComponent(query)}`;
+                const classifyResp = await fetch(classifyUrl, {
+                    headers: { 'X-API-Key': config.apiKey }
+                });
+                const classification = await classifyResp.json();
+                
+                console.log('🔍 Query clasificada:', classification);
+                
+                // Paso 2: Si es compleja, mostrar banner antes de comenzar procesamiento
+                let complexBanner = null;
+                if (classification.success && classification.classification === 'complex') {
+                    complexBanner = showComplexQueryBanner();
+                }
+                
+                // Paso 3: Iniciar procesamiento real
+                beginProcessing('text');
 
-            fetch(`${config.serverUrl}/api/search`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-API-Key': config.apiKey
-                },
-                body: JSON.stringify({ query })
-            })
-            .then(res => res.json())
-            .then(data => {
+                const searchResp = await fetch(`${config.serverUrl}/api/search/text`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': config.apiKey
+                    },
+                    body: JSON.stringify({ query })
+                });
+                
+                const data = await searchResp.json();
+                
+                // Ocultar banner si existía
+                if (complexBanner) {
+                    complexBanner.remove();
+                }
+                
                 endProcessing('text');
 
                 console.log('🎯 API Response:', data);
@@ -1011,12 +1040,43 @@
                 } else {
                     showError(data.error || 'No se encontraron productos');
                 }
-            })
-            .catch(err => {
+            } catch (err) {
                 endProcessing('text');
                 showError('Error al realizar la búsqueda. Por favor intenta nuevamente.');
                 console.error('❌ Search error:', err);
-            });
+            }
+        }
+        
+        // Mostrar banner para consultas complejas
+        function showComplexQueryBanner() {
+            const banner = document.createElement('div');
+            banner.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 1rem 2rem;
+                border-radius: 12px;
+                box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+                z-index: 10000;
+                font-size: 1rem;
+                font-weight: 600;
+                animation: slideDown 0.3s ease-out;
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+            `;
+            banner.innerHTML = `
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <span>Analizando tu consulta, esto puede tardar unos segundos...</span>
+            `;
+            document.body.appendChild(banner);
+            return banner;
         }
 
         // Display multi-category results

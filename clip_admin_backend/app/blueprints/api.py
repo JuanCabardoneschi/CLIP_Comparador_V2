@@ -2404,49 +2404,35 @@ def visual_search():
         }), 500
 
 
-@bp.route("/search/text", methods=["POST", "OPTIONS"])
-def text_search():
-    """Endpoint de búsqueda por texto con vectorización optimizada."""
-    """
-    Endpoint de bÃºsqueda textual hÃ­brida (CLIP + Atributos + Tags)
-
-    Headers:
-        X-API-Key: API Key del cliente
-
-    JSON Body:
-        query: Texto de bÃºsqueda (ej: "camisa blanca", "delantal marrÃ³n")
-        limit: NÃºmero de resultados (default: 10, max: 50)
-    """
-    # ---------------------------------------------------------------
-    # Helper rápido para clasificación de queries (simple vs compleja)
-    # ---------------------------------------------------------------
-    def _is_simple_query(q: str):
-        import re as _re
-        q = (q or "").lower().strip()
-        if not q:
-            return False, None, None
-        tokens = _re.findall(r"[a-záéíóúñ]+", q)
-        SIMPLE_COLORS = {
-            'blanco','negro','rojo','azul','verde','gris','beige','marron','chocolate',
-            'rosa','amarillo','celeste'
-        }
-        SIMPLE_TYPES = {
-            'camisa','camisas','delantal','delantales','remera','remeras','blusa','blusas'
-        }
-        COMPLEX_HINTS = {
-            'veraniega','playa','quiero','usar','tengo','llevar','evento','oficina',
-            'resistente','fresco','fresca','confortable','comoda','verano','bambula'
-        }
-        colors = [t for t in tokens if t in SIMPLE_COLORS]
-        types = [t for t in tokens if t in SIMPLE_TYPES]
-        # Reglas simples: pocos tokens, exactamente 1 color y 1 tipo y sin hints complejos
-        if len(tokens) <= 4 and len(colors) == 1 and len(types) == 1 and not any(t in COMPLEX_HINTS for t in tokens):
-            # Normalizar tipo (singular)
-            tipo = types[0]
-            if tipo.endswith('s'):
-                tipo = tipo[:-1]
-            return True, colors[0], tipo
+# Helper compartido para clasificación de queries (simple vs compleja)
+def _is_simple_query(q: str):
+    import re as _re
+    q = (q or "").lower().strip()
+    if not q:
         return False, None, None
+    tokens = _re.findall(r"[a-záéíóúñ]+", q)
+    SIMPLE_COLORS = {
+        'blanco','negro','rojo','azul','verde','gris','beige','marron','chocolate',
+        'rosa','amarillo','celeste'
+    }
+    SIMPLE_TYPES = {
+        'camisa','camisas','delantal','delantales','remera','remeras','blusa','blusas'
+    }
+    COMPLEX_HINTS = {
+        'veraniega','playa','quiero','usar','tengo','llevar','evento','oficina',
+        'resistente','fresco','fresca','confortable','comoda','verano','bambula'
+    }
+    colors = [t for t in tokens if t in SIMPLE_COLORS]
+    types = [t for t in tokens if t in SIMPLE_TYPES]
+    # Reglas simples: pocos tokens, exactamente 1 color y 1 tipo y sin hints complejos
+    if len(tokens) <= 4 and len(colors) == 1 and len(types) == 1 and not any(t in COMPLEX_HINTS for t in tokens):
+        # Normalizar tipo (singular)
+        tipo = types[0]
+        if tipo.endswith('s'):
+            tipo = tipo[:-1]
+        return True, colors[0], tipo
+    return False, None, None
+
 
 @bp.route("/search/classify", methods=["GET", "OPTIONS"])
 def classify_search_query():
@@ -2466,28 +2452,9 @@ def classify_search_query():
     query_text = request.args.get('q', '').strip()
     if not query_text:
         return jsonify({"success": False, "error": "empty_query", "message": "Query vacía"}), 400
-    # Reusar helper interno de text_search
-    is_simple, color, tipo = False, None, None
-    try:
-        # Buscar función ya definida en text_search (namespace local); redefinir si no accesible
-        def _is_simple_query_inner(q):
-            import re as _re
-            q = (q or "").lower().strip()
-            tokens = _re.findall(r"[a-záéíóúñ]+", q)
-            SIMPLE_COLORS = {'blanco','negro','rojo','azul','verde','gris','beige','marron','chocolate','rosa','amarillo','celeste'}
-            SIMPLE_TYPES = {'camisa','camisas','delantal','delantales','remera','remeras','blusa','blusas'}
-            COMPLEX_HINTS = {'veraniega','playa','quiero','usar','tengo','llevar','evento','oficina','resistente','fresco','fresca','confortable','comoda','verano','bambula'}
-            colors = [t for t in tokens if t in SIMPLE_COLORS]
-            types = [t for t in tokens if t in SIMPLE_TYPES]
-            if len(tokens) <= 4 and len(colors) == 1 and len(types) == 1 and not any(t in COMPLEX_HINTS for t in tokens):
-                tipo = types[0]
-                if tipo.endswith('s'):
-                    tipo = tipo[:-1]
-                return True, colors[0], tipo
-            return False, None, None
-        is_simple, color, tipo = _is_simple_query_inner(query_text)
-    except Exception:
-        pass
+
+    is_simple, color, tipo = _is_simple_query(query_text)
+
     return jsonify({
         "success": True,
         "query": query_text,
@@ -2496,6 +2463,20 @@ def classify_search_query():
         "tipo": tipo
     })
 
+
+@bp.route("/search/text", methods=["POST", "OPTIONS"])
+def text_search():
+    """Endpoint de búsqueda por texto con vectorización optimizada."""
+    """
+    Endpoint de bÃºsqueda textual hÃ­brida (CLIP + Atributos + Tags)
+
+    Headers:
+        X-API-Key: API Key del cliente
+
+    JSON Body:
+        query: Texto de bÃºsqueda (ej: "camisa blanca", "delantal marrÃ³n")
+        limit: NÃºmero de resultados (default: 10, max: 50)
+    """
     # Manejar preflight OPTIONS request
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
@@ -2628,6 +2609,7 @@ def classify_search_query():
                 })
             fp_total = time.time() - fp_start
             print(f"[REQ {request_id}] FAST-PATH completado en {fp_total:.3f}s resultados={len(results)}", flush=True)
+            print(f"[TEXT_SEARCH_MODE] fast query='{query_text}' time={fp_total:.3f}s results={len(results)}", flush=True)
             return jsonify({
                 "success": True,
                 "processing_mode": "fast",
@@ -3512,6 +3494,7 @@ def classify_search_query():
             pass
         print(f"[REQ {request_id}] DEBUG: respuesta JSON construida en {(_t.time()-_resp_t):.2f}s | post-SQL total={( _t.time()-_post_sql_t):.2f}s | query='{query_text}'", flush=True)
         print(f"[TEXT_SEARCH] END OK {len(results)} results match_quality={match_quality} time={round(time.time()-start_time,3)}s")
+        print(f"[TEXT_SEARCH_MODE] full query='{query_text}' time={round(time.time()-start_time,3)}s results={len(results)}", flush=True)
 
         # ================= METRICS JSON CONSOLIDADO =====================
         try:
