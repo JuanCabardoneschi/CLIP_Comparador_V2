@@ -406,7 +406,7 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("FLASK_DEBUG", "False").lower() == "true"
 
-    print("🚀 Iniciando CLIP Comparador V2 - Backend Admin")
+    print("🚀 Iniciando CLIP Comparador V2 - Backend Admin v2.1.0")
     print(f"📍 Puerto: {port}")
     print(f"🔧 Debug: {debug}")
     print(f"🗄️ Base de datos: {os.getenv('DATABASE_URL', 'No configurada')}")

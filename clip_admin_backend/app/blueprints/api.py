@@ -3152,6 +3152,8 @@ def text_search():
         _parse_start = _t.time()
         embeddings_matrix = []
         valid_products = []
+        skipped_count = 0
+        skip_reasons = {"json_parse": 0, "invalid_array": 0, "wrong_shape": 0, "other": 0}
 
         for prod in products:
             embedding = prod.clip_embedding
@@ -3159,24 +3161,42 @@ def text_search():
                 import json
                 try:
                     embedding = json.loads(embedding)
-                except Exception:
+                except Exception as e:
+                    print(f"[REQ {request_id}] ⚠️ SKIP producto {prod.name} ({prod.sku}): error parsing JSON embedding: {e}", flush=True)
+                    skipped_count += 1
+                    skip_reasons["json_parse"] += 1
                     continue  # Skip productos con embeddings inválidos
 
             try:
                 emb = np.array(embedding, dtype=np.float32)
-                if not np.all(np.isfinite(emb)) or emb.shape[0] != 512:
+                if not np.all(np.isfinite(emb)):
+                    print(f"[REQ {request_id}] ⚠️ SKIP producto {prod.name} ({prod.sku}): embedding contiene valores no finitos (NaN/Inf)", flush=True)
+                    skipped_count += 1
+                    skip_reasons["invalid_array"] += 1
+                    continue
+                if emb.shape[0] != 512:
+                    print(f"[REQ {request_id}] ⚠️ SKIP producto {prod.name} ({prod.sku}): embedding tiene shape={emb.shape} (esperado: 512)", flush=True)
+                    skipped_count += 1
+                    skip_reasons["wrong_shape"] += 1
                     continue
                 embeddings_matrix.append(emb)
                 valid_products.append(prod)
-            except Exception:
+            except Exception as e:
+                print(f"[REQ {request_id}] ⚠️ SKIP producto {prod.name} ({prod.sku}): error convirtiendo a numpy: {e}", flush=True)
+                skipped_count += 1
+                skip_reasons["other"] += 1
                 continue
+
+        print(f"[REQ {request_id}] PARSING: {len(valid_products)} válidos de {len(products)} productos (skipped={skipped_count}, reasons={skip_reasons})", flush=True)
 
         if not embeddings_matrix:
             print(f"[TEXT_SEARCH] END 404 no_valid_embeddings in {round(time.time()-start_time,3)}s")
+            print(f"[TEXT_SEARCH_MODE] full query='{query_text}' time={round(time.time()-start_time,3)}s results=0 (no_valid_embeddings)", flush=True)
             return jsonify({
                 "success": False,
                 "error": "no_valid_embeddings",
-                "message": "No se encontraron productos con embeddings válidos.",
+                "message": "No se encontraron productos con embeddings válidos. Se intentó búsqueda larga (full pipeline).",
+                "processing_mode": "full",
                 "processing_time": round(time.time() - start_time, 3)
             }), 404
 
