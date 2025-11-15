@@ -2572,7 +2572,7 @@ def text_search():
         category_substitution_info = None  # Mensaje para UI cuando hay sustitución/similitud
         categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
 
-        import re, unicodedata
+        import unicodedata
 
         def _norm_token(t: str) -> str:
             t = ''.join(c for c in unicodedata.normalize('NFD', t.lower()) if unicodedata.category(c) != 'Mn')
