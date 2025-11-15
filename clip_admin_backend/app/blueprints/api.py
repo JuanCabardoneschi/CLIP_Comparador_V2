@@ -2405,33 +2405,73 @@ def visual_search():
 
 
 # Helper compartido para clasificación de queries (simple vs compleja)
-def _is_simple_query(q: str):
+def _is_simple_query(q: str, client_id: str = None):
+    """
+    Clasifica query como simple o compleja de forma rápida sin normalización pesada.
+
+    Simple: 2-4 tokens, 1 color + 1 tipo, sin contexto complejo (ej: "camisa blanca")
+    Compleja: más tokens o hints de intención (ej: "camisa veraniega para la playa")
+
+    Returns:
+        (is_simple: bool, color: str|None, tipo: str|None)
+    """
     import re as _re
     q = (q or "").lower().strip()
     if not q:
         return False, None, None
+
     tokens = _re.findall(r"[a-záéíóúñ]+", q)
+
+    # Lista expandida de colores (todas las variaciones comunes)
     SIMPLE_COLORS = {
-        'blanco','blanca','negro','negra','rojo','roja','azul','verde','gris',
-        'beige','marron','marrona','chocolate','rosa','amarillo','amarilla',
-        'celeste','naranja','morado','morada','violeta'
+        'blanco','blanca','blancos','blancas',
+        'negro','negra','negros','negras',
+        'rojo','roja','rojos','rojas',
+        'azul','azules',
+        'verde','verdes',
+        'gris','grises',
+        'beige','beis',
+        'marron','marrona','marrones','cafe',
+        'chocolate',
+        'rosa','rosas',
+        'amarillo','amarilla','amarillos','amarillas',
+        'celeste','celestes',
+        'naranja','naranjas',
+        'morado','morada','morados','moradas',
+        'violeta','violetas'
     }
+
     SIMPLE_TYPES = {
-        'camisa','camisas','delantal','delantales','remera','remeras','blusa','blusas'
+        'camisa','camisas','delantal','delantales','remera','remeras','blusa','blusas',
+        'pantalon','pantalones','vestido','vestidos','pollera','polleras'
     }
+
+    # Detectar hints de complejidad
     COMPLEX_HINTS = {
         'veraniega','playa','quiero','usar','tengo','llevar','evento','oficina',
-        'resistente','fresco','fresca','confortable','comoda','verano','bambula'
+        'resistente','fresco','fresca','confortable','comoda','verano','bambula',
+        'elegante','casual','formal','deportiva','trabajo'
     }
+
+    # Si tiene palabras complejas → compleja
+    if any(t in COMPLEX_HINTS for t in tokens):
+        return False, None, None
+
+    # Criterio de longitud: queries simples son cortas (2-4 tokens)
+    if len(tokens) < 2 or len(tokens) > 4:
+        return False, None, None
+
     colors = [t for t in tokens if t in SIMPLE_COLORS]
     types = [t for t in tokens if t in SIMPLE_TYPES]
-    # Reglas simples: pocos tokens, exactamente 1 color y 1 tipo y sin hints complejos
-    if len(tokens) <= 4 and len(colors) == 1 and len(types) == 1 and not any(t in COMPLEX_HINTS for t in tokens):
-        # Normalizar tipo (singular)
+
+    # Regla simple: exactamente 1 color y 1 tipo
+    if len(colors) == 1 and len(types) == 1:
+        # Normalizar tipo a singular para matching de categoría
         tipo = types[0]
-        if tipo.endswith('s'):
+        if tipo.endswith('s') and tipo not in ['blusas']:  # excepción: blusas no tiene singular común
             tipo = tipo[:-1]
         return True, colors[0], tipo
+
     return False, None, None
 
 
