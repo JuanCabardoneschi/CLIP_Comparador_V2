@@ -2475,6 +2475,28 @@ def _is_simple_query(q: str, client_id: str = None):
     return False, None, None
 
 
+def _normalize_color_for_embedding(color: str) -> str:
+    """Normaliza variaciones de color a forma canónica para buscar embeddings."""
+    color = (color or "").lower().strip()
+    # Mapa de variaciones → forma canónica (como están en la BD)
+    color_map = {
+        'blanca': 'blanco', 'blancos': 'blanco', 'blancas': 'blanco',
+        'negra': 'negro', 'negros': 'negro', 'negras': 'negro',
+        'roja': 'rojo', 'rojos': 'rojo', 'rojas': 'rojo',
+        'azules': 'azul',
+        'verdes': 'verde',
+        'grises': 'gris',
+        'marrona': 'marron', 'marrones': 'marron', 'cafe': 'marron',
+        'rosas': 'rosa',
+        'amarilla': 'amarillo', 'amarillos': 'amarillo', 'amarillas': 'amarillo',
+        'celestes': 'celeste',
+        'naranjas': 'naranja',
+        'morada': 'morado', 'morados': 'morado', 'moradas': 'morado',
+        'violetas': 'violeta'
+    }
+    return color_map.get(color, color)
+
+
 @bp.route("/search/classify", methods=["GET", "OPTIONS"])
 def classify_search_query():
     """Endpoint ligero para clasificar una query como simple o compleja antes de la búsqueda pesada."""
@@ -2624,21 +2646,25 @@ def text_search():
             # ===================================================================
             # FAST-PATH con similitud de color por embeddings (3 grupos)
             # ===================================================================
-            # Precargar embedding del color solicitado
+            # Precargar embedding del color solicitado (normalizar a forma canónica)
             from app.models.embedding import Embedding
             import json
             import numpy as np
 
+            canonical_color = _normalize_color_for_embedding(simple_color)
             query_color_emb = None
             try:
                 emb_obj = Embedding.query.filter_by(
-                    key=f"color:{simple_color}",
+                    key=f"color:{canonical_color}",
                     type='color'
                 ).first()
                 if emb_obj:
                     query_color_emb = np.array(json.loads(emb_obj.embedding), dtype=np.float32)
+                    print(f"[REQ {request_id}] FAST-PATH: Embedding de color '{simple_color}' → '{canonical_color}' cargado", flush=True)
+                else:
+                    print(f"[REQ {request_id}] FAST-PATH: No existe embedding para color '{canonical_color}' en BD", flush=True)
             except Exception as e:
-                print(f"[REQ {request_id}] FAST-PATH: No se pudo cargar embedding de color '{simple_color}': {e}", flush=True)
+                print(f"[REQ {request_id}] FAST-PATH: Error cargando embedding de color '{simple_color}': {e}", flush=True)
 
             # Particionar productos por similitud de color
             exact_match = []    # color exacto o sim >= 0.75
@@ -2657,8 +2683,10 @@ def text_search():
                 # Calcular similitud si tenemos embeddings
                 if prod_color and query_color_emb is not None:
                     try:
+                        # Normalizar color del producto también
+                        canonical_prod_color = _normalize_color_for_embedding(prod_color)
                         prod_emb_obj = Embedding.query.filter_by(
-                            key=f"color:{prod_color}",
+                            key=f"color:{canonical_prod_color}",
                             type='color'
                         ).first()
                         if prod_emb_obj:
@@ -2668,9 +2696,12 @@ def text_search():
                     except Exception:
                         pass
 
-                # Clasificar en grupos
+                # Clasificar en grupos (comparar con canonical para match exacto)
+                canonical_query = _normalize_color_for_embedding(simple_color)
+                canonical_prod = _normalize_color_for_embedding(prod_color) if prod_color else None
+                
                 # Grupo 1: Exacto (literal o muy similar)
-                if prod_color == simple_color or color_sim >= 0.75:
+                if canonical_prod == canonical_query or color_sim >= 0.75:
                     exact_match.append((p, color_sim, True))
                 # Grupo 2: Cercano (similar pero no exacto)
                 elif color_sim >= 0.60:
