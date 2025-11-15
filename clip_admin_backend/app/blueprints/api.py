@@ -2417,6 +2417,85 @@ def text_search():
         query: Texto de bÃºsqueda (ej: "camisa blanca", "delantal marrÃ³n")
         limit: NÃºmero de resultados (default: 10, max: 50)
     """
+    # ---------------------------------------------------------------
+    # Helper rápido para clasificación de queries (simple vs compleja)
+    # ---------------------------------------------------------------
+    def _is_simple_query(q: str):
+        import re as _re
+        q = (q or "").lower().strip()
+        if not q:
+            return False, None, None
+        tokens = _re.findall(r"[a-záéíóúñ]+", q)
+        SIMPLE_COLORS = {
+            'blanco','negro','rojo','azul','verde','gris','beige','marron','chocolate',
+            'rosa','amarillo','celeste'
+        }
+        SIMPLE_TYPES = {
+            'camisa','camisas','delantal','delantales','remera','remeras','blusa','blusas'
+        }
+        COMPLEX_HINTS = {
+            'veraniega','playa','quiero','usar','tengo','llevar','evento','oficina',
+            'resistente','fresco','fresca','confortable','comoda','verano','bambula'
+        }
+        colors = [t for t in tokens if t in SIMPLE_COLORS]
+        types = [t for t in tokens if t in SIMPLE_TYPES]
+        # Reglas simples: pocos tokens, exactamente 1 color y 1 tipo y sin hints complejos
+        if len(tokens) <= 4 and len(colors) == 1 and len(types) == 1 and not any(t in COMPLEX_HINTS for t in tokens):
+            # Normalizar tipo (singular)
+            tipo = types[0]
+            if tipo.endswith('s'):
+                tipo = tipo[:-1]
+            return True, colors[0], tipo
+        return False, None, None
+
+@bp.route("/search/classify", methods=["GET", "OPTIONS"])
+def classify_search_query():
+    """Endpoint ligero para clasificar una query como simple o compleja antes de la búsqueda pesada."""
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+        return response
+    api_key = request.headers.get('X-API-Key')
+    if not api_key:
+        return jsonify({"success": False, "error": "missing_api_key", "message": "X-API-Key requerido"}), 401
+    client = Client.query.filter_by(api_key=api_key).first()
+    if not client:
+        return jsonify({"success": False, "error": "invalid_api_key", "message": "API Key inválido"}), 401
+    query_text = request.args.get('q', '').strip()
+    if not query_text:
+        return jsonify({"success": False, "error": "empty_query", "message": "Query vacía"}), 400
+    # Reusar helper interno de text_search
+    is_simple, color, tipo = False, None, None
+    try:
+        # Buscar función ya definida en text_search (namespace local); redefinir si no accesible
+        def _is_simple_query_inner(q):
+            import re as _re
+            q = (q or "").lower().strip()
+            tokens = _re.findall(r"[a-záéíóúñ]+", q)
+            SIMPLE_COLORS = {'blanco','negro','rojo','azul','verde','gris','beige','marron','chocolate','rosa','amarillo','celeste'}
+            SIMPLE_TYPES = {'camisa','camisas','delantal','delantales','remera','remeras','blusa','blusas'}
+            COMPLEX_HINTS = {'veraniega','playa','quiero','usar','tengo','llevar','evento','oficina','resistente','fresco','fresca','confortable','comoda','verano','bambula'}
+            colors = [t for t in tokens if t in SIMPLE_COLORS]
+            types = [t for t in tokens if t in SIMPLE_TYPES]
+            if len(tokens) <= 4 and len(colors) == 1 and len(types) == 1 and not any(t in COMPLEX_HINTS for t in tokens):
+                tipo = types[0]
+                if tipo.endswith('s'):
+                    tipo = tipo[:-1]
+                return True, colors[0], tipo
+            return False, None, None
+        is_simple, color, tipo = _is_simple_query_inner(query_text)
+    except Exception:
+        pass
+    return jsonify({
+        "success": True,
+        "query": query_text,
+        "classification": "simple" if is_simple else "complex",
+        "color": color,
+        "tipo": tipo
+    })
+
     # Manejar preflight OPTIONS request
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
@@ -2453,7 +2532,7 @@ def text_search():
                 "message": "API Key invÃ¡lido"
             }), 401
 
-        # Obtener parÃ¡metros del request
+        # Obtener parámetros del request
         data = request.get_json()
         if not data or 'query' not in data:
             return jsonify({
@@ -2481,6 +2560,84 @@ def text_search():
             limit = max_results
 
         print(f"[REQ {request_id}] TEXT SEARCH: Query='{query_text}' Client={client.name} Limit={limit}", flush=True)
+
+        # ---------------------------------------------------------------
+        # FAST PATH: detección de query simple antes de pipeline pesado
+        # ---------------------------------------------------------------
+        is_simple, simple_color, simple_tipo = _is_simple_query(query_text)
+        if is_simple:
+            fp_start = time.time()
+            print(f"[REQ {request_id}] ⚡ FAST-PATH activado (color={simple_color}, tipo={simple_tipo})", flush=True)
+            # Detectar categoría por nombre que contenga el tipo (singular o plural)
+            categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
+            detected_category = None
+            for cat in categories:
+                cat_name_low = cat.name.lower()
+                if simple_tipo in cat_name_low or (simple_tipo + 's') in cat_name_low:
+                    detected_category = cat
+                    break
+            # Query de productos (sin embeddings de texto)
+            products_query = db.session.query(
+                Product.id,
+                Product.name,
+                Product.sku,
+                Product.price,
+                Product.attributes,
+                Product.tags,
+                Category.name.label('category_name'),
+                Image.cloudinary_url
+            ).join(
+                Category, Product.category_id == Category.id
+            ).join(
+                Image, db.and_(Product.id == Image.product_id, Image.is_primary == True)
+            ).filter(
+                Product.client_id == client.id,
+                Product.is_active == True
+            )
+            if detected_category:
+                products_query = products_query.filter(Product.category_id == detected_category.id)
+                print(f"[REQ {request_id}] FAST-PATH: filtrando por categoría {detected_category.name}", flush=True)
+            products = products_query.all()
+            # Particionar por match de color en attributes['color']
+            matched = []
+            others = []
+            for p in products:
+                attrs = p.attributes or {}
+                prod_color = None
+                # color puede estar como string o dentro de dict
+                if isinstance(attrs, dict):
+                    prod_color = (attrs.get('color') or attrs.get('Color') or '').lower().strip()
+                if prod_color == simple_color:
+                    matched.append(p)
+                else:
+                    others.append(p)
+            ordered = matched + others
+            ordered = ordered[:limit]
+            results = []
+            for prod in ordered:
+                results.append({
+                    "id": prod.id,
+                    "name": prod.name,
+                    "sku": prod.sku,
+                    "category": prod.category_name,
+                    "price": float(prod.price) if prod.price else None,
+                    "match_color": (prod in matched),
+                    "color": simple_color,
+                    "image_url": prod.cloudinary_url,
+                    "processing_mode": "fast"
+                })
+            fp_total = time.time() - fp_start
+            print(f"[REQ {request_id}] FAST-PATH completado en {fp_total:.3f}s resultados={len(results)}", flush=True)
+            return jsonify({
+                "success": True,
+                "processing_mode": "fast",
+                "is_simple_query": True,
+                "detected_color": simple_color,
+                "detected_tipo": simple_tipo,
+                "results": results,
+                "total_results": len(results),
+                "processing_time": round(time.time() - start_time, 3)
+            })
 
         # --- LLM Normalization (con vocabulario dinÃ¡mico del cliente) ---
         t_before_norm = time.time()
