@@ -2506,15 +2506,8 @@ def text_search():
             # typos comunes
             if s0 == 'baige':
                 s0 = 'beige'
-            # sinónimos → canon
-            SYN = {
-                'caramelo': 'marron',
-                'chocolate': 'marron',
-                'cafe': 'marron',
-                'castano': 'marron',
-                'camel': 'marron',
-            }
-            return SYN.get(s0, s0)
+            # sinónimos hardcodeados removidos → se usará similitud por embeddings
+            return s0
 
         # Extraer color directamente de la query (prioritario si existe)
         COLORES_CANONICOS = {
@@ -3042,22 +3035,38 @@ def text_search():
 
             # Prioridad por match exacto de atributo de color si el usuario pidió color
             exact_attr_color_match = False
+            near_attr_color_match = False
             if detected_color and prod.attributes:
                 try:
                     attr_val = prod.attributes.get('color')
                     if isinstance(attr_val, str):
-                        exact_attr_color_match = (_canonical_color(attr_val) == _canonical_color(detected_color))
+                        norm_attr = _canonical_color(attr_val)
+                        dc = _canonical_color(detected_color)
+                        exact_attr_color_match = (norm_attr == dc)
                     elif isinstance(attr_val, list):
-                        exact_attr_color_match = any(_canonical_color(v) == _canonical_color(detected_color) for v in attr_val)
+                        dc = _canonical_color(detected_color)
+                        vals = {_canonical_color(v) for v in attr_val}
+                        exact_attr_color_match = (dc in vals)
                 except Exception:
                     exact_attr_color_match = False
 
+            # Cercanía por embeddings: si no es exacto pero la similitud supera umbral "near"
+            try:
+                NEAR_THRESHOLD = 0.60
+                if detected_color and (not exact_attr_color_match) and (color_sim >= NEAR_THRESHOLD):
+                    near_attr_color_match = True
+            except Exception:
+                pass
             # Color group y priority
             if detected_color:
                 if exact_attr_color_match:
                     # Forzar mayor prioridad si el atributo coincide exactamente con el color pedido
                     color_group = 0
                     color_priority = 3
+                elif near_attr_color_match:
+                    # Colores cercanos al solicitado tienen mayor prioridad que no relacionados
+                    color_group = 0
+                    color_priority = 2
                 elif color_sim >= 0.75:
                     color_group = 0
                     color_priority = 2
@@ -3079,6 +3088,8 @@ def text_search():
                 color_sim * color_weight +
                 tag_name_boost * 0.1
             )
+            if detected_color and near_attr_color_match:
+                final_score += 0.02
 
             results.append({
                 'product_id': str(prod.id),
@@ -3096,6 +3107,7 @@ def text_search():
                 'color_group': color_group,
                 'color_priority': color_priority,
                 'exact_attr_color_match': exact_attr_color_match,
+                'near_attr_color_match': near_attr_color_match,
                 'name_boost': round(name_boost, 4),
                 'final_score': round(final_score, 4)
             })
