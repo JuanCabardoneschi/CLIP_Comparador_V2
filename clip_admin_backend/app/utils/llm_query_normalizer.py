@@ -346,7 +346,7 @@ def _extract_client_vocabulary(client_id: int) -> dict:
     return result
 
 
-def _semantic_match(query: str, vocabulary: list, threshold: float = 0.5) -> str:
+def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: float = 0.5) -> str:
     """
     Encuentra la mejor coincidencia semántica usando embeddings cacheados.
 
@@ -422,7 +422,7 @@ def _semantic_match(query: str, vocabulary: list, threshold: float = 0.5) -> str
     return None
 
 
-def _semantic_match_multiple(query: str, vocabulary: list, threshold: float = 0.4, top_k: int = 3) -> list:
+def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, threshold: float = 0.4, top_k: int = 3) -> list:
     """
     Encuentra múltiples coincidencias semánticas usando embeddings cacheados.
 
@@ -592,9 +592,9 @@ def normalize_query(query: str, client_id: int = None) -> dict:
     # - Color: 0.45 (captura variantes: "azul" ≈ "celeste", "marino")
     # - Tipo: 0.50 (categoría con flexibilidad: "jean" ≈ "pantalón", "vaquero")
     # - Contexto: 0.40 (más flexible para estilos/ocasiones)
-    color = _semantic_match(query, colores, threshold=0.45) if colores else None
-    tipo = _semantic_match(query, tipos, threshold=0.50) if tipos else None
-    contexto = _semantic_match_multiple(query, contextos, threshold=0.40, top_k=2) if contextos else []
+    color = _semantic_match(query, colores, client_id, threshold=0.45) if colores else None
+    tipo = _semantic_match(query, tipos, client_id, threshold=0.50) if tipos else None
+    contexto = _semantic_match_multiple(query, contextos, client_id, threshold=0.40, top_k=2) if contextos else []
 
     # Detectar queries ambiguas y generar sugerencias
     ambiguity_check = _detect_ambiguous_terms(query, vocab if client_id else {})
