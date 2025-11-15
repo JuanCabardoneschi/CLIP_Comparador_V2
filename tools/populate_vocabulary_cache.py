@@ -28,6 +28,8 @@ sys.path.append(PROJECT_ROOT)
 from dotenv import load_dotenv
 load_dotenv(os.path.join(PROJECT_ROOT, '.env.local'))
 
+from sentence_transformers import SentenceTransformer
+
 from clip_admin_backend.app import create_app  # factory
 from clip_admin_backend.app import db
 from clip_admin_backend.app.models import Client
@@ -169,6 +171,11 @@ def main():
     parser.add_argument('--client', dest='client_id', help='UUID del cliente a procesar solo')
     args = parser.parse_args()
 
+    # Cargar modelo de embeddings
+    print("⏳ Cargando modelo de embeddings...")
+    model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+    print("✅ Modelo cargado")
+
     app = create_app()
     with app.app_context():
         if args.client_id:
@@ -181,9 +188,20 @@ def main():
         for cli in clients:
             c0 = time.time()
             vocab = _build_vocabulary_from_db(str(cli.id))
+
+            # Calcular embeddings de colores
+            if vocab['colores']:
+                print(f"   🎨 Calculando embeddings para {len(vocab['colores'])} colores...")
+                color_embs = model.encode(vocab['colores'])
+                vocab['color_embeddings'] = {
+                    color: emb.tolist() for color, emb in zip(vocab['colores'], color_embs)
+                }
+            else:
+                vocab['color_embeddings'] = {}
+
             upsert_client_vocabulary(str(cli.id), vocab)
             db.session.commit()
-            print(f" - {cli.name}: tipos={len(vocab['tipos'])} contextos={len(vocab['contextos'])} colores={len(vocab['colores'])} en {time.time()-c0:.2f}s")
+            print(f" - {cli.name}: tipos={len(vocab['tipos'])} contextos={len(vocab['contextos'])} colores={len(vocab['colores'])} (con embeddings) en {time.time()-c0:.2f}s")
 
         print(f"Hecho en {time.time()-t0:.2f}s")
 

@@ -126,6 +126,44 @@ def get_model():
         return _model
 
 
+def _save_color_embeddings(client_id: int, new_embeddings: dict):
+    """Guarda embeddings de colores nuevos en la BD (merge con existentes)"""
+    from app import db
+    from sqlalchemy import text
+
+    try:
+        # Leer vocabulario actual
+        row = db.session.execute(
+            text("SELECT vocabulary FROM client_vocabulary_cache WHERE client_id = :cid"),
+            {"cid": str(client_id)}
+        ).fetchone()
+
+        if not row:
+            return
+
+        vocab = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+
+        # Merge embeddings nuevos con existentes
+        if 'color_embeddings' not in vocab:
+            vocab['color_embeddings'] = {}
+
+        vocab['color_embeddings'].update(new_embeddings)
+
+        # Update en BD
+        db.session.execute(
+            text("""
+                UPDATE client_vocabulary_cache
+                SET vocabulary = CAST(:vocab AS JSONB), updated_at = NOW()
+                WHERE client_id = :cid
+            """),
+            {"cid": str(client_id), "vocab": json.dumps(vocab)}
+        )
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        raise e
+
+
 def _extract_client_vocabulary(client_id: int) -> dict:
     """
     Extrae vocabulario dinámico desde la BD del cliente CON CACHÉ en memoria
@@ -357,6 +395,13 @@ def _semantic_match(query: str, vocabulary: list, threshold: float = 0.5) -> str
         for term, emb in zip(missing_terms, missing_embs):
             vocab_embeddings[term] = emb
 
+        # Guardar embeddings nuevos en la BD para futuras búsquedas
+        try:
+            _save_color_embeddings(client_id, {term: emb.tolist() for term, emb in zip(missing_terms, missing_embs)})
+            print(f"✅ {len(missing_terms)} embeddings guardados en BD para futuras búsquedas")
+        except Exception as e:
+            print(f"⚠️ Error guardando embeddings: {e}")
+
     # Construir matriz de embeddings en el orden original
     vocab_embs = np.array([vocab_embeddings[v] for v in vocab_lower if v in vocab_embeddings])
 
@@ -426,6 +471,13 @@ def _semantic_match_multiple(query: str, vocabulary: list, threshold: float = 0.
         missing_embs = model.encode(missing_terms)
         for term, emb in zip(missing_terms, missing_embs):
             vocab_embeddings[term] = emb
+
+        # Guardar embeddings nuevos en la BD para futuras búsquedas
+        try:
+            _save_color_embeddings(client_id, {term: emb.tolist() for term, emb in zip(missing_terms, missing_embs)})
+            print(f"✅ {len(missing_terms)} embeddings guardados en BD para futuras búsquedas")
+        except Exception as e:
+            print(f"⚠️ Error guardando embeddings: {e}")
 
     # Construir matriz de embeddings en el orden original
     vocab_embs = np.array([vocab_embeddings[v] for v in vocab_lower if v in vocab_embeddings])
