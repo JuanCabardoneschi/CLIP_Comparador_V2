@@ -2412,8 +2412,9 @@ def _is_simple_query(q: str):
         return False, None, None
     tokens = _re.findall(r"[a-záéíóúñ]+", q)
     SIMPLE_COLORS = {
-        'blanco','negro','rojo','azul','verde','gris','beige','marron','chocolate',
-        'rosa','amarillo','celeste'
+        'blanco','blanca','negro','negra','rojo','roja','azul','verde','gris',
+        'beige','marron','marrona','chocolate','rosa','amarillo','amarilla',
+        'celeste','naranja','morado','morada','violeta'
     }
     SIMPLE_TYPES = {
         'camisa','camisas','delantal','delantales','remera','remeras','blusa','blusas'
