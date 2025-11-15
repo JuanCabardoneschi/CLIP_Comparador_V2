@@ -1,7 +1,7 @@
 {
   "clip": {
     "preload": false,
-    "idle_timeout_minutes": 5,
+    "idle_timeout_minutes": 30,
     "model_name": "ViT-B/16"
   },
   "search": {
