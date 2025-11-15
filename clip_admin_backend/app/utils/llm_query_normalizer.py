@@ -352,7 +352,7 @@ def _extract_client_vocabulary(client_id: int) -> dict:
     return result
 
 
-def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: float = 0.5) -> str:
+def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: float = 0.5, query_emb=None) -> str:
     """
     Encuentra la mejor coincidencia semántica usando embeddings cacheados.
 
@@ -360,6 +360,7 @@ def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: flo
         query: Texto de búsqueda
         vocabulary: Lista de términos candidatos del cliente
         threshold: Similitud mínima para considerar match (0-1)
+        query_emb: Embedding pre-calculado de la query (opcional, evita recalcular)
 
     Returns:
         Mejor match o None si no supera threshold
@@ -370,12 +371,16 @@ def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: flo
     if not vocabulary:
         return None
 
-    model = get_model()
-
-    # Encodear SOLO la query (rápido: 1 item)
-    t_encode = time.time()
-    query_emb = model.encode([query.lower()])[0]
-    print(f"⏱️ [_semantic_match] query encode: {time.time()-t_encode:.3f}s", flush=True)
+    # Si no hay embedding pre-calculado, calcularlo
+    if query_emb is None:
+        model = get_model()
+        t_encode = time.time()
+        query_emb = model.encode([query.lower()])[0]
+        print(f"⏱️ [_semantic_match] query encode: {time.time()-t_encode:.3f}s", flush=True)
+    # Si ya existe, reutilizarlo (OPTIMIZACIÓN)
+    else:
+        if isinstance(query_emb, list):
+            query_emb = np.array(query_emb, dtype=np.float32)
 
     # 🔥 OPTIMIZACIÓN: Leer embeddings pre-calculados desde BD
     from app.models.embedding import Embedding
@@ -459,7 +464,7 @@ def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: flo
     return None
 
 
-def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, threshold: float = 0.4, top_k: int = 3) -> list:
+def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, threshold: float = 0.4, top_k: int = 3, query_emb=None) -> list:
     """
     Encuentra múltiples coincidencias semánticas usando embeddings cacheados.
 
@@ -468,6 +473,7 @@ def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, thres
         vocabulary: Lista de términos candidatos
         threshold: Similitud mínima
         top_k: Máximo de matches a retornar
+        query_emb: Embedding pre-calculado de la query (opcional, se calcula si es None)
 
     Returns:
         Lista de matches ordenados por similitud
@@ -478,13 +484,15 @@ def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, thres
     if not vocabulary:
         return []
 
-    model = get_model()
-
-    # Encodear SOLO la query (rápido: 1 item)
-    t_encode = time.time()
-    query_emb = model.encode([query.lower()])[0]
-    print(f"⏱️ [_semantic_match_multiple] query encode: {time.time()-t_encode:.3f}s", flush=True)
-    query_emb = model.encode([query.lower()])[0]
+    # Si NO tenemos el embedding pre-calculado, lo calculamos
+    if query_emb is None:
+        model = get_model()
+        t_encode = time.time()
+        query_emb = model.encode([query.lower()])[0]
+        print(f"⏱️ [_semantic_match_multiple] query encode: {time.time()-t_encode:.3f}s", flush=True)
+    else:
+        # Convertir a numpy array si viene como lista
+        query_emb = np.array(query_emb) if not isinstance(query_emb, np.ndarray) else query_emb
 
     # 🔥 OPTIMIZACIÓN: Leer embeddings pre-calculados desde BD
     from app.models.embedding import Embedding
@@ -672,9 +680,9 @@ def normalize_query(query: str, client_id: int = None) -> dict:
     # - Color: 0.45 (captura variantes: "azul" ≈ "celeste", "marino")
     # - Tipo: 0.50 (categoría con flexibilidad: "jean" ≈ "pantalón", "vaquero")
     # - Contexto: 0.40 (más flexible para estilos/ocasiones)
-    color = _semantic_match(query, colores, client_id, threshold=0.45) if colores else None
-    tipo = _semantic_match(query, tipos, client_id, threshold=0.50) if tipos else None
-    contexto = _semantic_match_multiple(query, contextos, client_id, threshold=0.40, top_k=2) if contextos else []
+    color = _semantic_match(query, colores, client_id, threshold=0.45, query_emb=emb) if colores else None
+    tipo = _semantic_match(query, tipos, client_id, threshold=0.50, query_emb=emb) if tipos else None
+    contexto = _semantic_match_multiple(query, contextos, client_id, threshold=0.40, top_k=2, query_emb=emb) if contextos else []
 
     # Detectar queries ambiguas y generar sugerencias
     ambiguity_check = _detect_ambiguous_terms(query, vocab if client_id else {})
