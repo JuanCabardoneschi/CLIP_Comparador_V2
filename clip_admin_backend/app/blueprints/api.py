@@ -2531,24 +2531,52 @@ def text_search():
                 return s
 
         def _canonical_color(s: str) -> str:
+            """Normaliza colores eliminando acentos y espacios (sin hardcodear sinónimos)"""
             if not s:
                 return s
             s0 = _strip_accents(str(s).lower()).strip()
-            # typos comunes
+            # Corrección de typo común
             if s0 == 'baige':
                 s0 = 'beige'
-            # sinónimos hardcodeados removidos → se usará similitud por embeddings
             return s0
 
-        # Extraer color directamente de la query (prioritario si existe)
-        COLORES_CANONICOS = {
-            'rojo', 'azul', 'verde', 'amarillo', 'negro', 'blanco', 'gris',
-            'rosa', 'morado', 'naranja', 'marron', 'beige', 'celeste', 'turquesa',
-            'dorado', 'plateado', 'violeta', 'cafe', 'crema', 'coral', 'fucsia'
-        }
-        tokens = [t for t in re.split(r"\s+", query_text.strip().lower()) if t]
-        canon_tokens = [_canonical_color(t) for t in tokens]
-        query_colors = [t for t in canon_tokens if t in COLORES_CANONICOS]
+        # spaCy es OBLIGATORIO para tokenización con lematización
+        import unicodedata
+
+        def tokenize(texto: str):
+            """
+            Tokeniza texto usando spaCy (OBLIGATORIO).
+            Aplica lematización automática y filtrado de stopwords nativo.
+            """
+            nlp = _get_spacy_nlp()
+            if nlp is None or not _USE_SPACY_NORMALIZER:
+                error_msg = "🚨 CRITICAL: spaCy no está disponible. El sistema requiere spaCy para tokenización."
+                print(f"[REQ {request_id}] {error_msg}", flush=True)
+                raise RuntimeError(error_msg)
+
+            doc = nlp(texto or "")
+            toks = set()
+            for tok in doc:
+                # Filtrar tokens no alfabéticos y stopwords (spaCy ya los detecta)
+                if not tok.is_alpha or tok.is_stop:
+                    continue
+                # Lema normalizado: minúsculas, sin acentos, solo alfanuméricos
+                lemma = tok.lemma_.lower()
+                lemma = ''.join(c for c in unicodedata.normalize('NFD', lemma) if unicodedata.category(c) != 'Mn')
+                lemma = re.sub(r"[^a-z0-9]+", "", lemma)
+                if lemma and len(lemma) >= 2:
+                    toks.add(lemma)
+            return toks
+
+        # Extraer color directamente de la query usando vocabulario dinámico del cliente
+        # spaCy ya normaliza plurales/género en tokenize()
+        from app.utils.llm_query_normalizer import _extract_client_vocabulary
+        client_vocab = _extract_client_vocabulary(client.id)
+        client_colors = set(client_vocab.get('colores', []))
+
+        # Usar tokenize() que ya aplica lematización via spaCy si está habilitado
+        query_token_set = tokenize(query_text)
+        query_colors = [t for t in query_token_set if t in client_colors]
         explicit_color_from_query = False
         if query_colors:
             # Priorizar color explícito en query sobre LLM normalizer
@@ -2602,41 +2630,6 @@ def text_search():
         category_substitution_info = None  # Mensaje para UI cuando hay sustitución/similitud
         categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
 
-        import unicodedata
-
-        def _norm_token(t: str) -> str:
-            t = ''.join(c for c in unicodedata.normalize('NFD', t.lower()) if unicodedata.category(c) != 'Mn')
-            t = re.sub(r"[^a-z0-9]+", "", t)
-            # singularizaciÃ³n naive: quitar 's' final si queda algo
-            if len(t) > 3 and t.endswith('s'):
-                t = t[:-1]
-            return t
-
-        STOPWORDS = {
-            'hombre','hombres','dama','damas','mujer','mujeres','unisex',
-            'y','de','para','con','sin','del','la','el','los','las'
-        }
-
-        def tokenize(texto: str):
-            # Ruta spaCy opcional (mejor lematización plural/género)
-            nlp = _get_spacy_nlp()
-            if nlp is not None and _USE_SPACY_NORMALIZER:
-                doc = nlp(texto or "")
-                toks = set()
-                for tok in doc:
-                    if not tok.is_alpha:
-                        continue
-                    # Lema en minúsculas, sin acentos ni símbolos
-                    lemma = tok.lemma_.lower()
-                    lemma = ''.join(c for c in unicodedata.normalize('NFD', lemma) if unicodedata.category(c) != 'Mn')
-                    lemma = re.sub(r"[^a-z0-9]+", "", lemma)
-                    if lemma and lemma not in STOPWORDS and len(lemma) >= 2:
-                        toks.add(lemma)
-                return toks
-
-            # Fallback rápido (sin spaCy)
-            toks = re.split(r"[\s,./;:()\-â€“]+", texto or "")
-            return { _norm_token(t) for t in toks if _norm_token(t) and _norm_token(t) not in STOPWORDS }
 
         query_tokens = tokenize(expanded_query)
         print(f"[REQ {request_id}] Query tokens: {query_tokens}")
@@ -2782,11 +2775,40 @@ def text_search():
                 print(f"[REQ {request_id}] ✅ Match literal categoría: {best_cat.name}")
             elif best_sim >= SIMILAR_THRESHOLD:
                 detected_category = best_cat
+
+                # 🔍 Detectar categorías hermanas por similitud semántica (sin hardcodeo)
+                # Usar embeddings cacheados para encontrar categorías similares a la detectada
+                sibling_categories = []
+                try:
+                    SIBLING_THRESHOLD = 0.75  # Umbral para considerar "hermanas"
+                    detected_cat_emb = _get_category_embedding(best_cat.name, str(client.id))
+
+                    for other_cat, other_sim in cat_sims[1:6]:  # Top 5 siguientes (ya ordenadas)
+                        if other_cat.id == best_cat.id:
+                            continue
+                        other_cat_emb = _get_category_embedding(other_cat.name, str(client.id))
+                        # Similitud entre categorías (no query)
+                        cat_to_cat_sim = float(util.cos_sim(detected_cat_emb, other_cat_emb)[0][0])
+                        if cat_to_cat_sim >= SIBLING_THRESHOLD:
+                            # Verificar que tenga productos
+                            if Product.query.filter_by(category_id=other_cat.id, client_id=client.id).count() > 0:
+                                sibling_categories.append({
+                                    "name": other_cat.name,
+                                    "similarity_to_detected": round(cat_to_cat_sim, 3)
+                                })
+
+                    if sibling_categories:
+                        print(f"[REQ {request_id}] 🔗 Categorías hermanas detectadas: {[s['name'] for s in sibling_categories]}")
+                except Exception as e:
+                    print(f"[REQ {request_id}] ⚠️ Error detectando hermanas: {e}")
+                    sibling_categories = []
+
                 category_substitution_info = {
                     "match_type": "similar",
                     "requested_text": query_text,
                     "matched_category": best_cat.name,
-                    "similarity": round(best_sim, 3)
+                    "similarity": round(best_sim, 3),
+                    **({"sibling_categories": sibling_categories} if sibling_categories else {})
                 }
                 print(f"[REQ {request_id}] ⚠️ Match similar categoría: '{query_text}' → '{best_cat.name}' sim={best_sim:.3f}")
             else:
@@ -3354,12 +3376,12 @@ def text_search():
                         if has_category_substitution:
                             message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
 
-                        message += f"Actualmente no contamos con modelos en color {detected_color.lower()}"
+                        message += f"No disponemos en este momento en {detected_color.lower()}"
 
                         if shown_colors:
                             if len(shown_colors) == 1:
                                 closest = list(shown_colors)[0]
-                                message += f", pero encontramos opciones en {closest}, que es el tono más cercano."
+                                message += f", pero encontramos opciones en {closest}."
                             else:
                                 closest_list = ', '.join(sorted(shown_colors))
                                 message += f", pero encontramos opciones en {closest_list}."
@@ -3379,20 +3401,22 @@ def text_search():
                             "reason": "color_not_available"
                         }
                     else:  # partial
-                        # Mensaje para coincidencia parcial
+                        # Mensaje para coincidencia parcial (color similar pero no exacto)
                         message = ""
 
                         # Solo mencionar interpretación de categoría si hubo sustitución (match similar)
                         if has_category_substitution:
                             message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
 
+                        message += f"No disponemos en este momento en {detected_color.lower()}"
+
                         if shown_colors:
                             if len(shown_colors) == 1:
                                 closest = list(shown_colors)[0]
-                                message += f"Encontramos opciones en {closest}, similar a {detected_color.lower()}."
+                                message += f", pero encontramos opciones en {closest}."
                             else:
                                 closest_list = ', '.join(sorted(shown_colors))
-                                message += f"Encontramos opciones en {closest_list}."
+                                message += f", pero encontramos opciones en {closest_list}."
 
                         if other_colors:
                             if len(other_colors) == 1:
