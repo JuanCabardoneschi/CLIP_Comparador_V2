@@ -3290,6 +3290,9 @@ def text_search():
                     # Construir texto amigable de búsqueda
                     search_query_text = query_text.lower()
 
+                    # Determinar si hubo sustitución de categoría (match similar, no exacto)
+                    has_category_substitution = 'category_substitution_info' in locals() and category_substitution_info is not None
+
                     # Detectar el color de los productos que estamos mostrando (el "más cercano")
                     shown_colors = set()
                     for r in results[:3]:  # Top 3 resultados
@@ -3305,7 +3308,12 @@ def text_search():
 
                     if match_quality == "poor":
                         # Mensaje amigable cuando NO hay el color solicitado
-                        message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
+                        message = ""
+
+                        # Solo mencionar interpretación de categoría si hubo sustitución (match similar)
+                        if has_category_substitution:
+                            message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
+
                         message += f"Actualmente no contamos con modelos en color {detected_color.lower()}"
 
                         if shown_colors:
@@ -3332,7 +3340,11 @@ def text_search():
                         }
                     else:  # partial
                         # Mensaje para coincidencia parcial
-                        message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
+                        message = ""
+                        
+                        # Solo mencionar interpretación de categoría si hubo sustitución (match similar)
+                        if has_category_substitution:
+                            message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
 
                         if shown_colors:
                             if len(shown_colors) == 1:
