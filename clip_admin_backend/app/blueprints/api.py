@@ -3175,22 +3175,22 @@ def text_search():
                 category_product_count = len([p for p in products if p.category_id == detected_category.id])
                 if category_product_count == 0:
                     partial_match_info = {
-                        "message": f"No tenemos productos en la categoría '{detected_category.name}' actualmente.",
-                        "suggestion": "Intenta buscar en otras categorías o consulta nuestro catálogo completo.",
+                        "message": f"Tu búsqueda de {query_text.lower()} se interpretó dentro de la categoría {detected_category.name}, pero actualmente no tenemos productos en esa categoría.",
+                        "suggestion": "Podés explorar otras categorías de nuestro catálogo.",
                         "reason": "empty_category"
                     }
                 else:
                     # Categoría tiene productos pero ninguno matcheó - problema de atributos/color
                     partial_match_info = {
-                        "message": f"No encontramos '{query_text}' exactamente en nuestra categoría '{detected_category.name}'.",
-                        "suggestion": "Prueba buscar sin especificar color o características tan específicas.",
+                        "message": f"Tu búsqueda de {query_text.lower()} se interpretó dentro de la categoría {detected_category.name}, pero no encontramos coincidencias exactas.",
+                        "suggestion": "Probá buscar sin especificar color o características tan específicas.",
                         "reason": "no_attribute_match"
                     }
             else:
                 # No se detectó categoría o búsqueda global falló
                 partial_match_info = {
-                    "message": f"No encontramos productos que coincidan con '{query_text}'.",
-                    "suggestion": "Intenta usar términos más generales o explora nuestro catálogo.",
+                    "message": f"No encontramos productos que coincidan con tu búsqueda de {query_text.lower()}.",
+                    "suggestion": "Intentá usar términos más generales o explorá nuestro catálogo completo.",
                     "reason": "no_match_global"
                 }
 
@@ -3285,7 +3285,10 @@ def text_search():
                 if available_colors:
                     colors_list = sorted(list(available_colors))
                     # Priorizar detected_category sobre LLM's detected_tipo
-                    category_text = (detected_category.name.lower() if detected_category else None) or detected_tipo or 'productos'
+                    category_name = (detected_category.name if detected_category else None) or detected_tipo or 'productos'
+
+                    # Construir texto amigable de búsqueda
+                    search_query_text = query_text.lower()
 
                     # Detectar el color de los productos que estamos mostrando (el "más cercano")
                     shown_colors = set()
@@ -3295,37 +3298,57 @@ def text_search():
                         if product and product.attributes:
                             prod_color = product.attributes.get('color')
                             if prod_color:
-                                shown_colors.add(prod_color.upper())
+                                shown_colors.add(prod_color.lower())
 
-                    closest_color_text = ""
-                    other_colors = []
-
-                    if shown_colors:
-                        # Excluir colores mostrados de la lista de "también disponibles"
-                        other_colors = [c for c in colors_list if c not in shown_colors]
-
-                        if len(shown_colors) == 1:
-                            closest_color_text = f" Nuestro sistema encontró que {list(shown_colors)[0]} es el color más similar disponible."
-                        else:
-                            closest_color_text = f" Nuestro sistema encontró estos colores como los más similares: {', '.join(sorted(shown_colors))}."
-                    else:
-                        other_colors = colors_list
+                    # Excluir colores mostrados de la lista de "también disponibles"
+                    other_colors = [c.lower() for c in colors_list if c.lower() not in shown_colors]
 
                     if match_quality == "poor":
-                        message = f"No tenemos {category_text} en '{detected_color.upper()}' que solicitaste."
-                        message += closest_color_text
+                        # Mensaje amigable cuando NO hay el color solicitado
+                        message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
+                        message += f"Actualmente no contamos con modelos en color {detected_color.lower()}"
+
+                        if shown_colors:
+                            if len(shown_colors) == 1:
+                                closest = list(shown_colors)[0]
+                                message += f", pero encontramos opciones en {closest}, que es el tono más cercano."
+                            else:
+                                closest_list = ', '.join(sorted(shown_colors))
+                                message += f", pero encontramos opciones en {closest_list}."
+                        else:
+                            message += "."
+
                         if other_colors:
-                            message += f" También disponibles: {', '.join(other_colors)}."
+                            if len(other_colors) == 1:
+                                message += f" También podés elegir {other_colors[0]}."
+                            else:
+                                others_text = ', '.join(other_colors[:-1]) + f" y {other_colors[-1]}"
+                                message += f" También podés elegir entre otros colores disponibles: {others_text}."
+
                         partial_match_info = {
                             "message": message,
                             "requested_color": detected_color.upper(),
                             "reason": "color_not_available"
                         }
                     else:  # partial
-                        message = f"Coincidencia aproximada para '{detected_color.upper()}' en {category_text}."
-                        message += closest_color_text
+                        # Mensaje para coincidencia parcial
+                        message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
+
+                        if shown_colors:
+                            if len(shown_colors) == 1:
+                                closest = list(shown_colors)[0]
+                                message += f"Encontramos opciones en {closest}, similar a {detected_color.lower()}."
+                            else:
+                                closest_list = ', '.join(sorted(shown_colors))
+                                message += f"Encontramos opciones en {closest_list}."
+
                         if other_colors:
-                            message += f" Otros colores disponibles: {', '.join(other_colors)}."
+                            if len(other_colors) == 1:
+                                message += f" También disponible: {other_colors[0]}."
+                            else:
+                                others_text = ', '.join(other_colors[:-1]) + f" y {other_colors[-1]}"
+                                message += f" Otros colores disponibles: {others_text}."
+
                         partial_match_info = {
                             "message": message,
                             "available_colors": colors_list,
