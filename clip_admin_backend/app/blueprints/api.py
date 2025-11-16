@@ -3380,10 +3380,6 @@ def text_search():
         if partial_match_info:
             response['partial_match_info'] = partial_match_info
 
-        # Agregar información de sustitución de categoría (match similar)
-        if 'category_substitution_info' in locals() and category_substitution_info:
-            response['category_substitution_info'] = category_substitution_info
-
         # Agregar sugerencias si la query es ambigua
         if llm_norm.get('needs_refinement'):
             response['needs_refinement'] = True
