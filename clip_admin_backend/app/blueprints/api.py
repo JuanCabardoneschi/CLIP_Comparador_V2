@@ -46,6 +46,28 @@ CORS(bp, origins=["*"],
 _CATEGORY_EMBEDDINGS_CACHE = {}
 _COLOR_EMBEDDINGS_CACHE = {}
 
+# Normalización opcional con spaCy (desactivada por defecto)
+_USE_SPACY_NORMALIZER = os.getenv("USE_SPACY_NORMALIZER", "false").lower() in ("1", "true", "yes", "on")
+_SPACY_NLP = None
+
+def _get_spacy_nlp():
+    """Carga perezosa del modelo spaCy español si está habilitado por env var."""
+    global _SPACY_NLP
+    # Si ya falló antes, no reintentar
+    if _SPACY_NLP is False:
+        return None
+    if _SPACY_NLP is None and _USE_SPACY_NORMALIZER:
+        try:
+            import spacy  # type: ignore
+            model_name = os.getenv("SPACY_MODEL", "es_core_news_sm")
+            # Deshabilitar componentes no necesarios para reducir overhead
+            _SPACY_NLP = spacy.load(model_name, disable=["parser", "ner", "textcat"])
+            railway_log(f"spaCy cargado: {model_name}")
+        except Exception as e:
+            railway_log(f"spaCy no disponible: {e}")
+            _SPACY_NLP = False
+    return _SPACY_NLP if _SPACY_NLP not in (None, False) else None
+
 def _get_category_embedding(category_name: str, client_id: str):
     """
     Obtiene embedding de categoría desde BD persistida o lo calcula si no existe.
@@ -2596,6 +2618,23 @@ def text_search():
         }
 
         def tokenize(texto: str):
+            # Ruta spaCy opcional (mejor lematización plural/género)
+            nlp = _get_spacy_nlp()
+            if nlp is not None and _USE_SPACY_NORMALIZER:
+                doc = nlp(texto or "")
+                toks = set()
+                for tok in doc:
+                    if not tok.is_alpha:
+                        continue
+                    # Lema en minúsculas, sin acentos ni símbolos
+                    lemma = tok.lemma_.lower()
+                    lemma = ''.join(c for c in unicodedata.normalize('NFD', lemma) if unicodedata.category(c) != 'Mn')
+                    lemma = re.sub(r"[^a-z0-9]+", "", lemma)
+                    if lemma and lemma not in STOPWORDS and len(lemma) >= 2:
+                        toks.add(lemma)
+                return toks
+
+            # Fallback rápido (sin spaCy)
             toks = re.split(r"[\s,./;:()\-â€“]+", texto or "")
             return { _norm_token(t) for t in toks if _norm_token(t) and _norm_token(t) not in STOPWORDS }
 
@@ -2753,15 +2792,16 @@ def text_search():
             else:
                 print(f"[REQ {request_id}] ❌ Ninguna categoría relevante (max_sim={best_sim:.3f})")
                 available_categories = [c.name for c in categories if Product.query.filter_by(category_id=c.id, client_id=client.id).count() > 0]
-                print(f"[TEXT_SEARCH] END 404 product_not_in_catalog in {round(time.time()-start_time,3)}s")
+                print(f"[TEXT_SEARCH] END controlled no-category (200) in {round(time.time()-start_time,3)}s")
                 return jsonify({
                     "success": False,
                     "error": "product_not_in_catalog",
                     "message": f"No comercializamos productos relacionados con '{query_text}'.",
                     "query": query_text,
                     "available_categories": available_categories,
+                    "results": [],
                     "processing_time": round(time.time() - start_time, 3)
-                }), 404
+                }), 200
 
         # Fin detección de categoría (tokens + LLM)
         t_category_detection_end = time.time()
