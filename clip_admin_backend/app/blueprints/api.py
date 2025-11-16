@@ -3341,7 +3341,7 @@ def text_search():
                     else:  # partial
                         # Mensaje para coincidencia parcial
                         message = ""
-                        
+
                         # Solo mencionar interpretación de categoría si hubo sustitución (match similar)
                         if has_category_substitution:
                             message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "

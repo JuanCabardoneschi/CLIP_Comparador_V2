@@ -197,6 +197,76 @@ python check_clients_id.py
 
 ---
 
+## 🚢 Deploy a Railway
+
+### `deploy_to_railway.ps1` - Deploy Interactivo (RECOMENDADO)
+**Propósito**: Deploy guiado con validaciones y buenas prácticas.
+
+**Uso**:
+```powershell
+.\deploy_to_railway.ps1
+```
+
+**Características**:
+- 🎯 Selector de tipo de commit (feat/fix/refactor/perf/style/docs/test/chore/hotfix)
+- ✍️ Solicita descripción del cambio
+- 🧪 Pregunta si ejecutaste tests
+- 📄 Muestra preview de archivos modificados
+- ⚠️ Confirmación antes de push
+- 📋 Opción de agregar notas adicionales
+- ✅ Información post-deploy y rollback
+- 🔍 Validaciones de branch y estado del repo
+
+**Flujo**:
+1. Detecta cambios en el repositorio
+2. Solicita tipo de commit y descripción
+3. Pregunta por tests ejecutados
+4. Muestra resumen de cambios
+5. Pide confirmación final
+6. Ejecuta: git add → commit → push
+7. Muestra info de monitoreo y rollback
+
+**Flags opcionales**:
+```powershell
+# Saltar pregunta de tests
+.\deploy_to_railway.ps1 -SkipTests
+
+# Forzar deploy (saltar validaciones de branch)
+.\deploy_to_railway.ps1 -Force
+```
+
+### `quick_deploy.ps1` - Deploy Rápido
+**Propósito**: Deploy simplificado para cambios pequeños o urgentes.
+
+**Uso**:
+```powershell
+# Interactivo simple
+.\quick_deploy.ps1
+
+# Con parámetros
+.\quick_deploy.ps1 -Type "fix" -Message "corregir búsqueda de colores"
+
+# Tipos disponibles
+.\quick_deploy.ps1 -Type "feat" -Message "agregar filtro de precio"
+```
+
+**Tipos de commit**:
+- `feat` - Nueva funcionalidad
+- `fix` - Corrección de bug
+- `refactor` - Refactorización
+- `perf` - Mejora de performance
+- `style` - Cambios de estilo/formato
+- `docs` - Documentación
+- `test` - Tests
+- `chore` - Mantenimiento
+- `hotfix` - Corrección urgente
+
+**Cuándo usar cada script**:
+- **deploy_to_railway.ps1**: Cambios importantes, nuevas features, refactors grandes
+- **quick_deploy.ps1**: Fixes pequeños, typos, ajustes menores, hotfixes
+
+---
+
 ---
 
 ## 📦 Sistema de Inventario (Octubre 2025)

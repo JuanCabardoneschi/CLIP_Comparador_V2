@@ -481,17 +481,47 @@ Configurar en Railway Dashboard:
 - `FLASK_SECRET_KEY`
 - `CLOUDINARY_*` (3 variables)
 
+### Scripts de Deploy Disponibles
+
+#### Deploy Interactivo (Recomendado)
+```powershell
+.\deploy_to_railway.ps1
+```
+**Características:**
+- Guía paso a paso con validaciones
+- Selector de tipo de commit (feat/fix/refactor/etc.)
+- Verificación de tests locales
+- Vista previa de cambios
+- Confirmación antes de push
+- Información post-deploy y rollback
+
+#### Deploy Rápido
+```powershell
+# Con mensaje directo
+.\quick_deploy.ps1 -Type "fix" -Message "corregir búsqueda de colores"
+
+# Interactivo simple
+.\quick_deploy.ps1
+```
+
 ### Comandos Railway CLI
 ```bash
-# Deploy manual
+# Deploy manual (alternativa)
 railway up
 
-# Ver logs
+# Ver logs en tiempo real
 railway logs
 
 # Conectar a BD
 railway connect postgresql
 ```
+
+### Proceso de Deploy
+1. **Local:** Hacer cambios y testear
+2. **Deploy:** Ejecutar `.\deploy_to_railway.ps1`
+3. **Railway:** Auto-build y deploy (2-5 min)
+4. **Verificar:** Logs en Railway Dashboard
+5. **Rollback:** Si hay problemas, revertir desde Dashboard
 
 ## 📊 Roadmap
 
