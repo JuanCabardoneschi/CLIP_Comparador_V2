@@ -1522,12 +1522,14 @@ def text_search():
         print(f"[REQ {request_id}] TEXT SEARCH: Query='{query_text}' Client={client.name} Limit={limit}", flush=True)
 
         # --- LLM Normalization (con vocabulario dinÃ¡mico del cliente) ---
-        t_before_norm = time.time()
-        print(f"[REQ {request_id}] ⏱️ ANTES normalize_query: t={time.time()-start_time:.3f}s", flush=True)
-        llm_norm = normalize_query(query_text, client_id=client.id)
-        print(f"[REQ {request_id}] ⏱️ DESPUÉS normalize_query: t={time.time()-start_time:.3f}s (normalize tomó {time.time()-t_before_norm:.3f}s)", flush=True)
-        print(f"[REQ {request_id}] DEBUG: normalize_query completado", flush=True)
-        print(f"[REQ {request_id}] LLM Normalizer: tipo={llm_norm.get('tipo')}, color={llm_norm.get('color')}, contexto={llm_norm.get('contexto')}")
+        # 🚫 DESACTIVADO TEMPORALMENTE: MiniLM no aporta valor vs tokens y agrega latencia
+        # t_before_norm = time.time()
+        # print(f"[REQ {request_id}] ⏱️ ANTES normalize_query: t={time.time()-start_time:.3f}s", flush=True)
+        # llm_norm = normalize_query(query_text, client_id=client.id)
+        # print(f"[REQ {request_id}] ⏱️ DESPUÉS normalize_query: t={time.time()-start_time:.3f}s (normalize tomó {time.time()-t_before_norm:.3f}s)", flush=True)
+        # print(f"[REQ {request_id}] DEBUG: normalize_query completado", flush=True)
+        # print(f"[REQ {request_id}] LLM Normalizer: tipo={llm_norm.get('tipo')}, color={llm_norm.get('color')}, contexto={llm_norm.get('contexto')}")
+        llm_norm = {'tipo': None, 'color': None, 'contexto': []}  # Placeholder para mantener compatibilidad
         t_norm_end = time.time()
 
         # Extraer campos del normalizador para usar en boosts
@@ -1859,39 +1861,11 @@ def text_search():
             elif best_sim >= SIMILAR_THRESHOLD:
                 detected_category = best_cat
 
-                # 🔍 Detectar categorías hermanas por similitud semántica (sin hardcodeo)
-                # Usar embeddings cacheados para encontrar categorías similares a la detectada
-                sibling_categories = []
-                try:
-                    SIBLING_THRESHOLD = 0.75  # Umbral para considerar "hermanas"
-                    detected_cat_emb = _get_category_embedding(best_cat.name, str(client.id))
-
-                    for other_cat, other_sim in cat_sims[1:6]:  # Top 5 siguientes (ya ordenadas)
-                        if other_cat.id == best_cat.id:
-                            continue
-                        other_cat_emb = _get_category_embedding(other_cat.name, str(client.id))
-                        # Similitud entre categorías (no query)
-                        cat_to_cat_sim = float(util.cos_sim(detected_cat_emb, other_cat_emb)[0][0])
-                        if cat_to_cat_sim >= SIBLING_THRESHOLD:
-                            # Verificar que tenga productos
-                            if Product.query.filter_by(category_id=other_cat.id, client_id=client.id).count() > 0:
-                                sibling_categories.append({
-                                    "name": other_cat.name,
-                                    "similarity_to_detected": round(cat_to_cat_sim, 3)
-                                })
-
-                    if sibling_categories:
-                        print(f"[REQ {request_id}] 🔗 Categorías hermanas detectadas: {[s['name'] for s in sibling_categories]}")
-                except Exception as e:
-                    print(f"[REQ {request_id}] ⚠️ Error detectando hermanas: {e}")
-                    sibling_categories = []
-
                 category_substitution_info = {
                     "match_type": "similar",
                     "requested_text": query_text,
                     "matched_category": best_cat.name,
-                    "similarity": round(best_sim, 3),
-                    **({"sibling_categories": sibling_categories} if sibling_categories else {})
+                    "similarity": round(best_sim, 3)
                 }
                 print(f"[REQ {request_id}] ⚠️ Match similar categoría: '{query_text}' → '{best_cat.name}' sim={best_sim:.3f}")
             else:
@@ -1910,6 +1884,50 @@ def text_search():
 
         # Fin detección de categoría (tokens + LLM)
         t_category_detection_end = time.time()
+
+        # 🔗 DETECCIÓN DE CATEGORÍAS HERMANAS (solo si NO hay exact match)
+        # Si category_substitution_info existe = NO fue exact match → buscar hermanas
+        if detected_category and category_substitution_info:
+            from sentence_transformers import util
+            sibling_categories = []
+            try:
+                SIBLING_THRESHOLD = 0.75  # Umbral para considerar "hermanas"
+                detected_cat_emb = _get_category_embedding(detected_category.name, str(client.id))
+
+                # Obtener TODAS las categorías del cliente (excepto la detectada)
+                all_categories = Category.query.filter_by(
+                    client_id=client.id,
+                    is_active=True
+                ).filter(Category.id != detected_category.id).all()
+
+                for other_cat in all_categories:
+                    # Solo categorías con productos
+                    if Product.query.filter_by(category_id=other_cat.id, client_id=client.id).count() == 0:
+                        continue
+
+                    other_cat_emb = _get_category_embedding(other_cat.name, str(client.id))
+                    if not other_cat_emb or not detected_cat_emb:
+                        continue
+
+                    # Similitud entre categorías (no query)
+                    cat_to_cat_sim = float(util.cos_sim(detected_cat_emb, other_cat_emb)[0][0])
+                    if cat_to_cat_sim >= SIBLING_THRESHOLD:
+                        sibling_categories.append({
+                            "name": other_cat.name,
+                            "similarity_to_detected": round(cat_to_cat_sim, 3)
+                        })
+
+                if sibling_categories:
+                    # Ordenar por similitud descendente
+                    sibling_categories.sort(key=lambda x: x['similarity_to_detected'], reverse=True)
+                    # Limitar a top 5
+                    sibling_categories = sibling_categories[:5]
+                    category_substitution_info['sibling_categories'] = sibling_categories
+                    print(f"[REQ {request_id}] 🔗 Categorías hermanas detectadas: {[s['name'] for s in sibling_categories]}")
+            except Exception as e:
+                print(f"[REQ {request_id}] ⚠️ Error detectando hermanas: {e}")
+                import traceback
+                traceback.print_exc()
 
         # --- Enriquecimiento opcional de query con tags inferidos (feature flag) ---
         try:
@@ -2551,7 +2569,7 @@ def text_search():
                             sibling_cats = category_substitution_info['sibling_categories']
                             # Filtrar hermanas con alta similitud (>0.75) y que no sean la categoría actual
                             relevant_siblings = [
-                                cat for cat in sibling_cats 
+                                cat for cat in sibling_cats
                                 if cat.get('similarity', 0) > 0.75 and cat.get('name') != category_name
                             ]
                             if relevant_siblings:
@@ -2607,7 +2625,7 @@ def text_search():
                             sibling_cats = category_substitution_info['sibling_categories']
                             # Filtrar hermanas con alta similitud (>0.75) y que no sean la categoría actual
                             relevant_siblings = [
-                                cat for cat in sibling_cats 
+                                cat for cat in sibling_cats
                                 if cat.get('similarity', 0) > 0.75 and cat.get('name') != category_name
                             ]
                             if relevant_siblings:
