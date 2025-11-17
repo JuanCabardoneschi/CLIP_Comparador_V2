@@ -2546,6 +2546,21 @@ def text_search():
                             if not message:  # Si no hay mensaje de categoría
                                 message = f"Encontramos estas opciones para tu búsqueda."
 
+                        # Agregar sugerencia de categorías hermanas si están disponibles
+                        if category_substitution_info and 'sibling_categories' in category_substitution_info:
+                            sibling_cats = category_substitution_info['sibling_categories']
+                            # Filtrar hermanas con alta similitud (>0.75) y que no sean la categoría actual
+                            relevant_siblings = [
+                                cat for cat in sibling_cats 
+                                if cat.get('similarity', 0) > 0.75 and cat.get('name') != category_name
+                            ]
+                            if relevant_siblings:
+                                sibling_names = [cat['name'] for cat in relevant_siblings[:2]]  # Máximo 2
+                                if len(sibling_names) == 1:
+                                    message += f" También puedes explorar productos en {sibling_names[0]}."
+                                elif len(sibling_names) == 2:
+                                    message += f" También puedes explorar productos en {sibling_names[0]} o {sibling_names[1]}."
+
                         partial_match_info = {
                             "message": message,
                             "requested_color": detected_color.upper() if explicit_color_from_query else None,
@@ -2586,6 +2601,21 @@ def text_search():
                             # No color explícito → solo mostrar productos disponibles sin mencionar color
                             if not message:  # Si no hay mensaje de categoría
                                 message = f"Encontramos estas opciones para tu búsqueda."
+
+                        # Agregar sugerencia de categorías hermanas si están disponibles
+                        if category_substitution_info and 'sibling_categories' in category_substitution_info:
+                            sibling_cats = category_substitution_info['sibling_categories']
+                            # Filtrar hermanas con alta similitud (>0.75) y que no sean la categoría actual
+                            relevant_siblings = [
+                                cat for cat in sibling_cats 
+                                if cat.get('similarity', 0) > 0.75 and cat.get('name') != category_name
+                            ]
+                            if relevant_siblings:
+                                sibling_names = [cat['name'] for cat in relevant_siblings[:2]]  # Máximo 2
+                                if len(sibling_names) == 1:
+                                    message += f" También puedes explorar productos en {sibling_names[0]}."
+                                elif len(sibling_names) == 2:
+                                    message += f" También puedes explorar productos en {sibling_names[0]} o {sibling_names[1]}."
 
                         partial_match_info = {
                             "message": message,
