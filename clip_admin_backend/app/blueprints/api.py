@@ -2459,29 +2459,35 @@ def text_search():
                         if has_category_substitution:
                             message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
 
-                        message += f"No disponemos en este momento en {detected_color.lower()}"
+                        # Solo mencionar color si el usuario lo pidió explícitamente
+                        if explicit_color_from_query:
+                            message += f"No disponemos en este momento en {detected_color.lower()}"
 
-                        if shown_colors:
-                            if len(shown_colors) == 1:
-                                closest = list(shown_colors)[0]
-                                message += f", pero encontramos opciones en {closest}."
+                            if shown_colors:
+                                if len(shown_colors) == 1:
+                                    closest = list(shown_colors)[0]
+                                    message += f", pero encontramos opciones en {closest}."
+                                else:
+                                    closest_list = ', '.join(sorted(shown_colors))
+                                    message += f", pero encontramos opciones en {closest_list}."
                             else:
-                                closest_list = ', '.join(sorted(shown_colors))
-                                message += f", pero encontramos opciones en {closest_list}."
+                                message += "."
+
+                            if other_colors:
+                                if len(other_colors) == 1:
+                                    message += f" También podés elegir {other_colors[0]}."
+                                else:
+                                    others_text = ', '.join(other_colors[:-1]) + f" y {other_colors[-1]}"
+                                    message += f" También podés elegir entre otros colores disponibles: {others_text}."
                         else:
-                            message += "."
-
-                        if other_colors:
-                            if len(other_colors) == 1:
-                                message += f" También podés elegir {other_colors[0]}."
-                            else:
-                                others_text = ', '.join(other_colors[:-1]) + f" y {other_colors[-1]}"
-                                message += f" También podés elegir entre otros colores disponibles: {others_text}."
+                            # No color explícito → solo mostrar productos disponibles sin mencionar color
+                            if not message:  # Si no hay mensaje de categoría
+                                message = f"Encontramos estas opciones para tu búsqueda."
 
                         partial_match_info = {
                             "message": message,
-                            "requested_color": detected_color.upper(),
-                            "reason": "color_not_available"
+                            "requested_color": detected_color.upper() if explicit_color_from_query else None,
+                            "reason": "color_not_available" if explicit_color_from_query else "no_color_requested"
                         }
                     else:  # partial
                         # Mensaje para coincidencia parcial (color similar pero no exacto)
@@ -2491,28 +2497,34 @@ def text_search():
                         if has_category_substitution:
                             message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
 
-                        message += f"No disponemos en este momento en {detected_color.lower()}"
+                        # Solo mencionar color si el usuario lo pidió explícitamente
+                        if explicit_color_from_query:
+                            message += f"No disponemos en este momento en {detected_color.lower()}"
 
-                        if shown_colors:
-                            if len(shown_colors) == 1:
-                                closest = list(shown_colors)[0]
-                                message += f", pero encontramos opciones en {closest}."
-                            else:
-                                closest_list = ', '.join(sorted(shown_colors))
-                                message += f", pero encontramos opciones en {closest_list}."
+                            if shown_colors:
+                                if len(shown_colors) == 1:
+                                    closest = list(shown_colors)[0]
+                                    message += f", pero encontramos opciones en {closest}."
+                                else:
+                                    closest_list = ', '.join(sorted(shown_colors))
+                                    message += f", pero encontramos opciones en {closest_list}."
 
-                        if other_colors:
-                            if len(other_colors) == 1:
-                                message += f" También disponible: {other_colors[0]}."
-                            else:
-                                others_text = ', '.join(other_colors[:-1]) + f" y {other_colors[-1]}"
-                                message += f" Otros colores disponibles: {others_text}."
+                            if other_colors:
+                                if len(other_colors) == 1:
+                                    message += f" También disponible: {other_colors[0]}."
+                                else:
+                                    others_text = ', '.join(other_colors[:-1]) + f" y {other_colors[-1]}"
+                                    message += f" Otros colores disponibles: {others_text}."
+                        else:
+                            # No color explícito → solo mostrar productos disponibles sin mencionar color
+                            if not message:  # Si no hay mensaje de categoría
+                                message = f"Encontramos estas opciones para tu búsqueda."
 
                         partial_match_info = {
                             "message": message,
-                            "available_colors": colors_list,
-                            "requested_color": detected_color,
-                            "reason": "partial_color_match"
+                            "available_colors": colors_list if explicit_color_from_query else None,
+                            "requested_color": detected_color if explicit_color_from_query else None,
+                            "reason": "partial_color_match" if explicit_color_from_query else "no_color_requested"
                         }
 
         print(f"[REQ {request_id}] TEXT SEARCH: {len(results)} resultados en {elapsed_time:.3f}s | query='{query_text}'", flush=True)
