@@ -12,12 +12,9 @@ RUN apt-get update && apt-get install -y \
 # Copiar requirements
 COPY requirements.txt .
 
-# Instalar dependencias Python (incluyendo spaCy)
+# Instalar dependencias Python (incluyendo spaCy y el modelo vía pip) y verificar instalación
 RUN pip install --no-cache-dir -r requirements.txt && \
-    # Instalar modelo español de spaCy explícitamente
-    python -m spacy download es_core_news_sm && \
-    # Verificar instalación de spaCy
-    python -c "import spacy; nlp = spacy.load('es_core_news_sm'); print('✅ spaCy instalado correctamente')"
+    python -c "import spacy; spacy.load('es_core_news_sm'); print('✅ spaCy instalado correctamente')"
 
 # Copiar código fuente
 COPY clip_admin_backend/ ./clip_admin_backend/
