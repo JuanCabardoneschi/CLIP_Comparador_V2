@@ -1840,7 +1840,7 @@ def text_search():
             print(f"[REQ {request_id}] LLM categoría top: {best_cat.name} sim={best_sim:.3f}")
 
             LITERAL_THRESHOLD = 0.90
-            SIMILAR_THRESHOLD = 0.65
+            SIMILAR_THRESHOLD = 0.55  # Bajado de 0.65 para permitir queries con modificadores de color (ej: "campera roja" = 0.599)
 
             # Preparar contenedor para información de sustitución (similar match por LLM)
 
@@ -1992,20 +1992,77 @@ def text_search():
         print(f"[REQ {request_id}] DEBUG: query SQL ejecutada en {(_t.time()-_t2):.2f}s → {len(products)} productos", flush=True)
         t_sql_end = time.time()
 
-        # 🚫 NO FALLBACK GLOBAL: Si categoría detectada está vacía, retornar error 404
+        # 🔄 FALLBACK A CATEGORÍAS HERMANAS: Si categoría detectada está vacía, intentar con hermanas
+        original_category_name = None
+        used_sibling_category = False
         if detected_category and len(products) == 0:
-            print(f"⚠️ TEXT SEARCH: Categoría '{detected_category.name}' sin productos → Retornando error 404")
-            available_categories = [cat.name for cat in categories if Product.query.filter_by(category_id=cat.id, client_id=client.id).count() > 0]
-            print(f"[TEXT_SEARCH] END 404 category_empty '{detected_category.name}' in {round(time.time()-start_time,3)}s")
-            return jsonify({
-                "success": False,
-                "error": "category_empty",
-                "message": f"No tenemos productos en '{detected_category.name}' actualmente.",
-                "detected_category": detected_category.name,
-                "available_categories": available_categories[:10],
-                "suggestion_message": "Explora nuestras categorías disponibles.",
-                "processing_time": round(time.time() - start_time, 3)
-            }), 404
+            print(f"⚠️ TEXT SEARCH: Categoría '{detected_category.name}' sin productos → Intentando categorías hermanas...")
+
+            # Verificar si hay categorías hermanas detectadas previamente
+            if category_substitution_info and 'sibling_categories' in category_substitution_info:
+                sibling_categories = category_substitution_info['sibling_categories']
+                print(f"[REQ {request_id}] 🔗 Intentando buscar en {len(sibling_categories)} categorías hermanas")
+
+                original_category_name = detected_category.name
+
+                # Intentar con cada categoría hermana hasta encontrar productos
+                for sibling in sibling_categories:
+                    sibling_cat = Category.query.filter_by(
+                        client_id=client.id,
+                        name=sibling['name'],
+                        is_active=True
+                    ).first()
+
+                    if sibling_cat:
+                        print(f"[REQ {request_id}] 🔍 Probando categoría hermana: {sibling_cat.name}")
+
+                        # Buscar productos en categoría hermana
+                        sibling_products_query = db.session.query(
+                            Product.id,
+                            Product.name,
+                            Product.sku,
+                            Product.price,
+                            Product.attributes,
+                            Product.tags,
+                            Category.name.label('category_name'),
+                            Image.clip_embedding,
+                            Image.cloudinary_url
+                        ).join(
+                            Category, Product.category_id == Category.id
+                        ).join(
+                            Image, db.and_(
+                                Product.id == Image.product_id,
+                                Image.is_primary == True
+                            )
+                        ).filter(
+                            Product.client_id == client.id,
+                            Product.category_id == sibling_cat.id,
+                            Image.clip_embedding.isnot(None)
+                        )
+
+                        sibling_products = sibling_products_query.all()
+
+                        if len(sibling_products) > 0:
+                            print(f"[REQ {request_id}] ✅ Encontrados {len(sibling_products)} productos en categoría hermana '{sibling_cat.name}'")
+                            products = sibling_products
+                            detected_category = sibling_cat
+                            used_sibling_category = True
+                            break
+
+            # Si aún no hay productos después de probar hermanas, retornar error 404
+            if len(products) == 0:
+                print(f"⚠️ TEXT SEARCH: No hay productos ni en categoría original ni en hermanas → Retornando error 404")
+                available_categories = [cat.name for cat in categories if Product.query.filter_by(category_id=cat.id, client_id=client.id).count() > 0]
+                print(f"[TEXT_SEARCH] END 404 category_empty (tried siblings) in {round(time.time()-start_time,3)}s")
+                return jsonify({
+                    "success": False,
+                    "error": "category_empty",
+                    "message": f"No tenemos productos en '{original_category_name or detected_category.name}' actualmente.",
+                    "detected_category": original_category_name or detected_category.name,
+                    "available_categories": available_categories[:10],
+                    "suggestion_message": "Explora nuestras categorías disponibles.",
+                    "processing_time": round(time.time() - start_time, 3)
+                }), 404
 
         print(f"[REQ {request_id}] TEXT SEARCH: Analizando {len(products)} productos...")
         _post_sql_t = _t.time()
@@ -2455,9 +2512,14 @@ def text_search():
                         # Mensaje amigable cuando NO hay el color solicitado
                         message = ""
 
-                        # Solo mencionar interpretación de categoría si hubo sustitución (match similar)
-                        if has_category_substitution:
-                            message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
+                        # Solo mencionar interpretación de categoría si hubo sustitución (match similar O categoría hermana)
+                        if has_category_substitution or used_sibling_category:
+                            if used_sibling_category and original_category_name:
+                                # Mensaje específico para categoría hermana
+                                message = f"Tu búsqueda de {search_query_text} no encontró resultados en {original_category_name}, pero encontramos opciones en {category_name}. "
+                            else:
+                                # Mensaje normal de interpretación de categoría
+                                message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
 
                         # Solo mencionar color si el usuario lo pidió explícitamente
                         if explicit_color_from_query:
@@ -2493,9 +2555,14 @@ def text_search():
                         # Mensaje para coincidencia parcial (color similar pero no exacto)
                         message = ""
 
-                        # Solo mencionar interpretación de categoría si hubo sustitución (match similar)
-                        if has_category_substitution:
-                            message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
+                        # Solo mencionar interpretación de categoría si hubo sustitución (match similar O categoría hermana)
+                        if has_category_substitution or used_sibling_category:
+                            if used_sibling_category and original_category_name:
+                                # Mensaje específico para categoría hermana
+                                message = f"Tu búsqueda de {search_query_text} no encontró resultados en {original_category_name}, pero encontramos opciones en {category_name}. "
+                            else:
+                                # Mensaje normal de interpretación de categoría
+                                message = f"Tu búsqueda de {search_query_text} se interpretó dentro de la categoría {category_name}. "
 
                         # Solo mencionar color si el usuario lo pidió explícitamente
                         if explicit_color_from_query:
