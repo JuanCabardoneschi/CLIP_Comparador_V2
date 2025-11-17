@@ -37,8 +37,8 @@ scikit-learn==1.3.2  # Para matching semántico en LLM query normalizer
 
 # NLP - Lematización española (OBLIGATORIO para tokenización)
 spacy==3.7.2
-# NOTA: El modelo es_core_news_sm se instala vía 'python -m spacy download' en Dockerfile
-# para asegurar compatibilidad en Railway
+# Modelo español pequeño: instalar también vía pip como respaldo del paso en Dockerfile
+es_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.7.0/es_core_news_sm-3.7.0-py3-none-any.whl
 
 # Image Processing & Storage
 cloudinary==1.36.0  # Cloudinary para almacenamiento en la nube
