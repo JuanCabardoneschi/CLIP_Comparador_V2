@@ -425,6 +425,16 @@ if __name__ == "__main__":
             from app.blueprints.embeddings import get_clip_model
             from app.utils.llm_query_normalizer import get_model as get_minilm_model
 
+            # Validar spaCy (OBLIGATORIO)
+            try:
+                import spacy
+                nlp = spacy.load("es_core_news_sm", disable=["parser", "ner", "textcat"])
+                print("✅ spaCy validado correctamente (es_core_news_sm)")
+            except Exception as spacy_err:
+                print(f"❌ CRITICAL: spaCy no disponible o modelo no instalado: {spacy_err}")
+                print("⚠️ El sistema NO puede funcionar sin spaCy. Abortando inicio.")
+                raise RuntimeError(f"spaCy es obligatorio para tokenización: {spacy_err}")
+
             # Precargar CLIP (búsqueda visual)
             get_clip_model()
             print("✅ CLIP precargado correctamente")

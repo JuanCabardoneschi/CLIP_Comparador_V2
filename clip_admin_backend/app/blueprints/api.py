@@ -46,25 +46,27 @@ CORS(bp, origins=["*"],
 _CATEGORY_EMBEDDINGS_CACHE = {}
 _COLOR_EMBEDDINGS_CACHE = {}
 
-# Normalización opcional con spaCy (desactivada por defecto)
-_USE_SPACY_NORMALIZER = os.getenv("USE_SPACY_NORMALIZER", "false").lower() in ("1", "true", "yes", "on")
+# spaCy es OBLIGATORIO para tokenización (no opcional)
+_USE_SPACY_NORMALIZER = True  # Siempre activo
 _SPACY_NLP = None
 
 def _get_spacy_nlp():
-    """Carga perezosa del modelo spaCy español si está habilitado por env var."""
+    """Carga perezosa del modelo spaCy español (OBLIGATORIO)."""
     global _SPACY_NLP
     # Si ya falló antes, no reintentar
     if _SPACY_NLP is False:
         return None
-    if _SPACY_NLP is None and _USE_SPACY_NORMALIZER:
+    if _SPACY_NLP is None:
         try:
             import spacy  # type: ignore
             model_name = os.getenv("SPACY_MODEL", "es_core_news_sm")
             # Deshabilitar componentes no necesarios para reducir overhead
             _SPACY_NLP = spacy.load(model_name, disable=["parser", "ner", "textcat"])
             railway_log(f"spaCy cargado: {model_name}")
+            print(f"✅ spaCy modelo '{model_name}' cargado exitosamente", flush=True)
         except Exception as e:
-            railway_log(f"spaCy no disponible: {e}")
+            railway_log(f"❌ CRITICAL: spaCy no disponible: {e}")
+            print(f"❌ CRITICAL: spaCy no disponible: {e}", flush=True)
             _SPACY_NLP = False
     return _SPACY_NLP if _SPACY_NLP not in (None, False) else None
 
@@ -2549,7 +2551,7 @@ def text_search():
             Aplica lematización automática y filtrado de stopwords nativo.
             """
             nlp = _get_spacy_nlp()
-            if nlp is None or not _USE_SPACY_NORMALIZER:
+            if nlp is None:
                 error_msg = "🚨 CRITICAL: spaCy no está disponible. El sistema requiere spaCy para tokenización."
                 print(f"[REQ {request_id}] {error_msg}", flush=True)
                 raise RuntimeError(error_msg)
