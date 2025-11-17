@@ -33,6 +33,20 @@ from sqlalchemy import func, or_, text
 # 🚀 IMPORTAR CLIP AL INICIO PARA CACHE GLOBAL
 from app.blueprints.embeddings import get_clip_model
 from app.models.embedding import Embedding
+from app.blueprints.search_visual import (
+    process_image_for_search,
+    calculate_similarity,
+    _generate_query_embedding,
+    _find_similar_products,
+    _find_similar_products_in_category,
+    _apply_category_filter,
+    _build_search_results,
+    detect_dominant_color,
+    detect_dominant_color_from_palette,
+    detect_general_object,
+    detect_image_category_with_centroids,
+    detect_image_category,
+)
 import json
 
 bp = Blueprint("api", __name__)
@@ -111,75 +125,40 @@ def railway_log(message):
     print(f"[RAILWAY] {message}", file=sys.stderr, flush=True)
 
 
-# 🔤 Helper: construir prompt en inglés para CLIP desde nombres de categoría
-def _clip_label_from_spanish(name: str) -> str:
-    """
-    Mapear nombres de categorías en español (posibles typos) a descriptores
-    en inglés que CLIP entienda mejor. Mantenerlo simple y determinista.
-
-    Ejemplos:
-      - "shores/short/shorts tiro bajo" → "low-rise jean shorts"
-      - "pantalones de jeans rectos" → "straight-leg jeans"
-      - "chupin" → "skinny jeans"
-      - "boca ancha/oxford" → "wide-leg jeans"
-    """
-    if not name:
-        return "clothing"
-
-    n = name.lower()
-
-    base = None
-    qualifiers: list[str] = []
-
-    # Rise
-    if "tiro bajo" in n or "bajo" in n and "tiro" in n:
-        qualifiers.append("low-rise")
-    elif "tiro alto" in n or ("alto" in n and "tiro" in n):
-        qualifiers.append("high-rise")
-
-    # Jeans family and cut
-    if any(k in n for k in ["short", "shorts", "shore", "shores"]):
-        # Shorts de jean si menciona jean/denim
-        if "jean" in n or "denim" in n:
-            base = "jean shorts"
-        else:
-            base = "shorts"
-    elif "pantalon" in n or "pantalones" in n:
-        if "jean" in n or "denim" in n:
-            base = "jeans"
-        else:
-            base = "pants"
-
-    # Cortes
-    if any(k in n for k in ["recto", "rectos", "recta"]):
-        qualifiers.append("straight-leg")
-    if "chupin" in n or "skinny" in n:
-        qualifiers.append("skinny")
-    if any(k in n for k in ["boca ancha", "pierna ancha", "oxford", "wide"]):
-        qualifiers.append("wide-leg")
-
-    # Fallback si no se detectó base
-    if base is None:
-        if "jean" in n or "denim" in n:
-            base = "jeans"
-        else:
-            base = n.strip() or "clothing"
-
-    phrase = " ".join(qualifiers + [base]).strip()
-    return phrase
-
-
 def _clip_prompt_for_category(category) -> str:
-    """Construye el prompt final "a photo of ..." usando clip_prompt/name_en o mapping."""
+    """
+    Construye el prompt final "a photo of ..." usando SOLO propiedades del modelo Category.
+    NO usa hardcodeo ni fallbacks - depende 100% de datos configurados en BD.
+
+    Prioridad:
+    1. category.clip_prompt (prompt personalizado completo)
+    2. category.name_en (nombre en inglés)
+    3. category.name (nombre en español sin traducción)
+
+    Returns:
+        str: Prompt en formato "a photo of <label>"
+    """
     try:
-        if getattr(category, "clip_prompt", None):
-            label = str(category.clip_prompt).lower()
-        elif getattr(category, "name_en", None):
-            label = str(category.name_en).lower()
-        else:
-            label = _clip_label_from_spanish(getattr(category, "name", ""))
-        return f"a photo of {label}"
-    except Exception:
+        # Prioridad 1: clip_prompt (puede incluir modificadores, contexto, etc.)
+        if getattr(category, "clip_prompt", None) and str(category.clip_prompt).strip():
+            label = str(category.clip_prompt).strip().lower()
+            return f"a photo of {label}"
+
+        # Prioridad 2: name_en (nombre en inglés)
+        if getattr(category, "name_en", None) and str(category.name_en).strip():
+            label = str(category.name_en).strip().lower()
+            return f"a photo of {label}"
+
+        # Prioridad 3: name (español como último recurso, sin traducción)
+        if getattr(category, "name", None) and str(category.name).strip():
+            label = str(category.name).strip().lower()
+            return f"a photo of {label}"
+
+        # Sin datos: usar genérico
+        return "a photo of clothing"
+
+    except Exception as e:
+        print(f"⚠️ Error construyendo CLIP prompt para categoría: {e}")
         return "a photo of clothing"
 
 
@@ -622,83 +601,10 @@ def verify_api_key():
 
 
 
-def process_image_for_search(image_data):
-    """Procesar imagen y generar embedding para bÃºsqueda"""
-    try:
-        import logging
-        from datetime import datetime
-        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        logging.getLogger("clip_model").info(f"[REQUEST] ComparaciÃ³n recibida")
-
-        print("ðŸ”§ DEBUG: Iniciando procesamiento de imagen")
-
-        # Importar PIL con alias para evitar conflictos
-        from PIL import Image as PILImage
-        import io
-        print("ðŸ”§ DEBUG: Importaciones exitosas")
-
-        # Convertir bytes a imagen PIL
-        pil_image = PILImage.open(io.BytesIO(image_data))
-        print(f"ðŸ”§ DEBUG: Imagen PIL creada: {pil_image.size}")
-
-        # Obtener modelo CLIP directamente
-        start_clip_time = time.time()
-        model, processor = get_clip_model()
-        clip_load_time = time.time() - start_clip_time
-        print(f"ï¿½ CLIP MODEL: Obtenido en {clip_load_time:.3f}s")
-
-        # Generar embedding usando solo argumentos necesarios
-        print("ðŸ”§ DEBUG: Llamando al procesador CLIP...")
-        start_process_time = time.time()
-
-        # Llamada simplificada al procesador
-        with torch.no_grad():
-            inputs = processor(
-                images=pil_image,
-                return_tensors="pt"
-            )
-            print("ðŸ”§ DEBUG: Inputs del procesador creados exitosamente")
-
-            # Generar features de imagen
-            image_features = model.get_image_features(**inputs)
-            print(f"ðŸ”§ DEBUG: Image features generadas: {image_features.shape}")
-
-            # Normalizar embedding
-            embedding = image_features / image_features.norm(dim=-1, keepdim=True)
-
-            # Convertir a lista de Python
-            embedding_list = embedding.squeeze().cpu().numpy().tolist()
-
-            process_time = time.time() - start_process_time
-            print(f"âš¡ CLIP PROCESSING: Completado en {process_time:.3f}s")
-
-        print(f"ðŸ”§ DEBUG: Embedding generado exitosamente: {len(embedding_list)} dimensiones")
-        return embedding_list, None
-
-    except Exception as e:
-        print(f"âŒ DEBUG: Error en process_image_for_search: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return None, f"Error procesando imagen: {str(e)}"
+# Función movida a app.blueprints.search_visual
 
 
-def calculate_similarity(embedding1, embedding2):
-    """Calcular similitud coseno entre embeddings"""
-    if isinstance(embedding1, str):
-        embedding1 = eval(embedding1)  # Convertir string a lista
-    if isinstance(embedding2, str):
-        embedding2 = eval(embedding2)
-
-    embedding1 = np.array(embedding1)
-    embedding2 = np.array(embedding2)
-
-    # Normalizar
-    embedding1 = embedding1 / np.linalg.norm(embedding1)
-    embedding2 = embedding2 / np.linalg.norm(embedding2)
-
-    # Similitud coseno
-    similarity = np.dot(embedding1, embedding2)
-    return float(similarity)
+# Función movida a app.blueprints.search_visual
 
 
 def _validate_visual_search_request():
@@ -756,936 +662,40 @@ def _process_image_data(image_file):
     return image_data, limit, threshold, None, None
 
 
-def _generate_query_embedding(image_data, detected_category=None):
-    """
-    Genera el embedding de la imagen de consulta con enriquecimiento opcional por tags
+# Función movida a app.blueprints.search_visual
 
-    Args:
-        image_data: Bytes de la imagen
-        detected_category: CategorÃ­a detectada (opcional, para contexto)
 
-    Returns:
-        Tuple: (embedding_enriquecido, error_response, status_code)
-    """
-    print(f"ðŸ“· DEBUG: Procesando imagen de {len(image_data)} bytes")
-    query_embedding, error = process_image_for_search(image_data)
-    if error:
-        print(f"âŒ DEBUG: Error en procesamiento: {error}")
-        return None, jsonify({
-            "error": "processing_failed",
-            "message": error
-        }), 500
+# Función movida a app.blueprints.search_visual
 
-    if query_embedding is None:
-        print("âŒ DEBUG: query_embedding es None")
-        return None, jsonify({
-            "error": "processing_failed",
-            "message": "No se pudo generar embedding de la imagen"
-        }), 500
 
-    print(f"ðŸ§  DEBUG: Embedding generado - dimensiones: {len(query_embedding)}")
-    print(f"ðŸ§  DEBUG: Primeros 5 valores: {query_embedding[:5]}")
+# Función movida a app.blueprints.search_visual
 
-    # âœ¨ ENRIQUECIMIENTO CON TAGS INFERIDOS (para bÃºsqueda visual)
-    fusion_enabled = system_config.get('search', 'enable_inferred_tags', False)
-    if fusion_enabled:
-        try:
-            from PIL import Image
-            from io import BytesIO
-            from app.services.attribute_autofill_service import AttributeAutofillService
-            import torch
 
-            # Convertir bytes a PIL Image
-            pil_image = Image.open(BytesIO(image_data)).convert('RGB')
-            category_context = detected_category.name.lower() if detected_category else "producto"
+# Función movida a app.blueprints.search_visual
 
-            # Inferir tags visuales de la imagen subida
-            from app.services.attribute_autofill_service import TAG_OPTIONS
-            inferred_tags = AttributeAutofillService._classify_tags(
-                pil_image,
-                TAG_OPTIONS,
-                threshold=0.15,
-                category_context=category_context
-            )
 
-            if inferred_tags and len(inferred_tags) > 0:
-                # Tomar top 5 tags mÃ¡s relevantes
-                top_tags = inferred_tags[:5]
-                tag_names = [tag for tag, _ in top_tags]
+# Función movida a app.blueprints.search_visual
 
-                print(f"ðŸ”® VISUAL FUSION: Tags inferidos de imagen: {', '.join([f'{t}({c:.2f})' for t, c in top_tags])}")
 
-                # Generar embeddings de los tags
-                model, processor = get_clip_model()
-                tag_phrases = [f"a {tag} style {category_context}" for tag in tag_names]
+# Función movida a app.blueprints.search_visual
 
-                with torch.no_grad():
-                    tag_inputs = processor(text=tag_phrases, return_tensors="pt", padding=True)
-                    tag_embeddings = model.get_text_features(**tag_inputs)
-                    tag_embeddings = tag_embeddings / tag_embeddings.norm(dim=-1, keepdim=True)
-                    tag_mean = tag_embeddings.mean(dim=0)
-                    tag_mean = tag_mean / tag_mean.norm()
 
-                    # Fusionar: 80% visual + 20% tags inferidos
-                    q = torch.tensor(query_embedding).unsqueeze(0)
-                    q = q / q.norm()
+# Función movida a app.blueprints.search_visual
 
-                    alpha = 0.8  # Peso del embedding visual original
-                    beta = 0.2   # Peso de los tags inferidos
 
-                    fused = alpha * q + beta * tag_mean
-                    fused = fused / fused.norm()
-                    query_embedding = fused.squeeze().cpu().numpy().tolist()
+# Función movida a app.blueprints.search_visual
 
-                    print(f"âœ¨ VISUAL FUSION: Embedding enriquecido (Î±={alpha} visual + Î²={beta} tags)")
 
-        except Exception as e:
-            print(f"âš ï¸ VISUAL FUSION skip: {e}")
-            # Si falla, continuar con embedding original
-            pass
+# Función movida a app.blueprints.search_visual
 
-    return query_embedding, None, None
 
+# Función movida a app.blueprints.search_visual
 
-def _find_similar_products(client, query_embedding, threshold):
-    """Encuentra productos similares y agrupa por mejor coincidencia"""
-    # Buscar imÃ¡genes similares en la base de datos
-    images = Image.query.filter_by(
-        client_id=client.id,
-        is_processed=True
-    ).filter(Image.clip_embedding.isnot(None)).all()
 
-    print(f"ðŸ” DEBUG: Encontradas {len(images)} imÃ¡genes para comparar")
+# Función movida a app.blueprints.search_visual
 
-    # Calcular similitudes y agrupar por producto
-    product_best_match = {}  # Dict para almacenar la mejor imagen de cada producto
-    category_similarities = {}  # Para determinar categorÃ­a mÃ¡s probable
 
-    for img in images:
-        try:
-            similarity = calculate_similarity(query_embedding, img.clip_embedding)
-            category_name = img.product.category.name if img.product.category else "Sin categorÃ­a"
-
-            print(f"ðŸ” DEBUG: Similitud con {img.product.name[:30]} ({category_name}): {similarity:.4f}")
-
-            # Recopilar estadÃ­sticas por categorÃ­a
-            if category_name not in category_similarities:
-                category_similarities[category_name] = []
-            category_similarities[category_name].append(similarity)
-
-            if similarity >= threshold:
-                product_id = img.product.id
-
-                # Si es la primera imagen de este producto, o si tiene mayor similitud que la anterior
-                if product_id not in product_best_match or similarity > product_best_match[product_id]['similarity']:
-                    product_best_match[product_id] = {
-                        'image': img,
-                        'similarity': similarity,
-                        'product': img.product,
-                        'category': category_name
-                    }
-                    print(f"âœ… DEBUG: Mejor imagen para {img.product.name}: {similarity:.4f}")
-
-        except Exception as e:
-            print(f"âŒ Error calculando similitud para imagen {img.id}: {e}")
-            continue
-
-    # Determinar categorÃ­a mÃ¡s probable basada en mayor similitud promedio
-    print(f"\nðŸ“Š DEBUG: AnÃ¡lisis por categorÃ­as:")
-    best_category = None
-    best_avg_similarity = 0
-
-    for category, similarities in category_similarities.items():
-        avg_sim = sum(similarities) / len(similarities)
-        max_sim = max(similarities)
-        count = len(similarities)
-        print(f"   ðŸ“‚ {category}: {count} productos, promedio: {avg_sim:.4f}, mÃ¡ximo: {max_sim:.4f}")
-
-        if max_sim > best_avg_similarity:  # Usar mÃ¡ximo en lugar de promedio para detectar categorÃ­a objetivo
-            best_avg_similarity = max_sim
-            best_category = category
-
-    print(f"ðŸŽ¯ DEBUG: CategorÃ­a mÃ¡s probable: '{best_category}' (similitud mÃ¡xima: {best_avg_similarity:.4f})")
-
-    # Aplicar boost de categorÃ­a: aumentar similitud para productos de la categorÃ­a mÃ¡s probable
-    if best_category and best_category != "Sin categorÃ­a":
-        for product_id in product_best_match:
-            match_data = product_best_match[product_id]
-            if match_data['category'] == best_category:
-                # Boost del 15% para productos de la misma categorÃ­a
-                original_similarity = match_data['similarity']
-                boosted_similarity = min(1.0, original_similarity * 1.15)
-                match_data['similarity'] = boosted_similarity
-                match_data['category_boost'] = True
-                print(f"ðŸš€ DEBUG: Boost aplicado a {match_data['product'].name}: {original_similarity:.4f} â†’ {boosted_similarity:.4f}")
-            else:
-                match_data['category_boost'] = False
-
-    print(f"ðŸŽ¯ DEBUG: Productos Ãºnicos encontrados: {len(product_best_match)}")
-    return product_best_match
-
-
-def _find_similar_products_in_category(client, query_embedding, threshold, category_id):
-    """
-    Encuentra productos similares SOLO dentro de una categorÃ­a especÃ­fica
-
-    Args:
-        client: Cliente autenticado
-        query_embedding: Embedding de la imagen query
-        threshold: Umbral mÃ­nimo de similitud
-        category_id: ID de la categorÃ­a en la que buscar
-
-    Returns:
-        dict: Diccionario con los mejores matches por producto
-    """
-    # Buscar imÃ¡genes SOLO de la categorÃ­a especÃ­fica
-    images = (Image.query
-              .join(Product)
-              .filter(
-                  Image.client_id == client.id,
-                  Image.is_processed == True,
-                  Image.clip_embedding.isnot(None),
-                  Product.category_id == category_id
-              ).all())
-
-    print(f"ðŸ” DEBUG: Encontradas {len(images)} imÃ¡genes en la categorÃ­a especÃ­fica")
-
-    # Calcular similitudes y agrupar por producto
-    product_best_match = {}  # Dict para almacenar la mejor imagen de cada producto
-
-    for img in images:
-        try:
-            similarity = calculate_similarity(query_embedding, img.clip_embedding)
-            category_name = img.product.category.name if img.product.category else "Sin categorÃ­a"
-
-            print(f"ðŸ” DEBUG: Similitud con {img.product.name[:30]} ({category_name}): {similarity:.4f}")
-
-            if similarity >= threshold:
-                product_id = img.product.id
-
-                # Si es la primera imagen de este producto, o si tiene mayor similitud que la anterior
-                if product_id not in product_best_match or similarity > product_best_match[product_id]['similarity']:
-                    product_best_match[product_id] = {
-                        'image': img,
-                        'similarity': similarity,
-                        'product': img.product,
-                        'category': category_name,
-                        'category_filtered': True  # Indicador de que se filtrÃ³ por categorÃ­a
-                    }
-                    print(f"âœ… DEBUG: Mejor imagen para {img.product.name}: {similarity:.4f}")
-
-        except Exception as e:
-            print(f"âŒ Error calculando similitud para imagen {img.id}: {e}")
-            continue
-
-    print(f"ðŸŽ¯ DEBUG: Total productos Ãºnicos encontrados en categorÃ­a: {len(product_best_match)}")
-    return product_best_match
-
-
-def _apply_category_filter(product_best_match, limit):
-    """Aplica filtrado inteligente por categorÃ­a si es necesario"""
-    # Filtrado inteligente por categorÃ­a (solo si hay suficientes productos)
-    if len(product_best_match) <= limit * 2:  # Solo filtrar si hay muchos productos
-        print(f"ðŸŽ¯ DEBUG: Pocos productos encontrados ({len(product_best_match)}), no se aplica filtro de categorÃ­a")
-        return product_best_match
-
-    # Obtener las categorÃ­as de los productos con mayor similitud
-    sorted_products = sorted(product_best_match.items(), key=lambda x: x[1]['similarity'], reverse=True)
-
-    # Tomar las top similitudes para determinar la categorÃ­a dominante
-    top_count = min(3, len(sorted_products))
-    top_categories = {}
-
-    for product_id, match_data in sorted_products[:top_count]:
-        category_name = match_data['product'].category.name
-        if category_name not in top_categories:
-            top_categories[category_name] = []
-        top_categories[category_name].append(match_data['similarity'])
-
-    # Determinar la categorÃ­a mÃ¡s relevante basada en similitud promedio
-    best_category = None
-    best_avg_similarity = 0
-
-    for category, similarities in top_categories.items():
-        avg_similarity = sum(similarities) / len(similarities)
-        print(f"ðŸ“‚ DEBUG: CategorÃ­a '{category}': {len(similarities)} productos, similitud promedio: {avg_similarity:.4f}")
-
-        if avg_similarity > best_avg_similarity:
-            best_avg_similarity = avg_similarity
-            best_category = category
-
-    # Solo aplicar filtro si la categorÃ­a dominante es muy clara (>60% similitud promedio)
-    if not (best_category and best_avg_similarity > 0.6):
-        print(f"ðŸŽ¯ DEBUG: No se aplicÃ³ filtro de categorÃ­a (similitud promedio: {best_avg_similarity:.4f})")
-        return product_best_match
-
-    print(f"ðŸŽ¯ DEBUG: CategorÃ­a dominante detectada: '{best_category}' (similitud promedio: {best_avg_similarity:.4f})")
-
-    # Filtrar solo productos de la categorÃ­a dominante
-    filtered_matches = {}
-    for product_id, match_data in product_best_match.items():
-        product_category = match_data['product'].category.name
-
-        # Incluir productos de la categorÃ­a dominante
-        if product_category == best_category:
-            filtered_matches[product_id] = match_data
-            print(f"âœ… DEBUG: Incluido por categorÃ­a exacta: {match_data['product'].name} ({product_category})")
-        else:
-            print(f"âŒ DEBUG: Excluido por categorÃ­a: {match_data['product'].name} ({product_category} != {best_category})")
-
-    # Solo usar el filtro si queda al menos el mÃ­nimo de productos
-    if len(filtered_matches) >= limit:
-        print(f"ðŸŽ¯ DEBUG: Productos despuÃ©s del filtro de categorÃ­a: {len(filtered_matches)}")
-        return filtered_matches
-    else:
-        print("âš ï¸ DEBUG: El filtro de categorÃ­a eliminÃ³ demasiados productos, manteniendo los originales")
-        return product_best_match
-
-
-def _build_search_results(product_best_match, limit):
-    """Construye la lista final de resultados"""
-    results = []
-
-    # ðŸ” DEBUG: Verificar contenido del dict recibido
-    print(f"ðŸ” DEBUG _build_search_results: Recibido dict con {len(product_best_match)} productos")
-    if product_best_match:
-        sample_id = list(product_best_match.keys())[0]
-        sample_match = product_best_match[sample_id]
-        print(f"ðŸ” DEBUG _build_search_results: Claves en sample_match: {list(sample_match.keys())}")
-        print(f"ðŸ” DEBUG _build_search_results: Tiene optimizer_scores: {'optimizer_scores' in sample_match}")
-
-    # Intentar obtener configuraciÃ³n de atributos a exponer (si existe la tabla)
-    exposed_keys_cache = None  # cache por request
-    checked_config = False
-    for product_id, best_match in product_best_match.items():
-        img = best_match['image']
-        product = best_match['product']
-        similarity = best_match['similarity']
-        category_boost = best_match.get('category_boost', False)
-        color_boost = best_match.get('color_boost', False)
-
-        # La primera vez, intentamos cargar la config de atributos visibles por cliente
-        if not checked_config:
-            try:
-                client_id = getattr(product, 'client_id', None)
-                if client_id:
-                    # Primero verificar si hay ALGUNA configuraciÃ³n para este cliente
-                    total_configs = db.session.execute(
-                        text(
-                            """
-                            SELECT COUNT(*) as total
-                            FROM product_attribute_config
-                            WHERE client_id = :client_id
-                            """
-                        ),
-                        {"client_id": client_id},
-                    ).fetchone()
-
-                    # Si no hay ninguna configuraciÃ³n, tratar como "sin config" (None)
-                    if total_configs and total_configs[0] == 0:
-                        exposed_keys_cache = None
-                    else:
-                        # Hay configuraciones, obtener las visibles
-                        rows = db.session.execute(
-                            text(
-                                """
-                                SELECT key
-                                FROM product_attribute_config
-                                WHERE client_id = :client_id AND expose_in_search = true
-                                """
-                            ),
-                            {"client_id": client_id},
-                        ).fetchall()
-                        # Crear conjunto (vacÃ­o si todas estÃ¡n ocultas, con elementos si hay visibles)
-                        exposed_keys_cache = {r[0] for r in rows}
-            except Exception as e:
-                # Si no existe la tabla o falla, seguimos sin filtrar (compatible hacia atrÃ¡s)
-                print(f"âš ï¸ Error consultando product_attribute_config: {e}")
-                # CRITICAL: Hacer rollback para que queries posteriores funcionen
-                db.session.rollback()
-                exposed_keys_cache = None
-            finally:
-                checked_config = True
-
-        # Obtener la imagen primaria del producto en lugar de la que hizo match
-        primary_image = None
-        try:
-            # Buscar la imagen primaria del producto
-            primary_image = Image.query.filter_by(
-                product_id=product.id,
-                is_primary=True
-            ).first()
-
-            # Si no hay primaria, usar la que hizo match
-            if not primary_image:
-                primary_image = img
-
-            # Retornar SIEMPRE la URL de Cloudinary (patrÃ³n unificado)
-            image_url = primary_image.display_url if primary_image else None
-        except Exception as e:
-            print(f"âŒ Error obteniendo imagen primaria: {e}")
-            # CRITICAL: Hacer rollback para que queries posteriores funcionen
-            db.session.rollback()
-            # Si falla, usar la imagen que hizo match
-            image_url = img.display_url if img else None
-
-        # Preparar atributos dinÃ¡micos del producto (JSONB)
-        product_attrs = {}
-        product_url_value = None  # Siempre intentar extraer el link, aunque no estÃ© expuesto
-        try:
-            if hasattr(product, 'attributes') and product.attributes:
-                # 1) Siempre intentar obtener url_producto del JSON bruto (ignorar filtros de exposiciÃ³n)
-                try:
-                    raw_url = product.attributes.get('url_producto')
-                    if isinstance(raw_url, dict):
-                        # Algunos stores guardan { value: 'https://...' }
-                        product_url_value = raw_url.get('value') or raw_url.get('url') or None
-                    else:
-                        product_url_value = raw_url
-                except Exception as ie:
-                    print(f"âš ï¸ Error extrayendo url_producto para {product.id}: {ie}")
-                    product_url_value = None
-
-                # 2) Aplicar filtros de exposiciÃ³n solo para el bloque de attributes
-                if exposed_keys_cache is not None:
-                    # Filtrar solo los atributos configurados para exponerse
-                    product_attrs = {
-                        k: v for k, v in product.attributes.items() if k in exposed_keys_cache
-                    }
-                else:
-                    # Sin configuraciÃ³n, exponer todos los atributos (compatibilidad existente)
-                    product_attrs = dict(product.attributes)
-        except Exception as e:
-            print(f"âš ï¸ Error leyendo atributos de producto {product.id}: {e}")
-            product_attrs = {}
-
-        # ðŸš€ FASE 3: Incluir optimizer_scores si estÃ¡n disponibles
-        optimizer_scores = best_match.get('optimizer_scores')
-
-        result = {
-            "product_id": product.id,
-            "name": product.name,
-            "description": product.description or "Sin descripciÃ³n",
-            "image_url": image_url,
-            "similarity": round(similarity, 4),
-            "price": float(product.price) if product.price else None,
-            "sku": product.sku,
-            "stock": product.stock if hasattr(product, 'stock') and product.stock is not None else 0,
-            "category": product.category.name if product.category else "Sin categorÃ­a",
-            "category_boost": category_boost,
-            "color_boost": color_boost,
-            # Atributos dinÃ¡micos (filtrados si hay configuraciÃ³n)
-            "attributes": product_attrs,
-            # URL del producto si estÃ¡ configurada
-            "product_url": product_url_value
-        }
-
-        # Agregar scores del optimizer si existen
-        if optimizer_scores:
-            result['optimizer'] = {
-                'visual_score': round(optimizer_scores['visual_score'], 4),
-                'metadata_score': round(optimizer_scores['metadata_score'], 4),
-                'business_score': round(optimizer_scores['business_score'], 4),
-                'final_score': round(optimizer_scores['final_score'], 4),
-                'enabled': True
-            }
-
-        results.append(result)
-
-        boost_indicator = "ðŸš€" if category_boost else ""
-        color_indicator = "ðŸŽ¨" if color_boost else ""
-        optimizer_indicator = "ðŸŽ¯" if optimizer_scores else ""
-        print(f"ðŸ“¦ DEBUG: Producto final aÃ±adido: {product.name} (similitud: {similarity:.4f}) {boost_indicator}{color_indicator}{optimizer_indicator}")
-
-    print(f"ðŸŽ¯ DEBUG: Total productos Ãºnicos procesados: {len(results)}")
-
-    # Ordenar por similitud y limitar resultados
-    results.sort(key=lambda x: x['similarity'], reverse=True)
-    return results[:limit]
-
-
-def _normalize_color_gender(color_str: str) -> str:
-    """Normaliza gÃ©nero en nombres de colores para matching consistente."""
-    if not color_str:
-        return color_str
-    mapping = {
-        'NEGRA': 'NEGRO', 'BLANCA': 'BLANCO', 'ROJA': 'ROJO', 'AMARILLA': 'AMARILLO',
-        'MORADA': 'MORADO', 'DORADA': 'DORADO', 'PLATEADA': 'PLATEADO', 'BRONCEADA': 'BRONCEADO'
-    }
-    u = str(color_str).strip().upper()
-    return mapping.get(u, u)
-
-
-def detect_dominant_color(image_data, client_id):
-    """
-    Detecta el color dominante en la imagen usando CLIP
-    Usa los colores reales de los productos del cliente (dinÃ¡mico)
-
-    Args:
-        image_data: Datos binarios de la imagen
-        client_id: ID del cliente para obtener sus colores de productos
-
-    Returns:
-        tuple: (color_detectado, confidence_score)
-    """
-    try:
-        # Obtener colores Ãºnicos desde JSONB attributes->>'color' (preferido)
-        rows = db.session.execute(
-            text(
-                """
-                SELECT DISTINCT UPPER(TRIM(attributes->>'color')) AS color
-                FROM products
-                WHERE client_id = :client_id
-                  AND attributes ? 'color'
-                  AND NULLIF(TRIM(attributes->>'color'), '') IS NOT NULL
-                """
-            ),
-            {"client_id": client_id},
-        ).fetchall()
-
-        unique_colors = [r[0] for r in rows if r[0]]
-
-        if not unique_colors:
-            print("âš ï¸ No hay colores definidos en productos del cliente")
-            return "unknown", 0.0
-
-        print(f"ðŸŽ¨ Colores disponibles del cliente (JSONB): {unique_colors}")
-
-        # Crear prompts dinÃ¡micos basados en los colores del cliente
-        color_prompts = [f"a photo of {color.lower()} product" for color in unique_colors]
-
-        # Convertir a imagen PIL
-        from PIL import Image as PILImage
-        import io
-        pil_image = PILImage.open(io.BytesIO(image_data))
-
-        # Obtener modelo CLIP
-        model, processor = get_clip_model()
-
-        # Generar embedding de imagen
-        with torch.no_grad():
-            image_inputs = processor(images=pil_image, return_tensors="pt")
-            image_features = model.get_image_features(**image_inputs)
-            image_embedding = image_features / image_features.norm(dim=-1, keepdim=True)
-
-            # Generar embeddings de texto para colores
-            text_inputs = processor(text=color_prompts, return_tensors="pt", padding=True)
-            text_features = model.get_text_features(**text_inputs)
-            text_embeddings = text_features / text_features.norm(dim=-1, keepdim=True)
-
-            # Calcular similitudes
-            similarities = torch.cosine_similarity(image_embedding, text_embeddings, dim=1)
-
-            # Encontrar la mejor coincidencia
-            best_idx = similarities.argmax().item()
-            best_score = similarities[best_idx].item()
-            detected_color = unique_colors[best_idx]
-
-            print(f"ðŸŽ¨ DETECCIÃ“N COLOR: {detected_color} (confianza: {best_score:.3f})")
-
-            return detected_color, best_score
-
-    except Exception as e:
-        print(f"âŒ Error en detecciÃ³n de color: {e}")
-        import traceback
-        traceback.print_exc()
-        return "unknown", 0.0
-
-
-def detect_dominant_color_from_palette(image_data, colors_list):
-    """
-    Detecta el color dominante restringiendo la comparaciÃ³n a una paleta dada.
-
-    Args:
-        image_data: bytes de la imagen
-        colors_list: lista de strings con colores disponibles para comparar
-
-    Returns:
-        tuple: (color_detectado, confidence_score)
-    """
-    try:
-        unique_colors = [c.strip() for c in colors_list if c and str(c).strip()]
-
-        if not unique_colors:
-            print("âš ï¸ Paleta de colores vacÃ­a para la categorÃ­a")
-            return "unknown", 0.0
-
-        print(f"ðŸŽ¨ Paleta de colores (categorÃ­a): {unique_colors}")
-
-        # Crear prompts dinÃ¡micos basados en los colores de la categorÃ­a
-        color_prompts = [f"a photo of {color.lower()} product" for color in unique_colors]
-
-        # Convertir a imagen PIL
-        from PIL import Image as PILImage
-        import io
-        pil_image = PILImage.open(io.BytesIO(image_data))
-
-        # Obtener modelo CLIP
-        model, processor = get_clip_model()
-
-        # Generar embedding de imagen
-        with torch.no_grad():
-            image_inputs = processor(images=pil_image, return_tensors="pt")
-            image_features = model.get_image_features(**image_inputs)
-            image_embedding = image_features / image_features.norm(dim=-1, keepdim=True)
-
-            # Generar embeddings de texto para colores
-            text_inputs = processor(text=color_prompts, return_tensors="pt", padding=True)
-            text_features = model.get_text_features(**text_inputs)
-            text_embeddings = text_features / text_features.norm(dim=-1, keepdim=True)
-
-            # Calcular similitudes
-            similarities = torch.cosine_similarity(image_embedding, text_embeddings, dim=1)
-
-            # Encontrar la mejor coincidencia
-            best_idx = similarities.argmax().item()
-            best_score = similarities[best_idx].item()
-            detected_color = unique_colors[best_idx]
-
-            print(f"ðŸŽ¨ DETECCIÃ“N COLOR (categorÃ­a): {detected_color} (confianza: {best_score:.3f})")
-
-            return detected_color, best_score
-
-    except Exception as e:
-        print(f"âŒ Error en detecciÃ³n de color (paleta): {e}")
-        import traceback
-        traceback.print_exc()
-        return "unknown", 0.0
-
-
-def detect_general_object(image_data, client_id=None):
-    """
-    Detecta QUÃ‰ es el objeto en la imagen usando CLIP
-    Si se proporciona client_id, usa las categorÃ­as del cliente
-    Si no, usa categorÃ­as generales ampliadas
-
-    Args:
-        image_data: Datos binarios de la imagen
-        client_id: ID del cliente (opcional, para usar sus categorÃ­as)
-
-    Returns:
-        tuple: (objeto_detectado, confidence_score)
-    """
-    try:
-        # Si hay client_id, usar las categorÃ­as del cliente
-        if client_id:
-            categories = Category.query.filter_by(
-                client_id=client_id,
-                is_active=True
-            ).all()
-
-            if categories:
-                # Usar name_en de las categorÃ­as como tÃ©rminos de detecciÃ³n
-                general_categories = []
-                for cat in categories:
-                    if cat.name_en:
-                        general_categories.append(f"a photo of {cat.name_en.lower()}")
-                    else:
-                        general_categories.append(f"a photo of {cat.name.lower()}")
-
-                print(f"ðŸ” Usando categorÃ­as del cliente para detecciÃ³n: {[c.split('of ')[1] for c in general_categories]}")
-            else:
-                print("âš ï¸ No hay categorÃ­as activas, usando detecciÃ³n genÃ©rica")
-                general_categories = ["product", "item", "object"]
-        else:
-            # DetecciÃ³n genÃ©rica amplia para cualquier tipo de producto
-            general_categories = [
-                "product", "item", "object", "merchandise",
-                "clothing", "apparel", "garment",
-                "accessory", "tool", "equipment",
-                "furniture", "decoration", "appliance"
-            ]
-
-        # Convertir a imagen PIL
-        from PIL import Image as PILImage
-        import io
-        pil_image = PILImage.open(io.BytesIO(image_data))
-
-        # Obtener modelo CLIP
-        model, processor = get_clip_model()
-
-        # Generar embedding de imagen
-        with torch.no_grad():
-            image_inputs = processor(images=pil_image, return_tensors="pt")
-            image_features = model.get_image_features(**image_inputs)
-            image_embedding = image_features / image_features.norm(dim=-1, keepdim=True)
-
-            # Generar embeddings de texto para categorÃ­as
-            text_inputs = processor(text=general_categories, return_tensors="pt", padding=True)
-            text_features = model.get_text_features(**text_inputs)
-            text_embeddings = text_features / text_features.norm(dim=-1, keepdim=True)
-
-            # Calcular similitudes
-            similarities = torch.cosine_similarity(image_embedding, text_embeddings, dim=1)
-
-            # Encontrar la mejor coincidencia
-            best_idx = similarities.argmax().item()
-            best_score = similarities[best_idx].item()
-            detected_object = general_categories[best_idx]
-
-            # Extraer solo el tÃ©rmino del objeto (sin "a photo of")
-            if "a photo of" in detected_object:
-                detected_object = detected_object.replace("a photo of ", "").strip()
-
-            print(f"ðŸ” DETECCIÃ“N GENERAL: {detected_object} (confianza: {best_score:.3f})")
-
-            return detected_object, best_score
-
-    except Exception as e:
-        print(f"âŒ Error en detecciÃ³n general: {e}")
-        import traceback
-        traceback.print_exc()
-        return "unknown", 0.0
-
-
-def detect_image_category_with_centroids(image_data, client_id, confidence_threshold=0.2):
-    """
-    Detecta la categorÃ­a de una imagen usando centroides de embeddings reales
-
-    En lugar de prompts de texto, usa el promedio de embeddings de productos
-    existentes en cada categorÃ­a como "representante" de esa categorÃ­a.
-
-    Args:
-        image_data: Datos binarios de la imagen
-        client_id: ID del cliente para obtener sus categorÃ­as
-        confidence_threshold: Umbral mÃ­nimo de confianza para detecciÃ³n
-
-    Returns:
-        tuple: (categoria_detectada, confidence_score) o (None, 0) si no detecta
-    """
-    try:
-        railway_log(f" LOG: Iniciando detecciÃ³n centroides para cliente {client_id}")
-
-        # 1. Obtener categorÃ­as activas del cliente
-        categories = Category.query.filter_by(
-            client_id=client_id,
-            is_active=True
-        ).all()
-
-        if not categories:
-            railway_log(f" LOG: No categorÃ­as para cliente {client_id}")
-            return None, 0
-
-        railway_log(f" LOG: {len(categories)} categorÃ­as encontradas")
-
-        # 2. Generar embedding de la imagen nueva
-        from PIL import Image as PILImage
-        import io
-        pil_image = PILImage.open(io.BytesIO(image_data))
-        print(f"ðŸ–¼ï¸ DEBUG: Imagen preparada: {pil_image.size}")
-
-        # 3. Obtener modelo CLIP
-        model, processor = get_clip_model()
-        print("ðŸ¤– DEBUG: Modelo CLIP obtenido")
-
-        # 4. Generar embedding de imagen nueva
-        with torch.no_grad():
-            image_inputs = processor(
-                images=pil_image,
-                return_tensors="pt"
-            )
-            image_features = model.get_image_features(**image_inputs)
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-            new_embedding = image_features.squeeze(0).numpy()
-
-        print(f"ðŸ” DEBUG: Embedding generado: shape {new_embedding.shape}")
-
-        # 5. Calcular similitudes contra centroides de cada categorÃ­a
-        category_similarities = []
-
-        for category in categories:
-            # ðŸš€ USAR CENTROIDE DE BD DIRECTAMENTE
-            centroid = category.get_centroid_embedding(auto_calculate=False)
-            railway_log(f" LOG: {category.name} - centroide {'OK' if centroid is not None else 'NULL'}")
-
-            if centroid is not None:
-                # Calcular similitud coseno
-                similarity = np.dot(new_embedding, centroid) / (np.linalg.norm(new_embedding) * np.linalg.norm(centroid))
-                category_similarities.append({
-                    'category': category,
-                    'similarity': float(similarity)
-                })
-                railway_log(f" LOG: {category.name}: similitud {similarity:.4f}")
-            else:
-                railway_log(f" LOG: {category.name} SIN CENTROIDE en BD")
-
-        if not category_similarities:
-            railway_log(f" LOG: NO HAY SIMILITUDES - sin centroides vÃ¡lidos")
-            return None, 0
-
-        # 6. Encontrar la mejor coincidencia con margen de victoria y desempate
-        # Ordenar por similitud descendente
-        category_similarities.sort(key=lambda x: x['similarity'], reverse=True)
-        best_match = category_similarities[0]
-        best_category = best_match['category']
-        best_score = best_match['similarity']
-        second_score = category_similarities[1]['similarity'] if len(category_similarities) > 1 else -1.0
-
-        railway_log(f" LOG: MEJOR: {best_category.name} = {best_score:.4f} | SEGUNDO = {second_score:.4f}")
-
-        # Margen de victoria mÃ­nimo para aceptar directamente la categorÃ­a ganadora
-        MARGIN_DELTA = 0.03  # 3 puntos de similitud coseno
-
-        # Si el margen es muy chico, usamos un desempate con la detecciÃ³n general
-        if second_score >= 0 and (best_score - second_score) < MARGIN_DELTA:
-            railway_log(f" LOG: MARGEN PEQUEÃ‘O ({best_score - second_score:.4f} < {MARGIN_DELTA}), aplicando desempate por objeto general")
-            try:
-                detected_object, object_confidence = detect_general_object(image_data, client_id)
-                railway_log(f" LOG: OBJETO GENERAL = {detected_object} (conf {object_confidence:.3f})")
-
-                if object_confidence >= 0.20:  # usar con umbral bajo, solo como desempate
-                    # Comparar el objeto detectado con los nombres de las categorÃ­as (name y name_en)
-                    top2 = category_similarities[:2]
-
-                    def cat_matches_object(cat, obj):
-                        """Verifica si el objeto detectado estÃ¡ relacionado con la categorÃ­a"""
-                        cat_name = (cat.name or '').lower()
-                        cat_name_en = (cat.name_en or '').lower()
-                        obj_lower = obj.lower()
-
-                        # Match directo o por inclusiÃ³n
-                        return obj_lower in cat_name or obj_lower in cat_name_en or \
-                               cat_name in obj_lower or cat_name_en in obj_lower
-
-                    best_matches = cat_matches_object(best_category, detected_object)
-                    second_cat = top2[1]['category'] if len(top2) > 1 else None
-                    second_matches = cat_matches_object(second_cat, detected_object) if second_cat else False
-
-                    if not best_matches and second_matches:
-                        # Elegir la segunda si estÃ¡ en el grupo preferido
-                        railway_log(f" LOG: DESEMPATE â†’ Preferimos '{second_cat.name}' por concordar con objeto '{detected_object}'")
-                        best_category = second_cat
-                        best_score = top2[1]['similarity']
-                    else:
-                        railway_log(f" LOG: Desempate mantiene categorÃ­a original (best={best_matches}, second={second_matches})")
-                else:
-                    railway_log(" LOG: Desempate no aplicado (baja confianza del objeto)")
-            except Exception as e:
-                railway_log(f" LOG: Error en desempate por objeto general: {e}")
-
-        # 7. Verificar umbral de confianza
-        if best_score >= confidence_threshold:
-            railway_log(f" LOG: DETECTADO - {best_category.name} (conf: {best_score:.4f})")
-            return best_category, best_score
-        else:
-            railway_log(f" LOG: RECHAZADO - {best_score:.4f} < {confidence_threshold}")
-            return None, best_score
-
-    except Exception as e:
-        print(f"âŒ ERROR en detecciÃ³n por centroides: {e}")
-        import traceback
-        traceback.print_exc()
-        return None, 0
-
-
-def detect_image_category(image_data, client_id, confidence_threshold=0.2):
-    """
-    FunciÃ³n de detecciÃ³n por prompts (obsoleta, usa centroides como fallback)
-    """
-    try:
-        print(f"ðŸŽ¯ DEBUG: Usando mÃ©todo de centroides en lugar de prompts")
-        return detect_image_category_with_centroids(image_data, client_id, confidence_threshold)
-
-    except Exception as e:
-        print(f"âŒ ERROR en detecciÃ³n de categorÃ­a: {e}")
-        import traceback
-        traceback.print_exc()
-        return None, 0
-
-
-def detect_image_category(image_data, client_id, confidence_threshold=0.2):
-    """
-    Detecta la categorÃ­a de una imagen usando CLIP y los prompts de categorÃ­as del cliente
-
-    Args:
-        image_data: Datos binarios de la imagen
-        client_id: ID del cliente para obtener sus categorÃ­as
-        confidence_threshold: Umbral mÃ­nimo de confianza para detecciÃ³n
-
-    Returns:
-        tuple: (categoria_detectada, confidence_score) o (None, 0) si no detecta
-    """
-    try:
-        print(f"ðŸŽ¯ DEBUG: Iniciando detecciÃ³n de categorÃ­a para cliente {client_id}")
-
-        # 1. Obtener categorÃ­as activas del cliente
-        categories = Category.query.filter_by(
-            client_id=client_id,
-            is_active=True
-        ).all()
-
-        if not categories:
-            print(f"âŒ DEBUG: No se encontraron categorÃ­as para cliente {client_id}")
-            return None, 0
-
-        print(f"ðŸ“‹ DEBUG: Encontradas {len(categories)} categorÃ­as activas")
-
-        # 2. Preparar imagen para CLIP
-        from PIL import Image as PILImage
-        import io
-        pil_image = PILImage.open(io.BytesIO(image_data))
-        print(f"ðŸ–¼ï¸ DEBUG: Imagen preparada: {pil_image.size}")
-
-        # 3. Obtener modelo CLIP
-        model, processor = get_clip_model()
-        print("ðŸ¤– DEBUG: Modelo CLIP obtenido")
-
-        # 4. Preparar prompts de categorías (usar prompts en inglés cuando sea posible)
-        category_prompts = []
-        category_objects = []
-
-        for category in categories:
-            prompt = _clip_prompt_for_category(category)
-
-            category_prompts.append(prompt)
-            category_objects.append(category)
-            railway_log(f"DEBUG: Prompt para {getattr(category,'name','?')}: {prompt}")
-
-        # 5. Procesar imagen y textos con CLIP
-        with torch.no_grad():
-            # Procesar imagen
-            image_inputs = processor(
-                images=pil_image,
-                return_tensors="pt"
-            )
-            image_features = model.get_image_features(**image_inputs)
-            image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-
-            # Procesar textos
-            text_inputs = processor(
-                text=category_prompts,
-                return_tensors="pt",
-                padding=True,
-                truncation=True
-            )
-            text_features = model.get_text_features(**text_inputs)
-            text_features = text_features / text_features.norm(dim=-1, keepdim=True)
-
-            # Calcular similitudes
-            similarities = (image_features @ text_features.T).squeeze(0)
-
-            print(f"ðŸ” DEBUG: Similitudes calculadas: {similarities.tolist()}")
-
-        # 6. Encontrar la mejor coincidencia
-        best_idx = similarities.argmax().item()
-        best_score = similarities[best_idx].item()
-        best_category = category_objects[best_idx]
-
-        print(f"ðŸŽ¯ DEBUG: Mejor coincidencia: {best_category.name} ({best_score:.4f})")
-
-        # 7. Verificar umbral de confianza
-        if best_score >= confidence_threshold:
-            print(f"âœ… DEBUG: CategorÃ­a detectada con confianza suficiente")
-            return best_category, best_score
-        else:
-            print(f"âŒ DEBUG: Confianza insuficiente ({best_score:.4f} < {confidence_threshold})")
-            return None, best_score
-
-    except Exception as e:
-        print(f"âŒ ERROR en detecciÃ³n de categorÃ­a: {e}")
-        import traceback
-        traceback.print_exc()
-        return None, 0
+## Función detect_image_category movida a app.blueprints.search_visual
 
 
 def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75):
@@ -2712,6 +1722,64 @@ def text_search():
                 detected_category_via = 'tokens'
                 print(f"[REQ {request_id}] Categoría detectada por tokens (score={best_score:.2f}): {detected_category.name}")
 
+        # 2.b Fallback de coincidencia APROXIMADA de tokens (ej.: "short" ~ "shores") antes del LLM
+        if not detected_category:
+            def _levenshtein_le1(a: str, b: str) -> bool:
+                a = _strip_accents(a.lower())
+                b = _strip_accents(b.lower())
+                if a == b:
+                    return True
+                if abs(len(a) - len(b)) > 1:
+                    return False
+                # Si longitudes iguales: permitir 1 sustitución
+                if len(a) == len(b):
+                    mism = sum(1 for x, y in zip(a, b) if x != y)
+                    return mism <= 1
+                # Si difieren en 1: permitir 1 inserción/eliminación
+                # Garantizar a como la más corta
+                if len(a) > len(b):
+                    a, b = b, a
+                i = j = diffs = 0
+                while i < len(a) and j < len(b):
+                    if a[i] == b[j]:
+                        i += 1; j += 1
+                    else:
+                        diffs += 1
+                        if diffs > 1:
+                            return False
+                        j += 1  # saltar un char en la más larga
+                return True  # a lo sumo 1 diferencia
+
+            best_cat_approx = None
+            best_score_approx = 0.0
+            approx_candidates = []
+            for category, name_toks, alt_toks in cat_tokens_list:
+                # Conteo de matches aproximados con mayor peso a nombre
+                name_hits = 0
+                for qt in query_tokens:
+                    if any(_levenshtein_le1(qt, nt) for nt in name_toks):
+                        name_hits += 1
+                alt_hits = 0
+                for qt in query_tokens:
+                    if any(_levenshtein_le1(qt, at) for at in alt_toks):
+                        alt_hits += 1
+
+                if name_hits or alt_hits:
+                    score = (name_hits * 1.0 + alt_hits * 0.5) / max(len(query_tokens), 1)
+                    approx_candidates.append((category.name, score, name_hits, alt_hits))
+                    if score > best_score_approx:
+                        best_score_approx = score
+                        best_cat_approx = category
+
+            if approx_candidates:
+                approx_candidates.sort(key=lambda x: x[1], reverse=True)
+                print(f"[REQ {request_id}] Candidatos (aprox): {[(c[0], f'{c[1]:.2f}', c[2], c[3]) for c in approx_candidates[:5]]}")
+
+            if best_cat_approx and best_score_approx > 0:
+                detected_category = best_cat_approx
+                detected_category_via = 'tokens_approx'
+                print(f"[REQ {request_id}] Categoría detectada por tokens APROX (score={best_score_approx:.2f}): {detected_category.name}")
+
         # Si detectamos por tokens (no literal), exponer mensaje de sustitución como 'similar'
         if detected_category and detected_category_via == 'tokens':
             try:
@@ -2726,6 +1794,19 @@ def text_search():
             }
             print(f"[REQ {request_id}] ⚠️ Match similar por tokens: '{query_text}' → '{detected_category.name}' score={best_score:.3f}")
 
+        # Si detectamos por tokens aproximados, también informar como 'similar'
+        if detected_category and detected_category_via == 'tokens_approx':
+            try:
+                token_sim = float(max(0.0, min(1.0, best_score_approx))) if 'best_score_approx' in locals() else None
+            except Exception:
+                token_sim = None
+            category_substitution_info = {
+                "match_type": "similar",
+                "requested_text": query_text,
+                "matched_category": detected_category.name,
+                **({"similarity": round(token_sim, 3)} if token_sim is not None else {})
+            }
+            print(f"[REQ {request_id}] ⚠️ Match similar por tokens APROX: '{query_text}' → '{detected_category.name}' score={best_score_approx:.3f}")
 
         # Nueva lógica de selección de categoría con LLM: exacta / similar / ninguna
         if not detected_category:
@@ -3439,6 +2520,115 @@ def text_search():
         print(f"[REQ {request_id}] DETECTED COLOR: {detected_color}", flush=True)
         print(f"[REQ {request_id}] PARTIAL MATCH INFO: {partial_match_info}", flush=True)
 
+        # Construir contexto de categoría (tipo de match + hermanas)
+        match_type = None
+        match_similarity = None
+        if detected_category:
+            if detected_category_via in ("name", "name_en", "alt"):
+                match_type = "exact"
+            elif detected_category_via in ("tokens", "tokens_approx"):
+                match_type = "similar"
+                try:
+                    match_similarity = round(float(best_score if detected_category_via=="tokens" else best_score_approx), 3)
+                except Exception:
+                    match_similarity = None
+            else:
+                # LLM branch puede haber fijado category_substitution_info
+                match_type = "similar" if category_substitution_info else "exact"
+                try:
+                    if category_substitution_info and 'similarity' in category_substitution_info:
+                        match_similarity = category_substitution_info['similarity']
+                except Exception:
+                    match_similarity = None
+
+        sibling_suggestions = []
+        if detected_category:
+            try:
+                from sentence_transformers import util as _st_util
+                selected_emb = _get_category_embedding(detected_category.name, str(client.id))
+                if selected_emb is not None:
+                    sugg = []
+                    for oc in categories:
+                        if oc.id == detected_category.id:
+                            continue
+                        oc_emb = _get_category_embedding(oc.name, str(client.id))
+                        if oc_emb is None:
+                            continue
+                        sim = float(_st_util.cos_sim(selected_emb, oc_emb)[0][0])
+                        sugg.append((oc, sim))
+                    sugg.sort(key=lambda x: x[1], reverse=True)
+                    for oc, sim in sugg[:5]:
+                        if sim >= 0.75:
+                            sibling_suggestions.append({
+                                "id": str(oc.id),
+                                "name": oc.name,
+                                "similarity": round(sim, 3)
+                            })
+            except Exception as _e:
+                print(f"[REQ {request_id}] ⚠️ Error generando hermanas: {_e}")
+
+        # Construir info de color: solicitado vs usado (si se reemplazó)
+        color_info = None
+        try:
+            requested_color = (detected_color.lower() if detected_color else None)
+            # Colores mostrados en resultados (top)
+            shown_colors = []
+            for r in results:
+                prod = next((p for p in products if str(p.id) == r['product_id']), None)
+                if prod and getattr(prod, 'attributes', None):
+                    val = prod.attributes.get('color')
+                    if isinstance(val, str) and val:
+                        shown_colors.append(val.lower())
+                    elif isinstance(val, list) and val:
+                        shown_colors.extend([str(v).lower() for v in val if v])
+            # Colores disponibles en la categoría (a partir de productos cargados)
+            available_colors_set = set()
+            for prod in products:
+                if getattr(prod, 'attributes', None):
+                    val = prod.attributes.get('color')
+                    if isinstance(val, str) and val:
+                        available_colors_set.add(val.lower())
+                    elif isinstance(val, list) and val:
+                        for v in val:
+                            if v:
+                                available_colors_set.add(str(v).lower())
+            # Decidir reemplazo: si el color pedido no existe, elegir el más aproximado (por similitud)
+            used_color = None
+            replaced = False
+            if requested_color:
+                if requested_color not in available_colors_set:
+                    replaced = True
+                    # Elegir el color más aproximado por similitud de embeddings
+                    if available_colors_set:
+                        requested_emb = _get_color_embedding(requested_color)
+                        if requested_emb is not None:
+                            best_sim = -1.0
+                            best_color = None
+                            for avail_color in available_colors_set:
+                                avail_emb = _get_color_embedding(avail_color)
+                                if avail_emb is not None:
+                                    # Similitud coseno
+                                    sim = float(np.dot(requested_emb, avail_emb) / (np.linalg.norm(requested_emb) * np.linalg.norm(avail_emb)))
+                                    if sim > best_sim:
+                                        best_sim = sim
+                                        best_color = avail_color
+                            used_color = best_color if best_color else (list(available_colors_set)[0] if available_colors_set else None)
+                        else:
+                            # Fallback si no hay embedding: primer color disponible
+                            used_color = list(available_colors_set)[0] if available_colors_set else None
+                    else:
+                        used_color = None
+                else:
+                    used_color = requested_color
+            color_info = {
+                "requested": requested_color,
+                "used": used_color,
+                "replaced": replaced,
+                "available_in_category": sorted(list(available_colors_set))[:20]
+            }
+        except Exception as _e:
+            print(f"[REQ {request_id}] ⚠️ Error construyendo color_info: {_e}")
+
         response = {
             "success": True,
             "query": query_text,
@@ -3451,7 +2641,17 @@ def text_search():
             "total_products_analyzed": len(products),
             "search_time_seconds": round(elapsed_time, 3),
             "match_quality": match_quality,
-            "detected_attributes": detected_attributes
+            "detected_attributes": detected_attributes,
+            "search_context": {
+                "category": ({
+                    "id": str(detected_category.id),
+                    "name": detected_category.name,
+                    "match_type": match_type,
+                    **({"similarity": match_similarity} if match_similarity is not None else {}),
+                    **({"sibling_suggestions": sibling_suggestions} if sibling_suggestions else {})
+                } if detected_category else None),
+                "color": color_info
+            }
         }
 
         # Agregar información de match parcial si existe
