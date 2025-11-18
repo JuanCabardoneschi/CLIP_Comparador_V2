@@ -399,6 +399,30 @@ def register_blueprints(app):
     except Exception as e:
         print(f"✗ Error registrando gpt4v_detection blueprint: {e}")
 
+    # 🆕 Blueprint de búsqueda textual V2 (nuevo sistema con GPT-4 + CLIP)
+    try:
+        from app.blueprints.search_text import bp as search_text_bp
+        app.register_blueprint(search_text_bp, url_prefix="/api")
+        print("✓ Blueprint search_text V2 registrado (🆕 NUEVO)")
+    except ImportError as e:
+        print(f"✗ Error importando search_text blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando search_text blueprint: {e}")
+
+    # 🆕 Registrar módulos personalizados de búsqueda por cliente
+    try:
+        from app.search_modules import register_client_module
+
+        # Eve's Store
+        import app.search_modules.search_client_eve_s_store as eve_module
+        register_client_module("eve-s-store", eve_module)
+
+        print("✓ Módulos de búsqueda personalizados registrados")
+    except ImportError as e:
+        print(f"⚠️ Advertencia: No se pudieron cargar módulos personalizados: {e}")
+    except Exception as e:
+        print(f"⚠️ Error registrando módulos personalizados: {e}")
+
 # Crear instancia de la aplicación
 app = create_app()
 

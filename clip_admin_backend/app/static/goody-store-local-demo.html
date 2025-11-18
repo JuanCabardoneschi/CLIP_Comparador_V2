@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goody Store - Visual Search (LOCAL)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+            min-height: 100vh;
+            padding: 2rem;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin: 0 0 0.5rem 0;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.95;
+        }
+
+        .header .local-badge {
+            display: inline-block;
+            background: #fbbf24;
+            color: #78350f;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+
+        .widget-container {
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .footer {
+            color: white;
+            text-align: center;
+            margin-top: 2rem;
+            opacity: 0.9;
+            font-size: 0.9rem;
+        }
+
+        .footer a {
+            color: white;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>👔 Goody Store</h1>
+        <p>Búsqueda Visual Inteligente - Uniformes y Ropa de Trabajo</p>
+        <span class="local-badge">🏠 ENTORNO LOCAL</span>
+    </div>
+
+    <div class="widget-container">
+        <script>
+            // Configuración para servidor LOCAL (localhost:5000)
+            window.CLIPWidget = {
+                apiKey: 'test-api-key-demo-fashion-store-2024',
+                serverUrl: 'http://localhost:5000'
+            };
+        </script>
+        <!-- Widget V3 ya soporta banner de sustitución de categoría en búsquedas de texto -->
+        <script src="./js/clip-widget-embed-v3.js"></script>
+        <div id="clip-widget"></div>
+        <!-- Banner se creará dinámicamente dentro del widget -->
+        <div id="request-timing" style="margin-top:12px;color:#fff;font-size:0.95rem;font-weight:500;">
+            ⏱ Esperando primera búsqueda...
+        </div>
+        <script>
+            (function(){
+                const timingEl = document.getElementById('request-timing');
+                if(!timingEl) return;
+                function ensureBanner(){
+                    let banner = document.getElementById('user-feedback');
+                    if(banner) return banner;
+                    const widget = document.getElementById('clip-widget');
+                    if(!widget) return null;
+                    const btn = Array.from(widget.getElementsByTagName('button')).find(b=>/buscar productos/i.test(b.textContent));
+                    if(!btn) return null;
+                    banner = document.createElement('div');
+                    banner.id = 'user-feedback';
+                    banner.className = 'feedback-banner';
+                    btn.parentElement.insertAdjacentElement('afterend', banner);
+                    return banner;
+                }
+                const observer = new MutationObserver(()=>ensureBanner());
+                observer.observe(document.getElementById('clip-widget'), {childList:true, subtree:true});
+                const originalFetch = window.fetch;
+                window.fetch = async function(...args){
+                    const url = (args[0] && args[0].toString()) || '';
+                    const isSearch = /\/api\/(search|search\/text|search\/unified)/.test(url);
+                    const start = performance.now();
+                    let roundTripMs = 0;
+                    try {
+                        const resp = await originalFetch(...args);
+                        roundTripMs = performance.now() - start;
+                        if(isSearch){
+                            let serverTime = null;
+                            try {
+                                const cloned = resp.clone();
+                                const data = await cloned.json();
+                                serverTime = data.search_time_seconds || data.processing_time || null;
+                                const cat = data.detected_category ? (data.detected_category.name || '') : '';
+                                timingEl.textContent = `⏱ Última búsqueda: ${(roundTripMs).toFixed(0)} ms (red)${serverTime!==null?` | servidor: ${serverTime.toFixed(3)}s`:''}${cat?` | categoría: ${cat}`:''}`;
+                                const feedbackEl = ensureBanner();
+                                if(feedbackEl){
+                                    if (data.user_feedback && data.user_feedback.message) {
+                                        feedbackEl.innerHTML = `<strong>Nota:</strong> ${data.user_feedback.message}`;
+                                        feedbackEl.style.display = 'block';
+                                    } else {
+                                        feedbackEl.style.display = 'none';
+                                        feedbackEl.textContent = '';
+                                    }
+                                }
+                            } catch(e){
+                                timingEl.textContent = `⏱ Última búsqueda: ${(roundTripMs).toFixed(0)} ms (sin parse JSON)`;
+                            }
+                        }
+                        return resp;
+                    } catch(err){
+                        if(isSearch){
+                            timingEl.textContent = `⏱ Error en búsqueda tras ${(performance.now()-start).toFixed(0)} ms: ${err}`;
+                        }
+                        throw err;
+                    }
+                };
+            })();
+        </script>
+    </div>
+
+    <div class="footer">
+        <p>Powered by Red Sis SRL | <strong>Desarrollo Local</strong></p>
+    </div>
+</body>
+</html>

@@ -72,7 +72,7 @@ class ColorLearningService:
             logger.info(f"🆕 Color nuevo: '{clean_color}' → normalizando...")
 
             # 1. Normalizar con el sistema actual (hardcoded + LLM)
-            normalized = normalize_color(clean_color)
+            normalized = normalize_color(clean_color, client_id=client_id)
 
             # 2. Buscar grupo de similitud
             similarity_group = None
@@ -132,7 +132,7 @@ class ColorLearningService:
 
         for group_name, mappings in client_groups['groups'].items():
             for mapping in mappings:
-                if colors_are_similar(normalized_color, mapping.normalized_color):
+                if colors_are_similar(normalized_color, mapping.normalized_color, client_id=client_id):
                     logger.info(f"📚 Color '{normalized_color}' asignado al grupo existente '{group_name}'")
                     return group_name
 
@@ -154,7 +154,7 @@ class ColorLearningService:
             Lista de strings con raw_colors que deberían matchear
         """
         # Normalizar el color detectado
-        normalized = normalize_color(detected_color)
+        normalized = normalize_color(detected_color, client_id=client_id)
 
         # Buscar a qué grupo pertenece
         similarity_group = ColorLearningService._find_similarity_group(client_id, normalized)
@@ -205,7 +205,7 @@ class ColorLearningService:
             for group_name, group_mappings in client_data['groups'].items():
                 for group_mapping in group_mappings:
                     # TODO: calcular similitud real con embeddings
-                    if colors_are_similar(mapping.normalized_color, group_mapping.normalized_color):
+                    if colors_are_similar(mapping.normalized_color, group_mapping.normalized_color, client_id=client_id):
                         similarity = 0.85  # Placeholder
                         if similarity > best_similarity:
                             best_similarity = similarity

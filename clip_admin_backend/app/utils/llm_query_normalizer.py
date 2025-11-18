@@ -132,6 +132,235 @@ def get_model():
         return _model
 
 
+def extract_query_attributes(query: str, client_id: str) -> dict:
+    """
+    Extrae atributos de la consulta usando el contexto real del cliente.
+
+    Estrategia:
+    - Lee ProductAttributeConfig del cliente (type: list/text/number/url)
+    - Para type=list con options.values: intenta match semántico (MiniLM) y léxico
+    - Detecta contradicciones básicas (ej: "con bolsillos" vs "sin bolsillos")
+
+    Returns:
+        {
+          'attributes': { key: value_detected, ... },
+          'attributes_confidence': { key: 'lexical' | 'boolean' | 'semantic', ... },  # 🆕 Confianza por atributo
+          'requested_count': int,
+          'contradictions': [ ... ],
+          'not_configured': [ ... ],
+          'notes': [ ... ]
+        }
+    """
+    from app.models.product_attribute_config import ProductAttributeConfig
+    from app import db
+    import re as _re
+
+    attrs_detected = {}
+    attrs_confidence = {}  # 🆕 Guardar nivel de confianza por atributo
+    contradictions = []
+    notes = []
+    not_configured = []  # 🆕 Atributos solicitados pero no en ProductAttributeConfig
+
+    if not query or not client_id:
+        return {
+            'attributes': attrs_detected,
+            'attributes_confidence': attrs_confidence,  # 🆕
+            'requested_count': 0,
+            'contradictions': contradictions,
+            'not_configured': not_configured,
+            'notes': notes,
+        }
+
+    # Cargar configs
+    try:
+        configs = ProductAttributeConfig.query.filter_by(client_id=client_id).all()
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        configs = []
+
+    # Construir set de keys configurados para detección rápida
+    configured_keys = {(cfg.key or '').strip().lower() for cfg in configs if cfg.key}
+
+    q_lower = query.lower()
+    tokens = [t for t in _re.split(r"[^a-záéíóúñ0-9]+", q_lower) if t]
+    tokens_set = set(tokens)
+
+    # Helper para match semántico sobre listas de opciones
+    def _semantic_pick(option_values: list, threshold: float = 0.65):  # 🔥 Threshold más estricto: 0.55 → 0.65
+        try:
+            model = get_model()
+            # Representar la consulta y opciones
+            opts = [str(v).lower() for v in option_values if v]
+            if not opts:
+                return None
+            q_vec = model.encode([q_lower])[0]
+            opt_vecs = model.encode(opts)
+            sims = cosine_similarity([q_vec], opt_vecs)[0]
+            best_idx = int(np.argmax(sims))
+            best_sim = float(sims[best_idx])
+            if best_sim >= threshold:
+                return opts[best_idx]
+        except Exception:
+            return None
+        return None
+
+    # Reglas simples para booleanos comunes
+    def _detect_boolean_from_text(key: str):
+        # Patrón general para "con X" / "sin X"
+        # Soporta claves tipo "con_bolsillo" y variantes en singular/plural
+        base = key
+        if key.startswith('con_'):
+            base = key[4:]
+        base = base.replace('_', ' ')
+
+        con_pat = _re.compile(rf"\bcon\s+{_re.escape(base)}(?:es|s)?\b")
+        sin_pat = _re.compile(rf"\bsin\s+{_re.escape(base)}(?:es|s)?\b")
+
+        # Compatibilidad con nombres exactos de la clave
+        con_pat2 = _re.compile(rf"\bcon\s+{_re.escape(key)}s?\b")
+        sin_pat2 = _re.compile(rf"\bsin\s+{_re.escape(key)}s?\b")
+
+        has_con = bool(con_pat.search(q_lower) or con_pat2.search(q_lower))
+        has_sin = bool(sin_pat.search(q_lower) or sin_pat2.search(q_lower))
+        if has_con and has_sin:
+            contradictions.append(f"Atributo '{key}': 'con' y 'sin' al mismo tiempo")
+            return None
+        if has_con:
+            return 'si'
+        if has_sin:
+            return 'no'
+        return None
+
+    for cfg in configs:
+        key = (cfg.key or '').strip().lower()
+        if not key:
+            continue
+
+        # type=list con opciones
+        if cfg.type == 'list':
+            # Obtener lista de valores permitidos
+            values = []
+            if isinstance(cfg.options, dict) and 'values' in cfg.options:
+                values = cfg.options.get('values') or []
+            elif isinstance(cfg.options, list):
+                values = cfg.options
+
+            values = [str(v).strip() for v in values if v]
+            # Heurística 1: match léxico directo (con límites de palabra)
+            lex_hit = None
+            for v in values:
+                v_low = v.lower()
+                # Si el atributo es color, tolerar variantes morfológicas comunes (negro/negras/negros, azul/azules)
+                if key == 'color':
+                    variants = {v_low}
+                    if v_low.endswith('o'):
+                        variants.update({v_low[:-1] + 'a', v_low + 's', v_low[:-1] + 'as', v_low[:-1] + 'os'})
+                    elif v_low.endswith('a'):
+                        variants.add(v_low + 's')
+                    elif v_low.endswith('e'):
+                        variants.update({v_low + 's', v_low + 'es'})
+                    elif v_low.endswith(('n', 'r', 'l')):
+                        variants.add(v_low + 'es')
+                    if any(var in tokens_set for var in variants):
+                        lex_hit = v
+                        break
+                else:
+                    # Coincidencia exacta por token o frase multi-palabra con bordes
+                    if ' ' in v_low:
+                        if _re.search(rf"\b{_re.escape(v_low)}\b", q_lower):
+                            lex_hit = v
+                            break
+                    else:
+                        if v_low in tokens_set:
+                            lex_hit = v
+                            break
+
+            # Heurística 2: booleanos comunes por lenguaje natural
+            bool_guess = None
+            if set(["si", "sí", "no"]) & set(map(lambda x: x.lower(), values)):
+                # El atributo soporta sí/no
+                bool_guess = _detect_boolean_from_text(key)
+
+            # Heurística 3: match semántico (MiniLM) si no hay lex/boolean
+            # 🚫 DESACTIVADO: match semántico causa falsos positivos ("bermudas" → "plateado")
+            # Solo usamos detección léxica o booleana (alta confianza)
+
+            # Establecer valor SOLO si hay confianza alta (léxico o booleano)
+            if lex_hit:
+                attrs_detected[key] = lex_hit.lower()
+                attrs_confidence[key] = 'lexical'
+            elif bool_guess:
+                attrs_detected[key] = bool_guess.lower()
+                attrs_confidence[key] = 'boolean'
+            # else: NO detectar nada (evita falsos positivos semánticos)
+
+        # type=text: intentar detectar palabra clave si aparece exacto
+        elif cfg.type == 'text':
+            # evitar texto libre ambiguo, sólo si la palabra del atributo aparece con un valor claro
+            # ejemplo: material: algodón
+            # buscar patrón "algodón" en texto si el key es material
+            # si no hay vocab, dejamos que pase
+            if key in {"material", "talla", "color"}:
+                # intento directo básico
+                # material: buscar palabras típicas
+                common_vals = []
+                if key == 'material':
+                    common_vals = ['algodón', 'poliéster', 'jean', 'gabardina', 'lycra']
+                elif key == 'talla':
+                    common_vals = ['xs', 's', 'm', 'l', 'xl']
+                elif key == 'color':
+                    common_vals = []  # color lo maneja colors.py en otra etapa
+                for v in common_vals:
+                    # Solo match exacto por token para evitar falsos positivos (p.ej. 's' en 'camisas')
+                    if v in tokens_set:
+                        attrs_detected[key] = v
+                        break
+
+    # 🆕 Detectar atributos solicitados no configurados (ej. "bolsillos" si no está en config)
+    # Heurística: buscar patrones "con X" donde X no está en configured_keys
+    con_pattern = _re.compile(r"\bcon\s+(\w+)s?\b")
+    sin_pattern = _re.compile(r"\bsin\s+(\w+)s?\b")
+
+    for match in con_pattern.finditer(q_lower):
+        candidate = match.group(1).strip()
+        if candidate:
+            # Evitar falsos "no configurado" cuando existe una clave tipo con_<candidate>
+            singular = candidate[:-1] if candidate.endswith('s') else candidate
+            mapped_key = f"con_{singular}"
+            if mapped_key in configured_keys:
+                # Ya hay una clave configurada equivalente; no marcar como no configurado
+                continue
+            if candidate not in configured_keys and candidate not in not_configured:
+                # Atributo mencionado pero no configurado
+                not_configured.append(candidate)
+                # También registrarlo para contabilizar solicitud
+                attrs_detected[candidate] = True
+
+    for match in sin_pattern.finditer(q_lower):
+        candidate = match.group(1).strip()
+        if candidate:
+            singular = candidate[:-1] if candidate.endswith('s') else candidate
+            mapped_key = f"con_{singular}"
+            if mapped_key in configured_keys:
+                # Existe configuración equivalente (con_*)
+                continue
+            if candidate not in configured_keys and candidate not in not_configured:
+                not_configured.append(candidate)
+                attrs_detected[candidate] = False
+
+    return {
+        'attributes': attrs_detected,
+        'attributes_confidence': attrs_confidence,  # 🆕
+        'requested_count': len(attrs_detected),
+        'contradictions': contradictions,
+        'not_configured': not_configured,
+        'notes': notes,
+    }
+
+
 def _save_color_embeddings(client_id: int, new_embeddings: dict):
     """Guarda embeddings de colores nuevos en la BD (merge con existentes)"""
     from app import db
@@ -190,6 +419,11 @@ def _extract_client_vocabulary(client_id: int) -> dict:
     from app.models.product import Product
     from app.models.product_attribute_config import ProductAttributeConfig
     from sqlalchemy import text, func
+
+    # Validar client_id antes de queries BD
+    if not client_id:
+        print("⚠️ _extract_client_vocabulary llamado sin client_id, retornando vocabulario vacío")
+        return {'colores': [], 'tipos': [], 'contextos': []}
 
     # 0) Intentar leer desde client_vocabulary_cache (DB cache persistente)
     try:
@@ -420,17 +654,13 @@ def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: flo
         Embedding.key.in_([f"vocab:{term}" for term in vocab_lower if term not in vocab_embeddings])
     ).all()
 
-    for emb_obj in db_embeddings:
-        term = emb_obj.key.replace("vocab:", "")
-        try:
-            vocab_embeddings[term] = np.array(json.loads(emb_obj.embedding), dtype=np.float32)
-        except Exception:
-            continue
-
     # Si no hay embeddings en BD, calcular en vivo (fallback para vocabulario nuevo)
     missing_terms = [v for v in vocab_lower if v not in vocab_embeddings]
     if missing_terms:
         print(f"⚠️ {len(missing_terms)} términos sin embedding en BD, calculando: {', '.join(missing_terms[:5])}{'...' if len(missing_terms) > 5 else ''}")
+        # Asegurar que el modelo esté cargado
+        if 'model' not in locals():
+            model = get_model()
         missing_embs = model.encode(missing_terms)
         for term, emb in zip(missing_terms, missing_embs):
             vocab_embeddings[term] = emb
@@ -446,12 +676,10 @@ def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: flo
     vocab_embs = np.array([vocab_embeddings[v] for v in vocab_lower if v in vocab_embeddings])
 
     if len(vocab_embs) == 0:
-        return None
+        return []
 
-    # Calcular similitudes coseno
-    similarities = cosine_similarity([query_emb], vocab_embs)[0]
-
-    # Encontrar el mejor match
+    # Calcular similitudes
+    similarities = cosine_similarity([query_emb], vocab_embs)[0]    # Encontrar el mejor match
     max_idx = np.argmax(similarities)
     max_sim = similarities[max_idx]
 
@@ -532,27 +760,24 @@ def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, thres
         Embedding.key.in_([f"vocab:{term}" for term in vocab_lower if term not in vocab_embeddings])
     ).all()
 
-    for emb_obj in db_embeddings:
-        term = emb_obj.key.replace("vocab:", "")
-        try:
-            vocab_embeddings[term] = np.array(json.loads(emb_obj.embedding), dtype=np.float32)
-        except Exception:
-            continue
-
-    # Si no hay embeddings en BD, calcular en vivo (fallback)
+    # Si no hay embeddings en BD, calcular en vivo (fallback para vocabulario nuevo)
     missing_terms = [v for v in vocab_lower if v not in vocab_embeddings]
     if missing_terms:
         print(f"⚠️ {len(missing_terms)} términos sin embedding en BD, calculando: {', '.join(missing_terms[:5])}{'...' if len(missing_terms) > 5 else ''}")
+        # Asegurar que el modelo esté cargado
+        if 'model' not in locals():
+            model = get_model()
         missing_embs = model.encode(missing_terms)
         for term, emb in zip(missing_terms, missing_embs):
             vocab_embeddings[term] = emb
 
-        # Guardar embeddings nuevos en la BD para futuras búsquedas
-        try:
-            _save_color_embeddings(client_id, {term: emb.tolist() for term, emb in zip(missing_terms, missing_embs)})
-            print(f"✅ {len(missing_terms)} embeddings guardados en BD para futuras búsquedas")
-        except Exception as e:
-            print(f"⚠️ Error guardando embeddings: {e}")
+        # Guardar embeddings nuevos en la BD para futuras búsquedas (solo si client_id válido)
+        if client_id:
+            try:
+                _save_color_embeddings(client_id, {term: emb.tolist() for term, emb in zip(missing_terms, missing_embs)})
+                print(f"✅ {len(missing_terms)} embeddings guardados en BD para futuras búsquedas")
+            except Exception as e:
+                print(f"⚠️ Error guardando embeddings: {e}")
 
     # Construir matriz de embeddings en el orden original
     vocab_embs = np.array([vocab_embeddings[v] for v in vocab_lower if v in vocab_embeddings])
@@ -653,27 +878,16 @@ def normalize_query(query: str, client_id: int = None) -> dict:
     if client_id:
         vocab = _extract_client_vocabulary(client_id)
         print(f"🔍 [normalize_query] _extract_client_vocabulary() completado en {time.time()-t0:.2f}s")
-        colores_db = vocab['colores']
+        colores = vocab['colores']  # Solo colores de BD del cliente
         tipos = vocab['tipos']
         contextos = vocab['contextos']
 
-        # COMBINADO: Colores de BD + paleta estándar (para detectar colores que NO tenemos)
-        # Esto permite que el sistema detecte cuando el usuario busca un color que NO existe
-        paleta_estandar = [
-            'negro', 'blanco', 'gris', 'azul', 'rojo', 'verde', 'amarillo',
-            'naranja', 'rosa', 'violeta', 'morado', 'marrón', 'beige', 'celeste',
-            'marino', 'turquesa', 'fucsia', 'bordó', 'dorado', 'plateado'
-        ]
-
-        # Combinar y eliminar duplicados
-        colores = list(set(colores_db + paleta_estandar))
-
-        print(f"📚 VOCAB: {len(colores)} colores ({len(colores_db)} BD + paleta estándar), {len(tipos)} tipos, {len(contextos)} contextos")
+        print(f"📚 VOCAB: {len(colores)} colores, {len(tipos)} tipos, {len(contextos)} contextos (todos de BD)")
     else:
-        # Fallback a listas mínimas si no hay client_id
-        colores = ['negro', 'blanco', 'azul', 'rojo', 'verde', 'amarillo', 'gris']
-        tipos = ['delantal', 'camisa', 'pantalon', 'gorra', 'gorro']
-        contextos = ['casual', 'formal', 'deportivo']
+        # Fallback a listas vacías si no hay client_id
+        colores = []
+        tipos = []
+        contextos = []
 
     # MATCHING SEMÁNTICO con LLM (no substring!)
     # Thresholds optimizados para balance entre precisión y recall:
@@ -721,3 +935,51 @@ if __name__ == "__main__":
         print(f"Query: {q}")
         print(normalize_query(q))
         print()
+
+def normaliza_color(color_query: str, client_id: int | None = None) -> str | None:
+    """
+    Normaliza SOLO el color de una cadena usando el vocabulario del cliente y matching semántico.
+
+    - Mantiene intacta la función legacy normalize_query() para otros usos.
+    - Evita calcular tipo/contexto y reduce latencia.
+
+    Args:
+        color_query: Texto del color a normalizar (ej: "chocolate", "azul marino")
+        client_id: ID del cliente para extraer vocabulario específico
+
+    Returns:
+        Color normalizado (string) o None si no supera el umbral.
+    """
+    import time as _t
+    t0 = _t.time()
+    try:
+        q = (color_query or "").strip()
+        if not q:
+            return None
+
+        print(f"🔍 [normaliza_color] INICIO para '{q}'")
+
+        model = get_model()
+        print(f"🔍 [normaliza_color] get_model() listo en {_t.time()-t0:.2f}s")
+
+        q_lower = q.lower()
+        t_encode = _t.time()
+        emb = model.encode(q_lower)
+        print(f"🔍 [normaliza_color] encode() tomó {_t.time()-t_encode:.2f}s (t={_t.time()-t0:.2f}s)")
+
+        colores = []
+        if client_id:
+            print(f"🔍 [normaliza_color] Cargando vocab cliente en {_t.time()-t0:.2f}s")
+            vocab = _extract_client_vocabulary(client_id)
+            colores = vocab.get('colores') or []
+            print(f"📚 [normaliza_color] VOCAB: {len(colores)} colores")
+
+        if not colores:
+            return None
+
+        # Solo matching de color (sin tipo ni contexto)
+        color = _semantic_match(q, colores, client_id, threshold=0.45, query_emb=emb)
+        return color
+    except Exception as _e:
+        print(f"⚠️ [normaliza_color] Error: {_e}")
+        return None

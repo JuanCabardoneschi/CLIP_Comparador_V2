@@ -33,10 +33,10 @@ def _normalize_color_hardcoded(s: str) -> Optional[str]:
     return None
 
 
-def _normalize_color_llm(color_str: str) -> Optional[str]:
+def _normalize_color_llm(color_str: str, client_id: Optional[str] = None) -> Optional[str]:
     """
-    Usa el LLM normalizer para extraer el color canónico.
-    Cachea resultados para evitar llamadas repetidas.
+    Usa el LLM normalizer para normalizar el color.
+    Cachea resultados para performance.
     """
     # Revisar caché primero
     cache_key = color_str.lower().strip()
@@ -44,11 +44,10 @@ def _normalize_color_llm(color_str: str) -> Optional[str]:
         return _llm_color_cache[cache_key]
 
     try:
-        from app.utils.llm_query_normalizer import normalize_query
+        # Usar la versión optimizada que solo normaliza color
+        from app.utils.llm_query_normalizer import normaliza_color
 
-        # El LLM normalizer devuelve {'color': ..., 'tipo': ..., ...}
-        result = normalize_query(color_str)
-        detected = result.get('color')
+        detected = normaliza_color(color_str, client_id=client_id)
 
         # Normalizar a lowercase para comparaciones case-insensitive
         normalized = detected.lower() if detected else None
@@ -63,9 +62,13 @@ def _normalize_color_llm(color_str: str) -> Optional[str]:
         return None
 
 
-def normalize_color(color_str: Optional[str]) -> Optional[str]:
+def normalize_color(color_str: Optional[str], client_id: Optional[str] = None) -> Optional[str]:
     """
     Normaliza nombres de colores usando SOLO el LLM (100% genérico, sin hardcodeo).
+
+    Args:
+        color_str: String del color a normalizar
+        client_id: UUID del cliente (opcional, mejora precisión con vocabulario específico)
 
     Estrategia:
     - Usa el LLM normalizer para extraer el color base
@@ -96,15 +99,19 @@ def normalize_color(color_str: Optional[str]) -> Optional[str]:
 
     # Usar LLM para normalización (con caché)
     if len(s) >= 3:
-        return _normalize_color_llm(s)
+        return _normalize_color_llm(s, client_id=client_id)
 
     return None
 
 
-def _get_color_embedding(color_str: str) -> Optional[np.ndarray]:
+def _get_color_embedding(color_str: str, client_id: Optional[str] = None) -> Optional[np.ndarray]:
     """
     Obtiene el embedding semántico de un color usando el LLM normalizer.
     Cachea resultados para evitar recálculos.
+
+    Args:
+        color_str: String del color
+        client_id: UUID del cliente (opcional)
     """
     if not color_str:
         return None
@@ -114,13 +121,13 @@ def _get_color_embedding(color_str: str) -> Optional[np.ndarray]:
         return _color_embedding_cache[cache_key]
 
     try:
-        from app.utils.llm_query_normalizer import normalize_query
+        from app.utils.llm_query_normalizer import get_model
 
-        # El LLM normalizer devuelve embedding en result['embedding']
-        result = normalize_query(color_str)
-        embedding = result.get('embedding')
+        # Obtener embedding directo del modelo (sin calcular tipo/contexto)
+        model = get_model()
+        embedding = model.encode(color_str.strip().lower())
 
-        if embedding:
+        if embedding is not None:
             emb_array = np.array(embedding, dtype=np.float32)
             _color_embedding_cache[cache_key] = emb_array
             return emb_array
@@ -130,7 +137,7 @@ def _get_color_embedding(color_str: str) -> Optional[np.ndarray]:
     return None
 
 
-def colors_are_similar(color1: str, color2: str, threshold: float = 0.75) -> bool:
+def colors_are_similar(color1: str, color2: str, threshold: float = 0.75, client_id: Optional[str] = None) -> bool:
     """
     Determina si dos colores son semánticamente similares usando SOLO LLM embeddings.
 
@@ -144,6 +151,7 @@ def colors_are_similar(color1: str, color2: str, threshold: float = 0.75) -> boo
         color1: Primer color (ej: "beige", "Beige claro")
         color2: Segundo color (ej: "marrón chocolate", "chocolate")
         threshold: Umbral de similitud coseno (default 0.75 = flexible para tonos similares)
+        client_id: UUID del cliente (opcional)
 
     Returns:
         True si los colores son similares semánticamente
@@ -157,8 +165,8 @@ def colors_are_similar(color1: str, color2: str, threshold: float = 0.75) -> boo
         return False
 
     # Normalizar ambos colores con LLM
-    c1_norm = normalize_color(color1)
-    c2_norm = normalize_color(color2)
+    c1_norm = normalize_color(color1, client_id=client_id)
+    c2_norm = normalize_color(color2, client_id=client_id)
 
     # Si son exactamente iguales normalizados, son similares
     if c1_norm and c2_norm and c1_norm.lower() == c2_norm.lower():
@@ -166,8 +174,8 @@ def colors_are_similar(color1: str, color2: str, threshold: float = 0.75) -> boo
         return True
 
     # Usar embeddings semánticos del LLM para comparación
-    emb1 = _get_color_embedding(color1)
-    emb2 = _get_color_embedding(color2)
+    emb1 = _get_color_embedding(color1, client_id=client_id)
+    emb2 = _get_color_embedding(color2, client_id=client_id)
 
     if emb1 is not None and emb2 is not None:
         similarity = float(np.dot(emb1, emb2) / (np.linalg.norm(emb1) * np.linalg.norm(emb2)))

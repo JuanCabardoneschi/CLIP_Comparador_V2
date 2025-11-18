@@ -432,6 +432,9 @@
                 box-shadow: 0 2px 8px rgba(0,0,0,0.08);
                 transition: all 0.3s;
                 cursor: pointer;
+                display: flex;
+                flex-direction: column;
+                height: 100%;
             }
 
             .clip-product:hover {
@@ -467,6 +470,9 @@
 
             .clip-product-info {
                 padding: 1.25rem;
+                display: flex;
+                flex-direction: column;
+                flex: 1;
             }
 
             .clip-product-name {
@@ -474,6 +480,12 @@
                 font-weight: 600;
                 color: #111827;
                 margin-bottom: 0.75rem;
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+                line-height: 1.25em;
+                min-height: 2.5em; /* 2 líneas reservadas */
             }
 
             .clip-product-price {
@@ -494,6 +506,13 @@
 
             .clip-product-stock.out-stock {
                 color: #ef4444;
+            }
+
+            .clip-divider {
+                height: 1px;
+                background: #e5e7eb;
+                margin: 8px 0 6px 0;
+                border: 0;
             }
 
             /* Error */
@@ -805,17 +824,34 @@
                 // La búsqueda por texto NO tiene detección GPT-4V, ocultar esa sección
                 container.querySelector('#clip-detection').classList.remove('active');
 
+                // Extraer atributos visibles del response
+                const exposedKeys = data.exposed_attribute_keys || [];
+                const labelMap = data.exposed_attribute_labels || {};
+
                 // Mostrar resultados
-                if (data.results && data.results.length > 0) {
+                if (data.group_by_category && data.results_by_category) {
+                    // ⭐ Resultados agrupados por categoría (categorías hermanas)
+                    displayTextResultsByCategory(
+                        data.results_by_category,
+                        data.total_results || 0,
+                        data.user_feedback || data.partial_match_info,
+                        exposedKeys,
+                        labelMap
+                    );
+                } else if (data.results && data.results.length > 0) {
+                    // Resultados en lista plana (comportamiento original)
                     displayTextResults(
                         data.results,
                         data.total_results || data.results.length,
-                        data.partial_match_info,
+                        data.user_feedback || data.partial_match_info,
                         data.match_quality,
-                        data.category_substitution_info
+                        data.category_substitution_info,
+                        exposedKeys,
+                        labelMap
                     );
                 } else {
-                    showNoResults(data.partial_match_info);
+                    // También propagar user_feedback cuando no hay resultados
+                    showNoResults(data.user_feedback || data.partial_match_info);
                 }
             })
             .catch(err => {
@@ -830,8 +866,126 @@
             });
         }
 
+        // ⭐ Display text search results AGRUPADOS POR CATEGORÍA (categorías hermanas)
+        function displayTextResultsByCategory(resultsByCategory, total, partialMatchInfo, exposedKeys, labelMap) {
+            exposedKeys = exposedKeys || [];
+            labelMap = labelMap || {};
+            const resultsDiv = container.querySelector('#clip-results');
+
+            // Banner informativo global (si existe)
+            const globalBannerHtml = partialMatchInfo ? `
+                <div class="clip-partial-match-info" style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 16px;
+                    border-radius: 12px;
+                    margin-bottom: 20px;
+                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+                ">
+                    <div style="font-size: 15px; font-weight: 500; line-height: 1.5;">
+                        ${partialMatchInfo.message}
+                    </div>
+                </div>
+            ` : '';
+
+            // Generar HTML por cada categoría
+            const categorySections = Object.entries(resultsByCategory).map(([categoryName, products]) => {
+                const renderProduct = (p) => `
+                    <div class="clip-product">
+                        <div class="clip-product-img-wrap">
+                            <img src="${p.image_url}" alt="${p.name}" class="clip-product-img">
+                            <div class="clip-similarity-badge">
+                                ${Math.round((p.final_score || p.similarity || 0) * 100)}% Match
+                            </div>
+                        </div>
+                        <div class="clip-product-info">
+                            <div class="clip-product-name">${p.name}</div>
+                            <div class="clip-product-price">
+                                ${(p.price !== null && p.price !== undefined && typeof p.price === 'number') ? `$${p.price.toFixed(2)}` : 'Consultar'}
+                            </div>
+                            ${(() => {
+                                const hasMatched = p.attributes_matched && Object.keys(p.attributes_matched).length > 0;
+                                const hasRatio = typeof p.attributes_match_ratio === 'number' && p.attributes_match_ratio > 0;
+                                const attrs = p.attributes || {};
+                                const summary = Object.entries(attrs)
+                                    .filter(([k]) => exposedKeys.length === 0 || exposedKeys.includes(String(k).toLowerCase()))
+                                    .filter(([k]) => !p.attributes_matched || !(k in p.attributes_matched));
+                                const fmt = (val) => {
+                                    if (Array.isArray(val)) return val.join(', ');
+                                    const raw = (val ?? '').toString();
+                                    const n = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+                                    if (n === 'si') return 'Sí';
+                                    if (n === 'no') return 'No';
+                                    return raw.toString();
+                                };
+                                let out = '';
+                                const matchFmt = (val) => {
+                                    const raw = (val ?? '').toString();
+                                    const n = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+                                    if (n === 'si') return 'Sí';
+                                    if (n === 'no') return 'No';
+                                    return raw;
+                                };
+                                if (hasMatched) {
+                                    out += `<div class=\"clip-attr-badges\" style=\"margin-top:8px; display:flex; flex-wrap: wrap; gap:6px;\">` +
+                                        Object.entries(p.attributes_matched).map(([k,v]) =>
+                                            `<span style=\"background:#eef2ff;color:#374151;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;\">${labelMap[String(k).toLowerCase()] || k}: ${matchFmt(v)}</span>`
+                                        ).join('') +
+                                        `</div>`;
+                                }
+                                if (hasRatio) {
+                                    out += `<div class=\"clip-divider\"></div>`;
+                                    out += `<div style=\"width:100%; text-align:left; margin:6px 0;\">`+
+                                        `<span style=\"background:#ecfdf5;color:#065f46;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:700;border:1px solid #d1fae5;\">${Math.round(p.attributes_match_ratio*100)}% atributos</span>`+
+                                        `</div>`;
+                                    out += `<div class=\"clip-divider\"></div>`;
+                                } else if (hasMatched && summary.length) {
+                                    out += `<div class=\"clip-divider\"></div>`;
+                                }
+                                if (summary.length) {
+                                    out += `<div class=\"clip-attr-badges\" style=\"display:flex; flex-wrap: wrap; gap:6px;\">`+
+                                        summary.map(([k,v]) =>
+                                            `<span style=\"background:#f3f4f6;color:#374151;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;\">${labelMap[String(k).toLowerCase()] || k}: ${fmt(v)}</span>`
+                                        ).join('')+
+                                        `</div>`;
+                                }
+                                return out;
+                            })()}
+                            ${p.stock !== undefined ? `
+                                <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
+                                    ${p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock'}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+
+                return `
+                    <div class="clip-category-section">
+                        <div class="clip-category-header">
+                            <div class="clip-category-name">${categoryName}</div>
+                            <div class="clip-category-count">${products.length} producto${products.length !== 1 ? 's' : ''}</div>
+                        </div>
+                        <div class="clip-product-grid">
+                            ${products.map(renderProduct).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const html = `
+                ${globalBannerHtml}
+                ${categorySections}
+            `;
+
+            resultsDiv.innerHTML = html;
+            resultsDiv.classList.add('active');
+        }
+
         // Display text search results (sin agrupación por categoría)
-        function displayTextResults(results, total, partialMatchInfo, matchQuality, categorySubstitutionInfo) {
+        function displayTextResults(results, total, partialMatchInfo, matchQuality, categorySubstitutionInfo, exposedKeys, labelMap) {
+            exposedKeys = exposedKeys || [];
+            labelMap = labelMap || {};
             const resultsDiv = container.querySelector('#clip-results');
 
             // Mensaje contextual si hay partial match info
@@ -886,10 +1040,58 @@
                                 <div class="clip-product-info">
                                     <div class="clip-product-name">${p.name}</div>
                                     <div class="clip-product-price">
-                                        ${p.price ? `$${p.price.toFixed(2)}` : 'Consultar'}
+                                        ${(p.price !== null && p.price !== undefined && typeof p.price === 'number') ? `$${p.price.toFixed(2)}` : 'Consultar'}
                                     </div>
+                                    ${(() => {
+                                        const hasMatched = p.attributes_matched && Object.keys(p.attributes_matched).length > 0;
+                                        const hasRatio = typeof p.attributes_match_ratio === 'number' && p.attributes_match_ratio > 0;
+                                        const attrs = p.attributes || {};
+                                        const summary = Object.entries(attrs)
+                                            .filter(([k]) => exposedKeys.length === 0 || exposedKeys.includes(String(k).toLowerCase()))
+                                            .filter(([k]) => !p.attributes_matched || !(k in p.attributes_matched));
+                                        const fmt = (val) => {
+                                            if (Array.isArray(val)) return val.join(', ');
+                                            const raw = (val ?? '').toString();
+                                            const n = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+                                            if (n === 'si') return 'Sí';
+                                            if (n === 'no') return 'No';
+                                            return raw.toString();
+                                        };
+                                        let out = '';
+                                        const matchFmt = (val) => {
+                                            const raw = (val ?? '').toString();
+                                            const n = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+                                            if (n === 'si') return 'Sí';
+                                            if (n === 'no') return 'No';
+                                            return raw;
+                                        };
+                                        if (hasMatched) {
+                                            out += `<div class=\"clip-attr-badges\" style=\"margin-top:8px; display:flex; flex-wrap: wrap; gap:6px;\">` +
+                                                Object.entries(p.attributes_matched).map(([k,v]) =>
+                                                    `<span style=\"background:#eef2ff;color:#374151;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;\">${labelMap[String(k).toLowerCase()] || k}: ${matchFmt(v)}</span>`
+                                                ).join('') +
+                                                `</div>`;
+                                        }
+                                        if (hasRatio) {
+                                            out += `<div class=\"clip-divider\"></div>`;
+                                            out += `<div style=\"width:100%; text-align:left; margin:6px 0;\">`+
+                                                `<span style=\"background:#ecfdf5;color:#065f46;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:700;border:1px solid #d1fae5;\">${Math.round(p.attributes_match_ratio*100)}% atributos</span>`+
+                                                `</div>`;
+                                            out += `<div class=\"clip-divider\"></div>`;
+                                        } else if (hasMatched && summary.length) {
+                                            out += `<div class=\"clip-divider\"></div>`;
+                                        }
+                                        if (summary.length) {
+                                            out += `<div class=\"clip-attr-badges\" style=\"display:flex; flex-wrap: wrap; gap:6px;\">`+
+                                                summary.map(([k,v]) =>
+                                                    `<span style=\"background:#f3f4f6;color:#374151;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;\">${labelMap[String(k).toLowerCase()] || k}: ${fmt(v)}</span>`
+                                                ).join('')+
+                                                `</div>`;
+                                        }
+                                        return out;
+                                    })()}
                                     ${p.stock !== undefined ? `
-                                        <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}">
+                                        <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
                                             ${p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock'}
                                         </div>
                                     ` : ''}
@@ -968,7 +1170,7 @@
                                             ${p.price ? `$${p.price.toFixed(2)}` : 'Consultar'}
                                         </div>
                                         ${p.stock !== undefined ? `
-                                            <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}">
+                                            <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
                                                 ${p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock'}
                                             </div>
                                         ` : ''}
@@ -990,12 +1192,12 @@
 
             const messageHtml = partialMatchInfo ? `
                 <div class="clip-no-results-message" style="
-                    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                     color: white;
                     padding: 20px;
                     border-radius: 12px;
                     margin-bottom: 20px;
-                    box-shadow: 0 4px 12px rgba(245, 87, 108, 0.3);
+                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
                 ">
                     <div style="font-size: 18px; font-weight: 600; margin-bottom: 10px;">
                         ${partialMatchInfo.message}

@@ -11,7 +11,7 @@ import hashlib
 import numpy as np
 import torch
 import os
-from flask import Blueprint, request, jsonify, send_file, current_app, session
+from flask import Blueprint, request, jsonify, send_file, current_app, session, redirect, url_for
 from flask_login import login_required, current_user
 from flask_cors import CORS
 from app import db
@@ -571,38 +571,22 @@ def api_not_found(error):
 
 @bp.route("/test", methods=["GET", "OPTIONS"])
 def test_endpoint():
-    """Endpoint de prueba para verificar conectividad"""
+    """DEPRECATED: redirige al endpoint unificado `/api/search`.
+
+    Mantener un único punto público evita divergencias entre rutas. Esta
+    ruta se conserva solo por compatibilidad y responde con 307 para
+    preservar método y cuerpo de la petición.
+    """
     if request.method == 'OPTIONS':
+        # Responder preflight de forma consistente
         response = jsonify({'status': 'ok'})
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
         return response
 
-    response = jsonify({
-        "success": True,
-        "message": "Endpoint funcionando correctamente",
-        "timestamp": time.time()
-    })
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    return response
-
-def verify_api_key():
-    """Verificar API Key del header"""
-    api_key = request.headers.get('X-API-Key')
-    if not api_key:
-        return None, "API Key requerida en header X-API-Key"
-
-    client = Client.query.filter_by(api_key=api_key, is_active=True).first()
-    if not client:
-        return None, "API Key inválida"
-
-    return client, None
-
-
-
-# Función movida a app.blueprints.search_visual
-
+    # 307 mantiene el método POST y el cuerpo en la redirección
+    return redirect(url_for('api.visual_search'), code=307)
 
 # Función movida a app.blueprints.search_visual
 
@@ -1002,6 +986,17 @@ def visual_search():
         # Sensibilidad personalizada por cliente
         category_confidence_threshold = (getattr(client, 'category_confidence_threshold', 70) or 70) / 100.0
         product_similarity_threshold = (getattr(client, 'product_similarity_threshold', 30) or 30) / 100.0
+
+        # Cargar configuración de atributos para filtrar exposición
+        exposed_keys = set()
+        try:
+            from app.models.product_attribute_config import ProductAttributeConfig
+            configs = ProductAttributeConfig.query.filter_by(client_id=client.id).all()
+            for cfg in configs:
+                if cfg.expose_in_search:
+                    exposed_keys.add((cfg.key or '').strip().lower())
+        except Exception:
+            pass
 
         # ðŸš€ FASE 3: Cargar configuraciÃ³n de SearchOptimizer (si existe)
         use_optimizer = request.form.get('use_optimizer', 'true').lower() == 'true'  # Feature flag
@@ -1438,9 +1433,53 @@ def visual_search():
         }), 500
 
 
-@bp.route("/search/text", methods=["POST", "OPTIONS"])
 def text_search():
-    """Endpoint de búsqueda por texto con vectorización optimizada."""
+    """
+    ⚠️⚠️⚠️ DEPRECATED - NO USAR ⚠️⚠️⚠️
+
+    Este endpoint está OBSOLETO y será removido en futuras versiones.
+
+    USE EN SU LUGAR: /api/search/text (nuevo endpoint con Two-Stage Retrieval)
+
+    El nuevo sistema implementa:
+    - Two-Stage Retrieval (SQL + CLIP reranking)
+    - Auto-generación de sinónimos con GPT-4
+    - PostgreSQL SIMILAR TO para fuzzy matching
+    - CLIP text-to-text embeddings
+
+    Migración:
+    - Old: POST /api/search/text (este endpoint)
+    - New: POST /api/search/text (blueprint search_text)
+
+    Esta función ya NO está registrada como ruta.
+    El widget V3 ya usa el nuevo endpoint.
+
+    ===================================================================
+    DOCUMENTACIÓN ORIGINAL (DEPRECADA):
+    ===================================================================
+    Endpoint de búsqueda por texto con vectorización optimizada.
+    Endpoint de bÃºsqueda textual hÃ­brida (CLIP + Atributos + Tags)
+
+    Headers:
+        X-API-Key: API Key del cliente
+
+    JSON Body:
+        query: Texto de bÃºsqueda (ej: "camisa blanca", "delantal marrÃ³n")
+        limit: NÃºmero de resultados (default: 10, max: 50)
+    """
+    # ⚠️ ESTA FUNCIÓN YA NO SE USA
+    # ⚠️ El código debajo solo se mantiene para referencia histórica
+    # ⚠️ TODO: Remover en próxima versión mayor
+
+    return jsonify({
+        "success": False,
+        "error": "deprecated_endpoint",
+        "message": "Este endpoint está deprecado. Use /api/search/text del nuevo blueprint search_text.",
+        "migration_url": "/api/search/text",
+        "new_system": "Two-Stage Retrieval con auto-sinónimos GPT-4"
+    }), 410  # 410 Gone = recurso removido permanentemente
+
+    # CÓDIGO ORIGINAL DEPRECADO (NO EJECUTAR):
     """
     Endpoint de bÃºsqueda textual hÃ­brida (CLIP + Atributos + Tags)
 
@@ -1648,169 +1687,102 @@ def text_search():
         query_tokens = tokenize(expanded_query)
         print(f"[REQ {request_id}] Query tokens: {query_tokens}")
 
-        # Construir tokens por categorÃ­a (nombre, name_en y alternative_terms si existe)
-        cat_tokens_list = []
-        for category in categories:
-            # Separar tokens del nombre (PESO ALTO) vs alternative_terms (PESO BAJO)
-            name_toks = set()
-            name_toks |= tokenize(category.name)
-            if category.name_en:
-                name_toks |= tokenize(category.name_en)
-
-            alt_toks = set()
-            alt = getattr(category, 'alternative_terms', None)
-            if alt:
-                for term in str(alt).split(','):
-                    alt_toks |= tokenize(term.strip())
-
-            cat_tokens_list.append((category, name_toks, alt_toks))
-
         # DetecciÃ³n mejorada: evaluar TODAS las categorÃ­as y elegir la mejor coincidencia
-        # Buscar primero coincidencia exacta de frase completa (ej: "tiro bajo" completo)
+        # Buscar coincidencia priorizando matches más largos/específicos
         best_category = None
         best_score = 0
+        best_match_length = 0  # Longitud del match (para priorizar matches más largos)
 
-        # 1. Prioridad: Buscar coincidencia de frase completa en alternative_terms o nombre
+        # 1. Prioridad: Buscar match de palabra completa con scoring por longitud
         query_normalized = expanded_query.lower().strip()
+        query_tokens = set(query_normalized.split())  # Tokens del query
+
+        # Evaluar TODAS las categorías y quedarnos con el mejor match
         for category in categories:
-            # Verificar en nombre (PRIORIDAD ALTA: nombre exacto de categorÃ­a)
-            if query_normalized in category.name.lower() or category.name.lower() in query_normalized:
+            # Tokenizar nombres de categorías
+            name_tokens = set(category.name.lower().split())
+            name_en_tokens = set(category.name_en.lower().split()) if category.name_en else set()
+
+            # Calcular intersección (tokens compartidos)
+            name_intersection = query_tokens & name_tokens
+            name_en_intersection = query_tokens & name_en_tokens
+
+            # Priorizar el match con MÁS tokens en común
+            if name_intersection and len(name_intersection) > best_match_length:
                 detected_category = category
                 detected_category_via = 'name'
-                print(f"[REQ {request_id}] Categoría detectada por nombre exacto: {category.name}")
-                break
-            # Verificar en name_en tambiÃ©n con alta prioridad
-            if category.name_en and (query_normalized in category.name_en.lower() or category.name_en.lower() in query_normalized):
+                best_match_length = len(name_intersection)
+                print(f"[REQ {request_id}] Mejor match encontrado: {category.name} ({len(name_intersection)} tokens)")
+
+            if name_en_intersection and len(name_en_intersection) > best_match_length:
                 detected_category = category
                 detected_category_via = 'name_en'
-                print(f"[REQ {request_id}] Categoría detectada por name_en exacto: {category.name}")
-                break
+                best_match_length = len(name_en_intersection)
+                print(f"[REQ {request_id}] Mejor match encontrado: {category.name} via name_en ({len(name_en_intersection)} tokens)")
 
-        # Segundo pase: alternative_terms si no hubo match en nombre
+        # Si detectamos por token matching, confirmar
+        if detected_category:
+            print(f"[REQ {request_id}] Categoría detectada por token matching: {detected_category.name}")
+
+        # Fallback: alternative_terms (búsqueda EXACTA en lista separada por comas)
         if not detected_category:
             for category in categories:
                 alt = getattr(category, 'alternative_terms', None)
                 if alt:
                     alt_terms = [t.strip().lower() for t in str(alt).split(',')]
+                    # Buscar match exacto en alternative_terms
                     if query_normalized in alt_terms:
                         detected_category = category
                         detected_category_via = 'alt'
                         print(f"[REQ {request_id}] Categoría detectada por alternative_term exacto: {category.name}")
                         break
 
-        # 2. Si no hay coincidencia exacta, usar scoring de tokens (mÃ¡xima superposiciÃ³n)
+        # 2. Si no hay coincidencia, usar similitud semántica CLIP/MiniLM
         if not detected_category:
+            # Usar CLIP text embedding + centroides en lugar de MiniLM
             candidates = []  # Para debugging
-            for category, name_toks, alt_toks in cat_tokens_list:
-                # Calcular intersecciÃ³n con tokens del nombre (PESO 1.0)
-                name_intersection = query_tokens & name_toks
-                # Calcular intersecciÃ³n con tokens de alternative_terms (PESO 0.5)
-                alt_intersection = query_tokens & alt_toks
+            for category in categories:
+                # Solo categorías con productos activos
+                if Product.query.filter_by(category_id=category.id, client_id=client.id).count() == 0:
+                    continue
+                # Obtener centroide CLIP de la categoría (no MiniLM)
+                centroid = category.get_centroid_embedding(auto_calculate=False)
+                if centroid is None:
+                    continue
 
-                if name_intersection or alt_intersection:
-                    # Score ponderado: tokens del nombre valen el doble
-                    score = (len(name_intersection) * 1.0 + len(alt_intersection) * 0.5) / max(len(query_tokens), 1)
-                    all_intersection = name_intersection | alt_intersection
-                    candidates.append((category.name, score, all_intersection, 'name' if name_intersection else 'alt'))
-                    if score > best_score:
-                        best_score = score
-                        best_category = category
+                # Similitud coseno con CLIP (ya tenemos query_embedding de línea 1619)
+                similarity = float(np.dot(query_embedding, centroid) / (np.linalg.norm(query_embedding) * np.linalg.norm(centroid)))
+                candidates.append((category, similarity))
+
+                if similarity > best_score:
+                    best_score = similarity
+                    best_category = category
 
             if candidates:
-                print(f"[REQ {request_id}] Candidatos de categoría: {[(c[0], f'{c[1]:.2f}', c[2], c[3]) for c in sorted(candidates, key=lambda x: x[1], reverse=True)[:5]]}")
+                # Log top 5 candidatos ordenados por similitud
+                sorted_candidates = sorted(candidates, key=lambda x: x[1], reverse=True)[:5]
+                print(f"[REQ {request_id}] Candidatos de categoría CLIP: {[(c[0].name, f'{c[1]:.2f}') for c in sorted_candidates]}", flush=True)
 
-            if best_category and best_score > 0:
+            # Umbral mínimo de similitud CLIP (0.55 = similar, CLIP es más preciso que MiniLM)
+            SEMANTIC_THRESHOLD = 0.55
+            if best_category and best_score >= SEMANTIC_THRESHOLD:
                 detected_category = best_category
-                detected_category_via = 'tokens'
-                print(f"[REQ {request_id}] Categoría detectada por tokens (score={best_score:.2f}): {detected_category.name}")
+                detected_category_via = 'semantic'
+                print(f"[REQ {request_id}] Categoría detectada por CLIP centroid (score={best_score:.3f}): {detected_category.name}", flush=True)
 
-        # 2.b Fallback de coincidencia APROXIMADA de tokens (ej.: "short" ~ "shores") antes del LLM
-        if not detected_category:
-            def _levenshtein_le1(a: str, b: str) -> bool:
-                a = _strip_accents(a.lower())
-                b = _strip_accents(b.lower())
-                if a == b:
-                    return True
-                if abs(len(a) - len(b)) > 1:
-                    return False
-                # Si longitudes iguales: permitir 1 sustitución
-                if len(a) == len(b):
-                    mism = sum(1 for x, y in zip(a, b) if x != y)
-                    return mism <= 1
-                # Si difieren en 1: permitir 1 inserción/eliminación
-                # Garantizar a como la más corta
-                if len(a) > len(b):
-                    a, b = b, a
-                i = j = diffs = 0
-                while i < len(a) and j < len(b):
-                    if a[i] == b[j]:
-                        i += 1; j += 1
-                    else:
-                        diffs += 1
-                        if diffs > 1:
-                            return False
-                        j += 1  # saltar un char en la más larga
-                return True  # a lo sumo 1 diferencia
+        # 2.b Ya no usamos fallback de Levenshtein - similitud semántica lo reemplaza
 
-            best_cat_approx = None
-            best_score_approx = 0.0
-            approx_candidates = []
-            for category, name_toks, alt_toks in cat_tokens_list:
-                # Conteo de matches aproximados con mayor peso a nombre
-                name_hits = 0
-                for qt in query_tokens:
-                    if any(_levenshtein_le1(qt, nt) for nt in name_toks):
-                        name_hits += 1
-                alt_hits = 0
-                for qt in query_tokens:
-                    if any(_levenshtein_le1(qt, at) for at in alt_toks):
-                        alt_hits += 1
-
-                if name_hits or alt_hits:
-                    score = (name_hits * 1.0 + alt_hits * 0.5) / max(len(query_tokens), 1)
-                    approx_candidates.append((category.name, score, name_hits, alt_hits))
-                    if score > best_score_approx:
-                        best_score_approx = score
-                        best_cat_approx = category
-
-            if approx_candidates:
-                approx_candidates.sort(key=lambda x: x[1], reverse=True)
-                print(f"[REQ {request_id}] Candidatos (aprox): {[(c[0], f'{c[1]:.2f}', c[2], c[3]) for c in approx_candidates[:5]]}")
-
-            if best_cat_approx and best_score_approx > 0:
-                detected_category = best_cat_approx
-                detected_category_via = 'tokens_approx'
-                print(f"[REQ {request_id}] Categoría detectada por tokens APROX (score={best_score_approx:.2f}): {detected_category.name}")
-
-        # Si detectamos por tokens (no literal), exponer mensaje de sustitución como 'similar'
-        if detected_category and detected_category_via == 'tokens':
-            try:
-                token_sim = float(max(0.0, min(1.0, best_score))) if 'best_score' in locals() else None
-            except Exception:
-                token_sim = None
+        # Si detectamos por similitud semántica (no literal), exponer mensaje de sustitución como 'similar'
+        if detected_category and detected_category_via == 'semantic':
             category_substitution_info = {
                 "match_type": "similar",
                 "requested_text": query_text,
                 "matched_category": detected_category.name,
-                **({"similarity": round(token_sim, 3)} if token_sim is not None else {})
+                "similarity": round(best_score, 3)
             }
-            print(f"[REQ {request_id}] ⚠️ Match similar por tokens: '{query_text}' → '{detected_category.name}' score={best_score:.3f}")
+            print(f"[REQ {request_id}] ⚠️ Match similar por similitud semántica: '{query_text}' → '{detected_category.name}' score={best_score:.3f}")
 
-        # Si detectamos por tokens aproximados, también informar como 'similar'
-        if detected_category and detected_category_via == 'tokens_approx':
-            try:
-                token_sim = float(max(0.0, min(1.0, best_score_approx))) if 'best_score_approx' in locals() else None
-            except Exception:
-                token_sim = None
-            category_substitution_info = {
-                "match_type": "similar",
-                "requested_text": query_text,
-                "matched_category": detected_category.name,
-                **({"similarity": round(token_sim, 3)} if token_sim is not None else {})
-            }
-            print(f"[REQ {request_id}] ⚠️ Match similar por tokens APROX: '{query_text}' → '{detected_category.name}' score={best_score_approx:.3f}")
-
-        # Nueva lógica de selección de categoría con LLM: exacta / similar / ninguna
+        # Nueva lógica de selección de categoría con LLM: exacta / similar / ninguna (solo si no hubo match previo)
         if not detected_category:
             from sentence_transformers import util
             llm_model = get_model()
@@ -1871,7 +1843,7 @@ def text_search():
             else:
                 print(f"[REQ {request_id}] ❌ Ninguna categoría relevante (max_sim={best_sim:.3f})")
                 available_categories = [c.name for c in categories if Product.query.filter_by(category_id=c.id, client_id=client.id).count() > 0]
-                print(f"[TEXT_SEARCH] END controlled no-category (200) in {round(time.time()-start_time,3)}s")
+                print(f"[TEXT_SEARCH] END controlled no-category (200) in {round(time()-start_time,3)}s")
                 return jsonify({
                     "success": False,
                     "error": "product_not_in_catalog",
@@ -2070,7 +2042,7 @@ def text_search():
             # Si aún no hay productos después de probar hermanas, retornar error 404
             if len(products) == 0:
                 print(f"⚠️ TEXT SEARCH: No hay productos ni en categoría original ni en hermanas → Retornando error 404")
-                available_categories = [cat.name for cat in categories if Product.query.filter_by(category_id=cat.id, client_id=client.id).count() > 0]
+                available_categories = [cat.name for cat in categories if Product.query.filter_by(category_id=c.id, client_id=client.id).count() > 0]
                 print(f"[TEXT_SEARCH] END 404 category_empty (tried siblings) in {round(time.time()-start_time,3)}s")
                 return jsonify({
                     "success": False,
@@ -2390,9 +2362,31 @@ def text_search():
             # No hay resultados - analizar por qué y dar feedback útil
             match_quality = "none"
 
-            # Verificar si la categoría existe pero está vacía
+            # Verificar si la categoría existe
             if detected_category:
                 category_product_count = len([p for p in products if p.category_id == detected_category.id])
+
+                # Recolectar colores disponibles de los productos cargados para esta categoría
+                available_colors_set = set()
+                try:
+                    for prod in products:
+                        if getattr(prod, 'category_id', None) != detected_category.id:
+                            continue
+                        attrs = getattr(prod, 'attributes', None)
+                        if not attrs:
+                            continue
+                        val = attrs.get('color')
+                        if isinstance(val, str) and val.strip():
+                            available_colors_set.add(val.strip().lower())
+                        elif isinstance(val, list) and val:
+                            for v in val:
+                                if v:
+                                    available_colors_set.add(str(v).strip().lower())
+                except Exception as _e:
+                    print(f"[REQ {request_id}] ⚠️ Error obteniendo colores disponibles en 0-results: {_e}")
+
+                colors_list = sorted(list(available_colors_set)) if available_colors_set else []
+
                 if category_product_count == 0:
                     partial_match_info = {
                         "message": f"Tu búsqueda de {query_text.lower()} se interpretó dentro de la categoría {detected_category.name}, pero actualmente no tenemos productos en esa categoría.",
@@ -2400,12 +2394,35 @@ def text_search():
                         "reason": "empty_category"
                     }
                 else:
-                    # Categoría tiene productos pero ninguno matcheó - problema de atributos/color
-                    partial_match_info = {
-                        "message": f"Tu búsqueda de {query_text.lower()} se interpretó dentro de la categoría {detected_category.name}, pero no encontramos coincidencias exactas.",
-                        "suggestion": "Probá buscar sin especificar color o características tan específicas.",
-                        "reason": "no_attribute_match"
-                    }
+                    # Categoría tiene productos pero ninguno matcheó - probablemente por atributos/color
+                    base_msg = f"Tu búsqueda de {query_text.lower()} se interpretó dentro de la categoría {detected_category.name}. "
+
+                    if explicit_color_from_query and detected_color:
+                        # Mensaje específico de color no disponible + listar alternativas desde all_available_values (categoría)
+                        if colors_list:
+                            others_text = ", ".join(colors_list)
+                            # Requerimiento: incluir la categoría en la frase
+                            message = f"No tenemos {detected_category.name} disponible en color '{detected_color.lower()}'. Tenemos disponible en: {others_text}."
+                            partial_match_info = {
+                                "message": message,
+                                "available_colors": colors_list,
+                                "requested_color": detected_color.lower(),
+                                "reason": "color_not_available"
+                            }
+                        else:
+                            # Sin colores detectables en atributos
+                            partial_match_info = {
+                                "message": base_msg + f"No encontramos coincidencias exactas.",
+                                "suggestion": "Probá buscar sin especificar color o características tan específicas.",
+                                "reason": "no_attribute_match"
+                            }
+                    else:
+                        # Sin color explícito: mensaje genérico de no match en atributos
+                        partial_match_info = {
+                            "message": base_msg + "No encontramos coincidencias exactas.",
+                            "suggestion": "Probá usar términos más generales o quitar filtros muy específicos.",
+                            "reason": "no_attribute_match"
+                        }
             else:
                 # No se detectó categoría o búsqueda global falló
                 partial_match_info = {
@@ -2473,11 +2490,11 @@ def text_search():
                         Product.category_id == detected_category.id if detected_category else True,
                         func.jsonb_extract_path_text(Product.attributes, 'color').isnot(None),
                         func.jsonb_extract_path_text(Product.attributes, 'color') != ''
-                    ).distinct()
+                    ).distinct();
 
                     print(f"[REQ {request_id}]   - Ejecutando query SQL...")
-                    color_results = color_query.all()
-                    print(f"[REQ {request_id}]   - Resultados obtenidos: {len(color_results)} rows")
+                    color_results = color_query.all();
+                    print(f"[REQ {request_id}]   - Resultados obtenidos: {len(color_results)} rows");
 
                     for row in color_results:
                         print(f"[REQ {request_id}]   - Row color: '{row.color}'")
@@ -2521,7 +2538,7 @@ def text_search():
                         if product and product.attributes:
                             prod_color = product.attributes.get('color')
                             if prod_color:
-                                shown_colors.add(prod_color.lower())
+                                shown_colors.add(prod_color)
 
                     # Excluir colores mostrados de la lista de "también disponibles"
                     other_colors = [c.lower() for c in colors_list if c.lower() not in shown_colors]
@@ -2541,7 +2558,8 @@ def text_search():
 
                         # Solo mencionar color si el usuario lo pidió explícitamente
                         if explicit_color_from_query:
-                            message += f"No disponemos en este momento en {detected_color.lower()}"
+                            # Requerimiento: incluir categoría
+                            message += f"No tenemos {category_name.lower()} disponible en color '{detected_color.lower()}'"
 
                             if shown_colors:
                                 if len(shown_colors) == 1:
@@ -2599,7 +2617,8 @@ def text_search():
 
                         # Solo mencionar color si el usuario lo pidió explícitamente
                         if explicit_color_from_query:
-                            message += f"No disponemos en este momento en {detected_color.lower()}"
+                            # Requerimiento: incluir categoría
+                            message += f"No tenemos {category_name.lower()} disponible en color '{detected_color.lower()}'"
 
                             if shown_colors:
                                 if len(shown_colors) == 1:
@@ -2653,10 +2672,10 @@ def text_search():
         if detected_category:
             if detected_category_via in ("name", "name_en", "alt"):
                 match_type = "exact"
-            elif detected_category_via in ("tokens", "tokens_approx"):
+            elif detected_category_via == "semantic":
                 match_type = "similar"
                 try:
-                    match_similarity = round(float(best_score if detected_category_via=="tokens" else best_score_approx), 3)
+                    match_similarity = round(float(best_score), 3)
                 except Exception:
                     match_similarity = None
             else:
@@ -3510,7 +3529,7 @@ def unified_search():
                     'product_url': product_url_value  # ✅ URL del producto
                 })
 
-            total_products_found += len(products_data)
+            total_products_found += len(products_data);
 
             results_by_category[category_name] = {
                 'products': products_data,
@@ -3560,7 +3579,7 @@ def unified_search():
         return jsonify(response_data), 200
 
     except Exception as e:
-        railway_log(f"❌ Error en gpt4v_unified_search: {str(e)}")
+        railway_log(f"❌ Error en unified_search: {str(e)}")
         import traceback
         traceback.print_exc()
 
@@ -3573,23 +3592,7 @@ def unified_search():
 
 @bp.route("/clients/list", methods=["GET"])
 def list_clients():
-    """
-    Endpoint para obtener lista de clientes con sus API keys.
-    Útil para selector dinámico en interfaces de testing.
-
-    Response:
-        {
-            "success": true,
-            "clients": [
-                {
-                    "id": "...",
-                    "name": "...",
-                    "api_key": "...",
-                    "is_active": true
-                }
-            ]
-        }
-    """
+    """Lista todos los clientes activos con sus API keys (para testing)."""
     try:
         clients = Client.query.filter_by(is_active=True).all()
 
