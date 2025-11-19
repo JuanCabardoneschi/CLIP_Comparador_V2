@@ -1004,8 +1004,18 @@
             // Banner informativo
             const bannerHtml = renderTestingBanner(data);
 
-            // Renderizar productos enriquecidos
-            const productsHtml = productos.map(prod => {
+            // Agrupar productos por categoría
+            const productosPorCategoria = {};
+            productos.forEach(prod => {
+                const catName = prod.category || 'Sin categoría';
+                if (!productosPorCategoria[catName]) {
+                    productosPorCategoria[catName] = [];
+                }
+                productosPorCategoria[catName].push(prod);
+            });
+
+            // Renderizar función auxiliar para productos
+            const renderProduct = (prod) => {
                 const match = (prod.match_type || 'BASE').toUpperCase();
                 const matchClass = match === 'AMBOS' ? 'clip-badge-ambos' :
                                    match === 'FUERTE' ? 'clip-badge-fuerte' :
@@ -1047,19 +1057,26 @@
                         </div>
                     </div>
                 `;
+            };
+
+            // Generar HTML por categoría
+            const categorySectionsHtml = Object.entries(productosPorCategoria).map(([categoryName, prods]) => {
+                return `
+                    <div class="clip-category-section">
+                        <div class="clip-category-header">
+                            <div class="clip-category-name">${categoryName}</div>
+                            <div class="clip-category-count">${prods.length} producto${prods.length !== 1 ? 's' : ''}</div>
+                        </div>
+                        <div class="clip-product-grid">
+                            ${prods.map(renderProduct).join('')}
+                        </div>
+                    </div>
+                `;
             }).join('');
 
             const html = `
                 ${bannerHtml}
-                <div class="clip-category-section">
-                    <div class="clip-category-header">
-                        <div class="clip-category-name">Resultados de Búsqueda</div>
-                        <div class="clip-category-count">${productos.length} producto${productos.length !== 1 ? 's' : ''}</div>
-                    </div>
-                    <div class="clip-product-grid">
-                        ${productsHtml}
-                    </div>
-                </div>
+                ${categorySectionsHtml}
             `;
 
             resultsDiv.innerHTML = html;
