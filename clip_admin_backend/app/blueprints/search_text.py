@@ -1168,15 +1168,45 @@ def text_search():
                                     match_type = 'label_partial'
                                     break
 
+                    # 4. Coincidencia con valores de atributos tipo 'list' (ej: "negro" → color)
+                    if not matched:
+                        for cfg in configured_attributes:
+                            if cfg.type == 'list' and cfg.options:
+                                # Normalizar opciones del atributo
+                                try:
+                                    import json
+                                    options = cfg.options if isinstance(cfg.options, list) else json.loads(cfg.options)
+                                    options_norm = [str(opt).strip().lower() for opt in options]
+                                    
+                                    # Verificar si el modificador está en las opciones
+                                    if mod_norm in options_norm:
+                                        matched = True
+                                        matched_config = cfg
+                                        match_type = 'value'
+                                        # Obtener valor original (no normalizado)
+                                        matched_value = options[options_norm.index(mod_norm)]
+                                        break
+                                except Exception:
+                                    continue
+
                     if matched and matched_config:
-                        atributos_encontrados.append({
+                        match_info = {
                             'modificador_original': mod,
                             'atributo_key': matched_config.key,
                             'atributo_label': matched_config.label,
                             'atributo_type': matched_config.type,
                             'match_tipo': match_type
-                        })
-                        print(f"   ✅ '{mod}' → Match con atributo '{matched_config.label}' (key: {matched_config.key}, tipo: {match_type})")
+                        }
+                        # Si matcheó por valor, incluir el valor detectado
+                        if match_type == 'value':
+                            match_info['valor_detectado'] = matched_value
+                        
+                        atributos_encontrados.append(match_info)
+                        
+                        if match_type == 'value':
+                            print(f"   ✅ '{mod}' → Match con valor de '{matched_config.label}' (key: {matched_config.key}, valor: {matched_value})")
+                        else:
+                            print(f"   ✅ '{mod}' → Match con atributo '{matched_config.label}' (key: {matched_config.key}, tipo: {match_type})")
                     else:
                         modificadores_no_configurados.append(mod)
                         print(f"   ❌ '{mod}' → NO es un atributo configurado")
