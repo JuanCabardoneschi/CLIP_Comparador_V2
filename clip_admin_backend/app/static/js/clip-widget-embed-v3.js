@@ -977,40 +977,11 @@
                 // La búsqueda por texto NO tiene detección GPT-4V, ocultar esa sección
                 container.querySelector('#clip-detection').classList.remove('active');
 
-                // Extraer atributos visibles del response
-                const exposedKeys = data.exposed_attribute_keys || [];
-                const labelMap = data.exposed_attribute_labels || {};
-                console.log('🏷️ labelMap recibido:', labelMap);
-                console.log('📦 Primer producto attributes_matched:', data.results?.[0]?.attributes_matched);
-
-                // PRIORIDAD 1: Detectar modo testing
-                if (data.testing_mode === true && data.filtering?.top_5_productos) {
-                    console.log('🎯 Modo testing detectado, mostrando resultados enriquecidos');
-                    displayTestingResults(data);
-                } else if (data.group_by_category && data.results_by_category) {
-                    // ⭐ Resultados agrupados por categoría (categorías hermanas)
-                    displayTextResultsByCategory(
-                        data.results_by_category,
-                        data.total_results || 0,
-                        data.user_feedback || data.partial_match_info,
-                        exposedKeys,
-                        labelMap
-                    );
-                } else if (data.results && data.results.length > 0) {
-                    // Resultados en lista plana (comportamiento original)
-                    displayTextResults(
-                        data.results,
-                        data.total_results || data.results.length,
-                        data.user_feedback || data.partial_match_info,
-                        data.match_quality,
-                        data.category_substitution_info,
-                        exposedKeys,
-                        labelMap,
-                        data
-                    );
+                // Mostrar resultados con banner y productos enriquecidos
+                if (data.filtering?.top_5_productos && data.filtering.top_5_productos.length > 0) {
+                    displayTextSearchResults(data);
                 } else {
-                    // También propagar user_feedback cuando no hay resultados
-                    showNoResults(data.user_feedback || data.partial_match_info);
+                    showNoResults(data.user_feedback || data.partial_match_info || { message: 'No se encontraron productos' });
                 }
             })
             .catch(err => {
