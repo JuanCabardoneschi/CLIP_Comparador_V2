@@ -1003,6 +1003,10 @@
             const exposedKeys = data.exposed_attribute_keys || [];
             const labelMap = data.exposed_attribute_labels || {};
 
+            console.log('🔍 displayTextSearchResults - exposedKeys:', exposedKeys);
+            console.log('🔍 displayTextSearchResults - labelMap:', labelMap);
+            console.log('🔍 displayTextSearchResults - primer producto attributes:', productos[0]?.attributes);
+
             // Banner informativo
             const bannerHtml = renderTestingBanner(data);
 
@@ -1046,7 +1050,7 @@
                     .map(key => {
                         const label = labelMap[key] || key;
                         let value = productAttrs[key];
-                        
+
                         // Formatear valores
                         if (Array.isArray(value)) {
                             value = value.join(', ');
@@ -1057,7 +1061,7 @@
                             if (normalized === 'si') value = 'Sí';
                             if (normalized === 'no') value = 'No';
                         }
-                        
+
                         return `<span style="background:#f3f4f6;color:#374151;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;">${label}: ${value}</span>`;
                     }).join(' ');
 
