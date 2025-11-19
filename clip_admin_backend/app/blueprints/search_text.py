@@ -1175,7 +1175,18 @@ def text_search():
                                 # Normalizar opciones del atributo
                                 try:
                                     import json
-                                    options = cfg.options if isinstance(cfg.options, list) else json.loads(cfg.options)
+                                    # cfg.options puede ser: list, dict, o string JSON
+                                    if isinstance(cfg.options, list):
+                                        options = cfg.options
+                                    elif isinstance(cfg.options, dict):
+                                        # Si es dict, probablemente tiene estructura {value: label}
+                                        # Usar las keys como valores
+                                        options = list(cfg.options.keys())
+                                    elif isinstance(cfg.options, str):
+                                        options = json.loads(cfg.options)
+                                    else:
+                                        continue
+                                    
                                     options_norm = [str(opt).strip().lower() for opt in options]
                                     
                                     # Verificar si el modificador está en las opciones
@@ -1186,7 +1197,8 @@ def text_search():
                                         # Obtener valor original (no normalizado)
                                         matched_value = options[options_norm.index(mod_norm)]
                                         break
-                                except Exception:
+                                except Exception as e:
+                                    print(f"         ⚠️ Error parseando opciones de '{cfg.label}': {e}")
                                     continue
 
                     if matched and matched_config:
@@ -1200,9 +1212,9 @@ def text_search():
                         # Si matcheó por valor, incluir el valor detectado
                         if match_type == 'value':
                             match_info['valor_detectado'] = matched_value
-                        
+
                         atributos_encontrados.append(match_info)
-                        
+
                         if match_type == 'value':
                             print(f"   ✅ '{mod}' → Match con valor de '{matched_config.label}' (key: {matched_config.key}, valor: {matched_value})")
                         else:
@@ -1573,26 +1585,65 @@ def text_search():
                     mod_norm = mod.lower().strip()
 
                     # Buscar en keys y labels (flexibilidad)
+                    matched = False
+                    matched_config = None
+                    match_type = None
+                    matched_value = None
+
+                    # 1. Coincidencia con key
                     if mod_norm in attribute_keys:
-                        attr = attribute_keys[mod_norm]
-                        atributos_encontrados.append({
-                            'modificador_original': mod,
-                            'atributo_key': attr.key,
-                            'atributo_label': attr.label,
-                            'atributo_type': attr.type,
-                            'match_tipo': 'key'
-                        })
-                        print(f"   ✅ '{mod}' → Atributo configurado: {attr.label} (key: {attr.key})")
+                        matched = True
+                        matched_config = attribute_keys[mod_norm]
+                        match_type = 'key'
+                    # 2. Coincidencia con label
                     elif mod_norm in attribute_labels:
-                        attr = attribute_labels[mod_norm]
-                        atributos_encontrados.append({
+                        matched = True
+                        matched_config = attribute_labels[mod_norm]
+                        match_type = 'label'
+                    # 3. Coincidencia con valores de atributos tipo 'list' (ej: "negro" → color)
+                    else:
+                        for cfg in configured_attributes:
+                            if cfg.type == 'list' and cfg.options:
+                                try:
+                                    import json
+                                    # cfg.options puede ser: list, dict, o string JSON
+                                    if isinstance(cfg.options, list):
+                                        options = cfg.options
+                                    elif isinstance(cfg.options, dict):
+                                        options = list(cfg.options.keys())
+                                    elif isinstance(cfg.options, str):
+                                        options = json.loads(cfg.options)
+                                    else:
+                                        continue
+                                    
+                                    options_norm = [str(opt).strip().lower() for opt in options]
+                                    
+                                    if mod_norm in options_norm:
+                                        matched = True
+                                        matched_config = cfg
+                                        match_type = 'value'
+                                        matched_value = options[options_norm.index(mod_norm)]
+                                        break
+                                except Exception:
+                                    continue
+
+                    if matched and matched_config:
+                        match_info = {
                             'modificador_original': mod,
-                            'atributo_key': attr.key,
-                            'atributo_label': attr.label,
-                            'atributo_type': attr.type,
-                            'match_tipo': 'label'
-                        })
-                        print(f"   ✅ '{mod}' → Atributo configurado: {attr.label} (key: {attr.key})")
+                            'atributo_key': matched_config.key,
+                            'atributo_label': matched_config.label,
+                            'atributo_type': matched_config.type,
+                            'match_tipo': match_type
+                        }
+                        if match_type == 'value':
+                            match_info['valor_detectado'] = matched_value
+                        
+                        atributos_encontrados.append(match_info)
+                        
+                        if match_type == 'value':
+                            print(f"   ✅ '{mod}' → Match con valor de '{matched_config.label}' (key: {matched_config.key}, valor: {matched_value})")
+                        else:
+                            print(f"   ✅ '{mod}' → Atributo configurado: {matched_config.label} (key: {matched_config.key})")
                     else:
                         modificadores_no_configurados.append(mod)
                         print(f"   ❌ '{mod}' → NO es un atributo configurado")
