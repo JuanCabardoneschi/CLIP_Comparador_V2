@@ -552,6 +552,123 @@
             .clip-no-results-hint {
                 font-size: 0.95rem;
             }
+
+            /* Testing Banner - Banner informativo compacto */
+            .clip-info-banner {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 1rem 1.25rem;
+                border-radius: 12px;
+                margin-bottom: 1.5rem;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 1rem;
+            }
+
+            .clip-info-banner-item {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+            }
+
+            .clip-info-banner-label {
+                font-weight: 600;
+                opacity: 0.95;
+                font-size: 0.875rem;
+                white-space: nowrap;
+            }
+
+            .clip-info-banner-content {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.4rem;
+            }
+
+            .clip-banner-badge {
+                background: rgba(255,255,255,0.2);
+                padding: 0.3rem 0.7rem;
+                border-radius: 20px;
+                font-size: 0.8rem;
+                font-weight: 500;
+            }
+
+            .clip-banner-badge-highlight {
+                background: rgba(255,255,255,0.95);
+                color: #667eea;
+                font-weight: 600;
+            }
+
+            /* Badges para cobertura de atributos */
+            .clip-attr-badge-success {
+                background: #dcfce7;
+                color: #166534;
+                padding: 0.25rem 0.75rem;
+                border-radius: 9999px;
+                font-size: 0.875rem;
+                font-weight: 600;
+                display: inline-block;
+                margin: 0.25rem;
+            }
+
+            .clip-attr-badge-error {
+                background: #fee2e2;
+                color: #991b1b;
+                padding: 0.25rem 0.75rem;
+                border-radius: 9999px;
+                font-size: 0.875rem;
+                font-weight: 600;
+                display: inline-block;
+                margin: 0.25rem;
+            }
+
+            .clip-badge-ambos {
+                position: absolute;
+                top: 8px;
+                left: 8px;
+                background: #dcfce7;
+                color: #166534;
+                padding: 0.3rem 0.6rem;
+                border-radius: 9999px;
+                font-size: 0.75rem;
+                font-weight: 700;
+            }
+
+            .clip-badge-fuerte {
+                position: absolute;
+                top: 8px;
+                left: 8px;
+                background: #dbeafe;
+                color: #1e40af;
+                padding: 0.3rem 0.6rem;
+                border-radius: 9999px;
+                font-size: 0.75rem;
+                font-weight: 700;
+            }
+
+            .clip-badge-debil {
+                position: absolute;
+                top: 8px;
+                left: 8px;
+                background: #fef3c7;
+                color: #92400e;
+                padding: 0.3rem 0.6rem;
+                border-radius: 9999px;
+                font-size: 0.75rem;
+                font-weight: 700;
+            }
+
+            .clip-badge-base {
+                position: absolute;
+                top: 8px;
+                left: 8px;
+                background: #e2e8f0;
+                color: #334155;
+                padding: 0.3rem 0.6rem;
+                border-radius: 9999px;
+                font-size: 0.75rem;
+                font-weight: 700;
+            }
         `;
         document.head.appendChild(style);
 
@@ -793,6 +910,42 @@
         }
 
         // Text Search API
+        // Renderizar banner informativo para modo testing
+        function renderTestingBanner(data) {
+            let items = [];
+
+            // 1. Categorías detectadas
+            const categorias = data.detection?.categorias_matched || [];
+            if (categorias.length > 0) {
+                const cats = categorias.map(cat =>
+                    `<span class="clip-banner-badge clip-banner-badge-highlight">${cat.name}</span>`
+                ).join(' ');
+                items.push(`<div class="clip-info-banner-item"><span class="clip-info-banner-label">Buscando en:</span><div class="clip-info-banner-content">${cats}</div></div>`);
+            }
+
+            // 2. Atributos fuertes (configurados)
+            const attrsFuertes = data.analysis?.atributos_encontrados || [];
+            if (attrsFuertes.length > 0) {
+                const attrs = attrsFuertes.map(a =>
+                    `<span class="clip-banner-badge">${a.atributo_label || a.atributo_key}</span>`
+                ).join(' ');
+                items.push(`<div class="clip-info-banner-item"><span class="clip-info-banner-label">Filtrando:</span><div class="clip-info-banner-content">${attrs}</div></div>`);
+            }
+
+            // 3. Modificadores débiles (similitud visual CLIP)
+            const attrsDebiles = data.analysis?.modificadores_no_configurados || [];
+            if (attrsDebiles.length > 0) {
+                const mods = attrsDebiles.map(m =>
+                    `<span class="clip-banner-badge">${m}</span>`
+                ).join(' ');
+                items.push(`<div class="clip-info-banner-item"><span class="clip-info-banner-label">Similitud visual:</span><div class="clip-info-banner-content">${mods}</div></div>`);
+            }
+
+            if (items.length === 0) return '';
+
+            return `<div class="clip-info-banner">${items.join('')}</div>`;
+        }
+
         function performTextSearch(query) {
             showLoading();
             const loadingText = container.querySelector('#clip-loading-text');
@@ -849,7 +1002,8 @@
                         data.match_quality,
                         data.category_substitution_info,
                         exposedKeys,
-                        labelMap
+                        labelMap,
+                        data
                     );
                 } else {
                     // También propagar user_feedback cuando no hay resultados
@@ -866,6 +1020,76 @@
                 if (loadingText) loadingText.textContent = 'Analizando imagen con IA...';
                 if (loadingSteps) loadingSteps.style.display = 'block';
             });
+        }
+
+        // Renderizar resultados en modo testing (con banner y tarjetas enriquecidas)
+        function displayTestingResults(data) {
+            const resultsDiv = container.querySelector('#clip-results');
+            const productos = data.filtering.top_5_productos || [];
+
+            // Banner informativo
+            const bannerHtml = renderTestingBanner(data);
+
+            // Renderizar productos enriquecidos
+            const productsHtml = productos.map(prod => {
+                const match = (prod.match_type || 'BASE').toUpperCase();
+                const matchClass = match === 'AMBOS' ? 'clip-badge-ambos' :
+                                   match === 'FUERTE' ? 'clip-badge-fuerte' :
+                                   (match === 'DÉBIL' || match === 'DEBIL') ? 'clip-badge-debil' : 'clip-badge-base';
+
+                // Imagen
+                const imgHtml = prod.image_url
+                    ? `<img src="${prod.image_url}" alt="${prod.name || 'Producto'}" class="clip-product-img">`
+                    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.8rem;">Sin imagen</div>`;
+
+                // Cobertura de atributos
+                const attrs = Array.isArray(prod.attributes_coverage) ? prod.attributes_coverage : [];
+                const attrsHtml = attrs.map(a => {
+                    const ok = !!a.exists;
+                    const label = a.label || a.key || 'atributo';
+                    const value = (a.value !== undefined && a.value !== null && `${a.value}`.trim() !== '') ? `: ${a.value}` : '';
+                    const cls = ok ? 'clip-attr-badge-success' : 'clip-attr-badge-error';
+                    const icon = ok ? '✅' : '✖️';
+                    return `<span class="${cls}" title="${a.key || ''}">${icon} ${label}${value}</span>`;
+                }).join(' ');
+
+                return `
+                    <div class="clip-product">
+                        <div class="clip-product-img-wrap">
+                            ${imgHtml}
+                            <span class="${matchClass}">${match}</span>
+                        </div>
+                        <div class="clip-product-info">
+                            <div class="clip-product-name">${prod.name || 'Producto'}</div>
+                            <div class="clip-product-price">
+                                ${(prod.price !== null && prod.price !== undefined && typeof prod.price === 'number') ? `$${prod.price.toFixed(2)}` : 'Consultar'}
+                            </div>
+                            ${attrsHtml ? `<div style="margin-top:8px;">${attrsHtml}</div>` : ''}
+                            ${prod.stock !== undefined ? `
+                                <div class="clip-product-stock ${prod.stock > 0 ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
+                                    ${prod.stock > 0 ? `✓ Stock: ${prod.stock}` : '✗ Sin stock'}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const html = `
+                ${bannerHtml}
+                <div class="clip-category-section">
+                    <div class="clip-category-header">
+                        <div class="clip-category-name">Resultados de Búsqueda</div>
+                        <div class="clip-category-count">${productos.length} producto${productos.length !== 1 ? 's' : ''}</div>
+                    </div>
+                    <div class="clip-product-grid">
+                        ${productsHtml}
+                    </div>
+                </div>
+            `;
+
+            resultsDiv.innerHTML = html;
+            resultsDiv.classList.add('active');
         }
 
         // ⭐ Display text search results AGRUPADOS POR CATEGORÍA (categorías hermanas)
@@ -985,10 +1209,16 @@
         }
 
         // Display text search results (sin agrupación por categoría)
-        function displayTextResults(results, total, partialMatchInfo, matchQuality, categorySubstitutionInfo, exposedKeys, labelMap) {
+        function displayTextResults(results, total, partialMatchInfo, matchQuality, categorySubstitutionInfo, exposedKeys, labelMap, fullData) {
             exposedKeys = exposedKeys || [];
             labelMap = labelMap || {};
             const resultsDiv = container.querySelector('#clip-results');
+
+            // MODO TESTING: Detectar si viene del breakpoint con top_5_productos enriquecidos
+            if (fullData && fullData.testing_mode === true && fullData.filtering?.top_5_productos) {
+                displayTestingResults(fullData);
+                return;
+            }
 
             // Mensaje contextual si hay partial match info
             const partialMatchHtml = partialMatchInfo ? `
