@@ -1000,6 +1000,8 @@
         function displayTextSearchResults(data) {
             const resultsDiv = container.querySelector('#clip-results');
             const productos = data.filtering.top_5_productos || [];
+            const exposedKeys = data.exposed_attribute_keys || [];
+            const labelMap = data.exposed_attribute_labels || {};
 
             // Banner informativo
             const bannerHtml = renderTestingBanner(data);
@@ -1026,9 +1028,9 @@
                     ? `<img src="${prod.image_url}" alt="${prod.name || 'Producto'}" class="clip-product-img">`
                     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.8rem;">Sin imagen</div>`;
 
-                // Cobertura de atributos
-                const attrs = Array.isArray(prod.attributes_coverage) ? prod.attributes_coverage : [];
-                const attrsHtml = attrs.map(a => {
+                // Cobertura de atributos (solo los que están en attributes_coverage)
+                const coverageAttrs = Array.isArray(prod.attributes_coverage) ? prod.attributes_coverage : [];
+                const coverageHtml = coverageAttrs.map(a => {
                     const ok = !!a.exists;
                     const label = a.label || a.key || 'atributo';
                     const value = (a.value !== undefined && a.value !== null && `${a.value}`.trim() !== '') ? `: ${a.value}` : '';
@@ -1036,6 +1038,28 @@
                     const icon = ok ? '✅' : '✖️';
                     return `<span class="${cls}" title="${a.key || ''}">${icon} ${label}${value}</span>`;
                 }).join(' ');
+
+                // Atributos visibles del producto (todos los que están en exposed_attribute_keys)
+                const productAttrs = prod.attributes || {};
+                const visibleAttrsHtml = exposedKeys
+                    .filter(key => productAttrs[key] !== undefined && productAttrs[key] !== null)
+                    .map(key => {
+                        const label = labelMap[key] || key;
+                        let value = productAttrs[key];
+                        
+                        // Formatear valores
+                        if (Array.isArray(value)) {
+                            value = value.join(', ');
+                        } else {
+                            value = String(value);
+                            // Normalizar sí/no
+                            const normalized = value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+                            if (normalized === 'si') value = 'Sí';
+                            if (normalized === 'no') value = 'No';
+                        }
+                        
+                        return `<span style="background:#f3f4f6;color:#374151;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;">${label}: ${value}</span>`;
+                    }).join(' ');
 
                 return `
                     <div class="clip-product">
@@ -1048,7 +1072,8 @@
                             <div class="clip-product-price">
                                 ${(prod.price !== null && prod.price !== undefined && typeof prod.price === 'number') ? `$${prod.price.toFixed(2)}` : 'Consultar'}
                             </div>
-                            ${attrsHtml ? `<div style="margin-top:8px;">${attrsHtml}</div>` : ''}
+                            ${coverageHtml ? `<div style="margin-top:8px;">${coverageHtml}</div>` : ''}
+                            ${visibleAttrsHtml ? `<div class="clip-divider"></div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">${visibleAttrsHtml}</div>` : ''}
                             ${prod.stock !== undefined ? `
                                 <div class="clip-product-stock ${prod.stock > 0 ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
                                     ${prod.stock > 0 ? `✓ Stock: ${prod.stock}` : '✗ Sin stock'}
