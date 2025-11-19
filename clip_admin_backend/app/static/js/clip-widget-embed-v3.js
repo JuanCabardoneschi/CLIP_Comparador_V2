@@ -1005,7 +1005,17 @@
 
             console.log('🔍 displayTextSearchResults - exposedKeys:', exposedKeys);
             console.log('🔍 displayTextSearchResults - labelMap:', labelMap);
+            console.log('🔍 displayTextSearchResults - primer producto:', productos[0]);
             console.log('🔍 displayTextSearchResults - primer producto attributes:', productos[0]?.attributes);
+
+            // Debug: ver qué atributos están filtrando
+            if (productos[0]?.attributes) {
+                console.log('🔍 Atributos del producto:', Object.keys(productos[0].attributes));
+                exposedKeys.forEach(key => {
+                    const value = productos[0].attributes[key];
+                    console.log(`   - ${key}: ${value} (${value === undefined ? 'UNDEFINED' : value === null ? 'NULL' : 'OK'})`);
+                });
+            }
 
             // Banner informativo
             const bannerHtml = renderTestingBanner(data);

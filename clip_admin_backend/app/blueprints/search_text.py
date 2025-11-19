@@ -1718,6 +1718,22 @@ def text_search():
                 except Exception:
                     final_count = 0
 
+                # Calcular exposed_attribute_keys y exposed_attribute_labels
+                exposed_attribute_keys = []
+                exposed_attribute_labels = {}
+                try:
+                    for cfg in configured_attributes:
+                        key_l = (cfg.key or '').strip().lower()
+                        if not key_l:
+                            continue
+                        # Lista de atributos visibles
+                        if cfg.expose_in_search:
+                            exposed_attribute_keys.append(key_l)
+                        # Mapa de etiquetas para TODOS los atributos
+                        exposed_attribute_labels[key_l] = (cfg.label or cfg.key or key_l)
+                except Exception:
+                    pass
+
                 return jsonify({
                     "success": True,
                     "testing_mode": True,
@@ -1746,6 +1762,8 @@ def text_search():
                         "filtrado_clip_aplicado": len(modificadores_no_configurados) > 0,
                         "top_5_productos": enriched_top5
                     },
+                    "exposed_attribute_keys": exposed_attribute_keys,
+                    "exposed_attribute_labels": exposed_attribute_labels,
                     "next_step": "Testing completado - Ver cobertura en servidor y UI de prueba"
                 })
 
