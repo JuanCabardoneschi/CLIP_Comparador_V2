@@ -983,8 +983,11 @@
                 console.log('🏷️ labelMap recibido:', labelMap);
                 console.log('📦 Primer producto attributes_matched:', data.results?.[0]?.attributes_matched);
 
-                // Mostrar resultados
-                if (data.group_by_category && data.results_by_category) {
+                // PRIORIDAD 1: Detectar modo testing
+                if (data.testing_mode === true && data.filtering?.top_5_productos) {
+                    console.log('🎯 Modo testing detectado, mostrando resultados enriquecidos');
+                    displayTestingResults(data);
+                } else if (data.group_by_category && data.results_by_category) {
                     // ⭐ Resultados agrupados por categoría (categorías hermanas)
                     displayTextResultsByCategory(
                         data.results_by_category,
@@ -1022,8 +1025,8 @@
             });
         }
 
-        // Renderizar resultados en modo testing (con banner y tarjetas enriquecidas)
-        function displayTestingResults(data) {
+        // Renderizar resultados de búsqueda textual (con banner y tarjetas enriquecidas)
+        function displayTextSearchResults(data) {
             const resultsDiv = container.querySelector('#clip-results');
             const productos = data.filtering.top_5_productos || [];
 
@@ -1084,252 +1087,6 @@
                     </div>
                     <div class="clip-product-grid">
                         ${productsHtml}
-                    </div>
-                </div>
-            `;
-
-            resultsDiv.innerHTML = html;
-            resultsDiv.classList.add('active');
-        }
-
-        // ⭐ Display text search results AGRUPADOS POR CATEGORÍA (categorías hermanas)
-        function displayTextResultsByCategory(resultsByCategory, total, partialMatchInfo, exposedKeys, labelMap) {
-            exposedKeys = exposedKeys || [];
-            labelMap = labelMap || {};
-            const resultsDiv = container.querySelector('#clip-results');
-
-            // Banner informativo global (si existe)
-            const globalBannerHtml = partialMatchInfo ? `
-                <div class="clip-partial-match-info" style="
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    padding: 16px;
-                    border-radius: 12px;
-                    margin-bottom: 20px;
-                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-                ">
-                    <div style="font-size: 15px; font-weight: 500; line-height: 1.5;">
-                        ${partialMatchInfo.message}
-                    </div>
-                </div>
-            ` : '';
-
-            // Generar HTML por cada categoría
-            const categorySections = Object.entries(resultsByCategory).map(([categoryName, products]) => {
-                const renderProduct = (p) => `
-                    <div class="clip-product">
-                        <div class="clip-product-img-wrap">
-                            <img src="${p.image_url}" alt="${p.name}" class="clip-product-img">
-                            <div class="clip-similarity-badge">
-                                ${Math.round((p.final_score || p.similarity || 0) * 100)}% Match
-                            </div>
-                        </div>
-                        <div class="clip-product-info">
-                            <div class="clip-product-name">${p.name}</div>
-                            <div class="clip-product-price">
-                                ${(p.price !== null && p.price !== undefined && typeof p.price === 'number') ? `$${p.price.toFixed(2)}` : 'Consultar'}
-                            </div>
-                            ${(() => {
-                                const hasMatched = p.attributes_matched && Object.keys(p.attributes_matched).length > 0;
-                                const hasRatio = typeof p.attributes_match_ratio === 'number' && p.attributes_match_ratio > 0;
-                                const attrs = p.attributes || {};
-                                const summary = Object.entries(attrs)
-                                    .filter(([k]) => exposedKeys.length === 0 || exposedKeys.includes(String(k).toLowerCase()))
-                                    .filter(([k]) => !p.attributes_matched || !(k in p.attributes_matched));
-                                const fmt = (val) => {
-                                    if (Array.isArray(val)) return val.join(', ');
-                                    const raw = (val ?? '').toString();
-                                    const n = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
-                                    if (n === 'si') return 'Sí';
-                                    if (n === 'no') return 'No';
-                                    return raw.toString();
-                                };
-                                let out = '';
-                                const matchFmt = (val) => {
-                                    const raw = (val ?? '').toString();
-                                    const n = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
-                                    if (n === 'si') return 'Sí';
-                                    if (n === 'no') return 'No';
-                                    return raw;
-                                };
-                                if (hasMatched) {
-                                    out += `<div class=\"clip-attr-badges\" style=\"margin-top:8px; display:flex; flex-wrap: wrap; gap:6px;\">` +
-                                        Object.entries(p.attributes_matched).map(([k,v]) =>
-                                            `<span style=\"background:#eef2ff;color:#374151;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;\">${labelMap[String(k).toLowerCase()] || k}: ${matchFmt(v)}</span>`
-                                        ).join('') +
-                                        `</div>`;
-                                }
-                                if (hasRatio) {
-                                    out += `<div class=\"clip-divider\"></div>`;
-                                    out += `<div style=\"width:100%; text-align:left; margin:6px 0;\">`+
-                                        `<span style=\"background:#ecfdf5;color:#065f46;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:700;border:1px solid #d1fae5;\">${Math.round(p.attributes_match_ratio*100)}% atributos</span>`+
-                                        `</div>`;
-                                    out += `<div class=\"clip-divider\"></div>`;
-                                } else if (hasMatched && summary.length) {
-                                    out += `<div class=\"clip-divider\"></div>`;
-                                }
-                                if (summary.length) {
-                                    out += `<div class=\"clip-attr-badges\" style=\"display:flex; flex-wrap: wrap; gap:6px;\">`+
-                                        summary.map(([k,v]) =>
-                                            `<span style=\"background:#f3f4f6;color:#374151;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;\">${labelMap[String(k).toLowerCase()] || k}: ${fmt(v)}</span>`
-                                        ).join('')+
-                                        `</div>`;
-                                }
-                                return out;
-                            })()}
-                            ${p.stock !== undefined ? `
-                                <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
-                                    ${p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock'}
-                                </div>
-                            ` : ''}
-                        </div>
-                    </div>
-                `;
-
-                return `
-                    <div class="clip-category-section">
-                        <div class="clip-category-header">
-                            <div class="clip-category-name">${categoryName}</div>
-                            <div class="clip-category-count">${products.length} producto${products.length !== 1 ? 's' : ''}</div>
-                        </div>
-                        <div class="clip-product-grid">
-                            ${products.map(renderProduct).join('')}
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            const html = `
-                ${globalBannerHtml}
-                ${categorySections}
-            `;
-
-            resultsDiv.innerHTML = html;
-            resultsDiv.classList.add('active');
-        }
-
-        // Display text search results (sin agrupación por categoría)
-        function displayTextResults(results, total, partialMatchInfo, matchQuality, categorySubstitutionInfo, exposedKeys, labelMap, fullData) {
-            exposedKeys = exposedKeys || [];
-            labelMap = labelMap || {};
-            const resultsDiv = container.querySelector('#clip-results');
-
-            // MODO TESTING: Detectar si viene del breakpoint con top_5_productos enriquecidos
-            if (fullData && fullData.testing_mode === true && fullData.filtering?.top_5_productos) {
-                displayTestingResults(fullData);
-                return;
-            }
-
-            // Mensaje contextual si hay partial match info
-            const partialMatchHtml = partialMatchInfo ? `
-                <div class="clip-partial-match-info" style="
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    padding: 16px;
-                    border-radius: 12px;
-                    margin-bottom: 20px;
-                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-                ">
-                    <div style="font-size: 15px; font-weight: 500; line-height: 1.5;">
-                        ${partialMatchInfo.message}
-                    </div>
-                </div>
-            ` : '';
-
-            // Banner de sustitución de categoría si aplica
-            const subsHtml = categorySubstitutionInfo ? `
-                <div class="clip-category-substitution" style="
-                    background: #fff3cd;
-                    border: 1px solid #ffeeba;
-                    color: #856404;
-                    padding: 12px 14px;
-                    border-radius: 10px;
-                    margin-bottom: 16px;
-                    font-size: 0.95rem;
-                    font-weight: 500;
-                ">
-                    La categoría más cercana a '${categorySubstitutionInfo.requested_text}' es '${categorySubstitutionInfo.matched_category}'${typeof categorySubstitutionInfo.similarity === 'number' ? ` (similitud ${categorySubstitutionInfo.similarity})` : ''}.
-                </div>
-            ` : '';
-
-            const html = `
-                ${subsHtml}
-                ${partialMatchHtml}
-                <div class="clip-category-section">
-                    <div class="clip-category-header">
-                        <div class="clip-category-name">Resultados de Búsqueda</div>
-                        <div class="clip-category-count">${total} producto${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}</div>
-                    </div>
-                    <div class="clip-product-grid">
-                        ${results.map(p => `
-                            <div class="clip-product">
-                                <div class="clip-product-img-wrap">
-                                    <img src="${p.image_url}" alt="${p.name}" class="clip-product-img">
-                                    <div class="clip-similarity-badge">
-                                        ${Math.round((p.final_score || p.similarity || 0) * 100)}% Match
-                                    </div>
-                                </div>
-                                <div class="clip-product-info">
-                                    <div class="clip-product-name">${p.name}</div>
-                                    <div class="clip-product-price">
-                                        ${(p.price !== null && p.price !== undefined && typeof p.price === 'number') ? `$${p.price.toFixed(2)}` : 'Consultar'}
-                                    </div>
-                                    ${(() => {
-                                        const hasMatched = p.attributes_matched && Object.keys(p.attributes_matched).length > 0;
-                                        const hasRatio = typeof p.attributes_match_ratio === 'number' && p.attributes_match_ratio > 0;
-                                        const attrs = p.attributes || {};
-                                        const summary = Object.entries(attrs)
-                                            .filter(([k]) => exposedKeys.length === 0 || exposedKeys.includes(String(k).toLowerCase()))
-                                            .filter(([k]) => !p.attributes_matched || !(k in p.attributes_matched));
-                                        const fmt = (val) => {
-                                            if (Array.isArray(val)) return val.join(', ');
-                                            const raw = (val ?? '').toString();
-                                            const n = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
-                                            if (n === 'si') return 'Sí';
-                                            if (n === 'no') return 'No';
-                                            return raw.toString();
-                                        };
-                                        let out = '';
-                                        const matchFmt = (val) => {
-                                            const raw = (val ?? '').toString();
-                                            const n = raw.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
-                                            if (n === 'si') return 'Sí';
-                                            if (n === 'no') return 'No';
-                                            return raw;
-                                        };
-                                        if (hasMatched) {
-                                            out += `<div class=\"clip-attr-badges\" style=\"margin-top:8px; display:flex; flex-wrap: wrap; gap:6px;\">` +
-                                                Object.entries(p.attributes_matched).map(([k,v]) =>
-                                                    `<span style=\"background:#eef2ff;color:#374151;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;\">${labelMap[String(k).toLowerCase()] || k}: ${matchFmt(v)}</span>`
-                                                ).join('') +
-                                                `</div>`;
-                                        }
-                                        if (hasRatio) {
-                                            out += `<div class=\"clip-divider\"></div>`;
-                                            out += `<div style=\"width:100%; text-align:left; margin:6px 0;\">`+
-                                                `<span style=\"background:#ecfdf5;color:#065f46;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:700;border:1px solid #d1fae5;\">${Math.round(p.attributes_match_ratio*100)}% atributos</span>`+
-                                                `</div>`;
-                                            out += `<div class=\"clip-divider\"></div>`;
-                                        } else if (hasMatched && summary.length) {
-                                            out += `<div class=\"clip-divider\"></div>`;
-                                        }
-                                        if (summary.length) {
-                                            out += `<div class=\"clip-attr-badges\" style=\"display:flex; flex-wrap: wrap; gap:6px;\">`+
-                                                summary.map(([k,v]) =>
-                                                    `<span style=\"background:#f3f4f6;color:#374151;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;\">${labelMap[String(k).toLowerCase()] || k}: ${fmt(v)}</span>`
-                                                ).join('')+
-                                                `</div>`;
-                                        }
-                                        return out;
-                                    })()}
-                                    ${p.stock !== undefined ? `
-                                        <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
-                                            ${p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock'}
-                                        </div>
-                                    ` : ''}
-                                </div>
-                            </div>
-                        `).join('')}
                     </div>
                 </div>
             `;
