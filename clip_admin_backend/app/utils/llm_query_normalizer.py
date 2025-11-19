@@ -232,6 +232,21 @@ def extract_query_attributes(query: str, client_id: str) -> dict:
             return 'si'
         if has_sin:
             return 'no'
+        # Fallback implícito: si la clave es 'con_X' y aparece el sustantivo solo (sing/plural) sin 'con'/'sin'
+        # Ej: query "delantales beige bolsillos" debe activar con_bolsillo=si
+        if key.startswith('con_'):
+            singular = base.strip()
+            # Variantes morfológicas comunes (singular, plural, plural 'es')
+            variants = {singular}
+            if singular.endswith(('a','o','e')):
+                variants.add(singular + 's')
+                if singular.endswith('e'):
+                    variants.add(singular + 'es')
+            else:
+                # Para terminaciones típicas añadir 's' y 'es'
+                variants.update({singular + 's', singular + 'es'})
+            if any(v in tokens_set for v in variants):
+                return 'si'
         return None
 
     for cfg in configs:

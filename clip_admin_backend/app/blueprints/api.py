@@ -73,7 +73,7 @@ def _get_spacy_nlp():
     if _SPACY_NLP is None:
         try:
             import spacy  # type: ignore
-            model_name = os.getenv("SPACY_MODEL", "es_core_news_sm")
+            model_name = os.getenv("SPACY_MODEL", "es_core_news_md")
             # Deshabilitar componentes no necesarios para reducir overhead
             _SPACY_NLP = spacy.load(model_name, disable=["parser", "ner", "textcat"])
             railway_log(f"spaCy cargado: {model_name}")
@@ -933,6 +933,36 @@ def visual_search():
         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
         return response
+
+    # DEPRECATED: Legacy endpoint deshabilitado para detectar usos en pruebas
+    deprec = jsonify({
+        "success": False,
+        "error": "DEPRECATED_ENDPOINT",
+        "message": "Este endpoint /api/search (visual) está deprecado. Usa /api/search/gpt4v-unified o /api/search/text."
+    })
+    try:
+        deprec.headers['Access-Control-Allow-Origin'] = '*'
+        deprec.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        deprec.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+        deprec.headers['X-Deprecated-Endpoint'] = 'true'
+    except Exception:
+        pass
+    return deprec, 410
+
+    # DEPRECATED: Legacy endpoint deshabilitado para detectar usos en pruebas
+    deprec = jsonify({
+        "success": False,
+        "error": "DEPRECATED_ENDPOINT",
+        "message": "Este endpoint /api/search (visual) está deprecado. Usa /api/search/gpt4v-unified o /api/search/text."
+    })
+    try:
+        deprec.headers['Access-Control-Allow-Origin'] = '*'
+        deprec.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        deprec.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+        deprec.headers['X-Deprecated-Endpoint'] = 'true'
+    except Exception:
+        pass
+    return deprec, 410
 
     start_time = time.time()
 
@@ -3148,6 +3178,8 @@ def unified_search():
                     "total_in_category": N
                 }
             },
+            "exposed_attribute_keys": [...],
+            "exposed_attribute_labels": {...},
             "metadata": {
                 "total_products_found": N,
                 "categories_searched": N,
@@ -3162,6 +3194,21 @@ def unified_search():
         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
         return response
+
+    # DEPRECATED: Legacy endpoint deshabilitado para detectar usos en pruebas
+    deprec = jsonify({
+        "success": False,
+        "error": "DEPRECATED_ENDPOINT",
+        "message": "Este endpoint /api/search/unified está deprecado. Usa /api/search/gpt4v-unified o /api/search/text."
+    })
+    try:
+        deprec.headers['Access-Control-Allow-Origin'] = '*'
+        deprec.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        deprec.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+        deprec.headers['X-Deprecated-Endpoint'] = 'true'
+    except Exception:
+        pass
+    return deprec, 410
 
     start_time = time.time()
 
@@ -3549,6 +3596,24 @@ def unified_search():
         # ===================================================================
         processing_time = (time.time() - start_time) * 1000
 
+        # 🏷️ Cargar mapeo de atributos key -> label para el widget
+        # - exposed_attribute_keys: solo los visibles (para UI opcional)
+        # - exposed_attribute_labels: etiquetas para TODOS los atributos configurados (no depende de visible)
+        exposed_attribute_keys = []
+        exposed_attribute_labels = {}
+        try:
+            from app.models.product_attribute_config import ProductAttributeConfig
+            configs = ProductAttributeConfig.query.filter_by(client_id=client.id).all()
+            for cfg in configs:
+                key_l = (cfg.key or '').strip().lower()
+                if not key_l:
+                    continue
+                if cfg.expose_in_search:
+                    exposed_attribute_keys.append(key_l)
+                exposed_attribute_labels[key_l] = (cfg.label or cfg.key or key_l)
+        except Exception:
+            pass
+
         response_data = {
             "success": True,
             "client": {
@@ -3564,6 +3629,8 @@ def unified_search():
                 "user_intent": gpt4v_result.get('mensaje_usuario', '') if vision_enabled else ''  # Alias para compatibilidad
             },
             "results_by_category": results_by_category,
+            "exposed_attribute_keys": exposed_attribute_keys,  # 🆕 Lista de atributos visibles
+            "exposed_attribute_labels": exposed_attribute_labels,  # 🆕 Mapa key->etiqueta
             "metadata": {
                 "total_products_found": total_products_found,
                 "categories_searched": len(results_by_category),

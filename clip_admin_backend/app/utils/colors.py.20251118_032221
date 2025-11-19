@@ -64,27 +64,14 @@ def _normalize_color_llm(color_str: str, client_id: Optional[str] = None) -> Opt
 
 def normalize_color(color_str: Optional[str], client_id: Optional[str] = None) -> Optional[str]:
     """
-    Normaliza nombres de colores usando LLM con un preprocesamiento mínimo
-    para corregir errores morfológicos frecuentes del español.
+    Normaliza nombres de colores usando LLM con prioridad léxica exacta.
 
-    Args:
-        color_str: String del color a normalizar
-        client_id: UUID del cliente (opcional, mejora precisión con vocabulario específico)
+    Estrategia ajustada (magenta vs menta fix):
+    1. Preprocesar string (lower, quitar acentos, limpiar).
+    2. Chequeo léxico exacto contra conjunto ampliado (evita confundir 'magenta' con 'menta').
+    3. Si no coincide léxicamente, usar LLM normalizer (cacheado).
 
-    Estrategia:
-    - Correcciones léxicas mínimas antes del LLM (ej: "grices" → "gris")
-    - Usa el LLM normalizer para extraer el color base
-    - Cachea resultados para performance
-
-    Ejemplos:
-    - "Azul marino" -> LLM -> "azul"
-    - "Jean" -> LLM -> "azul"
-    - "Beige" -> LLM -> "beige"
-    - "Marrón chocolate" -> LLM -> "marrón"
-    - "Habano" -> LLM -> contexto del cliente
-
-    Returns:
-        Color normalizado por LLM (lowercase) o None si no puede normalizar.
+    Esto mantiene generalidad pero prioriza matches exactos de colores conocidos.
     """
     if not color_str:
         return None
@@ -92,22 +79,28 @@ def normalize_color(color_str: Optional[str], client_id: Optional[str] = None) -
     # Pre-procesamiento básico: minúsculas, quitar acentos y ruido
     s = str(color_str).strip().lower()
     s = _strip_accents(s)
-    # Quitar paréntesis y contenido accesorio
     s = re.sub(r"\(.*?\)", "", s)
-    # Mantener letras y espacios
     s = re.sub(r"[^a-z\s]", " ", s)
     s = re.sub(r"\s+", " ", s).strip()
 
-    # Correcciones específicas mínimas (evita falsos positivos semánticos)
-    # Caso histórico: "grices" (error común) debe mapear a "gris"
-    if s == "grices":
-        return "gris"
+    if len(s) < 3:
+        return None
 
-    # Usar LLM para normalización (con caché)
-    if len(s) >= 3:
-        return _normalize_color_llm(s, client_id=client_id)
+    # Conjunto léxico (sin acentos) priorizado
+    # NOTA: 'magenta' NO incluido intencionalmente para que LLM lo mapee a 'violeta' (comportamiento esperado)
+    LEXICAL_COLORS = {
+        "blanco","negro","gris","rojo","verde","azul","amarillo","marron","bordo","beige","rosa","violeta","lila","celeste",
+        "naranja","turquesa","fucsia","lavanda","coral","salmon","mostaza","chocolate","marfil","crema","arena","cobre",
+        "bronce","plateado","plata","dorado","oro","plomo","pizarra","grafito","granate","vino","carmesi","escarlata","teal","khaki",
+        "caqui","oliva","menta","aguamarina","marino","navy","pastel","perla","hueso","habano","tierra","tiza"
+    }
 
-    return None
+    # Match exacto priorizado
+    if s in LEXICAL_COLORS:
+        return s
+
+    # LLM normalizer fallback
+    return _normalize_color_llm(s, client_id=client_id)
 
 
 def _get_color_embedding(color_str: str, client_id: Optional[str] = None) -> Optional[np.ndarray]:

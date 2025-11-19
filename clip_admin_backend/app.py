@@ -451,9 +451,11 @@ if __name__ == "__main__":
 
             # Validar spaCy (OBLIGATORIO)
             try:
+                import os
                 import spacy
-                nlp = spacy.load("es_core_news_sm", disable=["parser", "ner", "textcat"])
-                print("✅ spaCy validado correctamente (es_core_news_sm)")
+                model_name = os.getenv("SPACY_MODEL", "es_core_news_md")
+                nlp = spacy.load(model_name, disable=["parser", "ner", "textcat"])
+                print(f"✅ spaCy validado correctamente ({model_name})")
             except Exception as spacy_err:
                 print(f"❌ CRITICAL: spaCy no disponible o modelo no instalado: {spacy_err}")
                 print("⚠️ El sistema NO puede funcionar sin spaCy. Abortando inicio.")

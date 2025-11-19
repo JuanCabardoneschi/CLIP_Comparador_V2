@@ -949,13 +949,16 @@
 
                 console.log('🎯 API Response:', data);
 
+                // Extraer labelMap del response
+                const labelMap = data.exposed_attribute_labels || {};
+
                 // Modo multi-categoría
                 if (data.mode === 'multi_category' && data.results_by_category) {
-                    displayMultiCategoryResults(data.results_by_category, data.total_results);
+                    displayMultiCategoryResults(data.results_by_category, data.total_results, labelMap);
                 }
                 // Fallback single categoría
                 else if (data.success && data.results && data.results.length > 0) {
-                    displayResults(data.results, data.total_results);
+                    displayResults(data.results, data.total_results, labelMap);
                 }
                 // Error específico: categoría no detectada
                 else if (data.error === 'category_not_detected') {
@@ -1031,6 +1034,9 @@
                 }
 
                 if (data.success && data.results && data.results.length > 0) {
+                    // Extraer labelMap del response
+                    const labelMap = data.exposed_attribute_labels || {};
+
                     // Mostrar mensaje de sustitución de categoría si aplica
                     const subsDiv = container.querySelector('#clip-category-substitution');
                     if (subsDiv) {
@@ -1043,7 +1049,7 @@
                             subsDiv.style.display = 'none';
                         }
                     }
-                    displayResults(data.results, data.total_results);
+                    displayResults(data.results, data.total_results, labelMap);
                 } else if (data.error === 'category_not_detected') {
                     showCategoryNotDetectedError(data.message, data.details, data.available_categories);
                 } else {
@@ -1089,7 +1095,7 @@
         }
 
         // Display multi-category results
-        function displayMultiCategoryResults(resultsByCategory, totalResults) {
+        function displayMultiCategoryResults(resultsByCategory, totalResults, labelMap = {}) {
             const resultsDiv = container.querySelector('#clip-results');
             const countDiv = container.querySelector('#clip-results-count');
             const gridDiv = container.querySelector('#clip-grid');
@@ -1118,7 +1124,7 @@
                             </div>
                         </div>
                         <div class="clip-category-grid">
-                            ${products.map(r => renderProductCard(r)).join('')}
+                            ${products.map(r => renderProductCard(r, labelMap)).join('')}
                         </div>
                     </div>
                 `;
@@ -1129,19 +1135,19 @@
         }
 
         // Display single category results
-        function displayResults(results, total) {
+        function displayResults(results, total, labelMap = {}) {
             const resultsDiv = container.querySelector('#clip-results');
             const countDiv = container.querySelector('#clip-results-count');
             const gridDiv = container.querySelector('#clip-grid');
 
             countDiv.textContent = `${total} producto${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}`;
 
-            gridDiv.innerHTML = results.map(r => renderProductCard(r)).join('');
+            gridDiv.innerHTML = results.map(r => renderProductCard(r, labelMap)).join('');
             resultsDiv.classList.add('active');
         }
 
         // Render product card (shared)
-        function renderProductCard(r) {
+        function renderProductCard(r, labelMap = {}) {
             // Atributos dinámicos
             let attributesHtml = '';
             if (r.attributes && typeof r.attributes === 'object') {
@@ -1151,7 +1157,9 @@
                         return value !== null && value !== undefined && value !== '';
                     })
                     .map(([key, value]) => {
-                        const label = key.replace(/_/g, ' ').charAt(0).toUpperCase() + key.replace(/_/g, ' ').slice(1);
+                        // 🏷️ Usar label del backend si existe, sino formatear el key
+                        const keyLower = key.toLowerCase();
+                        const label = labelMap[keyLower] || (key.replace(/_/g, ' ').charAt(0).toUpperCase() + key.replace(/_/g, ' ').slice(1));
                         const displayValue = Array.isArray(value) ? value.join(', ') : value;
                         return `
                             <div class="clip-product-attribute">

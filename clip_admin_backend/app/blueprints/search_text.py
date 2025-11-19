@@ -18,6 +18,7 @@ import torch
 # Importar CLIP
 from app.blueprints.embeddings import get_clip_model
 from typing import List, Set
+import os
 
 # Reutilizar normalizador spaCy del blueprint API (sin duplicar lógica)
 try:
@@ -37,50 +38,397 @@ CORS(bp, origins=["*"],
      allow_headers=["Content-Type", "X-API-Key"])
 
 
-def _build_user_feedback(query_text: str, formatted_results: list, detected_category_info: dict = None, client_id: str = None, attrs_requested: dict = None, contradictions: list = None, not_configured: list = None, all_available_values: dict = None):
+# --- Preprocesamiento de consulta (spaCy) ---
+_NLP_ES_WITH_PARSER = None  # Instancia con parser habilitado para análisis de dependencias
+
+def _get_nlp_es():
+    """Obtiene el modelo spaCy español CON parser habilitado.
+
+    IMPORTANTE: No reutiliza _get_spacy_nlp del blueprint API porque ese
+    deshabilita el parser para reducir overhead. Esta función necesita
+    el parser para análisis de dependencias.
+    """
+    global _NLP_ES_WITH_PARSER
+    if _NLP_ES_WITH_PARSER is not None:
+        return _NLP_ES_WITH_PARSER
+
+    try:
+        import spacy  # type: ignore
+        # Permitir configurar el modelo por ENV; default a 'es_core_news_md'
+        model_name = os.getenv("SPACY_MODEL", "es_core_news_md")
+        # Cargar con parser habilitado (solo deshabilitar NER y textcat para reducir overhead)
+        _NLP_ES_WITH_PARSER = spacy.load(model_name, disable=["ner", "textcat"])
+
+        # 🆕 Agregar AttributeRuler para categorías de moda (forzar POS=NOUN)
+        if "attribute_ruler_fashion" not in _NLP_ES_WITH_PARSER.pipe_names:
+            ruler = _NLP_ES_WITH_PARSER.add_pipe("attribute_ruler", name="attribute_ruler_fashion", before="parser")
+
+            # Lista de categorías de moda comunes (hardcoded, genérico multi-tenant)
+            FASHION_CATEGORIES = [
+                # Prendas superiores
+                'remera', 'remeras', 'camiseta', 'camisetas',
+                'camisa', 'camisas', 'blusa', 'blusas',
+                'buzo', 'buzos', 'sweater', 'sweaters',
+                'campera', 'camperas', 'chaqueta', 'chaquetas',
+                'saco', 'sacos', 'blazer', 'blazers',
+                'chaleco', 'chalecos', 'top', 'tops',
+                # Prendas inferiores
+                'pantalón', 'pantalones', 'jean', 'jeans',
+                'short', 'shorts', 'pollera', 'polleras', 'falda', 'faldas',
+                'calza', 'calzas', 'leggins', 'leggings',
+                'jogger', 'joggers',
+                # Vestidos y enteritos
+                'vestido', 'vestidos', 'enterito', 'enteritos',
+                'overall', 'overalls', 'mono', 'monos', 'jumpsuit', 'jumpsuits',
+                # Accesorios
+                'gorra', 'gorras', 'gorro', 'gorros',
+                'bufanda', 'bufandas', 'guante', 'guantes',
+                'medias', 'soquete', 'soquetes', 'cinturón', 'cinturones',
+                # Trabajo/uniformes
+                'delantal', 'delantales', 'ambo', 'ambos', 'uniforme', 'uniformes',
+                # Calzado
+                'zapatilla', 'zapatillas', 'zapato', 'zapatos',
+                'sandalia', 'sandalias', 'bota', 'botas',
+            ]
+
+            patterns = [{"patterns": [[{"LOWER": term}]], "attrs": {"POS": "NOUN"}}
+                        for term in FASHION_CATEGORIES]
+            ruler.add_patterns(patterns)
+            print(f"✅ AttributeRuler fashion agregado ({len(FASHION_CATEGORIES)} términos)")
+
+        return _NLP_ES_WITH_PARSER
+    except Exception as e:
+        print(f"⚠️ No se pudo cargar spaCy con parser: {e}")
+        return None
+
+
+def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
+    """
+    🆕 EXTRACTOR V2 - Reglas de profundidad estrictas + ignorar verbos automáticamente
+
+    REGLAS DE CAPTURA:
+    1. Sustantivo principal (ROOT/obj/nsubj) → SIEMPRE capturar (categoría producto)
+    2. Modificadores NIVEL 1 (directos al principal) → CAPTURAR
+       - Adjetivos (amod) del principal
+       - Sustantivos relacionados (nmod/pobj) dependientes del principal
+    3. Modificadores NIVEL 2+ (modificadores de modificadores) → DESCARTAR
+    4. Verbos y sus dependientes → SIEMPRE ignorar (spaCy los identifica automáticamente)
+    5. SINGULARIZACIÓN: Todos los términos se devuelven en singular usando lemmatización
+
+    EJEMPLOS:
+    - "delantal con bolsillos grandes" → categoría: "delantal", modificadores: ["bolsillo"]
+    - "delantales rojos" → categoría: "delantal", modificadores: ["rojo"]
+    - "short grices" → categoría: "short", modificadores: ["gris"]
+    - "mostrame delantales con cierre al costado" → categoría: "delantal", modificadores: ["cierre"]
+
+    Args:
+        text: Query de búsqueda del usuario
+
+    Returns:
+        dict: {
+            'text': str - términos separados por espacio (para compatibilidad),
+            'category': str - categoría/sustantivo principal en singular,
+            'modifiers': list[str] - lista de modificadores en singular,
+            'success': bool - True si se extrajo categoría
+        }
+    """
+    nlp = _get_nlp_es()
+    if nlp is None:
+        print(f"⚠️ [EXTRACTOR] spaCy no disponible, devolviendo texto original")
+        return {
+            'text': text.lower(),
+            'category': None,
+            'modifiers': [],
+            'success': False
+        }
+
+    doc = nlp(text)
+    print(f"\n{'='*60}")
+    print(f"📝 [EXTRACTOR V2] Análisis: '{text}'")
+    print(f"{'='*60}")
+
+    # Whitelist de anglicismos en moda (mal etiquetados por spaCy español)
+    FASHION_TERMS = {'short', 'shorts', 'top', 'crop', 'leggins', 'jeggings', 'blazer'}
+
+    # 🆕 Función auxiliar para normalizar a singular
+    def _to_singular(token) -> str:
+        """Convierte token a singular usando lemma, con excepciones para anglicismos"""
+        text_lower = token.text.lower()
+
+        # Excepciones especiales de anglicismos (ya están en singular o tienen forma fija)
+        if text_lower in FASHION_TERMS:
+            # Normalizar variantes conocidas
+            if text_lower in ('shorts', 'leggins', 'jeggings'):
+                return text_lower[:-1] if text_lower.endswith('s') else text_lower
+            return text_lower
+
+        # Usar lemma de spaCy (maneja plural→singular automáticamente)
+        lemma = token.lemma_.lower()
+
+        # Post-procesamiento para casos especiales en español
+        # "grices" → lemma "gris" ✓ (spaCy lo maneja bien)
+        # "rojos" → lemma "rojo" ✓ (spaCy lo maneja bien)
+
+        return lemma
+
+    categoria_principal = None
+    modificadores = []
+    elementos_extraidos = set()
+
+    # 🚫 PASO 1: Identificar y marcar TODOS los verbos para ignorarlos
+    verb_tokens = {token for token in doc if token.pos_ == 'VERB'}
+    if verb_tokens:
+        verb_texts = [v.text for v in verb_tokens]
+        print(f"\n🚫 [VERBOS IGNORADOS] {len(verb_tokens)} verbos descartados: {verb_texts}")
+
+    # === PASO 2: Identificar sustantivo principal (categoría) ===
+    # Buscar el primer NOUN/PROPN que NO sea dependiente directo de un verbo
+    principal = None
+    for token in doc:
+        if not token.is_alpha or token.is_stop or token.pos_ == 'VERB':
+            continue
+
+        # Ignorar tokens que dependen directamente de verbos (objetos de verbos de intención)
+        if token.head.pos_ == 'VERB' and token.dep_ in ('dobj', 'obj'):
+            # Este es el objeto del verbo de intención, pero ES nuestro principal
+            # "muestrame [delantales]" → delantales es dobj de muestrame, pero es lo que buscamos
+            pass
+
+        if token.dep_ in ('ROOT', 'obj', 'nsubj', 'dobj'):
+            if token.pos_ in ('NOUN', 'PROPN') or token.text.lower() in FASHION_TERMS:
+                term = _to_singular(token)
+                if term and len(term) >= 3:
+                    principal = token
+                    categoria_principal = term
+                    elementos_extraidos.add(term)
+                    print(f"✅ [PRINCIPAL] '{term}' (original: '{token.text}', POS={token.pos_}, DEP={token.dep_})")
+                    break
+
+    # Si NO hay sustantivo principal, devolver estructura vacía
+    if not principal:
+        print(f"❌ [EXTRACTOR] No se detectó sustantivo principal. Query no válida.")
+        print(f"{'='*60}\n")
+        return {
+            'text': '',
+            'category': None,
+            'modifiers': [],
+            'success': False
+        }
+
+    # === PASO 2: Capturar modificadores NIVEL 1 (directos al principal) ===
+    print(f"\n🔍 [NIVEL 1] Buscando modificadores directos de '{principal.text}':")
+
+    nivel2_discarded = set()  # 🆕 Rastrear términos descartados por ser nivel 2
+
+    # 🆕 CRÍTICO: Si el principal es hijo de un verbo ignorado, procesar también hermanos
+    # Caso: "muestrame [delantales] con [cierre]" → cierre es hermano de delantales, no hijo
+    nodes_to_process = list(principal.children)  # Hijos directos del principal
+
+    if principal.head.pos_ == 'VERB' and principal.head in verb_tokens:
+        # El principal depende de un verbo ignorado: procesar sus hermanos también
+        for sibling in principal.head.children:
+            if sibling == principal:
+                continue  # No procesar el principal de nuevo
+            if not sibling.is_alpha or sibling.is_stop or sibling.pos_ == 'VERB':
+                continue
+            # Solo agregar hermanos que sean sustantivos o preposiciones (estructuras relacionadas)
+            if sibling.pos_ in ('NOUN', 'PROPN') or sibling.dep_ in ('obl', 'prep', 'nmod'):
+                nodes_to_process.append(sibling)
+                print(f"  🔗 Procesando hermano del principal: '{sibling.text}' (DEP={sibling.dep_}, POS={sibling.pos_})")
+                # 🔍 DEBUG: Mostrar hijos del hermano
+                print(f"     Hijos de '{sibling.text}': {[(c.text, c.dep_, c.pos_) for c in sibling.children]}")
+
+    for child in nodes_to_process:
+        if not child.is_alpha or child.is_stop or child.pos_ == 'VERB':
+            continue
+
+        # CASO 0: Sustantivo hermano del principal (obl, nmod directo) → CAPTURAR como nivel 1
+        # Ejemplo: "muestrame delantales con cierre" → cierre es obl de muestrame (hermano de delantales)
+        if child.dep_ in ('obl', 'nmod') and child.pos_ in ('NOUN', 'PROPN'):
+            term = _to_singular(child)
+            if term and len(term) >= 3:
+                elementos_extraidos.add(term)
+                modificadores.append(term)
+                print(f"  ✅ Sustantivo nivel 1 (hermano): '{term}' (original: '{child.text}', dep={child.dep_})")
+
+                # 🆕 FUNCIÓN RECURSIVA: Buscar coordinaciones en TODA la subrama
+                # Ejemplo: "con cierre al costado y bolsillos grandes"
+                # → cierre (nivel 1) → costado (nivel 2) → bolsillos (conj de costado)
+                def find_coordinations(node, base_term, current_depth=2):
+                    """Busca recursivamente coordinaciones (conj) en toda la subrama.
+
+                    Args:
+                        node: Token actual a explorar
+                        base_term: Término nivel 1 original (para logging)
+                        current_depth: Profundidad actual (2=nivel2, 3=nivel3, etc.)
+                    """
+                    for child_node in node.children:
+                        # Coordinación encontrada: capturar como nivel 1
+                        if child_node.dep_ == 'conj' and child_node.pos_ in ('NOUN', 'PROPN'):
+                            coord_term = _to_singular(child_node)
+                            if coord_term and len(coord_term) >= 3:
+                                elementos_extraidos.add(coord_term)
+                                modificadores.append(coord_term)
+                                print(f"  ✅ Sustantivo nivel 1 (coordinado con '{base_term}' via nivel {current_depth}): '{coord_term}' (original: '{child_node.text}')")
+
+                                # Marcar SUS hijos como descartados
+                                for gcc in child_node.children:
+                                    if gcc.is_alpha and not gcc.is_stop and gcc.dep_ not in ('case', 'cc', 'conj'):
+                                        coord_child_term = _to_singular(gcc)
+                                        nivel2_discarded.add(coord_child_term)
+
+                                # Continuar buscando coordinaciones más profundas
+                                find_coordinations(child_node, coord_term, current_depth + 1)
+
+                        # Seguir explorando la subrama (sin capturar nada más)
+                        elif child_node.dep_ not in ('case', 'cc'):
+                            find_coordinations(child_node, base_term, current_depth + 1)
+
+                # Buscar coordinaciones en toda la subrama del hermano
+                find_coordinations(child, term, current_depth=2)
+
+                # ⚠️ SUS HIJOS SON NIVEL 2 → DESCARTAR (excepto coordinaciones ya procesadas)
+                nivel2_terms = []
+                for gc in child.children:
+                    if not gc.is_alpha or gc.is_stop:
+                        continue
+                    # Saltar case markers (con, al, de, etc.), conjunciones coordinantes (y, o) y coordinaciones (procesadas arriba)
+                    if gc.dep_ in ('case', 'cc', 'conj'):
+                        continue
+
+                    nivel2_term = _to_singular(gc)
+                    nivel2_discarded.add(nivel2_term)
+                    nivel2_terms.append(gc.text)
+
+                    # Descartar TODA la cadena anidada (excepto coordinaciones)
+                    def discard_chain(node):
+                        for ggc in node.children:
+                            if ggc.is_alpha and not ggc.is_stop and ggc.dep_ not in ('case', 'cc', 'conj'):
+                                chain_term = _to_singular(ggc)
+                                nivel2_discarded.add(chain_term)
+                                nivel2_terms.append(ggc.text)
+                                discard_chain(ggc)  # Continuar recursivamente
+
+                    discard_chain(gc)
+
+                if nivel2_terms:
+                    print(f"    ⛔ Descartando {len(nivel2_terms)} modificadores nivel 2+ de '{term}': {nivel2_terms}")
+                continue
+
+        # CASO 1: Adjetivo directo (amod) → CAPTURAR
+        if child.dep_ == 'amod' and child.pos_ == 'ADJ':
+            term = _to_singular(child)
+            if term and len(term) >= 3:
+                elementos_extraidos.add(term)
+                modificadores.append(term)
+                print(f"  ✅ Adjetivo nivel 1: '{term}' (original: '{child.text}', amod)")
+
+        # CASO 2: Sustantivo relacionado directo (nmod, pobj, compound) → CAPTURAR
+        elif child.dep_ in ('nmod', 'pobj', 'compound') and child.pos_ in ('NOUN', 'PROPN'):
+            term = _to_singular(child)
+            if term and len(term) >= 3:
+                elementos_extraidos.add(term)
+                modificadores.append(term)
+                print(f"  ✅ Sustantivo nivel 1: '{term}' (original: '{child.text}', dep={child.dep_})")
+
+                # ⚠️ Contar pero NO capturar hijos (nivel 2)
+                nivel2_terms = [gc.text for gc in child.children if gc.is_alpha and not gc.is_stop]
+                if nivel2_terms:
+                    # 🆕 Marcar como descartados para evitar fallback
+                    for gc in child.children:
+                        if gc.is_alpha and not gc.is_stop:
+                            nivel2_term = _to_singular(gc)
+                            nivel2_discarded.add(nivel2_term)
+                    print(f"    ⛔ Descartando {len(nivel2_terms)} modificadores nivel 2 de '{term}': {nivel2_terms}")        # CASO 3: Preposiciones (prep) → buscar pobj dentro
+        elif child.dep_ == 'prep':
+            for prep_child in child.children:
+                if not prep_child.is_alpha or prep_child.is_stop or prep_child.pos_ == 'VERB':
+                    continue
+                if prep_child.dep_ == 'pobj' and prep_child.pos_ in ('NOUN', 'PROPN'):
+                    term = _to_singular(prep_child)
+                    if term and len(term) >= 3:
+                        elementos_extraidos.add(term)
+                        modificadores.append(term)
+                        print(f"  ✅ Sustantivo nivel 1 (via prep '{child.text}'): '{term}' (original: '{prep_child.text}')")
+
+                        # ⚠️ Contar pero NO capturar hijos (nivel 2)
+                        nivel2_terms = [gc.text for gc in prep_child.children if gc.is_alpha and not gc.is_stop]
+                        if nivel2_terms:
+                            # 🆕 Marcar como descartados para evitar fallback
+                            for gc in prep_child.children:
+                                if gc.is_alpha and not gc.is_stop:
+                                    nivel2_term = _to_singular(gc)
+                                    nivel2_discarded.add(nivel2_term)
+
+                                # 🆕 CRÍTICO: Si el hijo es otra preposición, descartar TODA la cadena
+                                if gc.dep_ == 'prep':
+                                    for prep_grandchild in gc.children:
+                                        if prep_grandchild.is_alpha and not prep_grandchild.is_stop:
+                                            nivel2_gc_term = _to_singular(prep_grandchild)
+                                            nivel2_discarded.add(nivel2_gc_term)
+
+                            print(f"    ⛔ Descartando {len(nivel2_terms)} modificadores nivel 2 de '{term}': {nivel2_terms}")
+
+    # === PASO 3: Fallback para términos mal etiquetados ===
+    fallback_added = []
+    processed_lemmas = {e.lower() for e in elementos_extraidos}
+    processed_lemmas.update(nivel2_discarded)  # 🆕 Excluir términos nivel 2 del fallback
+
+    for token in doc:
+        if not token.is_alpha or token.is_stop or token.pos_ == 'VERB':
+            continue
+        if token.pos_ not in ('NOUN', 'PROPN') and token.text.lower() not in FASHION_TERMS:
+            continue
+
+        term = _to_singular(token)
+        if term and len(term) >= 3 and term not in processed_lemmas:
+            elementos_extraidos.add(term)
+            modificadores.append(term)
+            fallback_added.append(f"{term} (original: '{token.text}')")
+
+    if fallback_added:
+        print(f"\n⚠️ [FALLBACK] Capturados por mistagging: {fallback_added}")
+
+    # === RESULTADO FINAL ===
+    if not elementos_extraidos:
+        print(f"\n❌ [EXTRACTOR] No se capturó ningún término relevante")
+        print(f"{'='*60}\n")
+        return {
+            'text': '',
+            'category': categoria_principal,
+            'modifiers': modificadores,
+            'success': False
+        }
+
+    resultado = " ".join(sorted(list(elementos_extraidos)))
+    print(f"\n✅ [RESULTADO] {len(elementos_extraidos)} términos: {sorted(list(elementos_extraidos))}")
+    print(f"📦 [CATEGORÍA] '{categoria_principal}'")
+    print(f"🏷️  [MODIFICADORES] {modificadores if modificadores else '(ninguno)'}")
+    print(f"✅ [SALIDA] '{resultado}'")
+    print(f"{'='*60}\n")
+
+    return {
+        'text': resultado,
+        'category': categoria_principal,
+        'modifiers': modificadores,
+        'success': True
+    }
+
+
+def _build_user_feedback(query_text: str, formatted_results: list, detected_category_info: dict = None,
+                        client_id: str = None, attrs_requested: dict = None, contradictions: list = None,
+                        not_configured: list = None, all_available_values: dict = None,
+                        detected_color_token: str = None, detected_color_normalized: str = None):
     """Feedback dinámico para el usuario (no hardcodeado).
 
     Reglas:
     - Categoría: si la query se reinterpretó, se explica la sustitución.
-    - Color: se normaliza ("blanca"→"blanco", "verdes"→"verde") usando utilidades existentes.
-      Si el color solicitado NO existe en los resultados, se ofrecen alternativas similares calculadas
-      con embeddings de color (si existen) o fallback léxico.
+    - Color: usa detected_color_token y detected_color_normalized pasados desde el endpoint
     - Atributos: lista lo que se detectó, contradicciones y atributos no configurados.
     - Filtrado: cuando se filtra por atributos, muestra los valores disponibles para ese atributo.
     - Independiente del cliente (permite módulos custom pero con fallback genérico).
     """
     from app.utils.colors import normalize_color  # import interno para evitar dependencias circulares
-    try:
-        from app.blueprints.api import _get_color_embedding  # type: ignore
-    except Exception:
-        _get_color_embedding = None
-
-    # Nota: no devolvemos temprano aunque no haya resultados;
-    # construimos igualmente el feedback (p.ej., listar colores disponibles)
-
-    # Tokenización básica (agregar luego spaCy si se requiere mayor robustez)
-    raw_tokens = [t.strip(".,;:!?") for t in query_text.lower().split() if t.strip()]
-
-    # Limitar llamadas al normalizador LLM SOLO a tokens que pueden ser colores
-    base_color_candidates = {
-        'rojo','verde','azul','negro','blanco','marron','marrón','gris','beige','rosa','amarillo','violeta',
-        'celeste','naranja','plateado','caramelo','turquesa','fucsia','habano','bordo','bordó','lila','magenta',
-        'morado','cian','cyan','ocre','mostaza','chocolate'
-    }
-
-    # Detectar posible color solicitado (tomar el primero que normalice distinto de None)
-    requested_color = None
-    requested_color_raw = None
-    for tok in raw_tokens:
-        if tok not in base_color_candidates:
-            continue  # evitar disparar LLM para tokens no-color (p.ej., 'short')
-        # Guardar el primer token candidato a color para mensajes, incluso si no normaliza
-        if requested_color_raw is None:
-            requested_color_raw = tok
-        norm = normalize_color(tok, client_id=client_id)
-        if norm:
-            requested_color = norm
-            break
 
     # Extraer colores disponibles en resultados (normalizados)
     available_colors = []
@@ -184,105 +532,53 @@ def _build_user_feedback(query_text: str, formatted_results: list, detected_cate
 
     # Banner inteligente de color solicitado
     try:
-        if requested_color_raw:
-            if requested_color:
-                # Informar interpretación si hubo mapeo
-                if requested_color_raw.lower() != requested_color.lower():
-                    parts.append(f"Interpretamos '{requested_color_raw}' como color '{requested_color}'")
+        if detected_color_token:
+            # Solo informar interpretación si hubo mapeo REAL (token ambiguo → color claro)
+            # No mostrar si el color ya venía de atributos o si el token ES el color normalizado
+            if detected_color_normalized and detected_color_token.lower() != detected_color_normalized.lower():
+                # Verificar que no sea un caso donde el atributo 'color' ya estaba en attrs_requested
+                # (evita decir "Interpretamos X como Y" cuando Y ya venía explícito)
+                show_interpretation = True
+                if attrs_requested and 'color' in attrs_requested:
+                    # Si el color solicitado en attrs coincide con detected_normalized, no mostrar
+                    if str(attrs_requested['color']).lower() == detected_color_normalized.lower():
+                        show_interpretation = False
 
-                # Si el color no está disponible en los resultados, calcular similares y sugerir
-                if requested_color not in available_colors:
-                    # Calcular colores similares desde el token ORIGINAL para sugerencias
-                    similar_suggestions = []
-                    try:
-                        from app.utils.colors import _get_color_embedding  # type: ignore
-                        import numpy as _np
-                        # Usar requested_color_raw para calcular similares, NO requested_color
-                        emb_target = _get_color_embedding(requested_color_raw, client_id=client_id)
-                        if emb_target is not None:
-                            scored = []
-                            for c in available_colors:
-                                emb_c = _get_color_embedding(c, client_id=client_id)
-                                if emb_c is None:
-                                    continue
-                                sim = float(_np.dot(emb_target, emb_c) / (_np.linalg.norm(emb_target) * _np.linalg.norm(emb_c)))
-                                scored.append((c, sim))
-                            scored.sort(key=lambda x: x[1], reverse=True)
-                            # Top 3 con umbral 0.70 para asegurar relevancia
-                            similar_suggestions = [c for c, s in scored if s >= 0.70][:3]
-                    except Exception:
-                        similar_suggestions = []
+                if show_interpretation:
+                    parts.append(f"Interpretamos '{detected_color_token}' como color '{detected_color_normalized}'")
 
-                    # Mensaje informativo según si hay similares disponibles
-                    if similar_suggestions:
-                        # Incluir categoría si es posible
-                        cat_for_msg = None
-                        try:
-                            if shown_categories:
-                                cat_for_msg = shown_categories[0]
-                            elif detected_category_info and detected_category_info.get('matched_categories'):
-                                cat_for_msg = detected_category_info.get('matched_categories')[0]
-                        except Exception:
-                            cat_for_msg = None
-                        if not cat_for_msg:
-                            cat_for_msg = 'productos'
-
-                        parts.append(
-                            f"No tenemos {cat_for_msg} disponible en color '{requested_color}' en este momento. "
-                            f"Te mostramos los colores más cercanos: {', '.join(similar_suggestions)}"
-                        )
-                    else:
-                        # Si no hay colores similares, listar TODOS los colores disponibles en la categoría
-                        # Usar all_available_values (colores antes del filtrado) si available_colors está vacío
-                        colors_to_show = available_colors if available_colors else []
-
-                        if not colors_to_show and all_available_values and 'color' in all_available_values:
-                            # Normalizar colores de all_available_values
-                            from app.utils.colors import normalize_color as _nc
-                            colors_to_show = []
-                            for c in all_available_values['color']:
-                                normalized = _nc(str(c).lower(), client_id=client_id) or str(c).lower()
-                                if normalized not in colors_to_show:
-                                    colors_to_show.append(normalized)
-
-                        if colors_to_show:
-                            # Incluir categoría si es posible
-                            cat_for_msg = None
-                            try:
-                                if shown_categories:
-                                    cat_for_msg = shown_categories[0]
-                                elif detected_category_info and detected_category_info.get('matched_categories'):
-                                    cat_for_msg = detected_category_info.get('matched_categories')[0]
-                            except Exception:
-                                cat_for_msg = None
-                            if not cat_for_msg:
-                                cat_for_msg = 'productos'
-
-                            parts.append(
-                                f"No tenemos {cat_for_msg} disponible en color '{requested_color}'. "
-                                f"Tenemos disponible en: {', '.join(colors_to_show)}"
-                            )
-                        else:
-                            parts.append(f"No encontramos productos en esta categoría")
-                else:
-                    # El color solicitado SÍ está disponible: informar otros colores disponibles también
-                    # Usar all_available_values (todos los colores ANTES del filtrado) en lugar de available_colors
+            # Si hay resultados, mostrar también otros colores disponibles
+            if formatted_results and available_colors:
+                # Quitar el color actual de la lista de "también disponibles"
+                other_colors = [c for c in available_colors if c != detected_color_normalized]
+                if other_colors and all_available_values and 'color' in all_available_values:
+                    # Usar todos los colores de la categoría (antes del filtrado)
                     all_colors_in_category = []
-                    if all_available_values and 'color' in all_available_values:
-                        all_colors_in_category = [normalize_color(c.lower(), client_id=client_id) or c.lower()
-                                                   for c in all_available_values['color']]
-                        # Deduplicar y quitar el color solicitado
-                        all_colors_in_category = sorted(list(set([c for c in all_colors_in_category if c != requested_color])))
+                    for c in all_available_values['color']:
+                        normalized = normalize_color(c.lower(), client_id=client_id) or c.lower()
+                        if normalized != detected_color_normalized and normalized not in all_colors_in_category:
+                            all_colors_in_category.append(normalized)
 
                     if all_colors_in_category:
-                        parts.append(f"También tenemos disponible en: {', '.join(all_colors_in_category)}")
-            else:
-                # No se reconoció el token como color
-                parts.append(
-                    f"No reconocemos '{requested_color_raw}' como color. Si te refieres a un color, usa 'color={requested_color_raw}'."
-                )
-    except Exception:
-        pass
+                        parts.append(f"También tenemos disponible en: {', '.join(sorted(all_colors_in_category))}")
+
+            elif not formatted_results:
+                # No hay resultados: listar todos los colores disponibles en la categoría
+                if all_available_values and 'color' in all_available_values:
+                    all_colors_in_category = []
+                    for c in all_available_values['color']:
+                        normalized = normalize_color(c.lower(), client_id=client_id) or c.lower()
+                        if normalized not in all_colors_in_category:
+                            all_colors_in_category.append(normalized)
+
+                    if all_colors_in_category:
+                        cat_for_msg = shown_categories[0] if shown_categories else 'productos'
+                        parts.append(
+                            f"No tenemos {cat_for_msg} disponible en color '{detected_color_normalized}'. "
+                            f"Tenemos disponible en: {', '.join(sorted(all_colors_in_category))}"
+                        )
+    except Exception as e:
+        print(f"⚠️ Error construyendo feedback de color: {e}")
 
     # Contradicciones
     if contradictions:
@@ -302,7 +598,7 @@ def _build_user_feedback(query_text: str, formatted_results: list, detected_cate
         'result_count': len(formatted_results),
         'categories_shown': shown_categories,
         'colors_available': available_colors or None,
-        'requested_color': requested_color,
+        'requested_color': detected_color_normalized,
         'attributes_requested': attrs_requested or {},
         'attributes_not_configured': not_configured or [],
         'contradictions': contradictions or []
@@ -740,6 +1036,754 @@ def text_search():
 
         limit = min(int(data.get('limit', 10)), 50)
 
+        print(f"\n🎯 [TEXT_SEARCH] Query original recibida: '{query_text}'")
+
+        # Paso 0: Normalización semántica de la frase (spaCy)
+        print(f"📝 [TEXT_SEARCH] Llamando a extractor...")
+        extraction_result = _extract_key_terms_with_dependency_parsing(query_text)
+        print(f"📝 [TEXT_SEARCH] Extractor devolvió: {extraction_result}")
+
+        cleaned_query = extraction_result.get('text', '')
+        if cleaned_query and cleaned_query.strip() and extraction_result.get('success'):
+            print(f"🧹 [TEXT_SEARCH] Preprocesamiento exitoso: '{query_text}' → '{cleaned_query}'")
+            print(f"   📦 Categoría extraída: '{extraction_result.get('category')}'")
+            print(f"   🏷️  Modificadores extraídos: {extraction_result.get('modifiers')}")
+
+            # 🛑 PUNTO DE CORTE PARA TESTING
+            # Obtener categorías del cliente
+            try:
+                client_categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
+                print(f"\n{'='*60}")
+                print(f"🔍 DETECCIÓN DE CATEGORÍAS DEL CLIENTE")
+                print(f"{'='*60}")
+                print(f"Total categorías activas del cliente: {len(client_categories)}")
+
+                # Buscar coincidencias con la categoría extraída
+                categoria_extraida = extraction_result.get('category')
+                matched_categories = []
+                matched_category_ids = []
+
+                for cat in client_categories:
+                    # Tokenizar nombre de categoría (igual que hace el módulo custom)
+                    cat_tokens = set()
+                    if cat.name:
+                        # Tokenizar: "Delantal Completo" → ["delantal", "completo"]
+                        cat_tokens.update(_normalize_tokens_es(cat.name))
+                    if cat.name_en:
+                        cat_tokens.update(_normalize_tokens_es(cat.name_en))
+                    if cat.alternative_terms:
+                        for term in cat.alternative_terms.split(','):
+                            term = term.strip()
+                            if term:
+                                cat_tokens.update(_normalize_tokens_es(term))
+
+                    # Verificar si la categoría extraída está en algún token de la categoría
+                    if categoria_extraida and categoria_extraida.lower() in cat_tokens:
+                        matched_categories.append({
+                            'id': cat.id,
+                            'name': cat.name,
+                            'name_en': cat.name_en,
+                            'slug': cat.slug
+                        })
+                        matched_category_ids.append(cat.id)
+                        print(f"✅ Match encontrado: '{cat.name}' (id: {cat.id}) - tokens: {cat_tokens}")
+
+                print(f"\n📊 RESUMEN DE DETECCIÓN:")
+                print(f"   Categoría en query: '{categoria_extraida}'")
+                print(f"   Categorías coincidentes: {len(matched_categories)}")
+                if matched_categories:
+                    for mc in matched_categories:
+                        print(f"      - {mc['name']} ({mc['slug']})")
+                else:
+                    print(f"      ⚠️ No se encontraron coincidencias")
+
+                # 🆕 PASO 2: ANÁLISIS DE MODIFICADORES vs ATRIBUTOS CONFIGURADOS
+                print(f"\n{'='*60}")
+                print(f"🏷️  ANÁLISIS DE MODIFICADORES")
+                print(f"{'='*60}")
+
+                modificadores = extraction_result.get('modifiers', [])
+                print(f"Modificadores detectados: {modificadores if modificadores else '(ninguno)'}")
+
+                # Cargar atributos configurados para este cliente
+                from app.models.product_attribute_config import ProductAttributeConfig
+                configured_attributes = ProductAttributeConfig.query.filter_by(
+                    client_id=client.id
+                ).order_by(ProductAttributeConfig.field_order).all()
+
+                # Crear mapa de atributos: key -> label (para identificación)
+                attribute_keys = {}  # key normalizado -> objeto config
+                attribute_labels = {}  # label normalizado -> objeto config
+
+                print(f"\nAtributos configurados en el sistema ({len(configured_attributes)}):")
+                for attr in configured_attributes:
+                    key_norm = (attr.key or '').strip().lower()
+                    label_norm = (attr.label or '').strip().lower()
+                    if key_norm:
+                        attribute_keys[key_norm] = attr
+                    if label_norm:
+                        attribute_labels[label_norm] = attr
+                    print(f"   - {attr.label} (key: '{attr.key}', type: {attr.type})")
+
+                # Analizar cada modificador
+                atributos_encontrados = []  # Modificadores que SÍ son atributos configurados
+                modificadores_no_configurados = []  # Modificadores que NO son atributos
+
+                print(f"\n🔍 Comparando modificadores contra atributos configurados:")
+                for mod in modificadores:
+                    mod_norm = mod.strip().lower()
+
+                    # Buscar coincidencia flexible (key o label, con variaciones)
+                    matched = False
+                    matched_config = None
+                    match_type = None
+
+                    # 1. Coincidencia exacta con key
+                    if mod_norm in attribute_keys:
+                        matched = True
+                        matched_config = attribute_keys[mod_norm]
+                        match_type = 'key'
+
+                    # 2. Coincidencia exacta con label
+                    elif mod_norm in attribute_labels:
+                        matched = True
+                        matched_config = attribute_labels[mod_norm]
+                        match_type = 'label'
+
+                    # 3. Coincidencia parcial (singular/plural, sufijos)
+                    else:
+                        # Buscar si el modificador está CONTENIDO en algún key/label
+                        for key_n, cfg in attribute_keys.items():
+                            if mod_norm in key_n or key_n in mod_norm:
+                                matched = True
+                                matched_config = cfg
+                                match_type = 'key_partial'
+                                break
+
+                        if not matched:
+                            for label_n, cfg in attribute_labels.items():
+                                if mod_norm in label_n or label_n in mod_norm:
+                                    matched = True
+                                    matched_config = cfg
+                                    match_type = 'label_partial'
+                                    break
+
+                    if matched and matched_config:
+                        atributos_encontrados.append({
+                            'modificador_original': mod,
+                            'atributo_key': matched_config.key,
+                            'atributo_label': matched_config.label,
+                            'atributo_type': matched_config.type,
+                            'match_tipo': match_type
+                        })
+                        print(f"   ✅ '{mod}' → Match con atributo '{matched_config.label}' (key: {matched_config.key}, tipo: {match_type})")
+                    else:
+                        modificadores_no_configurados.append(mod)
+                        print(f"   ❌ '{mod}' → NO es un atributo configurado")
+
+                print(f"\n📊 RESULTADO CLASIFICACIÓN:")
+                print(f"   ✅ Atributos encontrados: {len(atributos_encontrados)}")
+                print(f"   ❌ Modificadores NO configurados: {len(modificadores_no_configurados)}")
+
+                # 🆕 PASO 3: FILTRADO HÍBRIDO CON CLIP
+                print(f"\n{'='*60}")
+                print(f"🔍 FILTRADO HÍBRIDO: SQL + CLIP")
+                print(f"{'='*60}")
+
+                # 3.1: Obtener productos de las categorías detectadas
+                if not matched_category_ids:
+                    print(f"⚠️ Sin categorías detectadas, no se puede filtrar")
+                    return jsonify({
+                        "success": False,
+                        "error": "no_category",
+                        "message": "No se detectó ninguna categoría válida",
+                        "testing_mode": True
+                    })
+
+                base_products = Product.query.filter(
+                    Product.client_id == client.id,
+                    Product.category_id.in_(matched_category_ids),
+                    Product.is_active == True
+                ).all()
+
+                print(f"\n📦 Base de productos (categorías detectadas): {len(base_products)} productos")
+
+                # 3.2: Aplicar FILTRADO FUERTE (atributos configurados)
+                filtered_products = base_products
+                if atributos_encontrados:
+                    print(f"\n🔒 Aplicando filtrado FUERTE (SQL) para atributos configurados:")
+                    for attr_match in atributos_encontrados:
+                        attr_key = attr_match['atributo_key']
+                        # NOTA: Por ahora no filtramos por valor específico, solo verificamos presencia
+                        # TODO: Inferir valor del modificador (ej: "bolsillo" → "Si")
+                        print(f"   ℹ️  Atributo '{attr_key}' detectado (filtrado por valor pendiente)")
+
+                print(f"   📦 Productos después de filtrado fuerte: {len(filtered_products)}")
+
+                # 3.3: Aplicar FILTRADO DÉBIL (CLIP) para modificadores no configurados
+                if modificadores_no_configurados and filtered_products:
+                    print(f"\n🎯 Aplicando filtrado DÉBIL (CLIP) para modificadores no configurados:")
+                    print(f"   Modificadores: {modificadores_no_configurados}")
+
+                    # Generar embedding de texto para modificadores
+                    query_text = " ".join(modificadores_no_configurados)
+                    print(f"   📝 Texto para embedding: '{query_text}'")
+
+                    try:
+                        clip_model, clip_processor = get_clip_model()
+                        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+                        # Generar embedding del texto (modificadores no configurados)
+                        with torch.no_grad():
+                            text_inputs = clip_processor(
+                                text=[query_text],
+                                return_tensors="pt",
+                                padding=True
+                            ).to(device)
+                            query_embedding = clip_model.get_text_features(**text_inputs)
+                            query_embedding = query_embedding / query_embedding.norm(dim=-1, keepdim=True)
+                            query_vec = query_embedding.cpu().numpy()[0]
+
+                        print(f"   ✅ Embedding generado: vector de {len(query_vec)} dimensiones")
+
+                        # Comparar contra embeddings de imágenes de productos
+                        scored_products = []
+                        for product in filtered_products:
+                            # Obtener imagen primaria del producto
+                            primary_image = None
+                            if product.images:
+                                # Buscar imagen primaria
+                                for img in product.images:
+                                    if img.is_primary:
+                                        primary_image = img
+                                        break
+                                # Si no hay primaria, usar la primera
+                                if not primary_image:
+                                    primary_image = product.images[0]
+
+                            if not primary_image or not primary_image.clip_embedding:
+                                # Sin imagen o sin embedding, score = 0
+                                scored_products.append({
+                                    'product': product,
+                                    'similarity': 0.0,
+                                    'has_embedding': False
+                                })
+                                continue
+
+                            # Parsear embedding de imagen (está guardado como texto JSON)
+                            try:
+                                import json
+                                image_embedding = json.loads(primary_image.clip_embedding)
+                                image_vec = np.array(image_embedding, dtype=np.float32)
+
+                                # Calcular similitud coseno
+                                similarity = float(np.dot(query_vec, image_vec))
+
+                                scored_products.append({
+                                    'product': product,
+                                    'similarity': similarity,
+                                    'has_embedding': True,
+                                    'image_id': primary_image.id
+                                })
+                            except Exception as e:
+                                print(f"   ⚠️ Error parseando embedding de producto {product.id}: {e}")
+                                scored_products.append({
+                                    'product': product,
+                                    'similarity': 0.0,
+                                    'has_embedding': False
+                                })
+
+                        # Ordenar por similitud (mayor a menor)
+                        scored_products.sort(key=lambda x: x['similarity'], reverse=True)
+
+                        print(f"\n📊 RESULTADOS CLIP:")
+                        print(f"   Total productos evaluados: {len(scored_products)}")
+                        print(f"   Productos con embedding: {sum(1 for p in scored_products if p['has_embedding'])}")
+                        print(f"\n   🏆 Top 5 productos por similitud:")
+                        for i, item in enumerate(scored_products[:5], 1):
+                            prod = item['product']
+                            sim = item['similarity']
+                            has_emb = "✅" if item['has_embedding'] else "❌"
+                            print(f"      {i}. {prod.name[:50]:50s} | Sim: {sim:.4f} {has_emb}")
+
+                        # Actualizar lista de productos con los rankeados
+                        filtered_products = [item['product'] for item in scored_products]
+
+                        # 🧩 Reporte unificado: FUERTE (atributos) + DÉBIL (CLIP) + AMBOS
+                        print(f"\n{'='*60}")
+                        print(f"🧩 COBERTURA POR PRODUCTO (FUERTE + DÉBIL)")
+                        print(f"{'='*60}")
+
+                        def _attr_exists(val):
+                            if val is None:
+                                return False
+                            if isinstance(val, bool):
+                                return bool(val)
+                            if isinstance(val, (list, tuple, set, dict)):
+                                return len(val) > 0
+                            s = str(val).strip().lower()
+                            return s not in ('', 'no', 'false', '0', 'none', 'null')
+
+                        # Crear mapa de similitudes CLIP por producto_id
+                        clip_scores = {item['product'].id: item['similarity'] for item in scored_products}
+
+                        # Top productos para mostrar (máximo 20 para no saturar consola)
+                        productos_a_mostrar = filtered_products[:20] if filtered_products else []
+
+                        for p in productos_a_mostrar:
+                            attrs = p.attributes or {}
+                            sim_score = clip_scores.get(p.id, 0.0)
+
+                            # Determinar tipo de match
+                            tiene_fuertes = False
+                            tiene_debiles = modificadores_no_configurados and sim_score > 0.25  # Umbral mínimo
+
+                            if atributos_encontrados:
+                                # Verificar si tiene algún atributo configurado
+                                for attr_match in atributos_encontrados:
+                                    key = attr_match.get('atributo_key') or ''
+                                    val = attrs.get(key)
+                                    if _attr_exists(val):
+                                        tiene_fuertes = True
+                                        break
+
+                            # Clasificar tipo de match
+                            if tiene_fuertes and tiene_debiles:
+                                match_type = "🌟 AMBOS"
+                            elif tiene_fuertes:
+                                match_type = "✅ FUERTE"
+                            elif tiene_debiles:
+                                match_type = "🎯 DÉBIL"
+                            else:
+                                match_type = "⚪ BASE"  # Solo categoría
+
+                            print(f"\n{match_type} | {p.name}")
+
+                            # Mostrar atributos configurados (FUERTE)
+                            if atributos_encontrados:
+                                attrs_mostrados = []
+                                for attr_match in atributos_encontrados:
+                                    key = attr_match.get('atributo_key') or ''
+                                    label = attr_match.get('atributo_label') or key
+                                    val = attrs.get(key)
+                                    existe = _attr_exists(val)
+                                    existe_txt = 'SÍ' if existe else 'NO'
+                                    val_txt = f" = {val}" if val is not None else ''
+                                    attrs_mostrados.append(f"{label}: {existe_txt}{val_txt}")
+                                if attrs_mostrados:
+                                    print(f"   └─ Atributos: {' | '.join(attrs_mostrados)}")
+
+                            # Mostrar score CLIP (DÉBIL)
+                            if modificadores_no_configurados:
+                                mods_txt = ', '.join(modificadores_no_configurados)
+                                print(f"   └─ CLIP similarity: {sim_score:.3f} (mods: {mods_txt})")
+
+                        print(f"\n📊 Leyenda:")
+                        print(f"   🌟 AMBOS   = Tiene atributos configurados Y buena similitud CLIP")
+                        print(f"   ✅ FUERTE  = Solo atributos configurados")
+                        print(f"   🎯 DÉBIL   = Solo similitud CLIP (sin atributos)")
+                        print(f"   ⚪ BASE    = Solo categoría (sin filtros)")
+
+                    except Exception as e:
+                        print(f"   ❌ Error en filtrado CLIP: {e}")
+                        import traceback
+                        traceback.print_exc()
+
+                else:
+                    print(f"\n📝 Sin modificadores no configurados, no se aplica filtrado CLIP")
+
+                # 🛑 BREAKPOINT: Retornar resultados de prueba
+                # Enriquecer top_5 con imagen y cobertura de atributos fuertes/débiles
+                try:
+                    def _attr_exists(val):
+                        if val is None:
+                            return False
+                        if isinstance(val, bool):
+                            return bool(val)
+                        if isinstance(val, (list, tuple, set, dict)):
+                            return len(val) > 0
+                        s = str(val).strip().lower()
+                        return s not in ('', 'no', 'false', '0', 'none', 'null')
+
+                    # Mapa key->label de atributos fuertes detectados
+                    strong_attr_map = []
+                    for a in (atributos_encontrados or []):
+                        strong_attr_map.append({
+                            'key': a.get('atributo_key'),
+                            'label': a.get('atributo_label') or a.get('atributo_key')
+                        })
+
+                    # Mapa de similitudes CLIP si existe
+                    try:
+                        clip_scores  # noqa: F401 (puede no existir si no hubo CLIP)
+                    except NameError:
+                        clip_scores = {}
+
+                    enriched_top5 = []
+                    for p in (filtered_products[:5] if filtered_products else []):
+                        # Imagen principal
+                        image_url = None
+                        try:
+                            primary_image = Image.query.filter_by(product_id=p.id, is_primary=True).first()
+                            if not primary_image:
+                                primary_image = Image.query.filter_by(product_id=p.id).first()
+                            if primary_image and getattr(primary_image, 'display_url', None):
+                                image_url = primary_image.display_url
+                        except Exception:
+                            image_url = None
+
+                        # Cobertura atributos fuertes
+                        coverage = []
+                        attrs = p.attributes or {}
+                        for m in strong_attr_map:
+                            key = (m.get('key') or '').strip()
+                            label = (m.get('label') or key).strip()
+                            val = attrs.get(key)
+                            exists = _attr_exists(val)
+                            coverage.append({
+                                'key': key,
+                                'label': label,
+                                'exists': bool(exists),
+                                'value': val
+                            })
+
+                        # Débil (CLIP) en base a similitud y presencia de modificadores no configurados
+                        sim = float(clip_scores.get(p.id, 0.0)) if isinstance(clip_scores, dict) else 0.0
+                        weak_applied = bool(modificadores_no_configurados) and sim > 0.25
+
+                        # match_type
+                        has_strong = any(c.get('exists') for c in coverage) if coverage else False
+                        if has_strong and weak_applied:
+                            match_type = 'AMBOS'
+                        elif has_strong:
+                            match_type = 'FUERTE'
+                        elif weak_applied:
+                            match_type = 'DÉBIL'
+                        else:
+                            match_type = 'BASE'
+
+                        enriched_top5.append({
+                            'id': str(p.id),
+                            'name': p.name,
+                            'sku': p.sku,
+                            'category': p.category.name if p.category else None,
+                            'image_url': image_url,
+                            'attributes_coverage': coverage,
+                            'weak_modifiers': modificadores_no_configurados or [],
+                            'clip_similarity': round(sim, 3) if sim else 0.0,
+                            'match_type': match_type
+                        })
+                except Exception as _e:
+                    print(f"⚠️ Enriquecimiento top_5 falló: {_e}")
+                    enriched_top5 = [
+                        {
+                            "id": str(p.id),
+                            "name": p.name,
+                            "sku": p.sku,
+                            "category": p.category.name if p.category else None
+                        } for p in filtered_products[:5]
+                    ]
+
+                return jsonify({
+                    "success": True,
+                    "testing_mode": True,
+                    "query_original": query_text,
+                    "query_normalizada": cleaned_query,
+                    "extraction": {
+                        "categoria": categoria_extraida,
+                        "modificadores": modificadores
+                    },
+                    "detection": {
+                        "tiene_match": len(matched_categories) > 0,
+                        "categorias_matched": [
+                            {
+                                "id": cat.id,
+                                "name": cat.name,
+                                "name_en": cat.name_en,
+                                "slug": cat.slug
+                            } for cat in matched_categories
+                        ],
+                        "categorias_cliente_total": len(client_categories)
+                    },
+                    "analysis": {
+                        "atributos_configurados_total": len(configured_attributes),
+                        "atributos_encontrados": atributos_encontrados,
+                        "modificadores_no_configurados": modificadores_no_configurados
+                    },
+                    "filtering": {
+                        "productos_base": len(base_products),
+                        "productos_post_fuerte": len(filtered_products) if atributos_encontrados else len(base_products),
+                        "productos_finales": len(filtered_products),
+                        "filtrado_clip_aplicado": len(modificadores_no_configurados) > 0,
+                        "top_5_productos": enriched_top5
+                    },
+                    "next_step": "Testing completado - Ver cobertura en servidor y UI de prueba"
+                })
+
+            except Exception as e:
+                attribute_labels = {}  # label normalizado -> objeto config
+
+                print(f"\nAtributos configurados en el sistema ({len(configured_attributes)}):")
+                for attr in configured_attributes:
+                    key_norm = attr.key.lower().strip()
+                    label_norm = attr.label.lower().strip()
+                    attribute_keys[key_norm] = attr
+                    attribute_labels[label_norm] = attr
+                    print(f"   - {attr.label} (key: '{attr.key}', type: {attr.type})")
+
+                # Analizar cada modificador
+                atributos_encontrados = []  # Modificadores que SÍ son atributos configurados
+                modificadores_no_configurados = []  # Modificadores que NO son atributos
+
+                print(f"\n🔍 Comparando modificadores contra atributos configurados:")
+                for mod in modificadores:
+                    mod_norm = mod.lower().strip()
+
+                    # Buscar en keys y labels (flexibilidad)
+                    if mod_norm in attribute_keys:
+                        attr = attribute_keys[mod_norm]
+                        atributos_encontrados.append({
+                            'modificador_original': mod,
+                            'atributo_key': attr.key,
+                            'atributo_label': attr.label,
+                            'atributo_type': attr.type,
+                            'match_tipo': 'key'
+                        })
+                        print(f"   ✅ '{mod}' → Atributo configurado: {attr.label} (key: {attr.key})")
+                    elif mod_norm in attribute_labels:
+                        attr = attribute_labels[mod_norm]
+                        atributos_encontrados.append({
+                            'modificador_original': mod,
+                            'atributo_key': attr.key,
+                            'atributo_label': attr.label,
+                            'atributo_type': attr.type,
+                            'match_tipo': 'label'
+                        })
+                        print(f"   ✅ '{mod}' → Atributo configurado: {attr.label} (key: {attr.key})")
+                    else:
+                        modificadores_no_configurados.append(mod)
+                        print(f"   ❌ '{mod}' → NO es un atributo configurado")
+
+                # 🆕 PASO 3: OBTENER VALORES DE ATRIBUTOS EN PRODUCTOS DE LAS CATEGORÍAS
+                print(f"\n{'='*60}")
+                print(f"📦 VALORES DE ATRIBUTOS EN PRODUCTOS")
+                print(f"{'='*60}")
+
+                atributos_valores_disponibles = {}  # key -> lista de valores únicos
+                productos_analizados = 0
+
+                if matched_category_ids:
+                    # Query productos de las categorías detectadas
+                    productos_en_categorias = Product.query.filter(
+                        Product.client_id == client.id,
+                        Product.category_id.in_(matched_category_ids),
+                        Product.is_active == True
+                    ).all()
+
+                    productos_analizados = len(productos_en_categorias)
+                    print(f"Total productos en categorías detectadas: {productos_analizados}")
+
+                    # Extraer valores únicos de cada atributo configurado
+                    for attr_config in configured_attributes:
+                        key = attr_config.key
+                        valores_unicos = set()
+
+                        for producto in productos_en_categorias:
+                            if producto.attributes and isinstance(producto.attributes, dict):
+                                valor = producto.attributes.get(key)
+                                if valor is not None and str(valor).strip():
+                                    # Normalizar valor
+                                    valor_str = str(valor).strip()
+                                    valores_unicos.add(valor_str)
+
+                        if valores_unicos:
+                            atributos_valores_disponibles[key] = sorted(list(valores_unicos))
+                            print(f"   {attr_config.label} ({key}): {len(valores_unicos)} valores únicos")
+                            if len(valores_unicos) <= 5:
+                                print(f"      Valores: {', '.join(sorted(list(valores_unicos)))}")
+                            else:
+                                print(f"      Valores: {', '.join(sorted(list(valores_unicos))[:5])} ...")
+
+                print(f"\n{'='*60}")
+                print(f"📊 RESUMEN FINAL")
+                print(f"{'='*60}")
+                print(f"✅ Atributos encontrados: {len(atributos_encontrados)}")
+                for af in atributos_encontrados:
+                    print(f"   - '{af['modificador_original']}' → {af['atributo_label']} ({af['atributo_key']})")
+
+                print(f"\n❌ Modificadores NO configurados: {len(modificadores_no_configurados)}")
+                for mnc in modificadores_no_configurados:
+                    print(f"   - '{mnc}'")
+
+                print(f"\n📦 Valores disponibles por atributo:")
+                if atributos_valores_disponibles:
+                    for key, valores in atributos_valores_disponibles.items():
+                        label = next((a.label for a in configured_attributes if a.key == key), key)
+                        print(f"   {label} ({key}): {valores}")
+                else:
+                    print(f"   (no hay datos en productos)")
+
+                print(f"{'='*60}\n")
+
+                # 🛑 RETORNAR AQUÍ PARA TESTING (JSON enriquecido con 'filtering.top_5_productos')
+                try:
+                    def _attr_exists(val):
+                        if val is None:
+                            return False
+                        if isinstance(val, bool):
+                            return bool(val)
+                        if isinstance(val, (list, tuple, set, dict)):
+                            return len(val) > 0
+                        s = str(val).strip().lower()
+                        return s not in ('', 'no', 'false', '0', 'none', 'null')
+
+                    strong_attr_map = []
+                    for a in (atributos_encontrados or []):
+                        strong_attr_map.append({
+                            'key': a.get('atributo_key'),
+                            'label': a.get('atributo_label') or a.get('atributo_key')
+                        })
+
+                    try:
+                        clip_scores  # noqa
+                    except NameError:
+                        clip_scores = {}
+
+                    enriched_top5 = []
+                    for p in (filtered_products[:5] if 'filtered_products' in locals() and filtered_products else []):
+                        image_url = None
+                        try:
+                            primary_image = Image.query.filter_by(product_id=p.id, is_primary=True).first()
+                            if not primary_image:
+                                primary_image = Image.query.filter_by(product_id=p.id).first()
+                            if primary_image and getattr(primary_image, 'display_url', None):
+                                image_url = primary_image.display_url
+                        except Exception:
+                            image_url = None
+
+                        coverage = []
+                        attrs = p.attributes or {}
+                        for m in strong_attr_map:
+                            key = (m.get('key') or '').strip()
+                            label = (m.get('label') or key).strip()
+                            val = attrs.get(key)
+                            exists = _attr_exists(val)
+                            coverage.append({
+                                'key': key,
+                                'label': label,
+                                'exists': bool(exists),
+                                'value': val
+                            })
+
+                        sim = float(clip_scores.get(p.id, 0.0)) if isinstance(clip_scores, dict) else 0.0
+                        weak_applied = bool(modificadores_no_configurados) and sim > 0.25
+
+                        has_strong = any(c.get('exists') for c in coverage) if coverage else False
+                        if has_strong and weak_applied:
+                            match_type = 'AMBOS'
+                        elif has_strong:
+                            match_type = 'FUERTE'
+                        elif weak_applied:
+                            match_type = 'DÉBIL'
+                        else:
+                            match_type = 'BASE'
+
+                        enriched_top5.append({
+                            'id': str(p.id),
+                            'name': p.name,
+                            'sku': p.sku,
+                            'category': p.category.name if p.category else None,
+                            'image_url': image_url,
+                            'attributes_coverage': coverage,
+                            'weak_modifiers': modificadores_no_configurados or [],
+                            'clip_similarity': round(sim, 3) if sim else 0.0,
+                            'match_type': match_type
+                        })
+                except Exception as _e:
+                    print(f"⚠️ Enriquecimiento top_5 (bloque 2) falló: {_e}")
+                    enriched_top5 = []
+
+                try:
+                    base_count = len(base_products)
+                except Exception:
+                    base_count = 0
+                try:
+                    final_count = len(filtered_products)
+                except Exception:
+                    final_count = 0
+
+                return jsonify({
+                    "success": True,
+                    "testing_mode": True,
+                    "query_original": data.get('query', ''),
+                    "query_normalizada": cleaned_query,
+                    "extraction": {
+                        "categoria": categoria_extraida,
+                        "modificadores": modificadores
+                    },
+                    "detection": {
+                        "categorias_cliente_total": len(client_categories),
+                        "categorias_matched": matched_categories,
+                        "tiene_match": len(matched_categories) > 0
+                    },
+                    "analysis": {
+                        "atributos_configurados_total": len(configured_attributes),
+                        "atributos_encontrados": atributos_encontrados,
+                        "modificadores_no_configurados": modificadores_no_configurados,
+                        "valores_disponibles_por_atributo": atributos_valores_disponibles,
+                        "productos_analizados": productos_analizados
+                    },
+                    "filtering": {
+                        "productos_base": base_count,
+                        "productos_post_fuerte": final_count if atributos_encontrados else base_count,
+                        "productos_finales": final_count,
+                        "filtrado_clip_aplicado": len(modificadores_no_configurados) > 0,
+                        "top_5_productos": enriched_top5
+                    },
+                    "next_step": "Testing completado - Ver cobertura en servidor y UI de prueba"
+                })
+
+            except Exception as e:
+                print(f"⚠️ Error en detección de categorías: {e}")
+                import traceback
+                traceback.print_exc()
+
+            # ====================================================================
+            # 🚫 CÓDIGO LEGACY (SOLO CONSULTA - NO SE EJECUTA)
+            # ====================================================================
+            """
+            # Código original (comentado para testing)
+            query_text = cleaned_query
+
+            # 🩹 Normalización temprana de color en la query (antes de Stage 1)
+            # ... TODO EL CÓDIGO HASTA EL FINAL ...
+            """
+
+        else:
+            # Si no pudimos extraer elementos, devolver banner de ayuda
+            print(f"❌ [TEXT_SEARCH] Extractor devolvió vacío/None, mostrando banner de ayuda")
+            response_data = {
+                "success": True,
+                "query": data.get('query', ''),
+                "expanded_terms": [],
+                "stage1_candidates": 0,
+                "total_results": 0,
+                "processing_time": round(time.time() - start_time, 3),
+                "search_module": "generic",
+                "user_feedback": {
+                    "message": "Disculpá, no entendí lo que dijiste. Probá escribir solo el producto y color, por ejemplo: 'delantal verde' o 'top negro'.",
+                    "has_results": False
+                },
+                "results": [],
+                "results_by_category": {},
+                "group_by_category": False
+            }
+            response = jsonify(response_data)
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+            return response
+
         print(f"\n{'='*60}")
         print(f"🔍 NUEVA BÚSQUEDA TEXTUAL V2")
         print(f"Query: '{query_text}' | Cliente: {client.name} | Limit: {limit}")
@@ -750,6 +1794,9 @@ def text_search():
 
         # STAGE 1: Broad Recall (SQL) con delegación a módulo custom
         candidates, detection_metadata = stage1_broad_recall(query_text, client.id, client_slug, top_n=50)
+
+        # Guardar expanded_terms para la respuesta (ya se calculó en stage1)
+        expanded_terms_cache = expand_query_with_synonyms(query_text, client.id, client_slug)
 
         # 🚫 VALIDACIÓN CRÍTICA: Si no hay categoría válida detectada, NO continuar
         if not detection_metadata or not detection_metadata.get('matched_categories'):
@@ -765,7 +1812,7 @@ def text_search():
             response_data = {
                 "success": True,
                 "query": query_text,
-                "expanded_terms": expand_query_with_synonyms(query_text, client.id, client_slug),
+                "expanded_terms": expanded_terms_cache,
                 "stage1_candidates": 0,
                 "total_results": 0,
                 "processing_time": round(time.time() - start_time, 3),
@@ -790,7 +1837,7 @@ def text_search():
             response_data = {
                 "success": True,
                 "query": query_text,
-                "expanded_terms": expand_query_with_synonyms(query_text, client.id, client_slug),
+                "expanded_terms": expanded_terms_cache,
                 "stage1_candidates": 0,
                 "total_results": 0,
                 "processing_time": round(time.time() - start_time, 3),
@@ -809,13 +1856,16 @@ def text_search():
         # Extraer atributos solicitados en la query (contexto del cliente)
         attr_info = extract_query_attributes(query_text, client.id)
 
-        # 🟡 Si no se detectó color por léxico, inferirlo semánticamente y usar el flujo normal
+        # 🟡 NUEVA LÓGICA: Inferir color semánticamente sin guardarlo en requested_attrs
+        # Lo usaremos solo para calcular similares en el filtrado
+        detected_color_token = None  # Token original que fue reconocido como color
+        detected_color_normalized = None  # Color normalizado por LLM
+
         try:
             requested_attrs = attr_info.get('attributes', {}) or {}
             from app.utils.colors import normalize_color
 
             # Solo intentar normalizar tokens que NO sean categorías (evitar "delantal" → "bordo")
-            # Obtener categorías del cliente para filtrarlas
             category_tokens = set()
             try:
                 categories = Category.query.filter_by(client_id=client.id).all()
@@ -827,34 +1877,45 @@ def text_search():
             except Exception:
                 pass
 
+            # 🆕 Construir set de atributos configurados para excluir términos que sean atributos
+            configured_attr_tokens = set()
+            try:
+                from app.models.product_attribute_config import ProductAttributeConfig
+                configs = ProductAttributeConfig.query.filter_by(client_id=client.id).all()
+                for cfg in configs:
+                    key = (cfg.key or '').strip().lower()
+                    if not key:
+                        continue
+                    # Extraer base del atributo (ej: 'con_bolsillo' → 'bolsillo')
+                    if key.startswith('con_'):
+                        base = key[4:]
+                        configured_attr_tokens.add(base)
+                        # Agregar plural común
+                        configured_attr_tokens.add(base + 's')
+                    configured_attr_tokens.add(key)
+            except Exception:
+                pass
+
             raw_tokens = [t.strip(".,;:!?") for t in query_text.lower().split() if t.strip()]
-            semantic_color = None
+
             for tok in raw_tokens:
                 if len(tok) < 3:
                     continue
                 # Saltar si es una categoría conocida
                 if tok in category_tokens:
-                    print(f"🔍 [Inferencia color] Saltando '{tok}' (es categoría)")
                     continue
-                print(f"🔍 [Inferencia color] Intentando normalizar '{tok}'...")
+                # 🆕 Saltar si es un atributo configurado (evita interpretar "bolsillos" como color)
+                if tok in configured_attr_tokens:
+                    continue
+
                 c = normalize_color(tok, client_id=client.id)
                 if c:
-                    semantic_color = c
-                    print(f"🔍 [Inferencia color] '{tok}' → '{c}'")
+                    detected_color_token = tok
+                    detected_color_normalized = c
+                    print(f"🎨 Color detectado: '{tok}' → '{c}'")
                     break
-                else:
-                    print(f"🔍 [Inferencia color] '{tok}' no se reconoció como color")
 
-            if semantic_color:
-                prev_color = requested_attrs.get('color')
-                # Reemplazar si no había color o el detectado previo difiere del semántico
-                if (not prev_color) or (prev_color and prev_color.lower() != semantic_color.lower()):
-                    requested_attrs['color'] = semantic_color
-                    attr_info['attributes'] = requested_attrs
-                    attr_info['requested_count'] = len(requested_attrs)
-                    print(f"🎨 Color forzado por semántica: '{semantic_color}' (antes='{prev_color}')")
-            else:
-                print(f"🔍 [Inferencia color] No se detectó ningún color en los tokens")
+            # NO agregamos a requested_attrs aquí - se manejará en el filtrado
         except Exception as _e:
             print(f"⚠️ Inferencia semántica de color falló: {_e}")
 
@@ -865,7 +1926,8 @@ def text_search():
         requested_attrs = attr_info.get('attributes', {})
         requested_count = int(attr_info.get('requested_count', 0))
 
-        # Formatear resultados
+        # 🎨 NO agregamos detected_color_normalized a requested_attrs aquí
+        # Lo manejaremos especialmente en el filtrado para buscar colores SIMILARES        # Formatear resultados
         formatted_results = []
         for result in scored_results:
             product = result['product']
@@ -940,30 +2002,51 @@ def text_search():
                             available_vals.add(str(val))
                 all_available_values[attr_key] = sorted(list(available_vals))
 
-            # Si se solicitó color, filtrar por coincidencia EXACTA o similares si no hay exactos
+            # Si se solicitó color o si detectamos color por normalización, filtrar por coincidencia
             color_req_key = next((k for k in requested_attrs.keys() if str(k).lower() == 'color'), None)
+
+            # 🎨 Variable para guardar el color similar encontrado (para matching posterior)
+            matched_similar_color = None
+
             filtered_results = []
+            # Determinar valor de color a filtrar (desde requested o desde detección)
+            color_filter_value = None
             if color_req_key:
-                color_value = str(requested_attrs.get(color_req_key, '')).lower()
-                # 1) Intentar coincidencias exactas
+                color_filter_value = str(requested_attrs.get(color_req_key, '')).lower()
+            elif detected_color_normalized:
+                color_filter_value = str(detected_color_normalized).lower()
+
+            if color_filter_value:
+                # Usar el token ORIGINAL detectado si existe, sino el valor normalizado
+                color_search_token = detected_color_token if detected_color_token else color_filter_value
+                color_value_normalized = color_filter_value
+
+                print(f"🎨 Filtrando por color: token='{color_search_token}', normalizado='{color_value_normalized}'")
+
+                # 1) Intentar coincidencias con el color NORMALIZADO en los atributos de productos
                 exact_matches = [
                     r for r in formatted_results
-                    if str(r.get('attributes', {}).get('color', '')).lower() == color_value
+                    if str(r.get('attributes', {}).get('color', '')).lower() == color_value_normalized
                 ]
 
                 if exact_matches:
                     filtered_results = exact_matches
-                    print(f"🎨 Filtrado por color exacto '{color_value}': {len(exact_matches)} productos")
+                    matched_similar_color = color_value_normalized  # Hay match exacto
+                    print(f"✅ Filtrado por color exacto '{color_value_normalized}': {len(exact_matches)} productos")
                 else:
-                    # 2) No hay exactos: buscar colores similares y filtrar por esos
-                    print(f"🎨 No hay color exacto '{color_value}', buscando similares...")
+                    # 2) No hay exactos: buscar colores similares usando el TOKEN ORIGINAL
+                    print(f"🔍 No hay color exacto, buscando similares a '{color_search_token}'...")
                     try:
                         from app.utils.colors import _get_color_embedding
-                        target_emb = _get_color_embedding(color_value, client_id=client.id)
+                        # Calcular embedding del TOKEN ORIGINAL (ej: "grices")
+                        target_emb = _get_color_embedding(color_search_token, client_id=client.id)
                         similar_colors = []
 
-                        if target_emb is not None and all_available_values.get(color_req_key):
-                            available_product_colors = [str(v).lower() for v in all_available_values[color_req_key]]
+                        # Si no hay 'color' en all_available_values (porque no fue solicitado),
+                        # no podremos sugerir similares; solo intentaremos exactos.
+                        available_vals = all_available_values.get(color_req_key) if color_req_key else None
+                        if target_emb is not None and available_vals:
+                            available_product_colors = [str(v).lower() for v in available_vals]
                             scored = []
                             for c in set(available_product_colors):
                                 emb_c = _get_color_embedding(c, client_id=client.id)
@@ -975,12 +2058,13 @@ def text_search():
                                 sim = float(np.dot(target_emb, emb_c) / denom)
                                 scored.append((c, sim))
 
-                            # Ordenar y tomar top-3 con umbral 0.65 (más permisivo que antes)
+                            # Ordenar y tomar top-3 con umbral 0.58 (permisivo para captar "grices"→"gris" sim=0.583)
                             scored.sort(key=lambda x: x[1], reverse=True)
-                            THRESH = 0.65
+                            THRESH = 0.58
                             TOPK = 3
                             similar_colors = [c for c, s in scored if s >= THRESH][:TOPK]
-                            print(f"🎨 Colores similares encontrados: {similar_colors}")
+                            print(f"🎨 Colores similares a '{color_search_token}': {[(c,round(s,3)) for c,s in scored[:5]]}")
+                            print(f"✅ Top similares (>{THRESH}): {similar_colors}")
 
                         if similar_colors:
                             similar_set = set(similar_colors)
@@ -988,14 +2072,49 @@ def text_search():
                                 r for r in formatted_results
                                 if str(r.get('attributes', {}).get('color', '')).lower() in similar_set
                             ]
-                            print(f"🎨 Filtrado por colores similares: {len(filtered_results)} productos")
+                            # 🎨 Guardar el mejor color similar encontrado
+                            if similar_colors:
+                                matched_similar_color = similar_colors[0]  # El más similar
+                            print(f"✅ Filtrado por colores similares: {len(filtered_results)} productos")
                         else:
                             # 3) Sin similares: devolver vacío
                             filtered_results = []
-                            print(f"🎨 No se encontraron colores similares a '{color_value}'")
+                            print(f"❌ No se encontraron colores similares a '{color_search_token}'")
                     except Exception as e:
                         print(f"⚠️ Error buscando colores similares: {e}")
+                        import traceback
+                        traceback.print_exc()
                         filtered_results = []
+
+                # 🎨 ACTUALIZAR requested_attrs con el color que realmente matcheó
+                if matched_similar_color:
+                    requested_attrs['color'] = matched_similar_color
+                    # 🎯 ACTUALIZAR también detected_color_normalized para el feedback correcto
+                    if detected_color_token:
+                        detected_color_normalized = matched_similar_color
+                    print(f"🎨 Color para matching actualizado: '{color_value_normalized}' → '{matched_similar_color}'")
+
+                    # 🔄 RECALCULAR attributes_match_count con el color actualizado
+                    for r in filtered_results:
+                        prod_attrs = r.get('attributes', {})
+                        matched = {}
+                        for k, v in requested_attrs.items():
+                            pv = prod_attrs.get(k)
+                            if pv is None:
+                                continue
+                            if isinstance(pv, list):
+                                if any(str(x).lower() == str(v).lower() for x in pv):
+                                    matched[k] = v
+                            else:
+                                if str(pv).lower() == str(v).lower():
+                                    matched[k] = v
+
+                        matched_count = len(matched)
+                        match_ratio = float(matched_count / len(requested_attrs)) if len(requested_attrs) > 0 else 0.0
+
+                        r['attributes_matched'] = matched
+                        r['attributes_match_count'] = matched_count
+                        r['attributes_match_ratio'] = round(match_ratio, 3)
 
                 formatted_results = filtered_results
             else:
@@ -1040,20 +2159,49 @@ def text_search():
             attrs_requested=requested_attrs,
             contradictions=attr_info.get('contradictions', []),
             not_configured=attr_info.get('not_configured', []),
-            all_available_values=all_available_values  # Valores disponibles para los atributos filtrados
+            all_available_values=all_available_values,  # Valores disponibles para los atributos filtrados
+            detected_color_token=detected_color_token,  # Token original detectado como color
+            detected_color_normalized=detected_color_normalized  # Color normalizado por LLM
         )
 
-        # Cargar atributos visibles (expose_in_search=True) para el frontend
+        # Cargar atributos configurados para mapear etiquetas en el frontend
+        # - exposed_attribute_keys: solo los marcados como visibles (comportamiento original)
+        # - exposed_attribute_labels: mapa key->etiqueta para TODOS los atributos configurados (no depende de visible)
         exposed_attribute_keys = []
         exposed_attribute_labels = {}
         try:
             from app.models.product_attribute_config import ProductAttributeConfig
             configs = ProductAttributeConfig.query.filter_by(client_id=client.id).all()
             for cfg in configs:
+                key_l = (cfg.key or '').strip().lower()
+                if not key_l:
+                    continue
+                # Mantener lista de visibles
                 if cfg.expose_in_search:
-                    key_l = (cfg.key or '').strip().lower()
                     exposed_attribute_keys.append(key_l)
-                    exposed_attribute_labels[key_l] = (cfg.label or cfg.key or key_l)
+                # Mapa de etiquetas para TODOS los atributos
+                exposed_attribute_labels[key_l] = (cfg.label or cfg.key or key_l)
+        except Exception:
+            pass
+
+        # Fallback: si el usuario pidió atributos no configurados, generar etiqueta legible
+        # a partir de la clave (p. ej., 'con_bolsillo' -> 'Bolsillo') para evitar mostrar
+        # nombres internos en la UI.
+        try:
+            requested_attrs = attr_info.get('attributes', {}) if isinstance(attr_info, dict) else {}
+            def _beautify_label(k: str) -> str:
+                base = str(k or '').strip().lower()
+                if base.startswith('con_'):
+                    base = base[4:]
+                elif base.startswith('sin_'):
+                    base = base[4:]
+                base = base.replace('_', ' ').strip()
+                return base.capitalize() if base else (k or '').capitalize()
+
+            for k in requested_attrs.keys():
+                kl = str(k).strip().lower()
+                if kl and kl not in exposed_attribute_labels:
+                    exposed_attribute_labels[kl] = _beautify_label(kl)
         except Exception:
             pass
 
@@ -1074,7 +2222,7 @@ def text_search():
         response_data = {
             "success": True,
             "query": query_text,
-            "expanded_terms": expand_query_with_synonyms(query_text, client.id, client_slug),
+            "expanded_terms": expanded_terms_cache,
             "stage1_candidates": len(candidates),
             "total_results": len(formatted_results),
             "processing_time": round(elapsed, 3),

@@ -827,6 +827,8 @@
                 // Extraer atributos visibles del response
                 const exposedKeys = data.exposed_attribute_keys || [];
                 const labelMap = data.exposed_attribute_labels || {};
+                console.log('🏷️ labelMap recibido:', labelMap);
+                console.log('📦 Primer producto attributes_matched:', data.results?.[0]?.attributes_matched);
 
                 // Mostrar resultados
                 if (data.group_by_category && data.results_by_category) {
