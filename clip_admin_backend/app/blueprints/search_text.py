@@ -1369,6 +1369,9 @@ def text_search():
                         # Combinar score de atributos con similitud CLIP
                         for item in scored_products:
                             prod_id = item['product'].id
+                            # Asegurar estructura de scores de atributos aunque no se haya construido previamente
+                            if 'product_attr_scores' not in locals() or product_attr_scores is None:
+                                product_attr_scores = {}
                             attr_score_data = product_attr_scores.get(prod_id, {})
                             attr_matches = attr_score_data.get('attr_matches', 0)
                             attr_total = attr_score_data.get('attr_total', 0)
