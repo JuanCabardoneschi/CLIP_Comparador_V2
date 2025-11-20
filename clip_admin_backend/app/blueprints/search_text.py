@@ -149,11 +149,11 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
     for token in doc:
         if not token.is_alpha or token.is_stop or token.pos_ == 'VERB':
             continue
-        
+
         # Evaluar si es un candidato válido (NOUN o fashion term)
         tl = token.text.lower()
         is_noun_candidate = (token.pos_ in ('NOUN','PROPN')) or (tl in FASHION_TERMS)
-        
+
         if is_noun_candidate:
             term = _to_singular(token)
             if term and len(term) >= 3:
@@ -172,7 +172,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
             print(f"✅ Principal seleccionado (en vocabulario): '{categoria_principal}' (dep={principal.dep_})")
         else:
             print(f"⚠️ Principal seleccionado (fuera de vocabulario): '{categoria_principal}' (dep={principal.dep_})")
-    
+
     if not principal:
         print("⚠️ No se detectó sustantivo principal")
         return {'text':'','category':None,'modifiers':[],'success':False}    # Ya no necesitamos la promoción post-hoc porque priorizamos en la selección inicial

@@ -1959,198 +1959,244 @@ def gpt4v_unified_search():
         # Si Vision está deshabilitado o no detectó categorías, buscar en todas las categorías disponibles
         categories_to_search = list(set(categories_detected)) if categories_detected else categories_list
 
-        for category_name in categories_to_search:
-            # Buscar categoría en BD
-            # Resolver categoría con tolerancia mínima (case-insensitive y fallback singular/plural/contiene)
-            from sqlalchemy import func
+        # ===================================================================
+        # OPTIMIZACIÓN 1: Resolver todas las categorías primero
+        # ===================================================================
+        from sqlalchemy import func
+        from sqlalchemy.orm import joinedload
 
-            def _resolve_category(name: str):
-                # 1) Igualdad case-insensitive
-                cat = Category.query.filter(
-                    Category.client_id == client.id,
-                    Category.is_active == True,
-                    func.lower(Category.name) == name.lower()
-                ).first()
-                if cat:
-                    return cat
-                # 2) Singular/plural simple
-                alt = name[:-1] if name.lower().endswith('s') else (name + 's')
-                cat = Category.query.filter(
-                    Category.client_id == client.id,
-                    Category.is_active == True,
-                    func.lower(Category.name) == alt.lower()
-                ).first()
-                if cat:
-                    return cat
-                # 3) Contiene (evita perder por guiones o espacios)
-                like_pat = f"%{name.lower()}%"
-                cat = Category.query.filter(
-                    Category.client_id == client.id,
-                    Category.is_active == True,
-                    func.lower(Category.name).like(like_pat)
-                ).first()
+        def _resolve_category(name: str):
+            # 1) Igualdad case-insensitive
+            cat = Category.query.filter(
+                Category.client_id == client.id,
+                Category.is_active == True,
+                func.lower(Category.name) == name.lower()
+            ).first()
+            if cat:
                 return cat
+            # 2) Singular/plural simple
+            alt = name[:-1] if name.lower().endswith('s') else (name + 's')
+            cat = Category.query.filter(
+                Category.client_id == client.id,
+                Category.is_active == True,
+                func.lower(Category.name) == alt.lower()
+            ).first()
+            if cat:
+                return cat
+            # 3) Contiene (evita perder por guiones o espacios)
+            like_pat = f"%{name.lower()}%"
+            cat = Category.query.filter(
+                Category.client_id == client.id,
+                Category.is_active == True,
+                func.lower(Category.name).like(like_pat)
+            ).first()
+            return cat
 
+        # Resolver todas las categorías y obtener sus IDs
+        categories_found = {}
+        category_ids = []
+        for category_name in categories_to_search:
             category = _resolve_category(category_name)
-
-            if not category:
+            if category:
+                categories_found[category.id] = category_name
+                category_ids.append(category.id)
+            else:
                 railway_log(f"⚠️ Categoría '{category_name}' no encontrada en BD")
-                continue
 
-            # Buscar productos en esta categoría
-            products_query = Product.query.filter_by(
-                client_id=client.id,
-                category_id=category.id,
-                is_active=True
+        if not category_ids:
+            railway_log("⚠️ No se encontraron categorías válidas")
+            # Continuar con results_by_category vacío
+        else:
+            # ===================================================================
+            # OPTIMIZACIÓN 2: Cache de configuración de atributos (UNA VEZ)
+            # ===================================================================
+            exposed_keys_cache = None
+            try:
+                total_configs = db.session.execute(
+                    text(
+                        """
+                        SELECT COUNT(*) as total
+                        FROM product_attribute_config
+                        WHERE client_id = :client_id
+                        """
+                    ),
+                    {"client_id": client.id},
+                ).fetchone()
+
+                if total_configs and total_configs[0] == 0:
+                    exposed_keys_cache = None  # Sin configuración, exponer todo
+                else:
+                    rows = db.session.execute(
+                        text(
+                            """
+                            SELECT key
+                            FROM product_attribute_config
+                            WHERE client_id = :client_id AND expose_in_search = true
+                            """
+                        ),
+                        {"client_id": client.id},
+                    ).fetchall()
+                    exposed_keys_cache = {r[0] for r in rows}
+                    railway_log(f"✅ Config cache: {len(exposed_keys_cache)} atributos expuestos")
+            except Exception as e:
+                railway_log(f"⚠️ Error consultando product_attribute_config: {e}")
+                db.session.rollback()
+                exposed_keys_cache = None
+
+            # ===================================================================
+            # OPTIMIZACIÓN 3: Batch Query - Traer TODOS los productos de una vez
+            # ===================================================================
+            start_batch = time.time()
+            products_query = Product.query.filter(
+                Product.client_id == client.id,
+                Product.category_id.in_(category_ids),
+                Product.is_active == True
             ).join(Image).filter(
                 Image.is_processed == True,
                 Image.clip_embedding != None
+            ).options(
+                joinedload(Product.images),  # Eager loading de imágenes
+                joinedload(Product.category)  # Eager loading de categoría
             ).distinct()
 
-            products = products_query.all()
-            total_in_category = products_query.count()
+            all_products = products_query.all()
+            railway_log(f"⚡ Batch query: {len(all_products)} productos en {(time.time()-start_batch):.3f}s")
 
-            railway_log(f"   📦 {category_name}: {len(products)} productos")
+            # Agrupar productos por categoría en memoria
+            products_by_category = {}
+            for product in all_products:
+                cat_id = product.category_id
+                products_by_category.setdefault(cat_id, []).append(product)
 
-            # Calcular similitudes
-            product_similarities = []
-            for product in products:
-                # Seleccionar una imagen procesada con embedding válido para este producto
-                try:
-                    img_obj = product.images.filter_by(is_processed=True).filter(Image.clip_embedding != None).first()
-                except Exception:
-                    img_obj = product.images.first()
-                if not img_obj or not img_obj.embedding_vector:
+            # ===================================================================
+            # OPTIMIZACIÓN 4: Vectorización - Calcular similitudes en batch
+            # ===================================================================
+            for cat_id, products in products_by_category.items():
+                category_name = categories_found.get(cat_id)
+                if not category_name:
                     continue
 
-                # embedding_vector es lista de floats (JSON); convertir a np.array
-                product_embedding = np.asarray(img_obj.embedding_vector, dtype=np.float32)
+                railway_log(f"   📦 {category_name}: {len(products)} productos")
 
-                similarity = cosine_similarity(query_embedding, product_embedding)
+                # Preparar embeddings y referencias de productos
+                product_embeddings = []
+                product_refs = []
 
-                # Log temporal para debug de gorras
-                if 'gorro' in category_name.lower() or 'gorra' in category_name.lower():
-                    railway_log(f"      → {product.name} (SKU: {product.sku}): similarity={similarity:.4f}, threshold={threshold:.4f}, pass={'✅' if similarity >= threshold else '❌'}")
+                for product in products:
+                    # Seleccionar imagen procesada con embedding válido
+                    img_obj = None
+                    for img in product.images:
+                        if img.is_processed and img.clip_embedding and img.embedding_vector:
+                            img_obj = img
+                            break
 
-                # Aplicar threshold
-                if similarity >= threshold:
-                    product_similarities.append({
-                        'product': product,
-                        'similarity': float(similarity),
-                        'image': product.images.first()
-                    })
+                    if not img_obj or not img_obj.embedding_vector:
+                        continue
 
-            # Ordenar por similitud descendente
-            product_similarities.sort(key=lambda x: x['similarity'], reverse=True)
+                    product_embeddings.append(img_obj.embedding_vector)
+                    product_refs.append((product, img_obj))
 
-            # Tomar top N resultados
-            top_results = product_similarities[:max_results]
+                if not product_embeddings:
+                    railway_log(f"      ⚠️ No hay embeddings válidos en {category_name}")
+                    results_by_category[category_name] = {
+                        'products': [],
+                        'total_in_category': len(products),
+                        'results_returned': 0
+                    }
+                    continue
 
-            # Serializar resultados usando lógica enriquecida similar a _build_search_results
-            products_data = []
+                # Convertir todos los embeddings a matriz numpy (UNA operación)
+                start_vectorize = time.time()
+                embeddings_matrix = np.array(product_embeddings, dtype=np.float32)
 
-            # Cache de configuración de atributos (una consulta por categoría)
-            exposed_keys_cache = None
-            checked_config = False
+                # Calcular TODAS las similitudes a la vez (vectorizado)
+                similarities = np.dot(embeddings_matrix, query_embedding)
 
-            for result in top_results:
-                p = result['product']
-                img = result['image']
+                # Crear lista de resultados con similitud
+                product_similarities = []
+                for idx, (product, img) in enumerate(product_refs):
+                    sim = float(similarities[idx])
 
-                # Primera vez: cargar configuración de atributos visibles
-                if not checked_config:
-                    try:
-                        client_id = p.client_id
-                        total_configs = db.session.execute(
-                            text(
-                                """
-                                SELECT COUNT(*) as total
-                                FROM product_attribute_config
-                                WHERE client_id = :client_id
-                                """
-                            ),
-                            {"client_id": client_id},
-                        ).fetchone()
+                    # Log temporal para debug de gorras
+                    if 'gorro' in category_name.lower() or 'gorra' in category_name.lower():
+                        railway_log(f"      → {product.name} (SKU: {product.sku}): similarity={sim:.4f}, threshold={threshold:.4f}, pass={'✅' if sim >= threshold else '❌'}")
 
-                        if total_configs and total_configs[0] == 0:
-                            exposed_keys_cache = None  # Sin configuración, exponer todo
-                        else:
-                            rows = db.session.execute(
-                                text(
-                                    """
-                                    SELECT key
-                                    FROM product_attribute_config
-                                    WHERE client_id = :client_id AND expose_in_search = true
-                                    """
-                                ),
-                                {"client_id": client_id},
-                            ).fetchall()
-                            exposed_keys_cache = {r[0] for r in rows}
-                    except Exception as e:
-                        railway_log(f"⚠️ Error consultando product_attribute_config: {e}")
-                        db.session.rollback()
-                        exposed_keys_cache = None
-                    finally:
-                        checked_config = True
+                    # Aplicar threshold
+                    if sim >= threshold:
+                        product_similarities.append({
+                            'product': product,
+                            'similarity': sim,
+                            'image': img
+                        })
 
-                # Obtener imagen primaria en lugar de la que hizo match
-                primary_image = None
-                try:
-                    primary_image = Image.query.filter_by(
-                        product_id=p.id,
-                        is_primary=True
-                    ).first()
+                railway_log(f"      ⚡ Similitudes calculadas en {(time.time()-start_vectorize):.3f}s")
+
+                # Ordenar por similitud descendente
+                product_similarities.sort(key=lambda x: x['similarity'], reverse=True)
+
+                # Tomar top N resultados
+                top_results = product_similarities[:max_results]
+
+                # Serializar resultados
+                products_data = []
+                for result in top_results:
+                    p = result['product']
+                    img = result['image']
+
+                    # Obtener imagen primaria (ya está en memoria por eager loading)
+                    primary_image = None
+                    for img_item in p.images:
+                        if img_item.is_primary:
+                            primary_image = img_item
+                            break
                     if not primary_image:
                         primary_image = img
+
                     image_url = primary_image.display_url if primary_image else None
-                except Exception as e:
-                    railway_log(f"⚠️ Error obteniendo imagen primaria: {e}")
-                    db.session.rollback()
-                    image_url = img.display_url if img else None
 
-                # Preparar atributos filtrados y extraer product_url
-                product_attrs = {}
-                product_url_value = None
-                try:
-                    if hasattr(p, 'attributes') and p.attributes:
-                        # 1) Extraer url_producto del JSONB (siempre, ignorar filtros)
-                        raw_url = p.attributes.get('url_producto')
-                        if isinstance(raw_url, dict):
-                            product_url_value = raw_url.get('value') or raw_url.get('url') or None
-                        else:
-                            product_url_value = raw_url
-
-                        # 2) Filtrar atributos según configuración
-                        if exposed_keys_cache is not None:
-                            product_attrs = {
-                                k: v for k, v in p.attributes.items() if k in exposed_keys_cache
-                            }
-                        else:
-                            product_attrs = dict(p.attributes)
-                except Exception as e:
-                    railway_log(f"⚠️ Error procesando atributos de {p.id}: {e}")
+                    # Preparar atributos filtrados y extraer product_url
                     product_attrs = {}
+                    product_url_value = None
+                    try:
+                        if hasattr(p, 'attributes') and p.attributes:
+                            # 1) Extraer url_producto del JSONB (siempre, ignorar filtros)
+                            raw_url = p.attributes.get('url_producto')
+                            if isinstance(raw_url, dict):
+                                product_url_value = raw_url.get('value') or raw_url.get('url') or None
+                            else:
+                                product_url_value = raw_url
 
-                products_data.append({
-                    'id': str(p.id),
-                    'name': p.name,
-                    'sku': p.sku,
-                    'category': category_name,
-                    'price': float(p.price) if p.price else None,
-                    'image_url': image_url,  # ✅ Imagen primaria con fallback
-                    'similarity_score': result['similarity'],
-                    'attributes': product_attrs,  # ✅ Filtrado por config
-                    'stock': p.stock if hasattr(p, 'stock') and p.stock is not None else 0,
-                    'product_url': product_url_value  # ✅ URL del producto
-                })
+                            # 2) Filtrar atributos según configuración (usar cache)
+                            if exposed_keys_cache is not None:
+                                product_attrs = {
+                                    k: v for k, v in p.attributes.items() if k in exposed_keys_cache
+                                }
+                            else:
+                                product_attrs = dict(p.attributes)
+                    except Exception as e:
+                        railway_log(f"⚠️ Error procesando atributos de {p.id}: {e}")
+                        product_attrs = {}
 
-            total_products_found += len(products_data)
+                    products_data.append({
+                        'id': str(p.id),
+                        'name': p.name,
+                        'sku': p.sku,
+                        'category': category_name,
+                        'price': float(p.price) if p.price else None,
+                        'image_url': image_url,
+                        'similarity_score': result['similarity'],
+                        'attributes': product_attrs,
+                        'stock': p.stock if hasattr(p, 'stock') and p.stock is not None else 0,
+                        'product_url': product_url_value
+                    })
 
-            results_by_category[category_name] = {
-                'products': products_data,
-                'total_in_category': total_in_category,
-                'results_returned': len(products_data)
-            }
+                total_products_found += len(products_data)
+
+                results_by_category[category_name] = {
+                    'products': products_data,
+                    'total_in_category': len(products),
+                    'results_returned': len(products_data)
+                }
 
         # Marcar como detectadas las categorías con resultados si Vision está deshabilitado
         # o como refuerzo cuando Vision no devolvió alguna categoría evidente.
