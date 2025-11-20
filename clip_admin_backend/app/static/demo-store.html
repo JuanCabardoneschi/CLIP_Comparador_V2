@@ -1,13 +1,13 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Goody Store - Visual Search</title>
+    <title>Goody Store - Visual Search (PRODUCCIÓN)</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
             min-height: 100vh;
             padding: 2rem;
             margin: 0;
@@ -34,6 +34,17 @@
             opacity: 0.95;
         }
 
+        .header .prod-badge {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+
         .widget-container {
             width: 100%;
             max-width: 1200px;
@@ -55,21 +66,23 @@
 </head>
 <body>
     <div class="header">
-        <h1> Goody Store</h1>
-        <p>Búsqueda Visual Inteligente</p>
+        <h1>👔 Goody Store</h1>
+        <p>Búsqueda Visual Inteligente - Uniformes y Ropa de Trabajo</p>
+        <span class="prod-badge">🚀 PRODUCCIÓN</span>
     </div>
 
     <div class="widget-container">
         <script>
-            // Configuración fija Demo Fashion (Goody) en producción Railway
+            // Configuración para servidor de PRODUCCIÓN (Railway)
             window.CLIPWidget = {
                 apiKey: 'test-api-key-demo-fashion-store-2024',
                 serverUrl: 'https://clipcomparadorv2-production.up.railway.app'
             };
         </script>
-        <!-- Widget V3 soporta banner de sustitución de categoría para texto -->
+        <!-- Widget V3 ya soporta banner de sustitución de categoría en búsquedas de texto -->
         <script src="./js/clip-widget-embed-v3.js"></script>
         <div id="clip-widget"></div>
+        <!-- Banner se creará dinámicamente dentro del widget -->
         <div id="request-timing" style="margin-top:12px;color:#fff;font-size:0.95rem;font-weight:500;">
             ⏱ Esperando primera búsqueda...
         </div>
@@ -77,6 +90,21 @@
             (function(){
                 const timingEl = document.getElementById('request-timing');
                 if(!timingEl) return;
+                function ensureBanner(){
+                    let banner = document.getElementById('user-feedback');
+                    if(banner) return banner;
+                    const widget = document.getElementById('clip-widget');
+                    if(!widget) return null;
+                    const btn = Array.from(widget.getElementsByTagName('button')).find(b=>/buscar productos/i.test(b.textContent));
+                    if(!btn) return null;
+                    banner = document.createElement('div');
+                    banner.id = 'user-feedback';
+                    banner.className = 'feedback-banner';
+                    btn.parentElement.insertAdjacentElement('afterend', banner);
+                    return banner;
+                }
+                const observer = new MutationObserver(()=>ensureBanner());
+                observer.observe(document.getElementById('clip-widget'), {childList:true, subtree:true});
                 const originalFetch = window.fetch;
                 window.fetch = async function(...args){
                     const url = (args[0] && args[0].toString()) || '';
@@ -94,6 +122,16 @@
                                 serverTime = data.search_time_seconds || data.processing_time || null;
                                 const cat = data.detected_category ? (data.detected_category.name || '') : '';
                                 timingEl.textContent = `⏱ Última búsqueda: ${(roundTripMs).toFixed(0)} ms (red)${serverTime!==null?` | servidor: ${serverTime.toFixed(3)}s`:''}${cat?` | categoría: ${cat}`:''}`;
+                                const feedbackEl = ensureBanner();
+                                if(feedbackEl){
+                                    if (data.user_feedback && data.user_feedback.message) {
+                                        feedbackEl.innerHTML = `<strong>Nota:</strong> ${data.user_feedback.message}`;
+                                        feedbackEl.style.display = 'block';
+                                    } else {
+                                        feedbackEl.style.display = 'none';
+                                        feedbackEl.textContent = '';
+                                    }
+                                }
                             } catch(e){
                                 timingEl.textContent = `⏱ Última búsqueda: ${(roundTripMs).toFixed(0)} ms (sin parse JSON)`;
                             }
@@ -111,7 +149,7 @@
     </div>
 
     <div class="footer">
-        <p>Powered by Red Sis SRL</p>
+        <p>Powered by Red Sis SRL | <strong>Entorno de Producción</strong></p>
     </div>
 </body>
 </html>

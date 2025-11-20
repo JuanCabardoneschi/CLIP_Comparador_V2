@@ -17,7 +17,7 @@ diagnostic_bp = Blueprint('diagnostic', __name__, url_prefix='/diagnostic')
 def deprecated_endpoint(path):
     """
     Devuelve HTTP 410 Gone para todas las rutas del módulo diagnostic.
-    
+
     Este endpoint fue deprecado el 19 de noviembre de 2025.
     Utiliza los endpoints principales de búsqueda en su lugar:
     - /api/search/text
