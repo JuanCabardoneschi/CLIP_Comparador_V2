@@ -41,7 +41,7 @@ for producto in productos:
     productos_por_categoria[producto.category_id].append(producto)
 ```
 
-**Beneficio:** 
+**Beneficio:**
 - ✅ Reducción de 5-8 segundos
 - ✅ 1 query SQL vs N queries
 - ✅ Mismos productos obtenidos
@@ -249,5 +249,5 @@ Si encuentras algún problema:
 3. Comparar resultados con versión anterior
 4. Reportar cualquier discrepancia
 
-**Fecha de implementación:** 20 de noviembre de 2025  
+**Fecha de implementación:** 20 de noviembre de 2025
 **Versión:** v2.1.0-optimized

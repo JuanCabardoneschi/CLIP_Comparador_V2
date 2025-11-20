@@ -1963,7 +1963,7 @@ def gpt4v_unified_search():
         # OPTIMIZACIÓN 1: Resolver todas las categorías primero
         # ===================================================================
         from sqlalchemy import func
-        from sqlalchemy.orm import joinedload, selectinload
+        from sqlalchemy.orm import joinedload
 
         def _resolve_category(name: str):
             # 1) Igualdad case-insensitive
@@ -2055,12 +2055,26 @@ def gpt4v_unified_search():
                 Image.is_processed == True,
                 Image.clip_embedding != None
             ).options(
-                selectinload(Product.images),  # Eager loading de imágenes (selectinload para relaciones dinámicas)
-                joinedload(Product.category)   # Eager loading de categoría
+                joinedload(Product.category)   # Eager loading solo de categoría
             ).distinct()
 
             all_products = products_query.all()
             railway_log(f"⚡ Batch query: {len(all_products)} productos en {(time.time()-start_batch):.3f}s")
+
+            # Pre-cargar TODAS las imágenes en una sola query (optimización manual)
+            product_ids = [p.id for p in all_products]
+            images_by_product = {}
+            if product_ids:
+                all_images = Image.query.filter(
+                    Image.product_id.in_(product_ids),
+                    Image.is_processed == True,
+                    Image.clip_embedding != None
+                ).all()
+
+                for img in all_images:
+                    images_by_product.setdefault(img.product_id, []).append(img)
+
+                railway_log(f"⚡ Pre-cargadas {len(all_images)} imágenes")
 
             # Agrupar productos por categoría en memoria
             products_by_category = {}
@@ -2083,9 +2097,12 @@ def gpt4v_unified_search():
                 product_refs = []
 
                 for product in products:
+                    # Usar imágenes pre-cargadas en lugar de acceso lazy
+                    product_images = images_by_product.get(product.id, [])
+
                     # Seleccionar imagen procesada con embedding válido
                     img_obj = None
-                    for img in product.images:
+                    for img in product_images:
                         if img.is_processed and img.clip_embedding and img.embedding_vector:
                             img_obj = img
                             break
@@ -2143,9 +2160,10 @@ def gpt4v_unified_search():
                     p = result['product']
                     img = result['image']
 
-                    # Obtener imagen primaria (ya está en memoria por eager loading)
+                    # Obtener imagen primaria (usar imágenes pre-cargadas)
                     primary_image = None
-                    for img_item in p.images:
+                    product_images = images_by_product.get(p.id, [])
+                    for img_item in product_images:
                         if img_item.is_primary:
                             primary_image = img_item
                             break
