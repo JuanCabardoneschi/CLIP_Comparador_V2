@@ -134,7 +134,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
     # Cargar fashion terms y categories desde JSON
     FASHION_TERMS = set(_NLP_CONFIG.get('fashion_terms', []))
     FASHION_CATEGORIES_SET = set(_NLP_CONFIG.get('fashion_categories', []))
-    
+
     def _to_singular(token):
         txt = token.text.lower()
         if txt in FASHION_TERMS:
@@ -154,10 +154,10 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
             if term and len(term) >= 3:
                 in_categories = term in FASHION_CATEGORIES_SET
                 candidates.append((token, term, in_categories))
-    
+
     # Priorizar candidatos que están en fashion_categories
     if candidates:
-        candidates.sort(key=lambda x: (not x[2], doc.index(x[0])))  # Primero los que están en categories, luego por orden
+        candidates.sort(key=lambda x: (not x[2], x[0].i))  # Primero los que están en categories, luego por posición
         principal = candidates[0][0]
         categoria_principal = candidates[0][1]
         elementos_extraidos.add(categoria_principal)
@@ -179,9 +179,9 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                 if term and len(term) >= 3:
                     in_categories = term in FASHION_CATEGORIES_SET
                     fallback_candidates.append((token, term, in_categories))
-        
+
         if fallback_candidates:
-            fallback_candidates.sort(key=lambda x: (not x[2], doc.index(x[0])))
+            fallback_candidates.sort(key=lambda x: (not x[2], x[0].i))
             principal = fallback_candidates[0][0]
             categoria_principal = fallback_candidates[0][1]
             elementos_extraidos.add(categoria_principal)
@@ -189,7 +189,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                 print(f"🔁 Fallback principal (en vocabulario): '{categoria_principal}' (dep={principal.dep_}, pos={principal.pos_})")
             else:
                 print(f"🔁 Fallback principal (fuera de vocabulario): '{categoria_principal}' (dep={principal.dep_}, pos={principal.pos_})")
-        
+
         # Si sigue sin encontrarse, abortar limpio
         if not principal:
             print("⚠️ Fallback sin resultado: no se detectó sustantivo principal")
