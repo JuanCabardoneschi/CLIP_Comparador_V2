@@ -131,8 +131,10 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
     elementos_extraidos = set()
     verb_tokens = {t for t in doc if t.pos_ == 'VERB'}
 
-    # Cargar fashion terms desde JSON
+    # Cargar fashion terms y categories desde JSON
     FASHION_TERMS = set(_NLP_CONFIG.get('fashion_terms', []))
+    FASHION_CATEGORIES_SET = set(_NLP_CONFIG.get('fashion_categories', []))
+    
     def _to_singular(token):
         txt = token.text.lower()
         if txt in FASHION_TERMS:
@@ -141,19 +143,33 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
             return txt
         return token.lemma_.lower()
 
+    # ESTRATEGIA MEJORADA: Primero buscar NOUN en fashion_categories, luego cualquier NOUN
+    # Esto asegura que "delantales cielo" elija "delantal" sobre "cielo"
+    candidates = []
     for token in doc:
         if not token.is_alpha or token.is_stop or token.pos_ == 'VERB':
             continue
         if token.dep_ in ('ROOT','obj','nsubj','dobj') and (token.pos_ in ('NOUN','PROPN') or token.text.lower() in FASHION_TERMS):
             term = _to_singular(token)
             if term and len(term) >= 3:
-                principal = token
-                categoria_principal = term
-                elementos_extraidos.add(term)
-                break
+                in_categories = term in FASHION_CATEGORIES_SET
+                candidates.append((token, term, in_categories))
+    
+    # Priorizar candidatos que están en fashion_categories
+    if candidates:
+        candidates.sort(key=lambda x: (not x[2], doc.index(x[0])))  # Primero los que están en categories, luego por orden
+        principal = candidates[0][0]
+        categoria_principal = candidates[0][1]
+        elementos_extraidos.add(categoria_principal)
+        if candidates[0][2]:
+            print(f"✅ Principal seleccionado (en vocabulario): '{categoria_principal}'")
+        else:
+            print(f"⚠️ Principal seleccionado (fuera de vocabulario): '{categoria_principal}'")
 
     if not principal:
         # Fallback: intentar elegir cualquier NOUN / término de moda aunque su dep_ no sea ROOT/obj/nsubj/dobj
+        # También priorizar términos en fashion_categories
+        fallback_candidates = []
         for token in doc:
             if not token.is_alpha or token.is_stop:
                 continue
@@ -161,38 +177,25 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
             if token.pos_ in ('NOUN','PROPN') or tl in FASHION_TERMS:
                 term = _to_singular(token)
                 if term and len(term) >= 3:
-                    principal = token
-                    categoria_principal = term
-                    elementos_extraidos.add(term)
-                    print(f"🔁 Fallback principal seleccionado: '{term}' (dep={token.dep_}, pos={token.pos_})")
-                    break
+                    in_categories = term in FASHION_CATEGORIES_SET
+                    fallback_candidates.append((token, term, in_categories))
+        
+        if fallback_candidates:
+            fallback_candidates.sort(key=lambda x: (not x[2], doc.index(x[0])))
+            principal = fallback_candidates[0][0]
+            categoria_principal = fallback_candidates[0][1]
+            elementos_extraidos.add(categoria_principal)
+            if fallback_candidates[0][2]:
+                print(f"🔁 Fallback principal (en vocabulario): '{categoria_principal}' (dep={principal.dep_}, pos={principal.pos_})")
+            else:
+                print(f"🔁 Fallback principal (fuera de vocabulario): '{categoria_principal}' (dep={principal.dep_}, pos={principal.pos_})")
+        
         # Si sigue sin encontrarse, abortar limpio
         if not principal:
             print("⚠️ Fallback sin resultado: no se detectó sustantivo principal")
             return {'text':'','category':None,'modifiers':[],'success':False}
 
-    # Promoción mínima: si la categoría detectada no pertenece al vocabulario de categorías,
-    # pero existe en la oración otro sustantivo/término cuyo singular SÍ está en fashion_categories,
-    # promoverlo a categoría principal. Esto corrige casos como "delantales cielo".
-    try:
-        FASHION_CATEGORIES_SET = set(_NLP_CONFIG.get('fashion_categories', []))
-    except Exception:
-        FASHION_CATEGORIES_SET = set()
-
-    if categoria_principal and FASHION_CATEGORIES_SET and categoria_principal not in FASHION_CATEGORIES_SET:
-        for tok in doc:
-            if not tok.is_alpha or tok.is_stop:
-                continue
-            tl = tok.text.lower()
-            if (tok.pos_ in ('NOUN', 'PROPN')) or (tl in FASHION_TERMS):
-                cand = _to_singular(tok)
-                if cand in FASHION_CATEGORIES_SET:
-                    print(f"🔁 Promoviendo categoría por vocabulario: '{categoria_principal}' → '{cand}'")
-                    principal = tok
-                    categoria_principal = cand
-                    elementos_extraidos.add(cand)
-                    break
-
+    # Ya no necesitamos la promoción post-hoc porque priorizamos en la selección inicial
     print(f"\n🔍 [NIVEL 1] Buscando modificadores directos de '{principal.text}':")
 
     nivel2_discarded = set()  # Rastrear términos descartados por ser nivel 2
