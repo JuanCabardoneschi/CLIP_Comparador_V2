@@ -28,6 +28,27 @@ try:
 except Exception:
     _get_spacy_nlp = None  # fallback si no está disponible por algún motivo
 
+# Cargar configuración NLP desde JSON
+import json as _json_nlp
+from pathlib import Path as _Path_nlp
+
+def _load_nlp_config():
+    """Carga configuración NLP desde JSON."""
+    json_path = _Path_nlp(__file__).resolve().parents[3] / "shared" / "system_nlp_config.json"
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            return _json_nlp.load(f)
+    except Exception as e:
+        print(f"⚠️ No se pudo cargar system_nlp_config.json ({e}), usando defaults")
+        return {
+            'fashion_categories': [],
+            'fashion_terms': ['short','shorts','top','crop','leggins','jeggings','blazer'],
+            'color_adjectives': ['chocolate'],
+            'semantic_color_config': {}
+        }
+
+_NLP_CONFIG = _load_nlp_config()
+
 # Sistema de módulos personalizados por cliente
 from app.search_modules import get_client_module, has_custom_module
 from app.utils.llm_query_normalizer import extract_query_attributes
@@ -65,38 +86,31 @@ def _get_nlp_es():
         if "attribute_ruler_fashion" not in _NLP_ES_WITH_PARSER.pipe_names:
             ruler = _NLP_ES_WITH_PARSER.add_pipe("attribute_ruler", name="attribute_ruler_fashion", before="parser")
 
-            # Lista de categorías de moda comunes (hardcoded, genérico multi-tenant)
-            FASHION_CATEGORIES = [
-                # Prendas superiores
-                'remera', 'remeras', 'camiseta', 'camisetas',
-                'camisa', 'camisas', 'blusa', 'blusas',
-                'buzo', 'buzos', 'sweater', 'sweaters',
-                'campera', 'camperas', 'chaqueta', 'chaquetas',
-                'saco', 'sacos', 'blazer', 'blazers',
-                'chaleco', 'chalecos', 'top', 'tops',
-                # Prendas inferiores
-                'pantalón', 'pantalones', 'jean', 'jeans',
-                'short', 'shorts', 'pollera', 'polleras', 'falda', 'faldas',
-                'calza', 'calzas', 'leggins', 'leggings',
-                'jogger', 'joggers',
-                # Vestidos y enteritos
-                'vestido', 'vestidos', 'enterito', 'enteritos',
-                'overall', 'overalls', 'mono', 'monos', 'jumpsuit', 'jumpsuits',
-                # Accesorios
-                'gorra', 'gorras', 'gorro', 'gorros',
-                'bufanda', 'bufandas', 'guante', 'guantes',
-                'medias', 'soquete', 'soquetes', 'cinturón', 'cinturones',
-                # Trabajo/uniformes
-                'delantal', 'delantales', 'ambo', 'ambos', 'uniforme', 'uniformes',
-                # Calzado
-                'zapatilla', 'zapatillas', 'zapato', 'zapatos',
-                'sandalia', 'sandalias', 'bota', 'botas',
-            ]
+            # Cargar categorías desde JSON
+            FASHION_CATEGORIES = _NLP_CONFIG.get('fashion_categories', [])
 
             patterns = [{"patterns": [[{"LOWER": term}]], "attrs": {"POS": "NOUN"}}
                         for term in FASHION_CATEGORIES]
             ruler.add_patterns(patterns)
             print(f"✅ AttributeRuler fashion agregado ({len(FASHION_CATEGORIES)} términos)")
+
+        # Segundo AttributeRuler: forzar ciertos términos a ADJETIVOS (colores descriptivos)
+        # Objetivo: permitir que 'chocolate' NO sea interpretado como categoría principal
+        # en queries como "delantal chocolate" y pase al pipeline semántico de color.
+        if "attribute_ruler_semantic_colors" not in _NLP_ES_WITH_PARSER.pipe_names:
+            ruler_colors = _NLP_ES_WITH_PARSER.add_pipe(
+                "attribute_ruler",
+                name="attribute_ruler_semantic_colors",
+                before="parser"
+            )
+            # Cargar adjetivos de color desde JSON
+            COLOR_ADJECTIVES = _NLP_CONFIG.get('color_adjectives', [])
+            color_patterns = [
+                {"patterns": [[{"LOWER": term}]], "attrs": {"POS": "ADJ"}}
+                for term in COLOR_ADJECTIVES
+            ]
+            ruler_colors.add_patterns(color_patterns)
+            print(f"✅ AttributeRuler color-adj agregado ({len(COLOR_ADJECTIVES)} términos)")
 
         return _NLP_ES_WITH_PARSER
     except Exception as e:
@@ -117,7 +131,8 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
     elementos_extraidos = set()
     verb_tokens = {t for t in doc if t.pos_ == 'VERB'}
 
-    FASHION_TERMS = {'short','shorts','top','crop','leggins','jeggings','blazer'}
+    # Cargar fashion terms desde JSON
+    FASHION_TERMS = set(_NLP_CONFIG.get('fashion_terms', []))
     def _to_singular(token):
         txt = token.text.lower()
         if txt in FASHION_TERMS:
@@ -138,7 +153,23 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                 break
 
     if not principal:
-        return {'text':'','category':None,'modifiers':[],'success':False}
+        # Fallback: intentar elegir cualquier NOUN / término de moda aunque su dep_ no sea ROOT/obj/nsubj/dobj
+        for token in doc:
+            if not token.is_alpha or token.is_stop:
+                continue
+            tl = token.text.lower()
+            if token.pos_ in ('NOUN','PROPN') or tl in FASHION_TERMS:
+                term = _to_singular(token)
+                if term and len(term) >= 3:
+                    principal = token
+                    categoria_principal = term
+                    elementos_extraidos.add(term)
+                    print(f"🔁 Fallback principal seleccionado: '{term}' (dep={token.dep_}, pos={token.pos_})")
+                    break
+        # Si sigue sin encontrarse, abortar limpio
+        if not principal:
+            print("⚠️ Fallback sin resultado: no se detectó sustantivo principal")
+            return {'text':'','category':None,'modifiers':[],'success':False}
 
     print(f"\n🔍 [NIVEL 1] Buscando modificadores directos de '{principal.text}':")
 
@@ -940,6 +971,66 @@ def text_search():
 
                 modificadores = extraction_result.get('modifiers', [])
                 print(f"Modificadores detectados: {modificadores if modificadores else '(ninguno)'}")
+
+                # === MAPE0 SEMÁNTICO DE COLORES SISTÉMICOS (ANTES DE CLASIFICAR ATRIBUTOS) ===
+                try:
+                    from app.utils.semantic_colors import SYSTEM_COLOR_ADJECTIVES, map_semantic_colors, get_system_color_adjectives
+                    # Detectar adjetivos sistémicos presentes en la query original (aunque no hayan quedado como modificadores)
+                    nlp_colors = _get_nlp_es()
+                    sys_color_tokens = []
+                    if nlp_colors is not None:
+                        doc_colors = nlp_colors(query_text)
+                        for tok in doc_colors:
+                            tl = tok.text.lower()
+                            if tl in SYSTEM_COLOR_ADJECTIVES:
+                                sys_color_tokens.append(tl)
+                    if sys_color_tokens:
+                        print(f"\n🎨 [SEMANTIC COLOR] Adjetivos sistémicos detectados en query: {sys_color_tokens}")
+                        # Obtener lista de valores de color del cliente para similitud
+                        from app.models.product_attribute_config import ProductAttributeConfig as _PAC_SM
+                        color_cfg = _PAC_SM.query.filter_by(client_id=client.id, key='color').first()
+                        client_color_values = []
+                        if color_cfg and color_cfg.options:
+                            raw_opt = color_cfg.options
+                            try:
+                                import json as _json_sm, unicodedata as _ud_sm
+                                if isinstance(raw_opt, list):
+                                    client_color_values = raw_opt
+                                elif isinstance(raw_opt, dict):
+                                    if 'values' in raw_opt and isinstance(raw_opt['values'], list):
+                                        client_color_values = raw_opt['values']
+                                    else:
+                                        client_color_values = list(raw_opt.keys())
+                                elif isinstance(raw_opt, str):
+                                    parsed = _json_sm.loads(raw_opt)
+                                    if isinstance(parsed, list):
+                                        client_color_values = parsed
+                                    elif isinstance(parsed, dict):
+                                        if 'values' in parsed and isinstance(parsed['values'], list):
+                                            client_color_values = parsed['values']
+                                        else:
+                                            client_color_values = list(parsed.keys())
+                            except Exception as e_color_parse:
+                                print(f"[SEMANTIC COLOR] ⚠️ Error parseando opciones de color: {e_color_parse}")
+                        if client_color_values:
+                            color_map = map_semantic_colors(sys_color_tokens, client_color_values)
+                            for adj_norm, pairs in color_map.items():
+                                if not pairs:
+                                    print(f"[SEMANTIC COLOR] Sin similitudes suficientes para '{adj_norm}'")
+                                    continue
+                                print(f"[SEMANTIC COLOR] '{adj_norm}' → candidatos: {[(c, round(s,3)) for c,s in pairs]} TODO añadir a modificadores")
+                                for color_val, score in pairs:
+                                    # Evitar duplicados y no añadir si ya existe literal en modificadores
+                                    col_norm = color_val.strip().lower()
+                                    if col_norm not in modificadores:
+                                        modificadores.append(col_norm)
+                                        print(f"   ➕ Añadido color semántico '{color_val}' (score {score:.3f}) a modificadores")
+                        else:
+                            print("[SEMANTIC COLOR] ⚠️ Cliente sin valores de color configurados, se omite similitud")
+                    else:
+                        print("[SEMANTIC COLOR] No hay adjetivos sistémicos en la query")
+                except Exception as e_sem_col:
+                    print(f"[SEMANTIC COLOR] ⚠️ Error en mapeo semántico de colores: {e_sem_col}")
 
                 # Cargar atributos configurados para este cliente
                 from app.models.product_attribute_config import ProductAttributeConfig

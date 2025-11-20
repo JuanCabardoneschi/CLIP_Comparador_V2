@@ -1,0 +1,191 @@
+{% extends "layouts/base.html" %}
+{% block title %}Vocabulario NLP - Sistema{% endblock %}
+{% block page_title %}Vocabulario NLP{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('system_config_admin.index') }}">Configuración</a></li>
+        <li class="breadcrumb-item active">Vocabulario NLP</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-alphabet-uppercase"></i> Configuración de Vocabulario NLP</h5>
+            </div>
+            <div class="card-body">
+                <form id="nlpForm">
+                    <!-- Fashion Categories -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-tag-fill text-primary"></i> Categorías de Moda (Fashion Categories)
+                            <span class="badge bg-primary ms-2" id="categoryCount">{{ config.fashion_categories|length }}</span>
+                        </label>
+                        <p class="text-muted small">Términos que se forzarán a POS=NOUN para ser detectados como categoría principal</p>
+                        <textarea class="form-control font-monospace" id="fashionCategories" rows="8">{{ config.fashion_categories|join(', ') }}</textarea>
+                        <div class="form-text">Separar por comas. Ej: remera, remeras, camiseta, camisetas</div>
+                    </div>
+
+                    <!-- Fashion Terms -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-tags-fill text-info"></i> Términos Especiales (Fashion Terms)
+                            <span class="badge bg-info ms-2" id="termCount">{{ config.fashion_terms|length }}</span>
+                        </label>
+                        <p class="text-muted small">Términos que también se consideran categorías pero con lógica especial (singular/plural)</p>
+                        <textarea class="form-control font-monospace" id="fashionTerms" rows="3">{{ config.fashion_terms|join(', ') }}</textarea>
+                        <div class="form-text">Separar por comas. Ej: short, shorts, top, crop, blazer</div>
+                    </div>
+
+                    <!-- Color Adjectives -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-palette text-warning"></i> Adjetivos de Color Sistémicos (Color Adjectives)
+                            <span class="badge bg-warning text-dark ms-2" id="colorCount">{{ config.color_adjectives|length }}</span>
+                        </label>
+                        <p class="text-muted small">Términos forzados a POS=ADJ para mapeo semántico de color</p>
+                        <textarea class="form-control font-monospace" id="colorAdjectives" rows="3">{{ config.color_adjectives|join(', ') }}</textarea>
+                        <div class="form-text">Separar por comas. Ej: chocolate, turquesa, coral, lavanda</div>
+                    </div>
+
+                    <!-- Semantic Color Config -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-sliders text-success"></i> Configuración de Similitud Semántica
+                        </label>
+                        <div class="row">
+                            <div class="col-md-3">
+                                <label class="form-label small">Umbral Principal</label>
+                                <input type="number" class="form-control" id="similarityThreshold"
+                                       value="{{ config.semantic_color_config.similarity_threshold }}"
+                                       step="0.01" min="0" max="1">
+                                <div class="form-text">Default: 0.55</div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Umbral Fallback</label>
+                                <input type="number" class="form-control" id="fallbackThreshold"
+                                       value="{{ config.semantic_color_config.fallback_threshold }}"
+                                       step="0.01" min="0" max="1">
+                                <div class="form-text">Default: 0.48</div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Top K</label>
+                                <input type="number" class="form-control" id="topK"
+                                       value="{{ config.semantic_color_config.top_k }}"
+                                       min="1" max="10">
+                                <div class="form-text">Default: 3</div>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Máximo Final</label>
+                                <input type="number" class="form-control" id="maxFinalColors"
+                                       value="{{ config.semantic_color_config.max_final_colors }}"
+                                       min="1" max="5">
+                                <div class="form-text">Default: 2</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Guardar Configuración
+                        </button>
+                        <a href="{{ url_for('system_config_admin.index') }}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Cancelar
+                        </a>
+                        <button type="button" class="btn btn-outline-info ms-auto" id="previewBtn">
+                            <i class="bi bi-eye"></i> Vista Previa JSON
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Preview -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Vista Previa JSON</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="jsonPreview" class="bg-light p-3 rounded"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Update counters
+    function updateCounters() {
+        const categories = document.getElementById('fashionCategories').value.split(',').filter(s => s.trim()).length;
+        const terms = document.getElementById('fashionTerms').value.split(',').filter(s => s.trim()).length;
+        const colors = document.getElementById('colorAdjectives').value.split(',').filter(s => s.trim()).length;
+
+        document.getElementById('categoryCount').textContent = categories;
+        document.getElementById('termCount').textContent = terms;
+        document.getElementById('colorCount').textContent = colors;
+    }
+
+    document.getElementById('fashionCategories').addEventListener('input', updateCounters);
+    document.getElementById('fashionTerms').addEventListener('input', updateCounters);
+    document.getElementById('colorAdjectives').addEventListener('input', updateCounters);
+
+    // Preview
+    document.getElementById('previewBtn').addEventListener('click', function() {
+        const data = buildConfigData();
+        document.getElementById('jsonPreview').textContent = JSON.stringify(data, null, 2);
+        new bootstrap.Modal(document.getElementById('previewModal')).show();
+    });
+
+    // Build config data
+    function buildConfigData() {
+        return {
+            fashion_categories: document.getElementById('fashionCategories').value
+                .split(',').map(s => s.trim()).filter(s => s),
+            fashion_terms: document.getElementById('fashionTerms').value
+                .split(',').map(s => s.trim()).filter(s => s),
+            color_adjectives: document.getElementById('colorAdjectives').value
+                .split(',').map(s => s.trim()).filter(s => s),
+            semantic_color_config: {
+                similarity_threshold: parseFloat(document.getElementById('similarityThreshold').value),
+                fallback_threshold: parseFloat(document.getElementById('fallbackThreshold').value),
+                top_k: parseInt(document.getElementById('topK').value),
+                max_final_colors: parseInt(document.getElementById('maxFinalColors').value)
+            }
+        };
+    }
+
+    // Submit
+    document.getElementById('nlpForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const data = buildConfigData();
+
+        fetch('{{ url_for("system_config_admin.nlp_vocabulary_save") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.success) {
+                alert('✅ Configuración guardada exitosamente');
+                window.location.href = '{{ url_for("system_config_admin.index") }}';
+            } else {
+                alert('❌ Error: ' + (result.error || 'Desconocido'));
+            }
+        })
+        .catch(err => alert('❌ Error de red: ' + err));
+    });
+});
+</script>
+{% endblock %}

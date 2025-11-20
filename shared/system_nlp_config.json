@@ -1,0 +1,34 @@
+{
+  "fashion_categories": [
+    "remera", "remeras", "camiseta", "camisetas",
+    "camisa", "camisas", "blusa", "blusas",
+    "buzo", "buzos", "sweater", "sweaters",
+    "campera", "camperas", "chaqueta", "chaquetas",
+    "saco", "sacos", "blazer", "blazers",
+    "chaleco", "chalecos", "top", "tops",
+    "pantalón", "pantalones", "jean", "jeans",
+    "short", "shorts", "pollera", "polleras", "falda", "faldas",
+    "calza", "calzas", "leggins", "leggings",
+    "jogger", "joggers",
+    "vestido", "vestidos", "enterito", "enteritos",
+    "overall", "overalls", "mono", "monos", "jumpsuit", "jumpsuits",
+    "gorra", "gorras", "gorro", "gorros",
+    "bufanda", "bufandas", "guante", "guantes",
+    "medias", "soquete", "soquetes", "cinturón", "cinturones",
+    "delantal", "delantales", "ambo", "ambos", "uniforme", "uniformes",
+    "zapatilla", "zapatillas", "zapato", "zapatos",
+    "sandalia", "sandalias", "bota", "botas"
+  ],
+  "fashion_terms": [
+    "short", "shorts", "top", "crop", "leggins", "jeggings", "blazer"
+  ],
+  "color_adjectives": [
+    "chocolate", "turquesa", "coral", "lavanda", "mostaza", "fucsia", "oliva"
+  ],
+  "semantic_color_config": {
+    "similarity_threshold": 0.55,
+    "fallback_threshold": 0.48,
+    "top_k": 3,
+    "max_final_colors": 2
+  }
+}

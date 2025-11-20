@@ -1,0 +1,35 @@
+{
+  "colors": [
+    {
+      "token": "chocolate",
+      "aliases": ["chocolate"],
+      "notes": "Tonalidad marrón/caramelo"
+    },
+    {
+      "token": "turquesa",
+      "aliases": ["turquesa"],
+      "notes": "Intermedio azul/verde"
+    },
+    {
+      "token": "coral",
+      "aliases": ["coral"],
+      "notes": "Intermedio naranja/rosa"
+    },
+    {
+      "token": "lavanda",
+      "aliases": ["lavanda"],
+      "notes": "Tonalidad violeta suave"
+    },
+    {
+      "token": "mostaza",
+      "aliases": ["mostaza"],
+      "notes": "Amarillo oscuro"
+    }
+  ],
+  "config": {
+    "similarity_threshold": 0.55,
+    "fallback_threshold": 0.48,
+    "top_k": 3,
+    "max_final_colors": 2
+  }
+}

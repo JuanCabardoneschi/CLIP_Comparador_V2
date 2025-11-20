@@ -30,7 +30,37 @@
             </div>
         </div>
 
-        <form method="POST" action="{{ url_for('system_config_admin.update') }}">
+        <!-- === NUEVOS PANELES DE VOCABULARIO NLP === -->
+        <div class="row mb-4 g-3">
+            <div class="col-md-6">
+                <div class="card h-100 border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0"><i class="bi bi-alphabet-uppercase"></i> Vocabulario NLP</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text small">Categorías de moda, términos especiales y adjetivos de color sistémicos.</p>
+                        <a href="{{ url_for('system_config_admin.nlp_vocabulary') }}" class="btn btn-primary btn-sm w-100">
+                            <i class="bi bi-pencil-square"></i> Editar Vocabulario
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100 border-success">
+                    <div class="card-header bg-success text-white">
+                        <h6 class="mb-0"><i class="bi bi-palette-fill"></i> Colores Semánticos</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text small">Adjetivos de color que se mapean a colores configurados del cliente.</p>
+                        <a href="{{ url_for('system_config_admin.semantic_colors') }}" class="btn btn-success btn-sm w-100">
+                            <i class="bi bi-pencil-square"></i> Editar Colores
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <form method="POST" action="{{ url_for('system_config_admin.update') }}">>
             <!-- Sección CLIP -->
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-gradient-primary text-white">

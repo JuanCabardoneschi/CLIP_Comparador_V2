@@ -7,8 +7,43 @@ from flask import Blueprint, render_template, request, jsonify, flash, redirect,
 from flask_login import login_required
 from app.utils.permissions import requires_role
 from app.utils.system_config import system_config
+import json
+from pathlib import Path
 
 bp = Blueprint('system_config_admin', __name__)
+
+
+def _get_nlp_config_path():
+    """Obtiene ruta al archivo de configuración NLP."""
+    return Path(__file__).resolve().parents[3] / "shared" / "system_nlp_config.json"
+
+def _get_colors_config_path():
+    """Obtiene ruta al archivo de colores semánticos."""
+    return Path(__file__).resolve().parents[3] / "shared" / "system_semantic_colors.json"
+
+def _load_json_config(path):
+    """Carga configuración desde JSON."""
+    if not path.exists():
+        print(f"[DEBUG] Archivo no existe: {path}")
+        return {}
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        print(f"[DEBUG] JSON cargado desde {path.name}: {list(data.keys())}")
+        return data
+    except Exception as e:
+        print(f"Error cargando config desde {path}: {e}")
+        return {}
+
+def _save_json_config(path, data):
+    """Guarda configuración a JSON."""
+    try:
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error guardando config: {e}")
+        return False
 
 
 @bp.route('/')
@@ -127,6 +162,121 @@ def update_config_api():
             'success': False,
             'error': str(e)
         }), 500
+
+
+# === NUEVAS RUTAS PARA VOCABULARIO NLP Y COLORES SEMÁNTICOS ===
+
+@bp.route('/nlp-vocabulary')
+@login_required
+@requires_role('SUPER_ADMIN')
+def nlp_vocabulary():
+    """Editar vocabulario NLP (fashion categories, terms, color adjectives)."""
+    config = _load_json_config(_get_nlp_config_path())
+    # Asegurar que existan todas las claves con valores por defecto
+    config.setdefault('fashion_categories', [])
+    config.setdefault('fashion_terms', [])
+    config.setdefault('color_adjectives', [])
+    config.setdefault('semantic_color_config', {
+        'similarity_threshold': 0.55,
+        'fallback_threshold': 0.48,
+        'top_k': 3,
+        'max_final_colors': 2
+    })
+    # Debug: imprimir configuración cargada
+    print(f"[DEBUG] Config cargada: fashion_categories={len(config['fashion_categories'])}, fashion_terms={len(config['fashion_terms'])}, color_adjectives={len(config['color_adjectives'])}")
+    return render_template('system_config/nlp_vocabulary.html', config=config)
+
+
+@bp.route('/nlp-vocabulary/save', methods=['POST'])
+@login_required
+@requires_role('SUPER_ADMIN')
+def nlp_vocabulary_save():
+    """Guardar vocabulario NLP."""
+    try:
+        data = request.get_json()
+
+        # Validar estructura
+        required_keys = ['fashion_categories', 'fashion_terms', 'color_adjectives', 'semantic_color_config']
+        for key in required_keys:
+            if key not in data:
+                return jsonify({'success': False, 'error': f'Falta campo: {key}'}), 400
+
+        # Validar que sean listas
+        for key in ['fashion_categories', 'fashion_terms', 'color_adjectives']:
+            if not isinstance(data[key], list):
+                return jsonify({'success': False, 'error': f'{key} debe ser una lista'}), 400
+
+        # Guardar
+        if _save_json_config(_get_nlp_config_path(), data):
+            # Invalidar cache de spaCy para recargar en próximo request
+            try:
+                import app.blueprints.search_text as st_module
+                st_module._NLP_ES_WITH_PARSER = None
+                st_module._NLP_CONFIG = st_module._load_nlp_config()
+            except Exception as e:
+                print(f"⚠️ No se pudo invalidar cache NLP: {e}")
+
+            flash('Configuración NLP guardada exitosamente', 'success')
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Error al guardar archivo'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/semantic-colors')
+@login_required
+@requires_role('SUPER_ADMIN')
+def semantic_colors():
+    """Editar colores semánticos."""
+    config = _load_json_config(_get_colors_config_path())
+    # Asegurar que existan todas las claves con valores por defecto
+    config.setdefault('colors', [])
+    config.setdefault('config', {
+        'similarity_threshold': 0.55,
+        'fallback_threshold': 0.48,
+        'top_k': 3,
+        'max_final_colors': 2
+    })
+    return render_template('system_config/semantic_colors.html', config=config)
+
+
+@bp.route('/semantic-colors/save', methods=['POST'])
+@login_required
+@requires_role('SUPER_ADMIN')
+def semantic_colors_save():
+    """Guardar colores semánticos."""
+    try:
+        data = request.get_json()
+
+        # Validar estructura
+        if 'colors' not in data or not isinstance(data['colors'], list):
+            return jsonify({'success': False, 'error': 'Falta campo colors (lista)'}), 400
+
+        if 'config' not in data or not isinstance(data['config'], dict):
+            return jsonify({'success': False, 'error': 'Falta campo config (dict)'}), 400
+
+        # Validar cada color
+        for color_item in data['colors']:
+            if not isinstance(color_item, dict) or 'token' not in color_item:
+                return jsonify({'success': False, 'error': 'Cada color debe tener campo token'}), 400
+
+        # Guardar
+        if _save_json_config(_get_colors_config_path(), data):
+            # Invalidar cache
+            try:
+                from app.utils import semantic_colors as sc_module
+                sc_module._SYSTEM_COLOR_DATA = None
+                sc_module._SYSTEM_COLOR_SET = None
+            except Exception as e:
+                print(f"⚠️ No se pudo invalidar cache colores: {e}")
+
+            flash('Configuración de colores semánticos guardada', 'success')
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Error al guardar archivo'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @bp.route('/reset', methods=['POST'])

@@ -1,0 +1,157 @@
+{% extends "layouts/base.html" %}
+{% block title %}Colores Semánticos - Sistema{% endblock %}
+{% block page_title %}Colores Semánticos{% endblock %}
+
+{% block breadcrumb %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('dashboard.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('system_config_admin.index') }}">Configuración</a></li>
+        <li class="breadcrumb-item active">Colores Semánticos</li>
+    </ol>
+</nav>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-palette-fill"></i> Configuración de Colores Semánticos</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    Los colores aquí definidos se mapearán semánticamente a los colores configurados en cada cliente.
+                    Por ejemplo, "chocolate" puede mapearse a "MARRON", "CARAMELO" según similitud de embeddings.
+                </div>
+
+                <form id="colorsForm">
+                    <div id="colorsContainer" class="mb-4">
+                        <!-- Colores dinámicos -->
+                    </div>
+
+                    <button type="button" class="btn btn-outline-primary mb-4" id="addColorBtn">
+                        <i class="bi bi-plus-circle"></i> Agregar Color
+                    </button>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-save"></i> Guardar Colores
+                        </button>
+                        <a href="{{ url_for('system_config_admin.index') }}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Cancelar
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<template id="colorTemplate">
+    <div class="card mb-3 color-item">
+        <div class="card-body">
+            <div class="row align-items-start">
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Token</label>
+                    <input type="text" class="form-control color-token" placeholder="chocolate" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">Aliases (opcional)</label>
+                    <input type="text" class="form-control color-aliases" placeholder="chocolate, chocolatado">
+                    <div class="form-text">Separar por comas</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">Notas</label>
+                    <input type="text" class="form-control color-notes" placeholder="Tonalidad marrón/caramelo">
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                    <button type="button" class="btn btn-danger btn-sm remove-color">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const config = {{ config|tojson }};
+    const container = document.getElementById('colorsContainer');
+    const template = document.getElementById('colorTemplate');
+
+    // Load existing colors
+    (config.colors || []).forEach(color => {
+        addColorItem(color);
+    });
+
+    // Add new color
+    document.getElementById('addColorBtn').addEventListener('click', function() {
+        addColorItem({token: '', aliases: [], notes: ''});
+    });
+
+    function addColorItem(data) {
+        const clone = template.content.cloneNode(true);
+        const item = clone.querySelector('.color-item');
+
+        item.querySelector('.color-token').value = data.token || '';
+        item.querySelector('.color-aliases').value = (data.aliases || []).join(', ');
+        item.querySelector('.color-notes').value = data.notes || '';
+
+        item.querySelector('.remove-color').addEventListener('click', function() {
+            item.remove();
+        });
+
+        container.appendChild(clone);
+    }
+
+    // Submit
+    document.getElementById('colorsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const colors = [];
+        document.querySelectorAll('.color-item').forEach(item => {
+            const token = item.querySelector('.color-token').value.trim();
+            if (!token) return;
+
+            const aliasesStr = item.querySelector('.color-aliases').value.trim();
+            const aliases = aliasesStr ? aliasesStr.split(',').map(s => s.trim()).filter(s => s) : [token];
+
+            colors.push({
+                token: token,
+                aliases: aliases,
+                notes: item.querySelector('.color-notes').value.trim()
+            });
+        });
+
+        const data = {
+            colors: colors,
+            config: config.config || {
+                similarity_threshold: 0.55,
+                fallback_threshold: 0.48,
+                top_k: 3,
+                max_final_colors: 2
+            }
+        };
+
+        fetch('{{ url_for("system_config_admin.semantic_colors_save") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.success) {
+                alert('✅ Colores guardados exitosamente');
+                window.location.href = '{{ url_for("system_config_admin.index") }}';
+            } else {
+                alert('❌ Error: ' + (result.error || 'Desconocido'));
+            }
+        })
+        .catch(err => alert('❌ Error de red: ' + err));
+    });
+});
+</script>
+{% endblock %}
