@@ -143,33 +143,21 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
             return txt
         return token.lemma_.lower()
 
-    # ESTRATEGIA MEJORADA: Primero buscar NOUN en fashion_categories, luego cualquier NOUN
+    # ESTRATEGIA MEJORADA: Recolectar todos los NOUN candidatos y priorizar los de fashion_categories
     # Esto asegura que "delantales cielo" elija "delantal" sobre "cielo"
     candidates = []
     for token in doc:
         if not token.is_alpha or token.is_stop or token.pos_ == 'VERB':
             continue
+        # Primero intentar con dependencias relevantes
         if token.dep_ in ('ROOT','obj','nsubj','dobj') and (token.pos_ in ('NOUN','PROPN') or token.text.lower() in FASHION_TERMS):
             term = _to_singular(token)
             if term and len(term) >= 3:
                 in_categories = term in FASHION_CATEGORIES_SET
-                candidates.append((token, term, in_categories))
+                candidates.append((token, term, in_categories, 0))  # prioridad 0 para dep relevantes
 
-    # Priorizar candidatos que están en fashion_categories
-    if candidates:
-        candidates.sort(key=lambda x: (not x[2], x[0].i))  # Primero los que están en categories, luego por posición
-        principal = candidates[0][0]
-        categoria_principal = candidates[0][1]
-        elementos_extraidos.add(categoria_principal)
-        if candidates[0][2]:
-            print(f"✅ Principal seleccionado (en vocabulario): '{categoria_principal}'")
-        else:
-            print(f"⚠️ Principal seleccionado (fuera de vocabulario): '{categoria_principal}'")
-
-    if not principal:
-        # Fallback: intentar elegir cualquier NOUN / término de moda aunque su dep_ no sea ROOT/obj/nsubj/dobj
-        # También priorizar términos en fashion_categories
-        fallback_candidates = []
+    # Si no hay candidatos con dependencias relevantes, buscar cualquier NOUN
+    if not candidates:
         for token in doc:
             if not token.is_alpha or token.is_stop:
                 continue
@@ -178,24 +166,22 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                 term = _to_singular(token)
                 if term and len(term) >= 3:
                     in_categories = term in FASHION_CATEGORIES_SET
-                    fallback_candidates.append((token, term, in_categories))
+                    candidates.append((token, term, in_categories, 1))  # prioridad 1 para fallback
 
-        if fallback_candidates:
-            fallback_candidates.sort(key=lambda x: (not x[2], x[0].i))
-            principal = fallback_candidates[0][0]
-            categoria_principal = fallback_candidates[0][1]
-            elementos_extraidos.add(categoria_principal)
-            if fallback_candidates[0][2]:
-                print(f"🔁 Fallback principal (en vocabulario): '{categoria_principal}' (dep={principal.dep_}, pos={principal.pos_})")
-            else:
-                print(f"🔁 Fallback principal (fuera de vocabulario): '{categoria_principal}' (dep={principal.dep_}, pos={principal.pos_})")
-
-        # Si sigue sin encontrarse, abortar limpio
-        if not principal:
-            print("⚠️ Fallback sin resultado: no se detectó sustantivo principal")
-            return {'text':'','category':None,'modifiers':[],'success':False}
-
-    # Ya no necesitamos la promoción post-hoc porque priorizamos en la selección inicial
+    # Priorizar: 1) en fashion_categories, 2) por prioridad de dep, 3) por posición
+    if candidates:
+        candidates.sort(key=lambda x: (not x[2], x[3], x[0].i))
+        principal = candidates[0][0]
+        categoria_principal = candidates[0][1]
+        elementos_extraidos.add(categoria_principal)
+        if candidates[0][2]:
+            print(f"✅ Principal seleccionado (en vocabulario): '{categoria_principal}'")
+        else:
+            print(f"⚠️ Principal seleccionado (fuera de vocabulario): '{categoria_principal}'")
+    
+    if not principal:
+        print("⚠️ No se detectó sustantivo principal")
+        return {'text':'','category':None,'modifiers':[],'success':False}    # Ya no necesitamos la promoción post-hoc porque priorizamos en la selección inicial
     print(f"\n🔍 [NIVEL 1] Buscando modificadores directos de '{principal.text}':")
 
     nivel2_discarded = set()  # Rastrear términos descartados por ser nivel 2
