@@ -258,62 +258,7 @@ class CloudinaryImageManager:
             print(f"❌ Error eliminando imagen: {e}")
             return False
 
-    def get_image_url(self, image: 'Image', transformation: Dict[str, Any] = None) -> Optional[str]:
-        """
-        ⚠️ DEPRECATED: Usar image.display_url directamente
 
-        Obtener URL de imagen con transformaciones opcionales
-
-        Args:
-            image: Objeto Image
-            transformation: Diccionario con transformaciones de Cloudinary
-
-        Returns:
-            URL de la imagen
-
-        Deprecated:
-            Usar `image.display_url` directamente en lugar de este método.
-            Este método será eliminado en versiones futuras.
-        """
-        warnings.warn(
-            "CloudinaryImageManager.get_image_url() está deprecado. "
-            "Usar image.display_url directamente. "
-            "Este método será eliminado en futuras versiones.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        if not image.cloudinary_url and not image.cloudinary_public_id:
-            return None
-
-        if transformation and image.cloudinary_public_id:
-            # Generar URL con transformaciones
-            return cloudinary.CloudinaryImage(image.cloudinary_public_id).build_url(**transformation)
-
-        return image.cloudinary_url
-
-    def get_image_base64(self, image: 'Image') -> Optional[str]:
-        """
-        ⚠️ DEPRECATED: Cloudinary devuelve URLs, no base64
-
-        Obtener imagen como base64 (para compatibilidad con el código existente)
-
-        Args:
-            image: Objeto Image
-
-        Returns:
-            URL de Cloudinary (ya optimizada)
-
-        Deprecated:
-            Este método está deprecado. Cloudinary maneja URLs directamente.
-            Usar `image.display_url` en su lugar.
-        """
-        warnings.warn(
-            "CloudinaryImageManager.get_image_base64() está deprecado. "
-            "Usar image.display_url directamente.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        return self.get_image_url(image)
 
     def test_connection(self) -> bool:
         """

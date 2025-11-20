@@ -1,5 +1,7 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
-🆕 NUEVO SISTEMA DE BÚSQUEDA TEXTUAL V2
+NUEVO SISTEMA DE BÚSQUEDA TEXTUAL V2
 Two-Stage Retrieval: SQL Fuzzy Match + CLIP Reranking
 """
 
@@ -26,7 +28,7 @@ try:
 except Exception:
     _get_spacy_nlp = None  # fallback si no está disponible por algún motivo
 
-# 🆕 Sistema de módulos personalizados por cliente
+# Sistema de módulos personalizados por cliente
 from app.search_modules import get_client_module, has_custom_module
 from app.utils.llm_query_normalizer import extract_query_attributes
 
@@ -59,7 +61,7 @@ def _get_nlp_es():
         # Cargar con parser habilitado (solo deshabilitar NER y textcat para reducir overhead)
         _NLP_ES_WITH_PARSER = spacy.load(model_name, disable=["ner", "textcat"])
 
-        # 🆕 Agregar AttributeRuler para categorías de moda (forzar POS=NOUN)
+        # Agregar AttributeRuler para categorías de moda (forzar POS=NOUN)
         if "attribute_ruler_fashion" not in _NLP_ES_WITH_PARSER.pipe_names:
             ruler = _NLP_ES_WITH_PARSER.add_pipe("attribute_ruler", name="attribute_ruler_fashion", before="parser")
 
@@ -103,124 +105,46 @@ def _get_nlp_es():
 
 
 def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
-    """
-    🆕 EXTRACTOR V2 - Reglas de profundidad estrictas + ignorar verbos automáticamente
-
-    REGLAS DE CAPTURA:
-    1. Sustantivo principal (ROOT/obj/nsubj) → SIEMPRE capturar (categoría producto)
-    2. Modificadores NIVEL 1 (directos al principal) → CAPTURAR
-       - Adjetivos (amod) del principal
-       - Sustantivos relacionados (nmod/pobj) dependientes del principal
-    3. Modificadores NIVEL 2+ (modificadores de modificadores) → DESCARTAR
-    4. Verbos y sus dependientes → SIEMPRE ignorar (spaCy los identifica automáticamente)
-    5. SINGULARIZACIÓN: Todos los términos se devuelven en singular usando lemmatización
-
-    EJEMPLOS:
-    - "delantal con bolsillos grandes" → categoría: "delantal", modificadores: ["bolsillo"]
-    - "delantales rojos" → categoría: "delantal", modificadores: ["rojo"]
-    - "short grices" → categoría: "short", modificadores: ["gris"]
-    - "mostrame delantales con cierre al costado" → categoría: "delantal", modificadores: ["cierre"]
-
-    Args:
-        text: Query de búsqueda del usuario
-
-    Returns:
-        dict: {
-            'text': str - términos separados por espacio (para compatibilidad),
-            'category': str - categoría/sustantivo principal en singular,
-            'modifiers': list[str] - lista de modificadores en singular,
-            'success': bool - True si se extrajo categoría
-        }
-    """
+    # EXTRACTOR V2 - reglas de profundidad estrictas + ignora verbos
     nlp = _get_nlp_es()
     if nlp is None:
-        print(f"⚠️ [EXTRACTOR] spaCy no disponible, devolviendo texto original")
-        return {
-            'text': text.lower(),
-            'category': None,
-            'modifiers': [],
-            'success': False
-        }
+        return {'text': text.lower(), 'category': None, 'modifiers': [], 'success': False}
 
     doc = nlp(text)
-    print(f"\n{'='*60}")
-    print(f"📝 [EXTRACTOR V2] Análisis: '{text}'")
-    print(f"{'='*60}")
-
-    # Whitelist de anglicismos en moda (mal etiquetados por spaCy español)
-    FASHION_TERMS = {'short', 'shorts', 'top', 'crop', 'leggins', 'jeggings', 'blazer'}
-
-    # 🆕 Función auxiliar para normalizar a singular
-    def _to_singular(token) -> str:
-        """Convierte token a singular usando lemma, con excepciones para anglicismos"""
-        text_lower = token.text.lower()
-
-        # Excepciones especiales de anglicismos (ya están en singular o tienen forma fija)
-        if text_lower in FASHION_TERMS:
-            # Normalizar variantes conocidas
-            if text_lower in ('shorts', 'leggins', 'jeggings'):
-                return text_lower[:-1] if text_lower.endswith('s') else text_lower
-            return text_lower
-
-        # Usar lemma de spaCy (maneja plural→singular automáticamente)
-        lemma = token.lemma_.lower()
-
-        # Post-procesamiento para casos especiales en español
-        # "grices" → lemma "gris" ✓ (spaCy lo maneja bien)
-        # "rojos" → lemma "rojo" ✓ (spaCy lo maneja bien)
-
-        return lemma
-
+    principal = None
     categoria_principal = None
     modificadores = []
     elementos_extraidos = set()
+    verb_tokens = {t for t in doc if t.pos_ == 'VERB'}
 
-    # 🚫 PASO 1: Identificar y marcar TODOS los verbos para ignorarlos
-    verb_tokens = {token for token in doc if token.pos_ == 'VERB'}
-    if verb_tokens:
-        verb_texts = [v.text for v in verb_tokens]
-        print(f"\n🚫 [VERBOS IGNORADOS] {len(verb_tokens)} verbos descartados: {verb_texts}")
+    FASHION_TERMS = {'short','shorts','top','crop','leggins','jeggings','blazer'}
+    def _to_singular(token):
+        txt = token.text.lower()
+        if txt in FASHION_TERMS:
+            if txt.endswith('s') and len(txt) > 3:
+                return txt[:-1]
+            return txt
+        return token.lemma_.lower()
 
-    # === PASO 2: Identificar sustantivo principal (categoría) ===
-    # Buscar el primer NOUN/PROPN que NO sea dependiente directo de un verbo
-    principal = None
     for token in doc:
         if not token.is_alpha or token.is_stop or token.pos_ == 'VERB':
             continue
+        if token.dep_ in ('ROOT','obj','nsubj','dobj') and (token.pos_ in ('NOUN','PROPN') or token.text.lower() in FASHION_TERMS):
+            term = _to_singular(token)
+            if term and len(term) >= 3:
+                principal = token
+                categoria_principal = term
+                elementos_extraidos.add(term)
+                break
 
-        # Ignorar tokens que dependen directamente de verbos (objetos de verbos de intención)
-        if token.head.pos_ == 'VERB' and token.dep_ in ('dobj', 'obj'):
-            # Este es el objeto del verbo de intención, pero ES nuestro principal
-            # "muestrame [delantales]" → delantales es dobj de muestrame, pero es lo que buscamos
-            pass
-
-        if token.dep_ in ('ROOT', 'obj', 'nsubj', 'dobj'):
-            if token.pos_ in ('NOUN', 'PROPN') or token.text.lower() in FASHION_TERMS:
-                term = _to_singular(token)
-                if term and len(term) >= 3:
-                    principal = token
-                    categoria_principal = term
-                    elementos_extraidos.add(term)
-                    print(f"✅ [PRINCIPAL] '{term}' (original: '{token.text}', POS={token.pos_}, DEP={token.dep_})")
-                    break
-
-    # Si NO hay sustantivo principal, devolver estructura vacía
     if not principal:
-        print(f"❌ [EXTRACTOR] No se detectó sustantivo principal. Query no válida.")
-        print(f"{'='*60}\n")
-        return {
-            'text': '',
-            'category': None,
-            'modifiers': [],
-            'success': False
-        }
+        return {'text':'','category':None,'modifiers':[],'success':False}
 
-    # === PASO 2: Capturar modificadores NIVEL 1 (directos al principal) ===
     print(f"\n🔍 [NIVEL 1] Buscando modificadores directos de '{principal.text}':")
 
-    nivel2_discarded = set()  # 🆕 Rastrear términos descartados por ser nivel 2
+    nivel2_discarded = set()  # Rastrear términos descartados por ser nivel 2
 
-    # 🆕 CRÍTICO: Si el principal es hijo de un verbo ignorado, procesar también hermanos
+    # CRÍTICO: Si el principal es hijo de un verbo ignorado, procesar también hermanos
     # Caso: "muestrame [delantales] con [cierre]" → cierre es hermano de delantales, no hijo
     nodes_to_process = list(principal.children)  # Hijos directos del principal
 
@@ -251,17 +175,11 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                 modificadores.append(term)
                 print(f"  ✅ Sustantivo nivel 1 (hermano): '{term}' (original: '{child.text}', dep={child.dep_})")
 
-                # 🆕 FUNCIÓN RECURSIVA: Buscar coordinaciones en TODA la subrama
+                # FUNCIÓN RECURSIVA: Buscar coordinaciones en TODA la subrama
                 # Ejemplo: "con cierre al costado y bolsillos grandes"
                 # → cierre (nivel 1) → costado (nivel 2) → bolsillos (conj de costado)
                 def find_coordinations(node, base_term, current_depth=2):
-                    """Busca recursivamente coordinaciones (conj) en toda la subrama.
-
-                    Args:
-                        node: Token actual a explorar
-                        base_term: Término nivel 1 original (para logging)
-                        current_depth: Profundidad actual (2=nivel2, 3=nivel3, etc.)
-                    """
+                    # Busca recursivamente coordinaciones (conj) en toda la subrama.
                     for child_node in node.children:
                         # Coordinación encontrada: capturar como nivel 1
                         if child_node.dep_ == 'conj' and child_node.pos_ in ('NOUN', 'PROPN'):
@@ -334,7 +252,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                 # ⚠️ Contar pero NO capturar hijos (nivel 2)
                 nivel2_terms = [gc.text for gc in child.children if gc.is_alpha and not gc.is_stop]
                 if nivel2_terms:
-                    # 🆕 Marcar como descartados para evitar fallback
+                    # Marcar como descartados para evitar fallback
                     for gc in child.children:
                         if gc.is_alpha and not gc.is_stop:
                             nivel2_term = _to_singular(gc)
@@ -354,13 +272,13 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                         # ⚠️ Contar pero NO capturar hijos (nivel 2)
                         nivel2_terms = [gc.text for gc in prep_child.children if gc.is_alpha and not gc.is_stop]
                         if nivel2_terms:
-                            # 🆕 Marcar como descartados para evitar fallback
+                            # Marcar como descartados para evitar fallback
                             for gc in prep_child.children:
                                 if gc.is_alpha and not gc.is_stop:
                                     nivel2_term = _to_singular(gc)
                                     nivel2_discarded.add(nivel2_term)
 
-                                # 🆕 CRÍTICO: Si el hijo es otra preposición, descartar TODA la cadena
+                                # CRÍTICO: Si el hijo es otra preposición, descartar TODA la cadena
                                 if gc.dep_ == 'prep':
                                     for prep_grandchild in gc.children:
                                         if prep_grandchild.is_alpha and not prep_grandchild.is_stop:
@@ -372,7 +290,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
     # === PASO 3: Fallback para términos mal etiquetados ===
     fallback_added = []
     processed_lemmas = {e.lower() for e in elementos_extraidos}
-    processed_lemmas.update(nivel2_discarded)  # 🆕 Excluir términos nivel 2 del fallback
+    processed_lemmas.update(nivel2_discarded)  # Excluir términos nivel 2 del fallback
 
     for token in doc:
         if not token.is_alpha or token.is_stop or token.pos_ == 'VERB':
@@ -419,15 +337,7 @@ def _build_user_feedback(query_text: str, formatted_results: list, detected_cate
                         client_id: str = None, attrs_requested: dict = None, contradictions: list = None,
                         not_configured: list = None, all_available_values: dict = None,
                         detected_color_token: str = None, detected_color_normalized: str = None):
-    """Feedback dinámico para el usuario (no hardcodeado).
-
-    Reglas:
-    - Categoría: si la query se reinterpretó, se explica la sustitución.
-    - Color: usa detected_color_token y detected_color_normalized pasados desde el endpoint
-    - Atributos: lista lo que se detectó, contradicciones y atributos no configurados.
-    - Filtrado: cuando se filtra por atributos, muestra los valores disponibles para ese atributo.
-    - Independiente del cliente (permite módulos custom pero con fallback genérico).
-    """
+    # Feedback dinámico para el usuario (categoría, color, atributos, contradicciones)
     from app.utils.colors import normalize_color  # import interno para evitar dependencias circulares
 
     # Extraer colores disponibles en resultados (normalizados)
@@ -606,7 +516,7 @@ def _build_user_feedback(query_text: str, formatted_results: list, detected_cate
 
 
 def verify_api_key():
-    """Valida API Key del request"""
+    # Valida API Key del request
     api_key = request.headers.get('X-API-Key')
     if not api_key:
         return None, "API Key requerida"
@@ -619,17 +529,8 @@ def verify_api_key():
 
 
 def expand_query_with_synonyms(query_text: str, client_id: str, client_slug: str = None):
-    """
-    Expande query con sinónimos de categorías del cliente.
-
-    🆕 DELEGACIÓN A MÓDULO PERSONALIZADO:
-    Si existe módulo custom para el cliente, usa su lógica.
-    Sino, usa expansión genérica con alternative_terms.
-
-    Returns:
-        List[str]: Lista de tokens expandidos con sinónimos
-    """
-    # 🆕 Intentar usar módulo personalizado
+    # Expande query con sinónimos de categorías del cliente (módulo custom si existe)
+    # Intentar usar módulo personalizado
     if client_slug and has_custom_module(client_slug):
         module = get_client_module(client_slug)
         try:
@@ -681,9 +582,7 @@ def expand_query_with_synonyms(query_text: str, client_id: str, client_slug: str
 
 
 def _normalize_tokens_es(text: str) -> List[str]:
-    """Tokeniza y lematiza en español usando spaCy si está disponible.
-    Fallback: split básico en minúsculas.
-    """
+    # Tokeniza y lematiza en español (spaCy si disponible); fallback: split básico
     if not text:
         return []
 
@@ -730,9 +629,7 @@ def _normalize_tokens_es(text: str) -> List[str]:
 
 
 def _category_tokens(cat: Category) -> Set[str]:
-    """Construye el set de tokens normalizados de una categoría combinando
-    name, name_en y alternative_terms (cuando existen).
-    """
+    # Construye set de tokens normalizados (name, name_en, alternative_terms)
     tokens: Set[str] = set()
     # name y name_en
     if getattr(cat, 'name', None):
@@ -747,18 +644,7 @@ def _category_tokens(cat: Category) -> Set[str]:
 
 
 def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None, top_n: int = 50):
-    """
-    STAGE 1: Broad Recall
-    Búsqueda rápida en BD usando PostgreSQL SIMILAR TO
-
-    🆕 DELEGACIÓN A MÓDULO PERSONALIZADO:
-    - Normalización de tokens
-    - Detección de filtro de categoría
-    - Expansión de sinónimos
-
-    Returns:
-        List[Product]: Candidatos (max top_n)
-    """
+    # STAGE 1: Broad Recall - PostgreSQL SIMILAR TO (sin docstring multiline para evitar errores)
     start_time = time.time()
 
     # 1️⃣ Expandir query con sinónimos (delega a módulo custom si existe)
@@ -767,9 +653,9 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
     # 1.1 Detectar categorías para filtrar (delega a módulo custom si existe)
     categories = Category.query.filter_by(client_id=client_id).all()
     category_filter_ids = []
-    detection_metadata = None  # 🆕 Capturar metadata de detección
+    detection_metadata = None  # Capturar metadata de detección
 
-    # 🆕 Intentar usar módulo personalizado para detección de filtro
+    # Intentar usar módulo personalizado para detección de filtro
     if client_slug and has_custom_module(client_slug):
         module = get_client_module(client_slug)
         # Normalizar tokens del query usando el módulo
@@ -822,36 +708,23 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
     pattern = f"%({'|'.join(expanded_tokens)})%"
 
     # 3️⃣ Query SQL flexible
-    sql = text("""
-        SELECT DISTINCT p.id
-        FROM products p
-        JOIN categories c ON c.id = p.category_id
-        WHERE p.client_id = :client_id
-        AND p.is_active = TRUE
-        AND ((:use_filter = FALSE) OR p.category_id = ANY(:category_ids))
-        AND (
-            -- Buscar en nombre del producto
-            LOWER(p.name) SIMILAR TO :pattern
-            OR
-            -- Buscar en atributos JSONB (verificar que sea objeto válido)
-            (
-                p.attributes IS NOT NULL
-                AND jsonb_typeof(p.attributes) = 'object'
-                AND EXISTS (
-                    SELECT 1 FROM jsonb_each_text(p.attributes) attr
-                    WHERE LOWER(attr.value) SIMILAR TO :pattern
-                )
-            )
-            OR
-            -- Buscar en categoría
-            (
-                LOWER(c.name) SIMILAR TO :pattern
-                OR LOWER(c.name_en) SIMILAR TO :pattern
-                OR LOWER(c.alternative_terms) SIMILAR TO :pattern
-            )
-        )
-        LIMIT :limit
-    """)
+    sql_query_stage1 = (
+        "SELECT DISTINCT p.id "
+        "FROM products p "
+        "JOIN categories c ON c.id = p.category_id "
+        "WHERE p.client_id = :client_id "
+        "AND p.is_active = TRUE "
+        "AND ((:use_filter = FALSE) OR p.category_id = ANY(:category_ids)) "
+        "AND ("
+        "  LOWER(p.name) SIMILAR TO :pattern "
+        "  OR (p.attributes IS NOT NULL AND jsonb_typeof(p.attributes) = 'object' AND EXISTS ("
+        "       SELECT 1 FROM jsonb_each_text(p.attributes) attr WHERE LOWER(attr.value) SIMILAR TO :pattern"
+        "     )) "
+        "  OR (LOWER(c.name) SIMILAR TO :pattern OR LOWER(c.name_en) SIMILAR TO :pattern OR LOWER(c.alternative_terms) SIMILAR TO :pattern) "
+        ") "
+        "LIMIT :limit"
+    )
+    sql = text(sql_query_stage1)
 
     product_ids = db.session.execute(sql, {
         "client_id": client_id,
@@ -871,18 +744,12 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
     elapsed = time.time() - start_time
     print(f"⚡ STAGE 1: {len(products)} candidatos en {elapsed:.3f}s")
 
-    # 🆕 Retornar también metadata de detección (si existe)
+    # Retornar también metadata de detección (si existe)
     return products, detection_metadata
 
 
 def stage2_precise_rerank(query_text: str, candidates: list, limit: int = 10):
-    """
-    STAGE 2: Precise Reranking
-    Re-ordena candidatos usando similitud CLIP text-to-text
-
-    Returns:
-        List[dict]: Productos ordenados con scores
-    """
+    # STAGE 2: Precise Reranking - usa similitud CLIP text-to-text
     if not candidates:
         return []
 
@@ -957,40 +824,8 @@ def stage2_precise_rerank(query_text: str, candidates: list, limit: int = 10):
 
 @bp.route("/search/text", methods=["POST", "OPTIONS"])
 def text_search():
-    """
-    🆕 NUEVO ENDPOINT DE BÚSQUEDA TEXTUAL V2
-
-    Two-Stage Retrieval:
-    1. SQL Broad Recall con sinónimos auto-generados
-    2. CLIP Reranking text-to-text
-
-    Headers:
-        X-API-Key: API Key del cliente
-
-    JSON Body:
-        query: Texto de búsqueda (ej: "short rojo")
-        limit: Número de resultados (default: 10, max: 50)
-
-    Returns:
-        {
-            "success": true,
-            "query": "short rojo",
-            "expanded_terms": ["short", "shorts", "bermuda", "rojo", ...],
-            "stage1_candidates": 50,
-            "results": [
-                {
-                    "id": "...",
-                    "name": "...",
-                    "price": 1500,
-                    "similarity": 0.89,
-                    "image": "https://...",
-                    "category": "shores tiro alto",
-                    "attributes": {...}
-                }
-            ],
-            "processing_time": 0.85
-        }
-    """
+    # Endpoint de búsqueda textual V2 (Broad Recall + CLIP Reranking).
+    # Documentación extendida movida a README o docs para evitar errores de comillas.
     # Manejar preflight OPTIONS
     if request.method == 'OPTIONS':
         response = jsonify({'status': 'ok'})
@@ -1045,6 +880,7 @@ def text_search():
 
         cleaned_query = extraction_result.get('text', '')
         if cleaned_query and cleaned_query.strip() and extraction_result.get('success'):
+            classification_done = False  # Flag para evitar doble clasificación contradictoria
             print(f"🧹 [TEXT_SEARCH] Preprocesamiento exitoso: '{query_text}' → '{cleaned_query}'")
             print(f"   📦 Categoría extraída: '{extraction_result.get('category')}'")
             print(f"   🏷️  Modificadores extraídos: {extraction_result.get('modifiers')}")
@@ -1097,7 +933,7 @@ def text_search():
                 else:
                     print(f"      ⚠️ No se encontraron coincidencias")
 
-                # 🆕 PASO 2: ANÁLISIS DE MODIFICADORES vs ATRIBUTOS CONFIGURADOS
+                # PASO 2: ANÁLISIS DE MODIFICADORES vs ATRIBUTOS CONFIGURADOS
                 print(f"\n{'='*60}")
                 print(f"🏷️  ANÁLISIS DE MODIFICADORES")
                 print(f"{'='*60}")
@@ -1169,34 +1005,68 @@ def text_search():
                                     break
 
                     # 4. Coincidencia con valores de atributos tipo 'list' (ej: "negro" → color)
+                    # FIX: Antes tomábamos las keys del dict ("values", "multiple") en vez de la lista real de valores.
                     if not matched:
                         for cfg in configured_attributes:
                             if cfg.type == 'list' and cfg.options:
-                                # Normalizar opciones del atributo
                                 try:
-                                    import json
-                                    # cfg.options puede ser: list, dict, o string JSON
-                                    if isinstance(cfg.options, list):
-                                        options = cfg.options
-                                    elif isinstance(cfg.options, dict):
-                                        # Si es dict, probablemente tiene estructura {value: label}
-                                        # Usar las keys como valores
-                                        options = list(cfg.options.keys())
-                                    elif isinstance(cfg.options, str):
-                                        options = json.loads(cfg.options)
+                                    import json, unicodedata as _ud
+
+                                    raw_opt = cfg.options
+                                    options = []
+
+                                    # Caso 1: lista directa
+                                    if isinstance(raw_opt, list):
+                                        options = raw_opt
+                                    # Caso 2: dict → buscar clave 'values'
+                                    elif isinstance(raw_opt, dict):
+                                        if 'values' in raw_opt and isinstance(raw_opt['values'], list):
+                                            options = raw_opt['values']
+                                        else:
+                                            # fallback: usar keys como antes (pero poco común)
+                                            options = list(raw_opt.keys())
+                                    # Caso 3: string (JSON) → parsear y aplicar misma lógica
+                                    elif isinstance(raw_opt, str):
+                                        parsed = json.loads(raw_opt)
+                                        if isinstance(parsed, list):
+                                            options = parsed
+                                        elif isinstance(parsed, dict):
+                                            if 'values' in parsed and isinstance(parsed['values'], list):
+                                                options = parsed['values']
+                                            else:
+                                                options = list(parsed.keys())
+                                        else:
+                                            continue
                                     else:
                                         continue
-                                    
-                                    options_norm = [str(opt).strip().lower() for opt in options]
-                                    
-                                    # Verificar si el modificador está en las opciones
+
+                                    # Normalización acento-insensible + lower
+                                    def _norm_val(v):
+                                        txt = str(v).strip().lower()
+                                        txt = ''.join(ch for ch in _ud.normalize('NFD', txt) if _ud.category(ch) != 'Mn')
+                                        return txt
+
+                                    options_norm = [_norm_val(opt) for opt in options if str(opt).strip()]
+
+                                    # DEBUG restringido a colores y modificadores frecuentes
+                                    if (cfg.key or '').strip().lower() == 'color' or mod_norm in (
+                                        'negro','rojo','azul','verde','gris','blanco','amarillo','marron','beige','rosa','violeta','morado'
+                                    ):
+                                        print(f"      [VAL-MATCH DEBUG] Evaluando modificador '{mod_norm}' contra valores de '{cfg.key}': raw={raw_opt}")
+                                        print(f"      [VAL-MATCH DEBUG] Valores normalizados de '{cfg.key}': {options_norm}")
+
                                     if mod_norm in options_norm:
                                         matched = True
                                         matched_config = cfg
                                         match_type = 'value'
-                                        # Obtener valor original (no normalizado)
                                         matched_value = options[options_norm.index(mod_norm)]
+                                        print(f"      [VAL-MATCH DEBUG] MATCH por valor: '{mod_norm}' ∈ {options_norm} (atributo '{cfg.key}') → valor original: {matched_value}")
                                         break
+                                    else:
+                                        if (cfg.key or '').strip().lower() == 'color' or mod_norm in (
+                                            'negro','rojo','azul','verde','gris','blanco','amarillo','marron','beige','rosa','violeta','morado'
+                                        ):
+                                            print(f"      [VAL-MATCH DEBUG] SIN MATCH valor: '{mod_norm}' no está en valores de '{cfg.key}'")
                                 except Exception as e:
                                     print(f"         ⚠️ Error parseando opciones de '{cfg.label}': {e}")
                                     continue
@@ -1226,8 +1096,9 @@ def text_search():
                 print(f"\n📊 RESULTADO CLASIFICACIÓN:")
                 print(f"   ✅ Atributos encontrados: {len(atributos_encontrados)}")
                 print(f"   ❌ Modificadores NO configurados: {len(modificadores_no_configurados)}")
+                classification_done = True
 
-                # 🆕 PASO 3: FILTRADO HÍBRIDO CON CLIP
+                # PASO 3: FILTRADO HÍBRIDO CON CLIP
                 print(f"\n{'='*60}")
                 print(f"🔍 FILTRADO HÍBRIDO: SQL + CLIP")
                 print(f"{'='*60}")
@@ -1254,13 +1125,82 @@ def text_search():
                 filtered_products = base_products
                 if atributos_encontrados:
                     print(f"\n🔒 Aplicando filtrado FUERTE (SQL) para atributos configurados:")
+                    # Construir mapa de filtros por valor cuando corresponda
+                    # key -> set(valores_normalizados_aceptados)
+                    attr_value_filters = {}
+                    def _norm_val_filter(v):
+                        import unicodedata as _ud
+                        txt = str(v).strip().lower()
+                        txt = ''.join(ch for ch in _ud.normalize('NFD', txt) if _ud.category(ch) != 'Mn')
+                        if txt in ('si','sí'):  # unificar sí/si
+                            txt = 'si'
+                        return txt
+
                     for attr_match in atributos_encontrados:
                         attr_key = attr_match['atributo_key']
-                        # NOTA: Por ahora no filtramos por valor específico, solo verificamos presencia
-                        # TODO: Inferir valor del modificador (ej: "bolsillo" → "Si")
-                        print(f"   ℹ️  Atributo '{attr_key}' detectado (filtrado por valor pendiente)")
+                        match_tipo = attr_match.get('match_tipo')
+                        valor_detectado = attr_match.get('valor_detectado')
+                        # Caso match por valor explícito
+                        if match_tipo == 'value' and valor_detectado is not None:
+                            attr_value_filters.setdefault(attr_key, set()).add(_norm_val_filter(valor_detectado))
+                        # Caso especial: atributo bolsillo (con_bolsillo) detectado sólo por label/key → asumir presencia "Si"
+                        elif match_tipo in ('label','key') and attr_key == 'con_bolsillo':
+                            attr_value_filters.setdefault(attr_key, set()).add('si')
+                        else:
+                            # Sin valor específico → sólo presencia (no filtra por valor)
+                            pass
+                        print(f"   ℹ️  Atributo '{attr_key}' detectado (tipo match: {match_tipo})")
+
+                    # Aplicar scoring progresivo por atributos (no exclusión estricta)
+                    if attr_value_filters:
+                        before_count = len(filtered_products)
+                        scored_by_attrs = []
+                        total_criteria = len(attr_value_filters)
+
+                        for prod in filtered_products:
+                            attrs = prod.attributes or {}
+                            matches = 0
+                            match_details = {}
+
+                            # Contar cuántos atributos coinciden
+                            for k, accepted in attr_value_filters.items():
+                                raw_val = attrs.get(k)
+                                if raw_val is not None:
+                                    norm_val = _norm_val_filter(raw_val)
+                                    if norm_val in accepted:
+                                        matches += 1
+                                        match_details[k] = norm_val
+
+                            # Guardar producto con su score de coincidencias
+                            scored_by_attrs.append({
+                                'product': prod,
+                                'attr_matches': matches,
+                                'attr_total': total_criteria,
+                                'attr_score': matches / total_criteria if total_criteria > 0 else 0,
+                                'match_details': match_details
+                            })
+
+                        # Ordenar por cantidad de coincidencias (mayor a menor)
+                        scored_by_attrs.sort(key=lambda x: x['attr_matches'], reverse=True)
+
+                        print(f"   ✅ Scoring por atributos aplicado: {attr_value_filters}")
+                        print(f"   📊 Distribución de coincidencias:")
+                        for i in range(total_criteria, -1, -1):
+                            count = sum(1 for x in scored_by_attrs if x['attr_matches'] == i)
+                            if count > 0:
+                                print(f"      {i}/{total_criteria} criterios: {count} productos")
+
+                        # Mantener referencia al scoring para usar después
+                        product_attr_scores = {item['product'].id: item for item in scored_by_attrs}
+                        filtered_products = [item['product'] for item in scored_by_attrs]
+                    else:
+                        print("   ℹ️  Sin restricciones de valor específicas (solo presencia de atributos)")
+                        product_attr_scores = {}
 
                 print(f"   📦 Productos después de filtrado fuerte: {len(filtered_products)}")
+
+                # Si NO hay filtrado CLIP pero SÍ hay scoring por atributos, ya están ordenados
+                # (de mayor a menor coincidencia) desde el paso anterior
 
                 # 3.3: Aplicar FILTRADO DÉBIL (CLIP) para modificadores no configurados
                 if modificadores_no_configurados and filtered_products:
@@ -1335,18 +1275,35 @@ def text_search():
                                     'has_embedding': False
                                 })
 
-                        # Ordenar por similitud (mayor a menor)
-                        scored_products.sort(key=lambda x: x['similarity'], reverse=True)
+                        # Combinar score de atributos con similitud CLIP
+                        for item in scored_products:
+                            prod_id = item['product'].id
+                            attr_score_data = product_attr_scores.get(prod_id, {})
+                            attr_matches = attr_score_data.get('attr_matches', 0)
+                            attr_total = attr_score_data.get('attr_total', 0)
 
-                        print(f"\n📊 RESULTADOS CLIP:")
+                            # Score híbrido: priorizar atributos, usar CLIP como desempate
+                            # Peso: 70% atributos, 30% CLIP
+                            attr_component = (attr_matches / attr_total * 0.7) if attr_total > 0 else 0
+                            clip_component = item['similarity'] * 0.3
+                            item['hybrid_score'] = attr_component + clip_component
+                            item['attr_matches'] = attr_matches
+                            item['attr_total'] = attr_total
+
+                        # Ordenar por score híbrido (mayor a menor)
+                        scored_products.sort(key=lambda x: (x['attr_matches'], x['similarity']), reverse=True)
+
+                        print(f"\n📊 RESULTADOS HÍBRIDOS (Atributos + CLIP):")
                         print(f"   Total productos evaluados: {len(scored_products)}")
                         print(f"   Productos con embedding: {sum(1 for p in scored_products if p['has_embedding'])}")
-                        print(f"\n   🏆 Top 5 productos por similitud:")
-                        for i, item in enumerate(scored_products[:5], 1):
+                        print(f"\n   🏆 Top productos por score híbrido:")
+                        for i, item in enumerate(scored_products[:10], 1):
                             prod = item['product']
+                            attr_m = item.get('attr_matches', 0)
+                            attr_t = item.get('attr_total', 0)
                             sim = item['similarity']
                             has_emb = "✅" if item['has_embedding'] else "❌"
-                            print(f"      {i}. {prod.name[:50]:50s} | Sim: {sim:.4f} {has_emb}")
+                            print(f"      {i}. [{attr_m}/{attr_t}] {prod.name[:40]:40s} | CLIP: {sim:.3f} {has_emb}")
 
                         # Actualizar lista de productos con los rankeados
                         filtered_products = [item['product'] for item in scored_products]
@@ -1568,87 +1525,118 @@ def text_search():
             except Exception as e:
                 attribute_labels = {}  # label normalizado -> objeto config
 
-                print(f"\nAtributos configurados en el sistema ({len(configured_attributes)}):")
-                for attr in configured_attributes:
-                    key_norm = attr.key.lower().strip()
-                    label_norm = attr.label.lower().strip()
-                    attribute_keys[key_norm] = attr
-                    attribute_labels[label_norm] = attr
-                    print(f"   - {attr.label} (key: '{attr.key}', type: {attr.type})")
+                # Evitar reclasificación si ya la hicimos exitosamente arriba
+                if 'classification_done' in locals() and classification_done:
+                    print("\n⚠️ Saltando reclasificación fallback (ya realizada previamente).")
+                    # Omitir completamente la lógica de reclasificación duplicada
+                    # (Evita contradicciones como perder match por valor 'negro')
+                    # Continuar directamente hacia extracción de valores disponibles y retorno
+                    # Preparar estructura mínima necesaria si no existe
+                    if 'atributos_encontrados' not in locals():
+                        atributos_encontrados = []
+                    if 'modificadores_no_configurados' not in locals():
+                        modificadores_no_configurados = []
+                else:
+                    # Solo ejecutar reclasificación si NO se realizó antes
+                    print(f"\nAtributos configurados en el sistema ({len(configured_attributes)}):")
+                    for attr in configured_attributes:
+                        key_norm = attr.key.lower().strip()
+                        label_norm = attr.label.lower().strip()
+                        attribute_keys[key_norm] = attr
+                        attribute_labels[label_norm] = attr
+                        print(f"   - {attr.label} (key: '{attr.key}', type: {attr.type})")
 
-                # Analizar cada modificador
-                atributos_encontrados = []  # Modificadores que SÍ son atributos configurados
-                modificadores_no_configurados = []  # Modificadores que NO son atributos
+                    # Analizar cada modificador (lógica corregida igual que bloque principal)
+                    atributos_encontrados = []
+                    modificadores_no_configurados = []
 
-                print(f"\n🔍 Comparando modificadores contra atributos configurados:")
-                for mod in modificadores:
-                    mod_norm = mod.lower().strip()
+                    print(f"\n🔍 Comparando modificadores contra atributos configurados:")
+                    for mod in modificadores:
+                        mod_norm = mod.lower().strip()
+                        matched = False
+                        matched_config = None
+                        match_type = None
+                        matched_value = None
 
-                    # Buscar en keys y labels (flexibilidad)
-                    matched = False
-                    matched_config = None
-                    match_type = None
-                    matched_value = None
-
-                    # 1. Coincidencia con key
-                    if mod_norm in attribute_keys:
-                        matched = True
-                        matched_config = attribute_keys[mod_norm]
-                        match_type = 'key'
-                    # 2. Coincidencia con label
-                    elif mod_norm in attribute_labels:
-                        matched = True
-                        matched_config = attribute_labels[mod_norm]
-                        match_type = 'label'
-                    # 3. Coincidencia con valores de atributos tipo 'list' (ej: "negro" → color)
-                    else:
-                        for cfg in configured_attributes:
-                            if cfg.type == 'list' and cfg.options:
-                                try:
-                                    import json
-                                    # cfg.options puede ser: list, dict, o string JSON
-                                    if isinstance(cfg.options, list):
-                                        options = cfg.options
-                                    elif isinstance(cfg.options, dict):
-                                        options = list(cfg.options.keys())
-                                    elif isinstance(cfg.options, str):
-                                        options = json.loads(cfg.options)
-                                    else:
-                                        continue
-                                    
-                                    options_norm = [str(opt).strip().lower() for opt in options]
-                                    
-                                    if mod_norm in options_norm:
-                                        matched = True
-                                        matched_config = cfg
-                                        match_type = 'value'
-                                        matched_value = options[options_norm.index(mod_norm)]
-                                        break
-                                except Exception:
-                                    continue
-
-                    if matched and matched_config:
-                        match_info = {
-                            'modificador_original': mod,
-                            'atributo_key': matched_config.key,
-                            'atributo_label': matched_config.label,
-                            'atributo_type': matched_config.type,
-                            'match_tipo': match_type
-                        }
-                        if match_type == 'value':
-                            match_info['valor_detectado'] = matched_value
-                        
-                        atributos_encontrados.append(match_info)
-                        
-                        if match_type == 'value':
-                            print(f"   ✅ '{mod}' → Match con valor de '{matched_config.label}' (key: {matched_config.key}, valor: {matched_value})")
+                        if mod_norm in attribute_keys:
+                            matched = True
+                            matched_config = attribute_keys[mod_norm]
+                            match_type = 'key'
+                        elif mod_norm in attribute_labels:
+                            matched = True
+                            matched_config = attribute_labels[mod_norm]
+                            match_type = 'label'
                         else:
-                            print(f"   ✅ '{mod}' → Atributo configurado: {matched_config.label} (key: {matched_config.key})")
-                    else:
-                        modificadores_no_configurados.append(mod)
-                        print(f"   ❌ '{mod}' → NO es un atributo configurado")
+                            # Coincidencia por valor de atributos tipo list (corregido)
+                            for cfg in configured_attributes:
+                                if cfg.type == 'list' and cfg.options:
+                                    try:
+                                        import json, unicodedata as _ud
+                                        raw_opt = cfg.options
+                                        options = []
+                                        if isinstance(raw_opt, list):
+                                            options = raw_opt
+                                        elif isinstance(raw_opt, dict):
+                                            if 'values' in raw_opt and isinstance(raw_opt['values'], list):
+                                                options = raw_opt['values']
+                                            else:
+                                                options = list(raw_opt.keys())
+                                        elif isinstance(raw_opt, str):
+                                            parsed = json.loads(raw_opt)
+                                            if isinstance(parsed, list):
+                                                options = parsed
+                                            elif isinstance(parsed, dict):
+                                                if 'values' in parsed and isinstance(parsed['values'], list):
+                                                    options = parsed['values']
+                                                else:
+                                                    options = list(parsed.keys())
+                                            else:
+                                                continue
+                                        else:
+                                            continue
 
-                # 🆕 PASO 3: OBTENER VALORES DE ATRIBUTOS EN PRODUCTOS DE LAS CATEGORÍAS
+                                        def _norm_val(v):
+                                            txt = str(v).strip().lower()
+                                            txt = ''.join(ch for ch in _ud.normalize('NFD', txt) if _ud.category(ch) != 'Mn')
+                                            return txt
+                                        options_norm = [_norm_val(o) for o in options if str(o).strip()]
+
+                                        if mod_norm in options_norm:
+                                            matched = True
+                                            matched_config = cfg
+                                            match_type = 'value'
+                                            matched_value = options[options_norm.index(mod_norm)]
+                                            break
+                                    except Exception:
+                                        continue
+
+                        if matched and matched_config:
+                            info = {
+                                'modificador_original': mod,
+                                'atributo_key': matched_config.key,
+                                'atributo_label': matched_config.label,
+                                'atributo_type': matched_config.type,
+                                'match_tipo': match_type
+                            }
+                            if match_type == 'value':
+                                info['valor_detectado'] = matched_value
+                                print(f"   ✅ '{mod}' → Match por valor de '{matched_config.label}' (key: {matched_config.key}, valor: {matched_value})")
+                            else:
+                                print(f"   ✅ '{mod}' → Atributo configurado: {matched_config.label} (key: {matched_config.key}, tipo: {match_type})")
+                            atributos_encontrados.append(info)
+                        else:
+                            modificadores_no_configurados.append(mod)
+                            print(f"   ❌ '{mod}' → NO es un atributo configurado")
+
+                    classification_done = True
+
+                    # Mostrar nuevamente resumen sólo si hubo reclasificación
+                    print(f"\n📊 RESULTADO CLASIFICACIÓN (fallback):")
+                    print(f"   ✅ Atributos encontrados: {len(atributos_encontrados)}")
+                    print(f"   ❌ Modificadores NO configurados: {len(modificadores_no_configurados)}")
+
+                # Saltar reclasificación duplicada: mantenemos resultado original
+                # PASO 3: OBTENER VALORES DE ATRIBUTOS EN PRODUCTOS DE LAS CATEGORÍAS
                 print(f"\n{'='*60}")
                 print(f"📦 VALORES DE ATRIBUTOS EN PRODUCTOS")
                 print(f"{'='*60}")
@@ -1853,16 +1841,7 @@ def text_search():
                 import traceback
                 traceback.print_exc()
 
-            # ====================================================================
-            # 🚫 CÓDIGO LEGACY (SOLO CONSULTA - NO SE EJECUTA)
-            # ====================================================================
-            """
-            # Código original (comentado para testing)
-            query_text = cleaned_query
-
-            # 🩹 Normalización temprana de color en la query (antes de Stage 1)
-            # ... TODO EL CÓDIGO HASTA EL FINAL ...
-            """
+            # (Bloque legacy removido para evitar problemas de comillas triple)
 
         else:
             # Si no pudimos extraer elementos, devolver banner de ayuda

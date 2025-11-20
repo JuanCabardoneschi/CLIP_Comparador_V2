@@ -23,16 +23,6 @@ def _strip_accents(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 
-def _normalize_color_hardcoded(s: str) -> Optional[str]:
-    """
-    DEPRECATED: No usar mapeo hardcoded.
-
-    Retorna None siempre para forzar el uso del LLM.
-    Esta función existe solo para evitar errores de importación legacy.
-    """
-    return None
-
-
 def _normalize_color_llm(color_str: str, client_id: Optional[str] = None) -> Optional[str]:
     """
     Usa el LLM normalizer para normalizar el color.

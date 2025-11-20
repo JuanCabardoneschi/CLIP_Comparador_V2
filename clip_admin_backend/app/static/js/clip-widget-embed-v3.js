@@ -622,6 +622,19 @@
                 margin: 0.25rem;
             }
 
+            .clip-badge-percentage {
+                position: absolute;
+                top: 8px;
+                left: 8px;
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                color: white;
+                padding: 0.4rem 0.7rem;
+                border-radius: 9999px;
+                font-size: 0.85rem;
+                font-weight: 700;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+
             .clip-badge-ambos {
                 position: absolute;
                 top: 8px;
@@ -877,6 +890,7 @@
 
             // Usar siempre la API key actualizada de window.CLIPWidget
             const currentApiKey = window.CLIPWidget?.apiKey || config.apiKey;
+                console.log('[CLIP TEXT SEARCH] Usando API Key:', currentApiKey);
 
             fetch(`${config.serverUrl}/api/search/gpt4v-unified`, {
                 method: 'POST',
@@ -926,9 +940,12 @@
             // 2. Atributos fuertes (configurados)
             const attrsFuertes = data.analysis?.atributos_encontrados || [];
             if (attrsFuertes.length > 0) {
-                const attrs = attrsFuertes.map(a =>
-                    `<span class="clip-banner-badge">${a.atributo_label || a.atributo_key}</span>`
-                ).join(' ');
+                    const attrs = attrsFuertes.map(a => {
+                        const label = a.atributo_label || a.atributo_key;
+                        // Si tiene valor detectado (ej: color=negro), mostrarlo
+                        const value = a.valor_detectado ? `: ${a.valor_detectado}` : '';
+                        return `<span class="clip-banner-badge">${label}${value}</span>`;
+                    }).join(' ');
                 items.push(`<div class="clip-info-banner-item"><span class="clip-info-banner-label">Filtrando:</span><div class="clip-info-banner-content">${attrs}</div></div>`);
             }
 
@@ -970,6 +987,7 @@
                 hideLoading();
 
                 if (!data.success) {
+                        console.warn('[CLIP TEXT SEARCH] Error respuesta:', data);
                     showError(data.message || data.error || 'Error en la búsqueda');
                     return;
                 }
@@ -1003,6 +1021,30 @@
             const exposedKeys = data.exposed_attribute_keys || [];
             const labelMap = data.exposed_attribute_labels || {};
 
+            // Extraer requisitos fuertes (atributos detectados en la query)
+            // Formato: key -> { values: Set([...]) | null (solo presencia) }
+            const requiredStrong = {};
+            const encontrados = (data.analysis && data.analysis.atributos_encontrados) ? data.analysis.atributos_encontrados : [];
+            encontrados.forEach(a => {
+                const key = (a.atributo_key || '').trim();
+                const matchTipo = a.match_tipo || a.matchTipo || a.match_tipo; // tolerancia
+                const valorDetectado = a.valor_detectado;
+                if (!key) return;
+                // Si hubo match por valor, almacenamos conjunto normalizado
+                if (matchTipo === 'value' && valorDetectado !== undefined && valorDetectado !== null) {
+                    const vNorm = String(valorDetectado).trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'');
+                    requiredStrong[key] = { values: new Set([vNorm]) };
+                } else if (key === 'con_bolsillo') {
+                    // Caso especial bolsillo detectado por label/key → requerimos 'si'
+                    requiredStrong[key] = { values: new Set(['si']) };
+                } else {
+                    // Sólo presencia
+                    requiredStrong[key] = { values: null };
+                }
+            });
+
+            const requiredStrongKeys = Object.keys(requiredStrong);
+
             console.log('🔍 displayTextSearchResults - exposedKeys:', exposedKeys);
             console.log('🔍 displayTextSearchResults - labelMap:', labelMap);
             console.log('🔍 displayTextSearchResults - primer producto:', productos[0]);
@@ -1032,28 +1074,78 @@
 
             // Renderizar función auxiliar para productos
             const renderProduct = (prod) => {
-                const match = (prod.match_type || 'BASE').toUpperCase();
-                const matchClass = match === 'AMBOS' ? 'clip-badge-ambos' :
-                                   match === 'FUERTE' ? 'clip-badge-fuerte' :
-                                   (match === 'DÉBIL' || match === 'DEBIL') ? 'clip-badge-debil' : 'clip-badge-base';
+                const coverageAttrs = Array.isArray(prod.attributes_coverage) ? prod.attributes_coverage : [];
+                const weakMods = Array.isArray(prod.weak_modifiers) ? prod.weak_modifiers : [];
+
+                // Calcular strong matches basados SOLO en atributos requeridos
+                let strongMatches = 0;
+                let strongCriteria = requiredStrongKeys.length;
+
+                // Map rápido de valor por key en coverage
+                const coverageByKey = {};
+                coverageAttrs.forEach(a => { coverageByKey[a.key] = a; });
+
+                requiredStrongKeys.forEach(key => {
+                    const req = requiredStrong[key];
+                    const item = coverageByKey[key];
+                    if (!item) return; // no coverage -> no match
+                    const rawVal = (item.value !== undefined && item.value !== null) ? String(item.value).trim() : '';
+                    const normVal = rawVal.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'');
+                    if (req.values === null) {
+                        // Sólo presencia (existe si coverage trae algún valor no vacío)
+                        if (rawVal) strongMatches += 1;
+                    } else {
+                        // Coincidencia por valor exacto normalizado
+                        if (req.values.has(normVal)) strongMatches += 1;
+                    }
+                });
+
+                // Weak criteria
+                const weakSimilarityMatched = (weakMods.length > 0 && prod.clip_similarity > 0.25);
+                const weakMatches = weakSimilarityMatched ? weakMods.length : 0;
+                const weakCriteria = weakMods.length; // cada modificador débil cuenta como criterio
+
+                const totalCriteria = strongCriteria + weakCriteria;
+                const matchedCriteria = strongMatches + weakMatches;
+                const matchPercentage = totalCriteria > 0 ? Math.round((matchedCriteria / totalCriteria) * 100) : 0;
+                const matchClass = 'clip-badge-percentage';
 
                 // Imagen
                 const imgHtml = prod.image_url
                     ? `<img src="${prod.image_url}" alt="${prod.name || 'Producto'}" class="clip-product-img">`
                     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.8rem;">Sin imagen</div>`;
 
-                // Cobertura de atributos (solo los que están en attributes_coverage)
-                const coverageAttrs = Array.isArray(prod.attributes_coverage) ? prod.attributes_coverage : [];
-                const coverageHtml = coverageAttrs.map(a => {
-                    const ok = !!a.exists;
-                    const label = a.label || a.key || 'atributo';
-                    const value = (a.value !== undefined && a.value !== null && `${a.value}`.trim() !== '') ? `: ${a.value}` : '';
-                    const cls = ok ? 'clip-attr-badge-success' : 'clip-attr-badge-error';
-                    const icon = ok ? '✅' : '✖️';
-                    return `<span class="${cls}" title="${a.key || ''}">${icon} ${label}${value}</span>`;
+                // Badges de atributos FUERTES (coverage)
+                const strongBadges = requiredStrongKeys.map(key => {
+                    const coverage = coverageByKey[key];
+                    const label = (coverage && (coverage.label || coverage.key)) || key;
+                    const req = requiredStrong[key];
+                    let rawVal = coverage && coverage.value !== undefined && coverage.value !== null ? String(coverage.value).trim() : '';
+                    let valueSuffix = rawVal ? `: ${rawVal}` : '';
+                    let ok = false;
+                    if (coverage) {
+                        if (req.values === null) {
+                            ok = rawVal.length > 0;
+                        } else {
+                            const normVal = rawVal.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'');
+                            ok = req.values.has(normVal);
+                        }
+                    }
+                    const icon = ok ? '✅' : '❌';
+                    return `<span style="background:${ok ? '#ecfdf5' : '#fef2f2'};color:${ok ? '#065f46' : '#991b1b'};padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid ${ok ? '#a7f3d0' : '#fecaca'};white-space:nowrap;">${icon} ${label}${valueSuffix}</span>`;
                 }).join(' ');
 
-                // Atributos visibles del producto (todos los que están en exposed_attribute_keys)
+                // Badges de modificadores DÉBILES (weak)
+                const weakBadges = weakMods.length > 0 ? weakMods.map(mod => {
+                    const ok = prod.clip_similarity > 0.25;
+                    const icon = ok ? '✅' : '❌';
+                    return `<span style="background:${ok ? '#eff6ff' : '#fef2f2'};color:${ok ? '#1e40af' : '#991b1b'};padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid ${ok ? '#bfdbfe' : '#fecaca'};white-space:nowrap;">${icon} ${mod}</span>`;
+                }).join(' ') : '';
+
+                const allBadges = [strongBadges, weakBadges].filter(x => x).join(' ');
+
+                // Ya no mostramos visibleAttrsHtml porque los atributos están en allBadges
+                /*
                 const productAttrs = prod.attributes || {};
                 const visibleAttrsHtml = exposedKeys
                     .filter(key => productAttrs[key] !== undefined && productAttrs[key] !== null)
@@ -1074,20 +1166,20 @@
 
                         return `<span style="background:#f3f4f6;color:#374151;padding:4px 8px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;">${label}: ${value}</span>`;
                     }).join(' ');
+                */
 
                 return `
                     <div class="clip-product">
                         <div class="clip-product-img-wrap">
                             ${imgHtml}
-                            <span class="${matchClass}">${match}</span>
+                            <span class="${matchClass}">${matchPercentage}%</span>
                         </div>
                         <div class="clip-product-info">
                             <div class="clip-product-name">${prod.name || 'Producto'}</div>
                             <div class="clip-product-price">
                                 ${(prod.price !== null && prod.price !== undefined && typeof prod.price === 'number') ? `$${prod.price.toFixed(2)}` : 'Consultar'}
                             </div>
-                            ${coverageHtml ? `<div style="margin-top:8px;">${coverageHtml}</div>` : ''}
-                            ${visibleAttrsHtml ? `<div class="clip-divider"></div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">${visibleAttrsHtml}</div>` : ''}
+                            ${allBadges ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${allBadges}</div>` : ''}
                             ${prod.stock !== undefined ? `
                                 <div class="clip-product-stock ${prod.stock > 0 ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
                                     ${prod.stock > 0 ? `✓ Stock: ${prod.stock}` : '✗ Sin stock'}
