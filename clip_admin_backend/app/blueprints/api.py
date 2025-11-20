@@ -1963,7 +1963,7 @@ def gpt4v_unified_search():
         # OPTIMIZACIÓN 1: Resolver todas las categorías primero
         # ===================================================================
         from sqlalchemy import func
-        from sqlalchemy.orm import joinedload
+        from sqlalchemy.orm import joinedload, selectinload
 
         def _resolve_category(name: str):
             # 1) Igualdad case-insensitive
@@ -2055,8 +2055,8 @@ def gpt4v_unified_search():
                 Image.is_processed == True,
                 Image.clip_embedding != None
             ).options(
-                joinedload(Product.images),  # Eager loading de imágenes
-                joinedload(Product.category)  # Eager loading de categoría
+                selectinload(Product.images),  # Eager loading de imágenes (selectinload para relaciones dinámicas)
+                joinedload(Product.category)   # Eager loading de categoría
             ).distinct()
 
             all_products = products_query.all()
