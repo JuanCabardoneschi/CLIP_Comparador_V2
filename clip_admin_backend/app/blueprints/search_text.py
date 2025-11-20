@@ -171,6 +171,28 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
             print("⚠️ Fallback sin resultado: no se detectó sustantivo principal")
             return {'text':'','category':None,'modifiers':[],'success':False}
 
+    # Promoción mínima: si la categoría detectada no pertenece al vocabulario de categorías,
+    # pero existe en la oración otro sustantivo/término cuyo singular SÍ está en fashion_categories,
+    # promoverlo a categoría principal. Esto corrige casos como "delantales cielo".
+    try:
+        FASHION_CATEGORIES_SET = set(_NLP_CONFIG.get('fashion_categories', []))
+    except Exception:
+        FASHION_CATEGORIES_SET = set()
+
+    if categoria_principal and FASHION_CATEGORIES_SET and categoria_principal not in FASHION_CATEGORIES_SET:
+        for tok in doc:
+            if not tok.is_alpha or tok.is_stop:
+                continue
+            tl = tok.text.lower()
+            if (tok.pos_ in ('NOUN', 'PROPN')) or (tl in FASHION_TERMS):
+                cand = _to_singular(tok)
+                if cand in FASHION_CATEGORIES_SET:
+                    print(f"🔁 Promoviendo categoría por vocabulario: '{categoria_principal}' → '{cand}'")
+                    principal = tok
+                    categoria_principal = cand
+                    elementos_extraidos.add(cand)
+                    break
+
     print(f"\n🔍 [NIVEL 1] Buscando modificadores directos de '{principal.text}':")
 
     nivel2_discarded = set()  # Rastrear términos descartados por ser nivel 2
