@@ -143,41 +143,35 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
             return txt
         return token.lemma_.lower()
 
-    # ESTRATEGIA MEJORADA: Recolectar todos los NOUN candidatos y priorizar los de fashion_categories
-    # Esto asegura que "delantales cielo" elija "delantal" sobre "cielo"
+    # ESTRATEGIA MEJORADA: Recolectar TODOS los NOUN candidatos en un solo pase
+    # Priorizar los que están en fashion_categories, independientemente de su dependencia
     candidates = []
     for token in doc:
         if not token.is_alpha or token.is_stop or token.pos_ == 'VERB':
             continue
-        # Primero intentar con dependencias relevantes
-        if token.dep_ in ('ROOT','obj','nsubj','dobj') and (token.pos_ in ('NOUN','PROPN') or token.text.lower() in FASHION_TERMS):
+        
+        # Evaluar si es un candidato válido (NOUN o fashion term)
+        tl = token.text.lower()
+        is_noun_candidate = (token.pos_ in ('NOUN','PROPN')) or (tl in FASHION_TERMS)
+        
+        if is_noun_candidate:
             term = _to_singular(token)
             if term and len(term) >= 3:
                 in_categories = term in FASHION_CATEGORIES_SET
-                candidates.append((token, term, in_categories, 0))  # prioridad 0 para dep relevantes
+                # Prioridad: dep relevante = 0, otros = 1
+                priority = 0 if token.dep_ in ('ROOT','obj','nsubj','dobj') else 1
+                candidates.append((token, term, in_categories, priority))
 
-    # Si no hay candidatos con dependencias relevantes, buscar cualquier NOUN
-    if not candidates:
-        for token in doc:
-            if not token.is_alpha or token.is_stop:
-                continue
-            tl = token.text.lower()
-            if token.pos_ in ('NOUN','PROPN') or tl in FASHION_TERMS:
-                term = _to_singular(token)
-                if term and len(term) >= 3:
-                    in_categories = term in FASHION_CATEGORIES_SET
-                    candidates.append((token, term, in_categories, 1))  # prioridad 1 para fallback
-
-    # Priorizar: 1) en fashion_categories, 2) por prioridad de dep, 3) por posición
+    # Ordenar por: 1) en fashion_categories (True primero), 2) prioridad dep, 3) posición
     if candidates:
         candidates.sort(key=lambda x: (not x[2], x[3], x[0].i))
         principal = candidates[0][0]
         categoria_principal = candidates[0][1]
         elementos_extraidos.add(categoria_principal)
         if candidates[0][2]:
-            print(f"✅ Principal seleccionado (en vocabulario): '{categoria_principal}'")
+            print(f"✅ Principal seleccionado (en vocabulario): '{categoria_principal}' (dep={principal.dep_})")
         else:
-            print(f"⚠️ Principal seleccionado (fuera de vocabulario): '{categoria_principal}'")
+            print(f"⚠️ Principal seleccionado (fuera de vocabulario): '{categoria_principal}' (dep={principal.dep_})")
     
     if not principal:
         print("⚠️ No se detectó sustantivo principal")
