@@ -269,6 +269,8 @@
                     <i class="bi bi-x-circle me-1"></i> Cancelar
                 </button>
                 <form method="POST" id="deleteForm" style="display: inline;">
+                    <!-- Hidden para asegurar ID accesible en submit fallback -->
+                    <input type="hidden" name="category_id" id="deleteFormCategoryId" value="">
                     <button type="submit" class="btn btn-danger">
                         <i class="bi bi-trash me-1"></i> Sí, eliminar categoría
                     </button>
@@ -299,7 +301,31 @@ if (deleteModal) {
 
         // Actualizar contenido del modal
         document.getElementById('categoryToDelete').textContent = categoryName;
-        document.getElementById('deleteForm').action = `/categories/${categoryId}/delete`;
+        const form = document.getElementById('deleteForm');
+        form.action = `/categories/${categoryId}/delete`;
+        const hiddenId = document.getElementById('deleteFormCategoryId');
+        if (hiddenId) hiddenId.value = categoryId;
+    });
+}
+
+// Fallback: si por algún motivo la acción no fue seteada (evento no disparado), corregir antes de enviar
+const deleteForm = document.getElementById('deleteForm');
+if (deleteForm) {
+    deleteForm.addEventListener('submit', function(e) {
+        try {
+            const currentAction = deleteForm.getAttribute('action') || '';
+            if (!currentAction || /\/categories\/?$/.test(currentAction)) {
+                const cid = document.getElementById('deleteFormCategoryId')?.value;
+                if (cid) {
+                    deleteForm.action = `/categories/${cid}/delete`;
+                    console.log('[DELETE FALLBACK] Action corregida a', deleteForm.action);
+                } else {
+                    console.warn('[DELETE FALLBACK] No se pudo corregir action: ID ausente');
+                }
+            }
+        } catch (err) {
+            console.error('[DELETE FALLBACK] Error preparando acción delete:', err);
+        }
     });
 }
 
