@@ -462,6 +462,11 @@ body .progress .progress-bar.progress-bar-striped.progress-bar-animated[style*="
                          id="processing-progress" style="width: 0%"></div>
                 </div>
             </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="closeProcessingModal()">
+                    <i class="fas fa-times"></i> Cerrar (el proceso continúa)
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -518,7 +523,7 @@ function processPending() {
     })
     .then(data => {
         console.log('📊 Datos recibidos:', data);
-        // El polling se encargará de detectar cuando termine
+
         if (!data.success) {
             console.error('❌ Error en el procesamiento:', data.message);
             isProcessing = false;
@@ -527,6 +532,18 @@ function processPending() {
             showAlert('error', data.message);
         } else {
             console.log('✅ Procesamiento iniciado correctamente');
+
+            // Si es procesamiento en background, mostrar mensaje especial
+            if (data.background) {
+                document.getElementById('processing-message').innerHTML = `
+                    <strong>🚀 Procesamiento en background iniciado</strong><br>
+                    <small>${data.pending_count} imágenes en cola</small><br>
+                    <small class="text-muted">✅ Puedes cerrar esta ventana. El proceso continuará en el servidor.</small>
+                `;
+
+                // El polling continuará mostrando el progreso real
+                console.log('ℹ️ Procesamiento asíncrono - UI puede cerrarse sin interrumpir');
+            }
         }
     })
     .catch(error => {
@@ -557,7 +574,55 @@ document.addEventListener('DOMContentLoaded', function() {
             mainProgressBar.classList.add('complete');
         }
     }
+
+    // 🆕 DETECTAR si hay procesamiento en curso al cargar la página
+    checkForOngoingProcessing();
 });
+
+function checkForOngoingProcessing() {
+    // Verificar si hay imágenes pendientes y si el progreso está entre 0-100%
+    const totalCount = parseInt(document.getElementById('total-count').textContent);
+    const processedCount = parseInt(document.getElementById('processed-count').textContent);
+    const pendingCount = parseInt(document.getElementById('pending-count').textContent);
+
+    // Si hay imágenes totales, algunas procesadas y algunas pendientes = procesamiento en curso
+    if (totalCount > 0 && processedCount > 0 && pendingCount > 0) {
+        const progressPercentage = (processedCount / totalCount * 100).toFixed(1);
+
+        console.log('🔄 Procesamiento en curso detectado:', {
+            total: totalCount,
+            processed: processedCount,
+            pending: pendingCount,
+            progress: progressPercentage + '%'
+        });
+
+        // Mostrar modal informativo (no bloqueante)
+        isProcessing = true;
+        processingModal.show();
+
+        document.getElementById('processing-message').innerHTML = `
+            <strong>🔄 Procesamiento en curso detectado</strong><br>
+            <small>${processedCount}/${totalCount} imágenes procesadas (${progressPercentage}%)</small><br>
+            <small>${pendingCount} imágenes pendientes</small><br>
+            <small class="text-muted">✨ El proceso continúa en background en el servidor.</small>
+        `;
+
+        // Actualizar barra de progreso del modal
+        const progressBar = document.getElementById('processing-progress');
+        if (progressBar) {
+            progressBar.style.width = progressPercentage + '%';
+            progressBar.setAttribute('aria-valuenow', progressPercentage);
+            progressBar.classList.add('processing');
+        }
+
+        // Iniciar polling para ver actualizaciones
+        startPolling();
+
+        console.log('✅ Polling iniciado para monitorear progreso');
+    } else {
+        console.log('ℹ️ No hay procesamiento en curso');
+    }
+}
 
 function refreshStats() {
     fetch('{{ url_for("embeddings.get_stats") }}')
@@ -584,7 +649,9 @@ function startPolling() {
         clearInterval(pollingInterval);
     }
 
-    pollingInterval = setInterval(updateStatsRealTime, 2000); // Cada 2 segundos
+    // OPTIMIZACIÓN RAILWAY: Polling más espaciado (1 min) para reducir carga de red/DB
+    // El procesamiento es largo (minutos), no necesitamos chequear tan frecuentemente
+    pollingInterval = setInterval(updateStatsRealTime, 60000); // Cada 60 segundos (1 minuto)
 }
 
 function stopPolling() {
@@ -810,6 +877,15 @@ function showAlert(type, message) {
     setTimeout(() => {
         alertDiv.remove();
     }, 5000);
+}
+
+function closeProcessingModal() {
+    // Cerrar el modal pero mantener el polling activo
+    processingModal.hide();
+    console.log('ℹ️ Modal cerrado - El polling continúa en background');
+
+    // Mostrar notificación de que el proceso sigue
+    showAlert('info', '✨ El procesamiento continúa en background. La página se actualizará automáticamente.');
 }
 
 // Detectar cuando el usuario abandona la página para limpiar polling

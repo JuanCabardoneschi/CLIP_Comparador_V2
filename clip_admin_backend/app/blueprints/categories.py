@@ -199,23 +199,93 @@ def edit(category_id):
 @bp.route("/<category_id>/delete", methods=["POST"])
 @login_required
 def delete(category_id):
-    """Eliminar categoría"""
+    """Eliminar categoría y todos sus productos asociados.
+
+    Al eliminar una categoría:
+    1. Elimina todos los embeddings de imágenes de los productos
+    2. Elimina todas las imágenes de los productos (Cloudinary se limpia automáticamente)
+    3. Elimina todos los productos asociados
+    4. Elimina la categoría
+    5. Recalcula centroides de las categorías restantes
+    """
     category = Category.query.get_or_404(category_id)
 
-    # Verificar que no tenga productos
-    product_count = Product.query.filter_by(category_id=category_id).count()
-    if product_count > 0:
-        flash(f"No se puede eliminar la categoría: tiene {product_count} productos asociados", "error")
-        return redirect(url_for("categories.view", category_id=category_id))
-
-    if request.form.get("confirm") == "DELETE":
-        db.session.delete(category)
-        db.session.commit()
-        flash(f"Categoría '{category.name}' eliminada exitosamente", "success")
+    # Verificar permisos del cliente
+    if category.client_id != current_user.client_id:
+        flash("No tienes permisos para eliminar esta categoría", "error")
         return redirect(url_for("categories.index"))
 
-    flash("Confirmación requerida para eliminar categoría", "error")
-    return redirect(url_for("categories.view", category_id=category_id))
+    try:
+        category_name = category.name
+
+        # 1. Obtener productos asociados
+        products = Product.query.filter_by(category_id=category_id).all()
+        product_count = len(products)
+
+        # 2. Eliminar imágenes y embeddings de esos productos
+        from app.models.image import Image
+        images_count = 0
+        embeddings_count = 0
+
+        for product in products:
+            # Obtener imágenes del producto
+            images = Image.query.filter_by(product_id=product.id).all()
+            images_count += len(images)
+
+            for image in images:
+                if image.clip_embedding:
+                    embeddings_count += 1
+                # Eliminar imagen (la relación en cascada se encarga)
+                db.session.delete(image)
+
+        # 3. Eliminar productos
+        for product in products:
+            db.session.delete(product)
+
+        # 4. Eliminar la categoría
+        db.session.delete(category)
+        db.session.commit()
+
+        # 5. Recalcular centroides de categorías restantes del cliente
+        remaining_categories = Category.query.filter_by(
+            client_id=current_user.client_id,
+            is_active=True
+        ).all()
+
+        recalculated_count = 0
+        for cat in remaining_categories:
+            try:
+                if cat.needs_centroid_update():
+                    cat.update_centroid_embedding(force_recalculate=True)
+                    recalculated_count += 1
+            except Exception as e:
+                print(f"⚠️ Error recalculando centroide de {cat.name}: {e}")
+
+        db.session.commit()
+
+        # Mensaje de confirmación con detalles
+        flash(
+            f"✅ Categoría '{category_name}' eliminada exitosamente. "
+            f"{product_count} productos eliminados, "
+            f"{images_count} imágenes eliminadas, "
+            f"{embeddings_count} embeddings eliminados, "
+            f"{recalculated_count} centroides recalculados.",
+            "success"
+        )
+
+        print(f"🗑️ Categoría '{category_name}' eliminada:")
+        print(f"   - Productos eliminados: {product_count}")
+        print(f"   - Imágenes eliminadas: {images_count}")
+        print(f"   - Embeddings eliminados: {embeddings_count}")
+        print(f"   - Centroides recalculados: {recalculated_count}")
+
+        return redirect(url_for("categories.index"))
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error al eliminar categoría: {str(e)}", "error")
+        print(f"❌ Error eliminando categoría {category_name}: {e}")
+        return redirect(url_for("categories.view", category_id=category_id))
 
 
 @bp.route("/api/by-client/<client_id>")

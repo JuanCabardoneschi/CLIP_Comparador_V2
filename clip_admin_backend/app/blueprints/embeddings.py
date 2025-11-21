@@ -32,8 +32,9 @@ from transformers import CLIPProcessor, CLIPModel
 import numpy as np
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, current_app
 from flask_login import login_required, current_user
 from app import db
 from app.models.image import Image
@@ -96,8 +97,28 @@ def load_image_from_source(source):
         if s.lower().startswith('http://') or s.lower().startswith('https://'):
             try:
                 log.info(f"🌐 Descargando imagen desde URL: {s[:80]}...")
-                response = requests.get(s, timeout=30)
+
+                # OPTIMIZACIÓN: Usar sesión con connection pooling y configuración optimizada
+                session = requests.Session()
+                session.mount('https://', requests.adapters.HTTPAdapter(
+                    pool_connections=10,
+                    pool_maxsize=20,
+                    max_retries=2
+                ))
+
+                # Headers optimizados para Cloudinary
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (compatible; CLIP-Comparador/2.0)',
+                    'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive'
+                }
+
+                # Timeout reducido: 10s conexión, 20s lectura
+                response = session.get(s, headers=headers, timeout=(10, 20), stream=True)
                 response.raise_for_status()
+
+                # Cargar directamente desde stream (más eficiente en memoria)
                 image = PILImage.open(BytesIO(response.content)).convert('RGB')
                 log.info("✅ Imagen descargada exitosamente desde URL")
                 return image
@@ -127,6 +148,93 @@ def load_image_from_source(source):
 
     # Tipo no soportado
     log.error(f"❌ Tipo de fuente no soportado: {type(source)}")
+
+
+def preload_images_parallel(image_records, max_workers=5):
+    """Pre-descarga imágenes en paralelo para acelerar procesamiento en Railway.
+
+    OPTIMIZACIÓN RAILWAY: Descarga múltiples imágenes simultáneamente usando ThreadPoolExecutor.
+    Esto aprovecha el ancho de banda de Railway y reduce significativamente el tiempo total.
+
+    Args:
+        image_records: Lista de objetos Image con cloudinary_url
+        max_workers: Número de threads paralelos (default: 5)
+
+    Returns:
+        dict: Mapeo de image.id -> PIL.Image precargada
+    """
+    import logging
+    log = logging.getLogger("clip_model")
+
+    preloaded_images = {}
+
+    # Crear sesión HTTP compartida con connection pooling
+    session = requests.Session()
+    session.mount('https://', requests.adapters.HTTPAdapter(
+        pool_connections=max_workers,
+        pool_maxsize=max_workers * 2,
+        max_retries=2
+    ))
+
+    headers = {
+        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'User-Agent': 'Mozilla/5.0 (CLIP-Embeddings)'
+    }
+
+    def download_single_image(img_record):
+        """Descarga una sola imagen con manejo de errores"""
+        try:
+            if not img_record.cloudinary_url:
+                log.warning(f"⚠️ {img_record.filename} sin URL de Cloudinary")
+                return (img_record.id, None, f"No URL disponible")
+
+            log.info(f"⬇️ Descargando {img_record.filename}...")
+            response = session.get(
+                img_record.cloudinary_url,
+                headers=headers,
+                timeout=(10, 20),  # 10s connect, 20s read
+                stream=True
+            )
+            response.raise_for_status()
+
+            # Convertir a PIL Image
+            pil_image = PILImage.open(BytesIO(response.content)).convert('RGB')
+            log.info(f"✅ {img_record.filename} descargada ({len(response.content)} bytes)")
+
+            return (img_record.id, pil_image, None)
+
+        except Exception as e:
+            log.error(f"❌ Error descargando {img_record.filename}: {e}")
+            return (img_record.id, None, str(e))
+
+    # Descargar en paralelo con ThreadPoolExecutor
+    log.info(f"🚀 Iniciando descarga paralela de {len(image_records)} imágenes con {max_workers} workers")
+    start_time = time.time()
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Enviar todas las descargas al pool
+        future_to_image = {
+            executor.submit(download_single_image, img): img
+            for img in image_records
+        }
+
+        # Recolectar resultados a medida que completan
+        for future in as_completed(future_to_image):
+            img_id, pil_image, error = future.result()
+
+            if pil_image is not None:
+                preloaded_images[img_id] = pil_image
+            elif error:
+                # Registrar error pero continuar con el resto
+                preloaded_images[img_id] = error  # Guardar error para manejo posterior
+
+    elapsed = time.time() - start_time
+    success_count = sum(1 for v in preloaded_images.values() if isinstance(v, PILImage.Image))
+    log.info(f"✅ Descarga paralela completa: {success_count}/{len(image_records)} exitosas en {elapsed:.2f}s")
+
+    return preloaded_images
     raise TypeError("Tipo de fuente no soportado para imagen")
 
 # Variables globales para el modelo CLIP
@@ -242,6 +350,12 @@ def _start_cleanup_thread_once():
                             _clip_model = None
                             _clip_processor = None
                             _clip_current_model_name = None
+
+                            # OPTIMIZACIÓN RAILWAY: Forzar garbage collection agresivo
+                            import gc
+                            gc.collect()  # Recolección estándar
+                            gc.collect()  # Segunda pasada para objetos cíclicos
+
                             print(f"🧹 CLIP descargado por inactividad tras arranque (sin uso, timeout {idle_timeout}s)")
                             logging.getLogger("clip_model").info(f"[CLIP] Modelo descargado de memoria por inactividad tras arranque (timeout {idle_timeout}s)")
                         continue
@@ -255,7 +369,13 @@ def _start_cleanup_thread_once():
                         _clip_model = None
                         _clip_processor = None
                         _clip_current_model_name = None
-                        print(f"🧹 CLIP descargado por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
+
+                        # OPTIMIZACIÓN RAILWAY: Forzar garbage collection agresivo
+                        import gc
+                        gc.collect()  # Recolección estándar
+                        gc.collect()  # Segunda pasada para objetos cíclicos
+
+                        print(f"🧹 CLIP descargado por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s) + GC ejecutado")
                         logging.getLogger("clip_model").info(f"[CLIP] Modelo descargado de memoria por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
                     else:
                         print(f"[CLIP] Model NOT unloaded: inactivity {int(idle_for)}s < {idle_timeout}s threshold.")
@@ -811,125 +931,185 @@ def get_stats():
         return jsonify({"success": False, "message": f"Error: {str(e)}"})
 
 
+def _process_pending_background(client_id, app):
+    """Función interna para procesar embeddings en background thread.
+
+    Esta función se ejecuta en un thread separado y no bloquea la respuesta HTTP.
+    Permite cerrar el navegador mientras continúa el procesamiento.
+
+    Args:
+        client_id: ID del cliente a procesar
+        app: Instancia de Flask app para context
+    """
+    with app.app_context():
+        try:
+            print(f"🔧 [BACKGROUND] Iniciando procesamiento para client_id={client_id}")
+
+            # Obtener imágenes pendientes
+            pending_images = Image.query.filter_by(
+                client_id=client_id,
+                is_processed=False,
+                upload_status='pending'
+            ).all()
+
+            if not pending_images:
+                print(f"ℹ️ [BACKGROUND] No hay imágenes pendientes para procesar")
+                return
+
+            processed_count = 0
+            batch_size = 5
+            total_images = len(pending_images)
+
+            print(f"🚀 [BACKGROUND] Procesamiento de {total_images} imágenes con CLIP iniciado")
+
+            for i in range(0, total_images, batch_size):
+                batch = pending_images[i:i + batch_size]
+
+                # Pre-descargar imágenes en paralelo
+                print(f"⬇️ [BACKGROUND] Pre-descargando {len(batch)} imágenes en paralelo...")
+                preloaded_cache = preload_images_parallel(batch, max_workers=5)
+
+                for image in batch:
+                    try:
+                        print(f"🔄 [BACKGROUND] Procesando {image.filename}...")
+
+                        if not image.cloudinary_url:
+                            print(f"❌ [BACKGROUND] Error: {image.filename} no tiene URL de Cloudinary")
+                            image.upload_status = 'failed'
+                            image.error_message = "No hay URL de Cloudinary disponible"
+                            continue
+
+                        # Usar imagen pre-descargada del cache
+                        cached_item = preloaded_cache.get(image.id)
+
+                        if cached_item is None:
+                            print(f"⚠️ [BACKGROUND] {image.filename} no encontrada en cache, descargando...")
+                            image_source = image.cloudinary_url
+                        elif isinstance(cached_item, str):
+                            raise Exception(f"Error en descarga paralela: {cached_item}")
+                        else:
+                            image_source = cached_item
+                            print(f"✅ [BACKGROUND] Usando imagen pre-descargada de {image.filename}")
+
+                        # Generar embedding optimizado con CLIP
+                        embedding, metadata = generate_clip_embedding(image_source, image)
+
+                        if embedding is None:
+                            raise Exception("Error generando embedding")
+
+                        # Guardar embedding y metadata
+                        image.clip_embedding = json.dumps(embedding)
+                        image.is_processed = True
+                        image.upload_status = 'completed'
+                        image.updated_at = datetime.utcnow()
+
+                        if hasattr(image, 'metadata') and metadata:
+                            image.metadata = json.dumps(metadata)
+
+                        processed_count += 1
+
+                        method = metadata.get('optimization_method', 'unknown') if metadata else 'unknown'
+                        confidence = metadata.get('confidence_score', 0) if metadata else 0
+                        print(f"✅ [BACKGROUND] {image.filename} procesado con {method} (confianza: {confidence:.3f})")
+
+                        # Actualizar tags contextuales del producto
+                        if image.product:
+                            try:
+                                from app.services.attribute_autofill_service import AttributeAutofillService
+                                result = AttributeAutofillService.autofill_product_attributes(
+                                    image.product,
+                                    overwrite=False
+                                )
+                                if result['success'] and result['tags']:
+                                    image.product.tags = result['tags']
+                                    print(f"  ✓ [BACKGROUND] Tags actualizados para {image.product.name}: {result['tags']}")
+                            except Exception as tag_error:
+                                print(f"⚠️ [BACKGROUND] Error actualizando tags de {image.product.name}: {tag_error}")
+
+                    except Exception as e:
+                        print(f"❌ [BACKGROUND] Error procesando {image.filename}: {e}")
+                        image.upload_status = 'failed'
+                        image.error_message = str(e)
+
+                # Commit por lote
+                db.session.commit()
+                print(f"💾 [BACKGROUND] Lote guardado: {processed_count}/{total_images} imágenes procesadas")
+
+                # Actualizar centroides de categorías afectadas
+                affected_categories = set()
+                for image in batch:
+                    if image.product and image.product.category and image.is_processed:
+                        affected_categories.add(image.product.category)
+
+                for category in affected_categories:
+                    try:
+                        if category.needs_centroid_update():
+                            category.update_centroid_embedding(force_recalculate=False)
+                            print(f"📊 [BACKGROUND] Centroide actualizado para categoría: {category.name}")
+                    except Exception as e:
+                        print(f"⚠️ [BACKGROUND] Error actualizando centroide de {category.name}: {e}")
+
+                # Commit de centroides
+                if affected_categories:
+                    try:
+                        db.session.commit()
+                        print(f"✅ [BACKGROUND] {len(affected_categories)} centroides actualizados")
+                    except Exception as e:
+                        print(f"⚠️ [BACKGROUND] Error guardando centroides: {e}")
+                        db.session.rollback()
+
+            print(f"🎉 [BACKGROUND] Procesamiento completado: {processed_count}/{total_images} imágenes procesadas exitosamente")
+
+        except Exception as e:
+            print(f"❌ [BACKGROUND] Error crítico en procesamiento: {e}")
+            db.session.rollback()
+        finally:
+            # Limpiar sesión de DB
+            db.session.remove()
+            print(f"🔚 [BACKGROUND] Thread de procesamiento finalizado")
+
+
 @bp.route("/process_pending", methods=["POST"])
 @login_required
 def process_pending():
-    """Procesar todas las imágenes pendientes"""
+    """Disparar procesamiento de imágenes pendientes en background.
+
+    NUEVO: Procesamiento asíncrono que permite cerrar el navegador.
+    El proceso continúa ejecutándose en Railway hasta completarse.
+    """
     if not current_user.client_id:
         return jsonify({"success": False, "message": "Usuario no asignado a cliente"})
 
     try:
-        # Obtener imágenes pendientes
-        pending_images = Image.query.filter_by(
+        # Verificar que hay imágenes pendientes
+        pending_count = Image.query.filter_by(
             client_id=current_user.client_id,
             is_processed=False,
             upload_status='pending'
-        ).all()
+        ).count()
 
-        if not pending_images:
+        if pending_count == 0:
             return jsonify({"success": False, "message": "No hay imágenes pendientes para procesar"})
 
-        # Procesar embeddings por lotes para permitir progreso en tiempo real
-        processed_count = 0
-        batch_size = 3  # Reducir a 3 para CLIP (más pesado)
-        total_images = len(pending_images)
+        # Disparar procesamiento en background thread
+        thread = threading.Thread(
+            target=_process_pending_background,
+            args=(current_user.client_id, current_app._get_current_object()),
+            daemon=True  # Thread daemon se cierra cuando termina la app
+        )
+        thread.start()
 
-        print(f"🚀 Iniciando procesamiento de {total_images} imágenes con CLIP")
-
-        for i in range(0, total_images, batch_size):
-            batch = pending_images[i:i + batch_size]
-
-            for image in batch:
-                try:
-                    print(f"🔄 Procesando {image.filename}...")
-
-                    # SOLO usar Cloudinary - no hay fallback local
-                    if not image.cloudinary_url:
-                        print(f"❌ Error: {image.filename} no tiene URL de Cloudinary")
-                        # Mantener coherencia de estados: usar 'failed'
-                        image.upload_status = 'failed'
-                        image.error_message = "No hay URL de Cloudinary disponible"
-                        continue
-
-                    image_source = image.cloudinary_url
-                    print(f"🌐 Procesando desde Cloudinary: {image_source}")
-
-                    # Generar embedding optimizado con CLIP
-                    embedding, metadata = generate_clip_embedding(image_source, image)
-
-                    if embedding is None:
-                        raise Exception("Error generando embedding")
-
-                    # Guardar embedding y metadata en la base de datos
-                    image.clip_embedding = json.dumps(embedding)
-                    image.is_processed = True
-                    image.upload_status = 'completed'
-                    image.updated_at = datetime.utcnow()
-
-                    # Guardar metadata si hay espacio (opcional)
-                    if hasattr(image, 'metadata') and metadata:
-                        image.metadata = json.dumps(metadata)
-
-                    processed_count += 1
-
-                    # Log de información de optimización
-                    method = metadata.get('optimization_method', 'unknown') if metadata else 'unknown'
-                    confidence = metadata.get('confidence_score', 0) if metadata else 0
-                    print(f"✅ {image.filename} procesado con {method} (confianza: {confidence:.3f})")
-
-                    # ✨ NUEVO: Actualizar tags contextuales del producto
-                    if image.product:
-                        try:
-                            from app.services.attribute_autofill_service import AttributeAutofillService
-                            result = AttributeAutofillService.autofill_product_attributes(
-                                image.product,
-                                overwrite=False
-                            )
-                            if result['success'] and result['tags']:
-                                image.product.tags = result['tags']
-                                print(f"  ✓ Tags actualizados para {image.product.name}: {result['tags']}")
-                        except Exception as tag_error:
-                            print(f"⚠️ Error actualizando tags de {image.product.name}: {tag_error}")
-
-                except Exception as e:
-                    print(f"❌ Error procesando {image.filename}: {e}")
-                    image.upload_status = 'failed'
-                    image.error_message = str(e)
-
-            # Commit por lote para que el polling pueda ver progreso
-            db.session.commit()
-            print(f"💾 Lote guardado: {processed_count}/{total_images} imágenes procesadas")
-
-            # 🎯 ACTUALIZAR CENTROIDES de categorías afectadas en este lote
-            affected_categories = set()
-            for image in batch:
-                if image.product and image.product.category and image.is_processed:
-                    affected_categories.add(image.product.category)
-
-            for category in affected_categories:
-                try:
-                    if category.needs_centroid_update():
-                        category.update_centroid_embedding(force_recalculate=False)
-                        print(f"📊 Centroide actualizado para categoría: {category.name}")
-                except Exception as e:
-                    print(f"⚠️ Error actualizando centroide de {category.name}: {e}")
-
-            # Commit de centroides actualizados
-            if affected_categories:
-                try:
-                    db.session.commit()
-                    print(f"✅ {len(affected_categories)} centroides actualizados")
-                except Exception as e:
-                    print(f"⚠️ Error guardando centroides: {e}")
-                    db.session.rollback()
+        print(f"🚀 Procesamiento en background iniciado para {pending_count} imágenes")
+        print(f"ℹ️ El proceso continuará incluso si cierras el navegador")
 
         return jsonify({
             "success": True,
-            "message": f"Se procesaron {processed_count} embeddings correctamente"
+            "message": f"Procesamiento iniciado para {pending_count} imágenes. El proceso continuará en background, puedes cerrar esta ventana.",
+            "pending_count": pending_count,
+            "background": True
         })
 
     except Exception as e:
-        db.session.rollback()
         return jsonify({"success": False, "message": f"Error: {str(e)}"})
 
 

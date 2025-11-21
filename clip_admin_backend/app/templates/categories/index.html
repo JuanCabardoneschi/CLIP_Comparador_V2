@@ -229,19 +229,46 @@
 <div class="modal fade" id="deleteModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Confirmar Eliminación</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    Confirmar Eliminación de Categoría
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>¿Estás seguro de que deseas eliminar la categoría <strong id="categoryToDelete"></strong>?</p>
-                <p class="text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Esta acción no se puede deshacer.</p>
+                <p class="mb-3">¿Estás seguro de que deseas eliminar la categoría <strong id="categoryToDelete"></strong>?</p>
+
+                <div class="alert alert-danger mb-3">
+                    <strong>🗑️ Esta acción ELIMINARÁ PERMANENTEMENTE:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li><strong>Todos los productos</strong> de esta categoría</li>
+                        <li><strong>Todas las imágenes</strong> de esos productos</li>
+                        <li><strong>Todos los embeddings</strong> de las imágenes</li>
+                        <li>La categoría y sus metadatos</li>
+                    </ul>
+                </div>
+
+                <div class="alert alert-warning mb-3">
+                    <strong>⚙️ Además, se ejecutará:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>Recalcular centroides de las categorías restantes</li>
+                    </ul>
+                </div>
+
+                <p class="text-danger mb-0">
+                    <i class="bi bi-exclamation-octagon me-2"></i>
+                    <strong>Esta acción NO se puede deshacer.</strong> Todos los datos se perderán permanentemente.
+                </p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-circle me-1"></i> Cancelar
+                </button>
                 <form method="POST" id="deleteForm" style="display: inline;">
-                    <input type="hidden" name="_method" value="DELETE">
-                    <button type="submit" class="btn btn-danger">Eliminar</button>
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash me-1"></i> Sí, eliminar categoría
+                    </button>
                 </form>
             </div>
         </div>
