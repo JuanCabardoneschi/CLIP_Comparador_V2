@@ -199,7 +199,10 @@
                                     <button type="button"
                                             class="btn btn-sm btn-outline-danger"
                                             title="Eliminar"
-                                            onclick="confirmDelete('{{ category.id }}', '{{ category.name }}')">
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#deleteModal"
+                                            data-category-id="{{ category.id }}"
+                                            data-category-name="{{ category.name }}">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </div>
@@ -283,6 +286,23 @@ document.getElementById('searchInput').addEventListener('input', filterCategorie
 document.getElementById('statusFilter').addEventListener('change', filterCategories);
 document.getElementById('sortBy').addEventListener('change', sortCategories);
 
+// Manejar modal de eliminación con data attributes
+const deleteModal = document.getElementById('deleteModal');
+if (deleteModal) {
+    deleteModal.addEventListener('show.bs.modal', function (event) {
+        // Botón que activó el modal
+        const button = event.relatedTarget;
+
+        // Extraer info de los data-* attributes
+        const categoryId = button.getAttribute('data-category-id');
+        const categoryName = button.getAttribute('data-category-name');
+
+        // Actualizar contenido del modal
+        document.getElementById('categoryToDelete').textContent = categoryName;
+        document.getElementById('deleteForm').action = `/categories/${categoryId}/delete`;
+    });
+}
+
 function filterCategories() {
     const searchTerm = document.getElementById('searchInput').value.toLowerCase();
     const statusFilter = document.getElementById('statusFilter').value;
@@ -342,12 +362,6 @@ function sortCategories() {
 
     // Reordenar las filas
     rows.forEach(row => tbody.appendChild(row));
-}
-
-function confirmDelete(categoryId, categoryName) {
-    document.getElementById('categoryToDelete').textContent = categoryName;
-    document.getElementById('deleteForm').action = `/categories/${categoryId}/delete`;
-    new bootstrap.Modal(document.getElementById('deleteModal')).show();
 }
 </script>
 {% endblock %}
