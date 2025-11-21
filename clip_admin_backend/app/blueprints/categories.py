@@ -202,11 +202,12 @@ def delete(category_id):
     """Eliminar categoría y todos sus productos asociados.
 
     Al eliminar una categoría:
-    1. Elimina todos los embeddings de imágenes de los productos
-    2. Elimina todas las imágenes de los productos (Cloudinary se limpia automáticamente)
-    3. Elimina todos los productos asociados
-    4. Elimina la categoría
-    5. Recalcula centroides de las categorías restantes
+    1. Elimina imágenes de Cloudinary usando cloudinary.uploader.destroy()
+    2. Elimina todos los embeddings de imágenes de los productos
+    3. Elimina registros de imágenes de la BD
+    4. Elimina todos los productos asociados
+    5. Elimina la categoría
+    6. Recalcula centroides de las categorías restantes
     """
     category = Category.query.get_or_404(category_id)
 
@@ -222,10 +223,13 @@ def delete(category_id):
         products = Product.query.filter_by(category_id=category_id).all()
         product_count = len(products)
 
-        # 2. Eliminar imágenes y embeddings de esos productos
+        # 2. Eliminar imágenes de Cloudinary y BD
         from app.models.image import Image
+        import cloudinary.uploader
         images_count = 0
         embeddings_count = 0
+        cloudinary_deleted = 0
+        cloudinary_errors = 0
 
         for product in products:
             # Obtener imágenes del producto
@@ -235,7 +239,22 @@ def delete(category_id):
             for image in images:
                 if image.clip_embedding:
                     embeddings_count += 1
-                # Eliminar imagen (la relación en cascada se encarga)
+
+                # Eliminar de Cloudinary
+                if image.cloudinary_public_id:
+                    try:
+                        result = cloudinary.uploader.destroy(image.cloudinary_public_id)
+                        if result.get('result') == 'ok':
+                            cloudinary_deleted += 1
+                            print(f"🗑️ Cloudinary: {image.cloudinary_public_id} eliminado")
+                        else:
+                            cloudinary_errors += 1
+                            print(f"⚠️ Cloudinary: {image.cloudinary_public_id} - {result.get('result', 'error')}")
+                    except Exception as e:
+                        cloudinary_errors += 1
+                        print(f"❌ Error eliminando de Cloudinary {image.cloudinary_public_id}: {e}")
+
+                # Eliminar registro de BD
                 db.session.delete(image)
 
         # 3. Eliminar productos
@@ -263,14 +282,16 @@ def delete(category_id):
 
         db.session.commit()
 
-        # Mensaje de confirmación con detalles
+        # Mensaje de confirmación con detalles de Cloudinary
         flash(
-            f"✅ Categoría '{category_name}' eliminada exitosamente. "
+            f"✅ Categoría '{category_name}' eliminada. "
             f"{product_count} productos eliminados, "
             f"{images_count} imágenes eliminadas, "
             f"{embeddings_count} embeddings eliminados, "
-            f"{recalculated_count} centroides recalculados.",
-            "success"
+            f"{recalculated_count} centroides recalculados. "
+            f"Cloudinary: {cloudinary_deleted} eliminadas" +
+            (f", {cloudinary_errors} errores" if cloudinary_errors > 0 else ""),
+            "success" if cloudinary_errors == 0 else "warning"
         )
 
         print(f"🗑️ Categoría '{category_name}' eliminada:")
@@ -278,6 +299,9 @@ def delete(category_id):
         print(f"   - Imágenes eliminadas: {images_count}")
         print(f"   - Embeddings eliminados: {embeddings_count}")
         print(f"   - Centroides recalculados: {recalculated_count}")
+        print(f"   - Cloudinary eliminadas: {cloudinary_deleted}")
+        if cloudinary_errors > 0:
+            print(f"   - ⚠️ Cloudinary errores: {cloudinary_errors}")
 
         return redirect(url_for("categories.index"))
 
