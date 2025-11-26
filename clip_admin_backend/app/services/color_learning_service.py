@@ -4,9 +4,7 @@ Servicio de aprendizaje de colores: integra ColorMapping con el sistema de búsq
 from app.models import ColorMapping
 from app.utils.llm_query_normalizer import normalize_query
 from app.utils.colors import normalize_color, colors_are_similar, SIMILAR_COLOR_GROUPS
-import logging
-
-logger = logging.getLogger(__name__)
+from app.utils.logging_config import log_color, log_verbose, log_error, LogCategory
 
 
 class ColorLearningService:
@@ -53,7 +51,7 @@ class ColorLearningService:
 
         if mapping:
             # Mapeo existente → incrementar uso
-            logger.info(f"✅ Color conocido: '{clean_color}' → {mapping.normalized_color} (grupo: {mapping.similarity_group}, usos: {mapping.usage_count})")
+            log_color(f"Color conocido: '{clean_color}' → {mapping.normalized_color} (grupo: {mapping.similarity_group}, usos: {mapping.usage_count})")
 
             ColorMapping.get_or_create(
                 client_id=client_id,
@@ -69,7 +67,7 @@ class ColorLearningService:
             }
         else:
             # Color nuevo → normalizar y crear mapeo
-            logger.info(f"🆕 Color nuevo: '{clean_color}' → normalizando...")
+            log_color(f"Color nuevo: '{clean_color}' → normalizando...")
 
             # 1. Normalizar con el sistema actual (hardcoded + LLM)
             normalized = normalize_color(clean_color, client_id=client_id)
@@ -94,7 +92,7 @@ class ColorLearningService:
                 confidence=confidence
             )
 
-            logger.info(f"💾 Color guardado: '{clean_color}' → {normalized} (grupo: {similarity_group})")
+            log_color(f"Color guardado: '{clean_color}' → {normalized} (grupo: {similarity_group})")
 
             return {
                 'raw_color': clean_color,
@@ -133,11 +131,11 @@ class ColorLearningService:
         for group_name, mappings in client_groups['groups'].items():
             for mapping in mappings:
                 if colors_are_similar(normalized_color, mapping.normalized_color, client_id=client_id):
-                    logger.info(f"📚 Color '{normalized_color}' asignado al grupo existente '{group_name}'")
+                    log_verbose(LogCategory.COLOR, f"Color '{normalized_color}' asignado al grupo existente '{group_name}'")
                     return group_name
 
         # 3. No encontró grupo → el color normalizado es su propio grupo
-        logger.info(f"🎨 Color '{normalized_color}' crea su propio grupo")
+        log_verbose(LogCategory.COLOR, f"Color '{normalized_color}' crea su propio grupo")
         return normalized_color
 
     @staticmethod
@@ -166,7 +164,7 @@ class ColorLearningService:
         raw_colors = ColorMapping.get_colors_in_group(client_id, similarity_group)
 
         if raw_colors:
-            logger.debug(f"🔍 Color '{detected_color}' → grupo '{similarity_group}' → {len(raw_colors)} colores raw")
+            log_verbose(LogCategory.COLOR, f"Color '{detected_color}' → grupo '{similarity_group}' → {len(raw_colors)} colores raw")
             return raw_colors
         else:
             return [detected_color]
@@ -250,5 +248,5 @@ class ColorLearningService:
         from app import db
         db.session.commit()
 
-        logger.info(f"✅ Agrupados {updated} colores en '{group_name}' para cliente {client_id}")
+        log_color(f"Agrupados {updated} colores en '{group_name}' para cliente {client_id}")
         return updated

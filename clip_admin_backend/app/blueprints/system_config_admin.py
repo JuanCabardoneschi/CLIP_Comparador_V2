@@ -70,6 +70,12 @@ def update():
         enable_category_detection = request.form.get('enable_category_detection') == 'on'
         enable_visual_search = request.form.get('enable_visual_search') == 'on'
 
+        # Nivel de log
+        log_level = request.form.get('log_level', 'REQUEST_LIFECYCLE')
+        valid_log_levels = ['ERROR_ONLY', 'REQUEST_LIFECYCLE', 'MAIN_PROCESSES', 'VERBOSE']
+        if log_level not in valid_log_levels:
+            log_level = 'REQUEST_LIFECYCLE'
+
         # Validaciones
         if clip_idle_timeout < 1 or clip_idle_timeout > 1440:
             flash('El timeout de CLIP debe estar entre 1 y 1440 minutos', 'danger')
@@ -90,6 +96,9 @@ def update():
                 'max_results': max_results,
                 'enable_category_detection': enable_category_detection,
                 'enable_visual_search': enable_visual_search
+            },
+            'system': {
+                'log_level': log_level
             }
         }
 

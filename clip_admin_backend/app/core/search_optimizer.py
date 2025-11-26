@@ -14,9 +14,9 @@ Uso:
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
-import logging
+from app.utils.logging_config import log_search, log_verbose, log_error, LogCategory
 
-logger = logging.getLogger(__name__)
+# No usar logger estándar, usar logging centralizado
 
 
 @dataclass
@@ -200,7 +200,7 @@ class SearchOptimizer:
             >>> # Solo color coincide: score = 0.5 (1 de 2 atributos)
         """
         if not detected_attributes:
-            logger.debug(f"Producto {product.id}: Sin atributos detectados, metadata_score=0.0")
+            log_verbose(LogCategory.SEARCH, f"Producto {product.id}: Sin atributos detectados, metadata_score=0.0")
             return 0.0
 
         # Obtener pesos de atributos desde config (con defaults)
@@ -394,7 +394,7 @@ class SearchOptimizer:
             Polo Blanco: 78.30%
         """
         if not raw_results:
-            logger.warning("rank_results llamado con lista vacía")
+            log_error("rank_results llamado con lista vacía")
             return []
 
         detected_attributes = detected_attributes or {}
@@ -409,7 +409,7 @@ class SearchOptimizer:
             # Extraer producto y visual score
             product = raw_result.get('product')
             if product is None:
-                logger.error(f"Resultado sin producto: {raw_result}")
+                log_error(f"Resultado sin producto: {raw_result}")
                 continue
 
             # Visual score puede venir como 'similarity' o 'score'

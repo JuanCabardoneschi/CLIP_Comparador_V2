@@ -14,6 +14,10 @@ import os
 from flask import Blueprint, request, jsonify, send_file, current_app, session, redirect, url_for
 from flask_login import login_required, current_user
 from flask_cors import CORS
+from app.utils.logging_config import (
+    log_error, log_request, log_search, log_category_detection,
+    log_nlp, log_database, LogCategory, should_log
+)
 from app import db
 from app.models.client import Client
 from app.models.category import Category
@@ -75,11 +79,9 @@ def _get_spacy_nlp():
             model_name = os.getenv("SPACY_MODEL", "es_core_news_md")
             # Deshabilitar componentes no necesarios para reducir overhead
             _SPACY_NLP = spacy.load(model_name, disable=["parser", "ner", "textcat"])
-            railway_log(f"spaCy cargado: {model_name}")
-            print(f"✅ spaCy modelo '{model_name}' cargado exitosamente", flush=True)
+            log_nlp(f"spaCy cargado: {model_name}")
         except Exception as e:
-            railway_log(f"❌ CRITICAL: spaCy no disponible: {e}")
-            print(f"❌ CRITICAL: spaCy no disponible: {e}", flush=True)
+            log_error(f"CRITICAL: spaCy no disponible: {e}")
             _SPACY_NLP = False
     return _SPACY_NLP if _SPACY_NLP not in (None, False) else None
 
@@ -121,7 +123,9 @@ def _get_color_embedding(color_text: str):
 # 🔍 Helper para logs que funcionen en Railway (Gunicorn)
 def railway_log(message):
     """Log que se ve en Railway - usa stderr con flush inmediato"""
-    print(f"[RAILWAY] {message}", file=sys.stderr, flush=True)
+    # Redirigir a sistema de logging centralizado
+    from app.utils.logging_config import railway_log as new_railway_log
+    new_railway_log(message)
 
 
 def _clip_prompt_for_category(category) -> str:

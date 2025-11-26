@@ -1,12 +1,3 @@
-import logging
-# Configuración explícita del logger 'clip_model' para que los logs salgan por consola (Railway)
-clip_logger = logging.getLogger("clip_model")
-clip_logger.setLevel(logging.INFO)
-if not clip_logger.hasHandlers():
-    handler = logging.StreamHandler()
-    formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s')
-    handler.setFormatter(formatter)
-    clip_logger.addHandler(handler)
 """
 Blueprint de Embeddings CLIP
 Administración y generación de embeddings para búsqueda visual
@@ -43,6 +34,10 @@ from app.models.product import Product
 from app.models.client import Client
 from app.utils.permissions import requires_role, requires_client_scope, filter_by_client_scope
 from app.models.category import Category
+from app.utils.logging_config import (
+    log_error, log_embedding, log_verbose, log_system,
+    LogCategory
+)
 
 bp = Blueprint('embeddings', __name__)
 
@@ -356,7 +351,7 @@ def _start_cleanup_thread_once():
                             gc.collect()  # Recolección estándar
                             gc.collect()  # Segunda pasada para objetos cíclicos
 
-                            print(f"🧹 CLIP descargado por inactividad tras arranque (sin uso, timeout {idle_timeout}s)")
+                            log_system(f"CLIP descargado por inactividad tras arranque (sin uso, timeout {idle_timeout}s)")
                             logging.getLogger("clip_model").info(f"[CLIP] Modelo descargado de memoria por inactividad tras arranque (timeout {idle_timeout}s)")
                         continue
                     idle_for = now - _clip_last_used_ts
@@ -375,10 +370,10 @@ def _start_cleanup_thread_once():
                         gc.collect()  # Recolección estándar
                         gc.collect()  # Segunda pasada para objetos cíclicos
 
-                        print(f"🧹 CLIP descargado por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s) + GC ejecutado")
+                        log_system(f"CLIP descargado por inactividad (idle {int(idle_for)}s >= {idle_timeout}s) + GC ejecutado")
                         logging.getLogger("clip_model").info(f"[CLIP] Modelo descargado de memoria por inactividad (idle {int(idle_for)}s ≥ {idle_timeout}s)")
                     else:
-                        print(f"[CLIP] Model NOT unloaded: inactivity {int(idle_for)}s < {idle_timeout}s threshold.")
+                        log_verbose(LogCategory.EMBEDDING, f"[CLIP] Model NOT unloaded: inactivity {int(idle_for)}s < {idle_timeout}s threshold.")
             except Exception as _e:
                 logging.getLogger("clip_model").error(f"[CLIP] Error en hilo de limpieza: {_e}")
                 continue
@@ -400,7 +395,7 @@ def get_clip_model():
 
         # Si el modelo cambió en la configuración, descargar el actual y cargar el nuevo
         if _clip_model is not None and _clip_current_model_name != model_name:
-            print(f"⚠️ Modelo cambió de {_clip_current_model_name} a {model_name}. Recargando...")
+            log_system(f"Modelo cambio de {_clip_current_model_name} a {model_name}. Recargando...")
             _clip_model = None
             _clip_processor = None
             _clip_current_model_name = None
@@ -409,7 +404,7 @@ def get_clip_model():
                 torch.cuda.empty_cache()
 
         if _clip_model is None:
-            print(f"🔄 Cargando modelo CLIP {model_name} ({model_id})...")
+            log_embedding(f"Cargando modelo CLIP {model_name} ({model_id})...")
             try:
                 _clip_model = CLIPModel.from_pretrained(model_id)
                 _clip_model.loaded_at = time.time()
@@ -419,14 +414,14 @@ def get_clip_model():
                 # Configurar para CPU/GPU
                 _clip_model.eval()
                 if torch.cuda.is_available():
-                    print("🔥 GPU disponible, usando CUDA")
+                    log_system("GPU disponible, usando CUDA")
                     _clip_model = _clip_model.cuda()
                 else:
-                    print("💻 Usando CPU para CLIP")
+                    log_system("Usando CPU para CLIP")
 
-                print(f"✅ Modelo CLIP {model_name} cargado exitosamente")
+                log_embedding(f"Modelo CLIP {model_name} cargado exitosamente")
             except Exception as e:
-                print(f"❌ Error cargando CLIP: {e}")
+                log_error(f"Error cargando CLIP: {e}")
                 raise
 
         # Marcar último uso y devolver
@@ -454,7 +449,7 @@ def generate_clip_embedding(image_path, image_obj=None):
                 context_info['manual_crop_applied'] = True
                 context_info['manual_crop_box'] = image_obj.get_crop_box()
             except Exception as ce:
-                print(f"⚠️ Error aplicando recorte manual: {ce}")
+                log_error(f"Error aplicando recorte manual: {ce}")
                 context_info['manual_crop_applied'] = False
 
         # Generar embedding optimizado (usa PIL override si existe)
@@ -462,18 +457,18 @@ def generate_clip_embedding(image_path, image_obj=None):
             embedding, metadata = generate_optimized_embedding(
                 image_path, model, processor, context_info, pil_override=pil_override
             )
-            print(f"✅ Embedding optimizado generado: {len(embedding)} dimensiones")
-            print(f"📊 Métodos usados: {metadata.get('optimization_method')}")
+            log_embedding(f"Embedding optimizado generado: {len(embedding)} dimensiones")
+            log_verbose(LogCategory.EMBEDDING, f"Metodos usados: {metadata.get('optimization_method')}")
             return embedding, metadata
         else:
             # Fallback a embedding simple
             embedding = generate_simple_embedding(image_path, model, processor, pil_override=pil_override)
             metadata = {'optimization_method': 'simple', 'embedding_dim': len(embedding)}
-            print(f"✅ Embedding simple generado: {len(embedding)} dimensiones")
+            log_embedding(f"Embedding simple generado: {len(embedding)} dimensiones")
             return embedding, metadata
 
     except Exception as e:
-        print(f"❌ Error generando embedding: {e}")
+        log_error(f"Error generando embedding: {e}")
         return None, None
 
 def get_image_context(image_obj):
@@ -523,7 +518,7 @@ def get_image_context(image_obj):
         return context
 
     except Exception as e:
-        print(f"⚠️ Error obteniendo contexto: {e}")
+        log_error(f"Error obteniendo contexto: {e}")
         return {'enable_optimization': False}
 
 def generate_optimized_embedding(image_path_or_url, model, processor, context_info, pil_override=None):
@@ -655,7 +650,7 @@ def generate_simple_embedding(image_path_or_url, model, processor, pil_override=
     try:
         inputs = processor(images=image, return_tensors="pt")
     except Exception as e:
-        print(f"🔧 DEBUG: Error en procesador embeddings (línea 173): {e}")
+        log_error(f"Error en procesador embeddings (linea 173): {e}")
         # Fallback: usar solo argumentos posicionales
         inputs = processor(image, return_tensors="pt")
 
@@ -680,7 +675,7 @@ def generate_image_only_embedding(image, model, processor):
     try:
         inputs = processor(images=image, return_tensors="pt")
     except Exception as e:
-        print(f"🔧 DEBUG: Error en procesador embeddings (línea 194): {e}")
+        log_error(f"Error en procesador embeddings (linea 194): {e}")
         # Fallback: usar solo argumentos posicionales
         inputs = processor(image, return_tensors="pt")
 
@@ -727,7 +722,7 @@ def generate_contextual_embeddings(image, model, processor, context_info):
             prompts.append(prompt)
 
         except Exception as e:
-            print(f"⚠️ Error con prompt '{prompt}': {e}")
+            log_error(f"Error con prompt '{prompt}': {e}")
             continue
 
     return {'embeddings': embeddings, 'prompts': prompts}
@@ -943,7 +938,7 @@ def _process_pending_background(client_id, app):
     """
     with app.app_context():
         try:
-            print(f"🔧 [BACKGROUND] Iniciando procesamiento para client_id={client_id}")
+            log_embedding(f"[BACKGROUND] Iniciando procesamiento para client_id={client_id}")
 
             # Obtener imágenes pendientes
             pending_images = Image.query.filter_by(
@@ -953,28 +948,28 @@ def _process_pending_background(client_id, app):
             ).all()
 
             if not pending_images:
-                print(f"ℹ️ [BACKGROUND] No hay imágenes pendientes para procesar")
+                log_verbose(LogCategory.EMBEDDING, "[BACKGROUND] No hay imagenes pendientes para procesar")
                 return
 
             processed_count = 0
             batch_size = 5
             total_images = len(pending_images)
 
-            print(f"🚀 [BACKGROUND] Procesamiento de {total_images} imágenes con CLIP iniciado")
+            log_embedding(f"[BACKGROUND] Procesamiento de {total_images} imagenes con CLIP iniciado")
 
             for i in range(0, total_images, batch_size):
                 batch = pending_images[i:i + batch_size]
 
                 # Pre-descargar imágenes en paralelo
-                print(f"⬇️ [BACKGROUND] Pre-descargando {len(batch)} imágenes en paralelo...")
+                log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] Pre-descargando {len(batch)} imagenes en paralelo...")
                 preloaded_cache = preload_images_parallel(batch, max_workers=5)
 
                 for image in batch:
                     try:
-                        print(f"🔄 [BACKGROUND] Procesando {image.filename}...")
+                        log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] Procesando {image.filename}...")
 
                         if not image.cloudinary_url:
-                            print(f"❌ [BACKGROUND] Error: {image.filename} no tiene URL de Cloudinary")
+                            log_error(f"[BACKGROUND] Error: {image.filename} no tiene URL de Cloudinary")
                             image.upload_status = 'failed'
                             image.error_message = "No hay URL de Cloudinary disponible"
                             continue
@@ -983,13 +978,13 @@ def _process_pending_background(client_id, app):
                         cached_item = preloaded_cache.get(image.id)
 
                         if cached_item is None:
-                            print(f"⚠️ [BACKGROUND] {image.filename} no encontrada en cache, descargando...")
+                            log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] {image.filename} no encontrada en cache, descargando...")
                             image_source = image.cloudinary_url
                         elif isinstance(cached_item, str):
                             raise Exception(f"Error en descarga paralela: {cached_item}")
                         else:
                             image_source = cached_item
-                            print(f"✅ [BACKGROUND] Usando imagen pre-descargada de {image.filename}")
+                            log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] Usando imagen pre-descargada de {image.filename}")
 
                         # Generar embedding optimizado con CLIP
                         embedding, metadata = generate_clip_embedding(image_source, image)
@@ -1010,7 +1005,7 @@ def _process_pending_background(client_id, app):
 
                         method = metadata.get('optimization_method', 'unknown') if metadata else 'unknown'
                         confidence = metadata.get('confidence_score', 0) if metadata else 0
-                        print(f"✅ [BACKGROUND] {image.filename} procesado con {method} (confianza: {confidence:.3f})")
+                        log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] {image.filename} procesado con {method} (confianza: {confidence:.3f})")
 
                         # Actualizar tags contextuales del producto
                         if image.product:
@@ -1022,18 +1017,18 @@ def _process_pending_background(client_id, app):
                                 )
                                 if result['success'] and result['tags']:
                                     image.product.tags = result['tags']
-                                    print(f"  ✓ [BACKGROUND] Tags actualizados para {image.product.name}: {result['tags']}")
+                                    log_verbose(LogCategory.EMBEDDING, f"  [BACKGROUND] Tags actualizados para {image.product.name}: {result['tags']}")
                             except Exception as tag_error:
-                                print(f"⚠️ [BACKGROUND] Error actualizando tags de {image.product.name}: {tag_error}")
+                                log_error(f"[BACKGROUND] Error actualizando tags de {image.product.name}: {tag_error}")
 
                     except Exception as e:
-                        print(f"❌ [BACKGROUND] Error procesando {image.filename}: {e}")
+                        log_error(f"[BACKGROUND] Error procesando {image.filename}: {e}")
                         image.upload_status = 'failed'
                         image.error_message = str(e)
 
                 # Commit por lote
                 db.session.commit()
-                print(f"💾 [BACKGROUND] Lote guardado: {processed_count}/{total_images} imágenes procesadas")
+                log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] Lote guardado: {processed_count}/{total_images} imagenes procesadas")
 
                 # Actualizar centroides de categorías afectadas
                 affected_categories = set()
@@ -1045,28 +1040,28 @@ def _process_pending_background(client_id, app):
                     try:
                         if category.needs_centroid_update():
                             category.update_centroid_embedding(force_recalculate=False)
-                            print(f"📊 [BACKGROUND] Centroide actualizado para categoría: {category.name}")
+                            log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] Centroide actualizado para categoria: {category.name}")
                     except Exception as e:
-                        print(f"⚠️ [BACKGROUND] Error actualizando centroide de {category.name}: {e}")
+                        log_error(f"[BACKGROUND] Error actualizando centroide de {category.name}: {e}")
 
                 # Commit de centroides
                 if affected_categories:
                     try:
                         db.session.commit()
-                        print(f"✅ [BACKGROUND] {len(affected_categories)} centroides actualizados")
+                        log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] {len(affected_categories)} centroides actualizados")
                     except Exception as e:
-                        print(f"⚠️ [BACKGROUND] Error guardando centroides: {e}")
+                        log_error(f"[BACKGROUND] Error guardando centroides: {e}")
                         db.session.rollback()
 
-            print(f"🎉 [BACKGROUND] Procesamiento completado: {processed_count}/{total_images} imágenes procesadas exitosamente")
+            log_embedding(f"[BACKGROUND] Procesamiento completado: {processed_count}/{total_images} imagenes procesadas exitosamente")
 
         except Exception as e:
-            print(f"❌ [BACKGROUND] Error crítico en procesamiento: {e}")
+            log_error(f"[BACKGROUND] Error critico en procesamiento: {e}")
             db.session.rollback()
         finally:
             # Limpiar sesión de DB
             db.session.remove()
-            print(f"🔚 [BACKGROUND] Thread de procesamiento finalizado")
+            log_system("[BACKGROUND] Thread de procesamiento finalizado")
 
 
 @bp.route("/process_pending", methods=["POST"])
@@ -1099,8 +1094,8 @@ def process_pending():
         )
         thread.start()
 
-        print(f"🚀 Procesamiento en background iniciado para {pending_count} imágenes")
-        print(f"ℹ️ El proceso continuará incluso si cierras el navegador")
+        log_embedding(f"Procesamiento en background iniciado para {pending_count} imagenes")
+        log_verbose(LogCategory.EMBEDDING, "El proceso continuara incluso si cierras el navegador")
 
         return jsonify({
             "success": True,

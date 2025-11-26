@@ -8,6 +8,7 @@ Two-Stage Retrieval: SQL Fuzzy Match + CLIP Reranking
 from flask import Blueprint, request, jsonify
 from flask_cors import CORS
 from app import db
+from app.utils.logging_config import log_error, log_nlp, log_verbose, log_search, LogCategory
 from app.models.client import Client
 from app.models.category import Category
 from app.models.product import Product
@@ -39,7 +40,7 @@ def _load_nlp_config():
         with open(json_path, 'r', encoding='utf-8') as f:
             return _json_nlp.load(f)
     except Exception as e:
-        print(f"⚠️ No se pudo cargar system_nlp_config.json ({e}), usando defaults")
+        log_error(f"No se pudo cargar system_nlp_config.json: {e}")
         return {
             'fashion_categories': [],
             'fashion_terms': ['short','shorts','top','crop','leggins','jeggings','blazer'],
@@ -92,7 +93,7 @@ def _get_nlp_es():
             patterns = [{"patterns": [[{"LOWER": term}]], "attrs": {"POS": "NOUN"}}
                         for term in FASHION_CATEGORIES]
             ruler.add_patterns(patterns)
-            print(f"✅ AttributeRuler fashion agregado ({len(FASHION_CATEGORIES)} términos)")
+            log_nlp(f"AttributeRuler fashion agregado ({len(FASHION_CATEGORIES)} términos)")
 
         # Segundo AttributeRuler: forzar ciertos términos a ADJETIVOS (colores descriptivos)
         # Objetivo: permitir que 'chocolate' NO sea interpretado como categoría principal
@@ -110,11 +111,11 @@ def _get_nlp_es():
                 for term in COLOR_ADJECTIVES
             ]
             ruler_colors.add_patterns(color_patterns)
-            print(f"✅ AttributeRuler color-adj agregado ({len(COLOR_ADJECTIVES)} términos)")
+            log_nlp(f"AttributeRuler color-adj agregado ({len(COLOR_ADJECTIVES)} términos)")
 
         return _NLP_ES_WITH_PARSER
     except Exception as e:
-        print(f"⚠️ No se pudo cargar spaCy con parser: {e}")
+        log_error(f"No se pudo cargar spaCy con parser: {e}")
         return None
 
 
@@ -169,14 +170,14 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
         categoria_principal = candidates[0][1]
         elementos_extraidos.add(categoria_principal)
         if candidates[0][2]:
-            print(f"✅ Principal seleccionado (en vocabulario): '{categoria_principal}' (dep={principal.dep_})")
+            log_verbose(LogCategory.NLP, f"Principal seleccionado (en vocabulario): '{categoria_principal}' (dep={principal.dep_})")
         else:
-            print(f"⚠️ Principal seleccionado (fuera de vocabulario): '{categoria_principal}' (dep={principal.dep_})")
+            log_verbose(LogCategory.NLP, f"Principal seleccionado (fuera de vocabulario): '{categoria_principal}' (dep={principal.dep_})")
 
     if not principal:
-        print("⚠️ No se detectó sustantivo principal")
+        log_verbose(LogCategory.NLP, "No se detectó sustantivo principal")
         return {'text':'','category':None,'modifiers':[],'success':False}    # Ya no necesitamos la promoción post-hoc porque priorizamos en la selección inicial
-    print(f"\n🔍 [NIVEL 1] Buscando modificadores directos de '{principal.text}':")
+    log_verbose(LogCategory.NLP, f"[NIVEL 1] Buscando modificadores directos de '{principal.text}'")
 
     nivel2_discarded = set()  # Rastrear términos descartados por ser nivel 2
 
@@ -196,7 +197,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                 nodes_to_process.append(sibling)
                 print(f"  🔗 Procesando hermano del principal: '{sibling.text}' (DEP={sibling.dep_}, POS={sibling.pos_})")
                 # 🔍 DEBUG: Mostrar hijos del hermano
-                print(f"     Hijos de '{sibling.text}': {[(c.text, c.dep_, c.pos_) for c in sibling.children]}")
+                log_verbose(LogCategory.NLP, f"     Hijos de '{sibling.text}': {[(c.text, c.dep_, c.pos_) for c in sibling.children]}")
 
     for child in nodes_to_process:
         if not child.is_alpha or child.is_stop or child.pos_ == 'VERB':
@@ -209,7 +210,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
             if term and len(term) >= 3:
                 elementos_extraidos.add(term)
                 modificadores.append(term)
-                print(f"  ✅ Sustantivo nivel 1 (hermano): '{term}' (original: '{child.text}', dep={child.dep_})")
+                log_verbose(LogCategory.NLP, f"  ✅ Sustantivo nivel 1 (hermano): '{term}' (original: '{child.text}', dep={child.dep_})")
 
                 # FUNCIÓN RECURSIVA: Buscar coordinaciones en TODA la subrama
                 # Ejemplo: "con cierre al costado y bolsillos grandes"
@@ -223,7 +224,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                             if coord_term and len(coord_term) >= 3:
                                 elementos_extraidos.add(coord_term)
                                 modificadores.append(coord_term)
-                                print(f"  ✅ Sustantivo nivel 1 (coordinado con '{base_term}' via nivel {current_depth}): '{coord_term}' (original: '{child_node.text}')")
+                                log_verbose(LogCategory.NLP, f"  ✅ Sustantivo nivel 1 (coordinado con '{base_term}' via nivel {current_depth}): '{coord_term}' (original: '{child_node.text}')")
 
                                 # Marcar SUS hijos como descartados
                                 for gcc in child_node.children:
@@ -266,7 +267,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                     discard_chain(gc)
 
                 if nivel2_terms:
-                    print(f"    ⛔ Descartando {len(nivel2_terms)} modificadores nivel 2+ de '{term}': {nivel2_terms}")
+                    log_verbose(LogCategory.NLP, f"    ⛔ Descartando {len(nivel2_terms)} modificadores nivel 2+ de '{term}': {nivel2_terms}")
                 continue
 
         # CASO 1: Adjetivo directo (amod) → CAPTURAR
@@ -275,7 +276,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
             if term and len(term) >= 3:
                 elementos_extraidos.add(term)
                 modificadores.append(term)
-                print(f"  ✅ Adjetivo nivel 1: '{term}' (original: '{child.text}', amod)")
+                log_verbose(LogCategory.NLP, f"  ✅ Adjetivo nivel 1: '{term}' (original: '{child.text}', amod)")
 
         # CASO 2: Sustantivo relacionado directo (nmod, pobj, compound) → CAPTURAR
         elif child.dep_ in ('nmod', 'pobj', 'compound') and child.pos_ in ('NOUN', 'PROPN'):
@@ -283,7 +284,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
             if term and len(term) >= 3:
                 elementos_extraidos.add(term)
                 modificadores.append(term)
-                print(f"  ✅ Sustantivo nivel 1: '{term}' (original: '{child.text}', dep={child.dep_})")
+                log_verbose(LogCategory.NLP, f"  ✅ Sustantivo nivel 1: '{term}' (original: '{child.text}', dep={child.dep_})")
 
                 # ⚠️ Contar pero NO capturar hijos (nivel 2)
                 nivel2_terms = [gc.text for gc in child.children if gc.is_alpha and not gc.is_stop]
@@ -293,7 +294,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                         if gc.is_alpha and not gc.is_stop:
                             nivel2_term = _to_singular(gc)
                             nivel2_discarded.add(nivel2_term)
-                    print(f"    ⛔ Descartando {len(nivel2_terms)} modificadores nivel 2 de '{term}': {nivel2_terms}")        # CASO 3: Preposiciones (prep) → buscar pobj dentro
+                    log_verbose(LogCategory.NLP, f"    ⛔ Descartando {len(nivel2_terms)} modificadores nivel 2 de '{term}': {nivel2_terms}")        # CASO 3: Preposiciones (prep) → buscar pobj dentro
         elif child.dep_ == 'prep':
             for prep_child in child.children:
                 if not prep_child.is_alpha or prep_child.is_stop or prep_child.pos_ == 'VERB':
@@ -303,7 +304,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                     if term and len(term) >= 3:
                         elementos_extraidos.add(term)
                         modificadores.append(term)
-                        print(f"  ✅ Sustantivo nivel 1 (via prep '{child.text}'): '{term}' (original: '{prep_child.text}')")
+                        log_verbose(LogCategory.NLP, f"  ✅ Sustantivo nivel 1 (via prep '{child.text}'): '{term}' (original: '{prep_child.text}')")
 
                         # ⚠️ Contar pero NO capturar hijos (nivel 2)
                         nivel2_terms = [gc.text for gc in prep_child.children if gc.is_alpha and not gc.is_stop]
@@ -321,7 +322,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                                             nivel2_gc_term = _to_singular(prep_grandchild)
                                             nivel2_discarded.add(nivel2_gc_term)
 
-                            print(f"    ⛔ Descartando {len(nivel2_terms)} modificadores nivel 2 de '{term}': {nivel2_terms}")
+                            log_verbose(LogCategory.NLP, f"    ⛔ Descartando {len(nivel2_terms)} modificadores nivel 2 de '{term}': {nivel2_terms}")
 
     # === PASO 3: Fallback para términos mal etiquetados ===
     fallback_added = []
@@ -341,12 +342,12 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
             fallback_added.append(f"{term} (original: '{token.text}')")
 
     if fallback_added:
-        print(f"\n⚠️ [FALLBACK] Capturados por mistagging: {fallback_added}")
+        log_verbose(LogCategory.NLP, f"[FALLBACK] Capturados por mistagging: {fallback_added}")
 
     # === RESULTADO FINAL ===
     if not elementos_extraidos:
-        print(f"\n❌ [EXTRACTOR] No se capturó ningún término relevante")
-        print(f"{'='*60}\n")
+        log_verbose(LogCategory.NLP, f"[EXTRACTOR] No se capturó ningún término relevante")
+        log_verbose(LogCategory.NLP, "=" * 60 + "\n")
         return {
             'text': '',
             'category': categoria_principal,
@@ -355,11 +356,11 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
         }
 
     resultado = " ".join(sorted(list(elementos_extraidos)))
-    print(f"\n✅ [RESULTADO] {len(elementos_extraidos)} términos: {sorted(list(elementos_extraidos))}")
-    print(f"📦 [CATEGORÍA] '{categoria_principal}'")
-    print(f"🏷️  [MODIFICADORES] {modificadores if modificadores else '(ninguno)'}")
-    print(f"✅ [SALIDA] '{resultado}'")
-    print(f"{'='*60}\n")
+    log_verbose(LogCategory.NLP, f"[RESULTADO] {len(elementos_extraidos)} términos: {sorted(list(elementos_extraidos))}")
+    log_verbose(LogCategory.NLP, f"📦 [CATEGORÍA] '{categoria_principal}'")
+    log_verbose(LogCategory.NLP, f"🏷️  [MODIFICADORES] {modificadores if modificadores else '(ninguno)'}")
+    log_verbose(LogCategory.NLP, f"✅ [SALIDA] '{resultado}'")
+    log_verbose(LogCategory.NLP, "=" * 60 + "\n")
 
     return {
         'text': resultado,
@@ -524,7 +525,7 @@ def _build_user_feedback(query_text: str, formatted_results: list, detected_cate
                             f"Tenemos disponible en: {', '.join(sorted(all_colors_in_category))}"
                         )
     except Exception as e:
-        print(f"⚠️ Error construyendo feedback de color: {e}")
+        log_error(f"Error construyendo feedback de color: {e}")
 
     # Contradicciones
     if contradictions:
@@ -577,10 +578,10 @@ def expand_query_with_synonyms(query_text: str, client_id: str, client_slug: str
                 db.session.rollback()
             except Exception:
                 pass
-            print(f"⚠️ [Módulo Custom] Error consultando categorías para expansión: {e}")
+            log_error(f"[Módulo Custom] Error consultando categorías para expansión: {e}")
             return query_text.lower().split()
         result = module.expand_query(query_text, categories)
-        print(f"✅ [Módulo Custom] Expansión personalizada: {len(result)} términos")
+        log_verbose(LogCategory.SEARCH, f"[Módulo Custom] Expansión personalizada: {len(result)} términos")
         return result
 
     # Fallback genérico (original)
@@ -596,7 +597,7 @@ def expand_query_with_synonyms(query_text: str, client_id: str, client_slug: str
             db.session.rollback()
         except Exception:
             pass
-        print(f"⚠️ [Genérico] Error obteniendo categorías para sinónimos: {e}. Usando tokens básicos.")
+        log_error(f"[Genérico] Error obteniendo categorías para sinónimos: {e}. Usando tokens básicos.")
         return list(expanded)
 
     for cat in categories:
@@ -609,11 +610,11 @@ def expand_query_with_synonyms(query_text: str, client_id: str, client_slug: str
         for token in tokens:
             if token in cat_synonyms:
                 expanded.update(cat_synonyms)
-                print(f"🔍 Token '{token}' expandido con sinónimos de '{cat.name}': {cat_synonyms[:5]}...")
+                log_verbose(LogCategory.NLP, f"🔍 Token '{token}' expandido con sinónimos de '{cat.name}': {cat_synonyms[:5]}...")
                 break
 
     result = list(expanded)
-    print(f"📝 [Genérico] Query expandido: '{query_text}' → {len(result)} términos: {result[:10]}...")
+    log_verbose(LogCategory.NLP, f"[Genérico] Query expandido: '{query_text}' → {len(result)} términos: {result[:10]}...")
     return result
 
 
@@ -707,9 +708,9 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
             detection_metadata = None
 
         if category_filter_ids:
-            print(f"✅ [Módulo Custom] Filtro de categoría aplicado: {len(category_filter_ids)} categorías")
+            log_verbose(LogCategory.SEARCH, f"[Módulo Custom] Filtro de categoría aplicado: {len(category_filter_ids)} categorías")
         else:
-            print(f"📝 [Módulo Custom] Sin filtro de categoría (búsqueda amplia)")
+            log_verbose(LogCategory.SEARCH, f"[Módulo Custom] Sin filtro de categoría (búsqueda amplia)")
     else:
         # Fallback genérico (lógica original con normalización básica)
         original_tokens = _normalize_tokens_es(query_text)
@@ -731,7 +732,7 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
         if len(root_to_cats) == 1:
             sole_root = next(iter(root_to_cats.keys()))
             category_filter_ids = root_to_cats[sole_root]
-            print(f"🔒 [Genérico] Filtro de categoría aplicado: root='{sole_root}' ids={category_filter_ids}")
+            log_verbose(LogCategory.SEARCH, f"[Genérico] Filtro de categoría aplicado: root='{sole_root}' ids={category_filter_ids}")
         else:
             category_filter_ids = []
 
@@ -778,7 +779,7 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
             products.append(product)
 
     elapsed = time.time() - start_time
-    print(f"⚡ STAGE 1: {len(products)} candidatos en {elapsed:.3f}s")
+    log_search(f"STAGE 1: {len(products)} candidatos en {elapsed:.3f}s")
 
     # Retornar también metadata de detección (si existe)
     return products, detection_metadata
@@ -849,11 +850,11 @@ def stage2_precise_rerank(query_text: str, candidates: list, limit: int = 10):
     top_results = scored_candidates[:limit]
 
     elapsed = time.time() - start_time
-    print(f"🎯 STAGE 2: Top {len(top_results)} rerankeados en {elapsed:.3f}s")
+    log_search(f"STAGE 2: Top {len(top_results)} rerankeados en {elapsed:.3f}s")
 
     # Log top 3
     for i, result in enumerate(top_results[:3], 1):
-        print(f"   {i}. {result['product'].name} (sim: {result['similarity']:.3f})")
+        log_verbose(LogCategory.SEARCH, f"   {i}. {result['product'].name} (sim: {result['similarity']:.3f})")
 
     return top_results
 
@@ -907,28 +908,28 @@ def text_search():
 
         limit = min(int(data.get('limit', 10)), 50)
 
-        print(f"\n🎯 [TEXT_SEARCH] Query original recibida: '{query_text}'")
+        log_search(f"[TEXT_SEARCH] Query original recibida: '{query_text}'")
 
         # Paso 0: Normalización semántica de la frase (spaCy)
-        print(f"📝 [TEXT_SEARCH] Llamando a extractor...")
+        log_verbose(LogCategory.SEARCH, f"[TEXT_SEARCH] Llamando a extractor...")
         extraction_result = _extract_key_terms_with_dependency_parsing(query_text)
-        print(f"📝 [TEXT_SEARCH] Extractor devolvió: {extraction_result}")
+        log_verbose(LogCategory.SEARCH, f"[TEXT_SEARCH] Extractor devolvió: {extraction_result}")
 
         cleaned_query = extraction_result.get('text', '')
         if cleaned_query and cleaned_query.strip() and extraction_result.get('success'):
             classification_done = False  # Flag para evitar doble clasificación contradictoria
-            print(f"🧹 [TEXT_SEARCH] Preprocesamiento exitoso: '{query_text}' → '{cleaned_query}'")
-            print(f"   📦 Categoría extraída: '{extraction_result.get('category')}'")
-            print(f"   🏷️  Modificadores extraídos: {extraction_result.get('modifiers')}")
+            log_verbose(LogCategory.NLP, f"[TEXT_SEARCH] Preprocesamiento exitoso: '{query_text}' → '{cleaned_query}'")
+            log_verbose(LogCategory.NLP, f"   📦 Categoría extraída: '{extraction_result.get('category')}'")
+            log_verbose(LogCategory.NLP, f"   🏷️  Modificadores extraídos: {extraction_result.get('modifiers')}")
 
             # 🛑 PUNTO DE CORTE PARA TESTING
             # Obtener categorías del cliente
             try:
                 client_categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
-                print(f"\n{'='*60}")
-                print(f"🔍 DETECCIÓN DE CATEGORÍAS DEL CLIENTE")
-                print(f"{'='*60}")
-                print(f"Total categorías activas del cliente: {len(client_categories)}")
+                log_verbose(LogCategory.SEARCH, "="*60)
+                log_verbose(LogCategory.CATEGORY_DETECTION, f"🔍 DETECCIÓN DE CATEGORÍAS DEL CLIENTE")
+                log_verbose(LogCategory.NLP, "="*60)
+                log_verbose(LogCategory.CATEGORY_DETECTION, f"Total categorías activas del cliente: {len(client_categories)}")
 
                 # Buscar coincidencias con la categoría extraída
                 categoria_extraida = extraction_result.get('category')
@@ -958,21 +959,21 @@ def text_search():
                             'slug': cat.slug
                         })
                         matched_category_ids.append(cat.id)
-                        print(f"✅ Match encontrado: '{cat.name}' (id: {cat.id}) - tokens: {cat_tokens}")
+                        log_verbose(LogCategory.CATEGORY_DETECTION, f"✅ Match encontrado: '{cat.name}' (id: {cat.id}) - tokens: {cat_tokens}")
 
                 print(f"\n📊 RESUMEN DE DETECCIÓN:")
-                print(f"   Categoría en query: '{categoria_extraida}'")
-                print(f"   Categorías coincidentes: {len(matched_categories)}")
+                log_verbose(LogCategory.CATEGORY_DETECTION, f"   Categoría en query: '{categoria_extraida}'")
+                log_verbose(LogCategory.CATEGORY_DETECTION, f"   Categorías coincidentes: {len(matched_categories)}")
                 if matched_categories:
                     for mc in matched_categories:
-                        print(f"      - {mc['name']} ({mc['slug']})")
+                        log_verbose(LogCategory.NLP, f"      - {mc['name']} ({mc['slug']})")
                 else:
-                    print(f"      ⚠️ No se encontraron coincidencias")
+                    log_verbose(LogCategory.NLP, f"      ⚠️ No se encontraron coincidencias")
 
                 # PASO 2: ANÁLISIS DE MODIFICADORES vs ATRIBUTOS CONFIGURADOS
-                print(f"\n{'='*60}")
-                print(f"🏷️  ANÁLISIS DE MODIFICADORES")
-                print(f"{'='*60}")
+                log_verbose(LogCategory.SEARCH, "="*60)
+                log_verbose(LogCategory.NLP, f"🏷️  ANÁLISIS DE MODIFICADORES")
+                log_verbose(LogCategory.NLP, "="*60)
 
                 modificadores = extraction_result.get('modifiers', [])
                 print(f"Modificadores detectados: {modificadores if modificadores else '(ninguno)'}")
@@ -1148,23 +1149,23 @@ def text_search():
                                     if (cfg.key or '').strip().lower() == 'color' or mod_norm in (
                                         'negro','rojo','azul','verde','gris','blanco','amarillo','marron','beige','rosa','violeta','morado'
                                     ):
-                                        print(f"      [VAL-MATCH DEBUG] Evaluando modificador '{mod_norm}' contra valores de '{cfg.key}': raw={raw_opt}")
-                                        print(f"      [VAL-MATCH DEBUG] Valores normalizados de '{cfg.key}': {options_norm}")
+                                        log_verbose(LogCategory.NLP, f"      [VAL-MATCH DEBUG] Evaluando modificador '{mod_norm}' contra valores de '{cfg.key}': raw={raw_opt}")
+                                        log_verbose(LogCategory.NLP, f"      [VAL-MATCH DEBUG] Valores normalizados de '{cfg.key}': {options_norm}")
 
                                     if mod_norm in options_norm:
                                         matched = True
                                         matched_config = cfg
                                         match_type = 'value'
                                         matched_value = options[options_norm.index(mod_norm)]
-                                        print(f"      [VAL-MATCH DEBUG] MATCH por valor: '{mod_norm}' ∈ {options_norm} (atributo '{cfg.key}') → valor original: {matched_value}")
+                                        log_verbose(LogCategory.NLP, f"      [VAL-MATCH DEBUG] MATCH por valor: '{mod_norm}' ∈ {options_norm} (atributo '{cfg.key}') → valor original: {matched_value}")
                                         break
                                     else:
                                         if (cfg.key or '').strip().lower() == 'color' or mod_norm in (
                                             'negro','rojo','azul','verde','gris','blanco','amarillo','marron','beige','rosa','violeta','morado'
                                         ):
-                                            print(f"      [VAL-MATCH DEBUG] SIN MATCH valor: '{mod_norm}' no está en valores de '{cfg.key}'")
+                                            log_verbose(LogCategory.NLP, f"      [VAL-MATCH DEBUG] SIN MATCH valor: '{mod_norm}' no está en valores de '{cfg.key}'")
                                 except Exception as e:
-                                    print(f"         ⚠️ Error parseando opciones de '{cfg.label}': {e}")
+                                    log_verbose(LogCategory.NLP, f"         ⚠️ Error parseando opciones de '{cfg.label}': {e}")
                                     continue
 
                     if matched and matched_config:
@@ -1195,9 +1196,9 @@ def text_search():
                 classification_done = True
 
                 # PASO 3: FILTRADO HÍBRIDO CON CLIP
-                print(f"\n{'='*60}")
+                log_verbose(LogCategory.SEARCH, "="*60)
                 print(f"🔍 FILTRADO HÍBRIDO: SQL + CLIP")
-                print(f"{'='*60}")
+                log_verbose(LogCategory.NLP, "="*60)
 
                 # 3.1: Obtener productos de las categorías detectadas
                 if not matched_category_ids:
@@ -1284,7 +1285,7 @@ def text_search():
                         for i in range(total_criteria, -1, -1):
                             count = sum(1 for x in scored_by_attrs if x['attr_matches'] == i)
                             if count > 0:
-                                print(f"      {i}/{total_criteria} criterios: {count} productos")
+                                log_verbose(LogCategory.NLP, f"      {i}/{total_criteria} criterios: {count} productos")
 
                         # Mantener referencia al scoring para usar después
                         product_attr_scores = {item['product'].id: item for item in scored_by_attrs}
@@ -1402,15 +1403,15 @@ def text_search():
                             attr_t = item.get('attr_total', 0)
                             sim = item['similarity']
                             has_emb = "✅" if item['has_embedding'] else "❌"
-                            print(f"      {i}. [{attr_m}/{attr_t}] {prod.name[:40]:40s} | CLIP: {sim:.3f} {has_emb}")
+                            log_verbose(LogCategory.NLP, f"      {i}. [{attr_m}/{attr_t}] {prod.name[:40]:40s} | CLIP: {sim:.3f} {has_emb}")
 
                         # Actualizar lista de productos con los rankeados
                         filtered_products = [item['product'] for item in scored_products]
 
                         # 🧩 Reporte unificado: FUERTE (atributos) + DÉBIL (CLIP) + AMBOS
-                        print(f"\n{'='*60}")
+                        log_verbose(LogCategory.SEARCH, "="*60)
                         print(f"🧩 COBERTURA POR PRODUCTO (FUERTE + DÉBIL)")
-                        print(f"{'='*60}")
+                        log_verbose(LogCategory.NLP, "="*60)
 
                         def _attr_exists(val):
                             if val is None:
@@ -1736,9 +1737,9 @@ def text_search():
 
                 # Saltar reclasificación duplicada: mantenemos resultado original
                 # PASO 3: OBTENER VALORES DE ATRIBUTOS EN PRODUCTOS DE LAS CATEGORÍAS
-                print(f"\n{'='*60}")
+                log_verbose(LogCategory.SEARCH, "="*60)
                 print(f"📦 VALORES DE ATRIBUTOS EN PRODUCTOS")
-                print(f"{'='*60}")
+                log_verbose(LogCategory.NLP, "="*60)
 
                 atributos_valores_disponibles = {}  # key -> lista de valores únicos
                 productos_analizados = 0
@@ -1771,13 +1772,13 @@ def text_search():
                             atributos_valores_disponibles[key] = sorted(list(valores_unicos))
                             print(f"   {attr_config.label} ({key}): {len(valores_unicos)} valores únicos")
                             if len(valores_unicos) <= 5:
-                                print(f"      Valores: {', '.join(sorted(list(valores_unicos)))}")
+                                log_verbose(LogCategory.NLP, f"      Valores: {', '.join(sorted(list(valores_unicos)))}")
                             else:
-                                print(f"      Valores: {', '.join(sorted(list(valores_unicos))[:5])} ...")
+                                log_verbose(LogCategory.NLP, f"      Valores: {', '.join(sorted(list(valores_unicos))[:5])} ...")
 
-                print(f"\n{'='*60}")
-                print(f"📊 RESUMEN FINAL")
-                print(f"{'='*60}")
+                log_verbose(LogCategory.SEARCH, "="*60)
+                log_verbose(LogCategory.CATEGORY_DETECTION, f"📊 RESUMEN FINAL")
+                log_verbose(LogCategory.NLP, "="*60)
                 print(f"✅ Atributos encontrados: {len(atributos_encontrados)}")
                 for af in atributos_encontrados:
                     print(f"   - '{af['modificador_original']}' → {af['atributo_label']} ({af['atributo_key']})")
@@ -1794,7 +1795,7 @@ def text_search():
                 else:
                     print(f"   (no hay datos en productos)")
 
-                print(f"{'='*60}\n")
+                log_verbose(LogCategory.NLP, "="*60 + "\n")
 
                 # 🛑 RETORNAR AQUÍ PARA TESTING (JSON enriquecido con 'filtering.top_5_productos')
                 try:
@@ -1967,10 +1968,10 @@ def text_search():
             response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
             return response
 
-        print(f"\n{'='*60}")
+        log_verbose(LogCategory.SEARCH, "="*60)
         print(f"🔍 NUEVA BÚSQUEDA TEXTUAL V2")
         print(f"Query: '{query_text}' | Cliente: {client.name} | Limit: {limit}")
-        print(f"{'='*60}")
+        log_verbose(LogCategory.NLP, "="*60)
 
         # Obtener slug del cliente para módulo personalizado
         client_slug = getattr(client, 'slug', None)
@@ -2331,7 +2332,7 @@ def text_search():
         elapsed = time.time() - start_time
 
         print(f"✅ Búsqueda completada: {len(formatted_results)} resultados en {elapsed:.3f}s")
-        print(f"{'='*60}\n")
+        log_verbose(LogCategory.NLP, "="*60 + "\n")
 
         # 🔍 CONSTRUIR FEEDBACK DESCRIPTIVO (concepto del método deprecado)
         user_feedback = _build_user_feedback(

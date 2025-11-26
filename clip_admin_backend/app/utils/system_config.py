@@ -62,7 +62,8 @@ class SystemConfig:
                 },
                 "system": {
                     "environment": "production",
-                    "version": "2.0.0"
+                    "version": "2.0.0",
+                    "log_level": "REQUEST_LIFECYCLE"
                 }
             }
             self._write_config(default_config)

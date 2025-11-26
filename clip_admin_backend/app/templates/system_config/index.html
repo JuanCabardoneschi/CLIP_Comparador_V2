@@ -246,6 +246,54 @@
                 </div>
             </div>
 
+            <!-- Sección Sistema y Logs -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-gradient-info text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-terminal me-2"></i>
+                        Configuración del Sistema y Logs
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Nivel de Log -->
+                    <div class="mb-3">
+                        <label for="log_level" class="form-label fw-bold">
+                            <i class="bi bi-file-earmark-text text-warning me-2"></i>
+                            Nivel de Logs en Producción
+                        </label>
+                        <select class="form-select" id="log_level" name="log_level">
+                            <option value="ERROR_ONLY"
+                                    {% if config.system.log_level == 'ERROR_ONLY' %}selected{% endif %}>
+                                🔴 Solo Errores - Producción Normal (Mínimo)
+                            </option>
+                            <option value="REQUEST_LIFECYCLE"
+                                    {% if config.system.log_level == 'REQUEST_LIFECYCLE' %}selected{% endif %}>
+                                🟡 Ciclo de Peticiones - Debugging Básico (Recomendado)
+                            </option>
+                            <option value="MAIN_PROCESSES"
+                                    {% if config.system.log_level == 'MAIN_PROCESSES' %}selected{% endif %}>
+                                🟠 Procesos Principales - Debugging Intermedio
+                            </option>
+                            <option value="VERBOSE"
+                                    {% if config.system.log_level == 'VERBOSE' %}selected{% endif %}>
+                                🟢 Verbose - Debugging Completo (Máximo Detalle)
+                            </option>
+                        </select>
+                        <small class="text-muted d-block mt-2">
+                            <strong>ERROR_ONLY:</strong> Solo errores críticos y excepciones.<br>
+                            <strong>REQUEST_LIFECYCLE:</strong> + Inicio/fin de requests, métricas de tiempo, códigos de estado.<br>
+                            <strong>MAIN_PROCESSES:</strong> + Detección de categorías, embeddings, búsquedas, decisiones del sistema.<br>
+                            <strong>VERBOSE:</strong> + Todo el detalle (crops, scores, tokens, NLP, colores, cache).
+                        </small>
+                        <div class="alert alert-info mt-3 mb-0 small">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>Nota:</strong> Los cambios se aplican inmediatamente sin reiniciar.
+                            Usa "Solo Errores" para producción estable y "REQUEST_LIFECYCLE" para debugging normal.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Botones de Acción -->
             <div class="card shadow-sm mb-4">
                 <div class="card-body">
