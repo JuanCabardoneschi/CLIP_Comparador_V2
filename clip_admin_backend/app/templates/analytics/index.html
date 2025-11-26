@@ -14,6 +14,7 @@
 
     <!-- Tarjetas de estadísticas generales -->
     <div class="row mb-4">
+        {% if current_user.role == 'SUPER_ADMIN' %}
         <div class="col-md-3">
             <div class="card text-white bg-primary">
                 <div class="card-body">
@@ -29,6 +30,7 @@
                 </div>
             </div>
         </div>
+        {% endif %}
 
         <div class="col-md-3">
             <div class="card text-white bg-success">
