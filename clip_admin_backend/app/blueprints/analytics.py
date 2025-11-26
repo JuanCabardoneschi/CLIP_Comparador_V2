@@ -78,82 +78,94 @@ def clients():
 @bp.route("/searches")
 @login_required
 def searches():
-    """Analytics de búsquedas"""
-    # Periodo de análisis (por defecto 30 días)
-    days = request.args.get('days', 30, type=int)
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days)
+    """Dashboard analítico de búsquedas - Agregaciones y métricas."""
+    period = request.args.get("period", 30, type=int)
+    start_date = datetime.utcnow() - timedelta(days=period)
 
-    # Filtrar por cliente si es STORE_ADMIN
-    client_filter = {}
+    # Determinar filtro de cliente
+    client_filter = None
     if current_user.role == 'STORE_ADMIN':
         client_filter = {'client_id': current_user.client_id}
 
-    # Búsquedas por día
-    daily_searches_query = db.session.query(
-        func.date(SearchLog.created_at).label("date"),
-        func.count(SearchLog.id).label("count")
-    ).filter(
-        SearchLog.created_at >= start_date
-    )
+    # Base query con filtro de fecha
+    base_query = db.session.query(SearchLog).filter(SearchLog.created_at >= start_date)
     if client_filter:
-        daily_searches_query = daily_searches_query.filter_by(**client_filter)
+        base_query = base_query.filter_by(**client_filter)
 
-    daily_searches = daily_searches_query.group_by(
-        func.date(SearchLog.created_at)
-    ).order_by("date").all()
+    # 1️⃣ MÉTRICAS GENERALES
+    stats = db.session.query(
+        func.count(SearchLog.id).label('total'),
+        func.sum(func.cast(SearchLog.had_results, db.Integer)).label('with_results'),
+        func.avg(SearchLog.results_count).label('avg_results'),
+        func.avg(SearchLog.processing_time_ms).label('avg_time')
+    ).filter(SearchLog.created_at >= start_date)
+    if client_filter:
+        stats = stats.filter_by(**client_filter)
+    stats = stats.first()
 
-    # Top queries de texto
-    top_queries_query = db.session.query(
+    total_searches = stats.total or 0
+    searches_with_results = stats.with_results or 0
+    searches_without_results = total_searches - searches_with_results
+    avg_results = float(stats.avg_results or 0)
+    avg_time_ms = float(stats.avg_time or 0)
+
+    # 2️⃣ BÚSQUEDAS POR DÍA (para gráfico de tendencia)
+    daily_stats = db.session.query(
+        func.date(SearchLog.created_at).label('date'),
+        func.count(SearchLog.id).label('count')
+    ).filter(SearchLog.created_at >= start_date)
+    if client_filter:
+        daily_stats = daily_stats.filter_by(**client_filter)
+    daily_stats = daily_stats.group_by(func.date(SearchLog.created_at)).order_by('date').all()
+
+    # 3️⃣ TOP QUERIES (las más frecuentes)
+    top_queries = db.session.query(
         SearchLog.query_text,
-        func.count(SearchLog.id).label("count")
+        func.count(SearchLog.id).label('count'),
+        func.avg(SearchLog.results_count).label('avg_results')
     ).filter(
         SearchLog.query_text.isnot(None),
         SearchLog.created_at >= start_date
     )
     if client_filter:
-        top_queries_query = top_queries_query.filter_by(**client_filter)
+        top_queries = top_queries.filter_by(**client_filter)
+    top_queries = top_queries.group_by(SearchLog.query_text).order_by(desc('count')).limit(20).all()
 
-    top_queries = top_queries_query.group_by(
-        SearchLog.query_text
-    ).order_by(desc("count")).limit(20).all()
-
-    # Búsquedas por tipo
-    search_types_query = db.session.query(
+    # 4️⃣ DISTRIBUCIÓN POR TIPO
+    search_types = db.session.query(
         SearchLog.search_type,
-        func.count(SearchLog.id).label("count")
-    ).filter(
-        SearchLog.created_at >= start_date
-    )
+        func.count(SearchLog.id).label('count')
+    ).filter(SearchLog.created_at >= start_date)
     if client_filter:
-        search_types_query = search_types_query.filter_by(**client_filter)
+        search_types = search_types.filter_by(**client_filter)
+    search_types = search_types.group_by(SearchLog.search_type).all()
 
-    search_types = search_types_query.group_by(
-        SearchLog.search_type
-    ).all()
-
-    # 🆕 Tasa de éxito (búsquedas con resultados vs sin resultados)
-    success_rate_query = db.session.query(
-        func.sum(func.cast(SearchLog.had_results, db.Integer)).label('with_results'),
-        func.count(SearchLog.id).label('total')
-    ).filter(
-        SearchLog.created_at >= start_date
-    )
-    if client_filter:
-        success_rate_query = success_rate_query.filter_by(**client_filter)
-
-    success_rate = success_rate_query.first()
-
-    success_percentage = 0
-    if success_rate and success_rate.total > 0:
-        success_percentage = round((success_rate.with_results / success_rate.total) * 100, 1)
+    # 5️⃣ CATEGORÍAS MÁS DETECTADAS (usando unnest de ARRAY)
+    categories_detected = db.session.execute(text("""
+        SELECT
+            unnest(categories_detected) as category,
+            COUNT(*) as count
+        FROM search_logs
+        WHERE created_at >= :start_date
+        AND categories_detected IS NOT NULL
+        {}
+        GROUP BY category
+        ORDER BY count DESC
+        LIMIT 15
+    """.format("AND client_id = :client_id" if client_filter else "")),
+        {'start_date': start_date, **(client_filter or {})}).fetchall()
 
     return render_template("analytics/searches.html",
-                           daily_searches=daily_searches,
+                           period=period,
+                           total_searches=total_searches,
+                           searches_with_results=searches_with_results,
+                           searches_without_results=searches_without_results,
+                           avg_results=avg_results,
+                           avg_time_ms=avg_time_ms,
+                           daily_stats=daily_stats,
                            top_queries=top_queries,
                            search_types=search_types,
-                           success_percentage=success_percentage,
-                           days=days)
+                           categories_detected=categories_detected)
 
 
 @bp.route("/performance")
