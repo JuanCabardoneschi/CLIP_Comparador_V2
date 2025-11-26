@@ -444,7 +444,8 @@ def generate_clip_embedding(image_path, image_obj=None):
         pil_override = None
         if image_obj and hasattr(image_obj, 'has_crop') and image_obj.has_crop():
             try:
-                raw_img = load_image_from_source(image_obj.display_url)
+                # Usar optimized_url (prioriza base64 cacheado, evita descargas repetidas de Cloudinary)
+                raw_img = load_image_from_source(image_obj.optimized_url)
                 pil_override = image_obj.apply_crop_to_pil(raw_img)
                 context_info['manual_crop_applied'] = True
                 context_info['manual_crop_box'] = image_obj.get_crop_box()

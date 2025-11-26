@@ -261,7 +261,7 @@ def global_search():
         "id": image.id,
         "product_name": image.product.name,
         "alt_text": image.alt_text,
-        "url": image.display_url,  # Usar propiedad del modelo (patrÃ³n unificado)
+        "url": image.optimized_url,  # Usar base64 cacheado (evita descargas de Cloudinary)
         "type": "image"
     } for image in images]
 
@@ -2174,7 +2174,7 @@ def gpt4v_unified_search():
                     if not primary_image:
                         primary_image = img
 
-                    image_url = primary_image.display_url if primary_image else None
+                    image_url = primary_image.optimized_url if primary_image else None  # Base64 cacheado
 
                     # Preparar atributos filtrados y extraer product_url
                     product_attrs = {}

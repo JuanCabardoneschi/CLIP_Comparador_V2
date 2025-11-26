@@ -104,6 +104,7 @@ def view(image_id):
     image = Image.query.get_or_404(image_id)
 
     # Usar propiedad del modelo (patrón unificado)
+    # En admin panel mostramos Cloudinary URL para debugging
     image_url = image.display_url
 
     return render_template("images/view.html",
@@ -181,9 +182,9 @@ def crop(image_id):
     image.refined = False  # Se marcará True tras regenerar embedding
     db.session.commit()
 
-    # Regenerar embedding usando lógica central
+    # Regenerar embedding usando lógica central (con base64 cacheado)
     from app.blueprints.embeddings import generate_clip_embedding
-    embedding, metadata = generate_clip_embedding(image.display_url, image)
+    embedding, metadata = generate_clip_embedding(image.optimized_url, image)
     if not embedding:
         db.session.rollback()
         return jsonify({'ok': False, 'error': 'Error generando embedding'}), 500
@@ -294,7 +295,7 @@ def api_by_product(product_id):
 
     return jsonify([{
         "id": image.id,
-        "image_url": image.display_url,  # Usar propiedad del modelo (patrón unificado)
+        "image_url": image.optimized_url,  # Base64 cacheado (evita Cloudinary)
         "alt_text": image.alt_text,
         "is_primary": image.is_primary,
         "filename": image.filename

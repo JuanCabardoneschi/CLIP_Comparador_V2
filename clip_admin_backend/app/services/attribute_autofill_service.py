@@ -260,8 +260,8 @@ class AttributeAutofillService:
 
             # Analizar cada imagen
             for img in images:
-                # Descargar imagen
-                pil_image = cls._download_image(img.display_url)
+                # Descargar imagen (usa base64 cacheado si existe)
+                pil_image = cls._download_image(img.optimized_url)
                 if not pil_image:
                     continue
 

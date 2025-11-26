@@ -89,6 +89,26 @@ class Image(db.Model):
         return '/static/images/placeholder.svg'
 
     @property
+    def optimized_url(self):
+        """
+        URL optimizada que prioriza base64 cacheado sobre Cloudinary.
+        Usar este método para:
+        - Generación de embeddings CLIP (evita descargas repetidas)
+        - Respuestas de API de búsqueda (reduce llamadas a Cloudinary)
+        - Cualquier operación que necesite la imagen frecuentemente
+        """
+        # 1. Priorizar base64 si existe (ya está en Railway, sin latencia)
+        if self.base64_data:
+            return self.base64_data
+
+        # 2. Fallback a Cloudinary
+        if self.cloudinary_url:
+            return self.cloudinary_url
+
+        # 3. Placeholder si no hay nada
+        return '/static/images/placeholder.svg'
+
+    @property
     def embedding_vector(self):
         """Convierte el embedding JSON a lista de números"""
         if self.clip_embedding:
@@ -116,7 +136,7 @@ class Image(db.Model):
             'product_id': self.product_id,
             'filename': self.filename,
             'original_filename': self.original_filename,
-            'image_url': self.display_url,  # Usar la URL generada por ImageManager
+            'image_url': self.optimized_url,  # Base64 cacheado (evita Cloudinary)
             'thumbnail_url': self.thumbnail_url,
             'medium_url': self.medium_url,
             'width': self.width,

@@ -457,14 +457,14 @@ def _build_search_results(product_best_match, limit):
             if not primary_image:
                 primary_image = img
 
-            # Retornar SIEMPRE la URL de Cloudinary (patrón unificado)
-            image_url = primary_image.display_url if primary_image else None
+            # Retornar base64 cacheado (evita descargas de Cloudinary)
+            image_url = primary_image.optimized_url if primary_image else None
         except Exception as e:
             print(f"❌ Error obteniendo imagen primaria: {e}")
             # CRITICAL: Hacer rollback para que queries posteriores funcionen
             db.session.rollback()
             # Si falla, usar la imagen que hizo match
-            image_url = img.display_url if img else None
+            image_url = img.optimized_url if img else None
 
         # Preparar atributos dinámicos del producto (JSONB)
         product_attrs = {}

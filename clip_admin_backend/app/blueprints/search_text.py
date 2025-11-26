@@ -1530,8 +1530,8 @@ def text_search():
                             primary_image = Image.query.filter_by(product_id=p.id, is_primary=True).first()
                             if not primary_image:
                                 primary_image = Image.query.filter_by(product_id=p.id).first()
-                            if primary_image and getattr(primary_image, 'display_url', None):
-                                image_url = primary_image.display_url
+                            if primary_image and getattr(primary_image, 'optimized_url', None):
+                                image_url = primary_image.optimized_url  # Base64 cacheado
                         except Exception:
                             image_url = None
 
@@ -1832,8 +1832,8 @@ def text_search():
                             primary_image = Image.query.filter_by(product_id=p.id, is_primary=True).first()
                             if not primary_image:
                                 primary_image = Image.query.filter_by(product_id=p.id).first()
-                            if primary_image and getattr(primary_image, 'display_url', None):
-                                image_url = primary_image.display_url
+                            if primary_image and getattr(primary_image, 'optimized_url', None):
+                                image_url = primary_image.optimized_url  # Base64 cacheado
                         except Exception:
                             image_url = None
 
@@ -2159,8 +2159,8 @@ def text_search():
                 # Ordenamiento: primero por atributos cumplidos, luego por similitud
                 # El widget usa final_score para badge. Mantenemos similitud y exponemos match_ratio aparte
                 "final_score": round(result['similarity'], 3),
-                "image": primary_image.display_url if primary_image else None,
-                "image_url": primary_image.display_url if primary_image else None,  # Widget espera este campo
+                "image": primary_image.optimized_url if primary_image else None,  # Base64 cacheado
+                "image_url": primary_image.optimized_url if primary_image else None,  # Widget espera este campo
                 "category": product.category.name if product.category else None,
                 "attributes": prod_attrs,
                 "attributes_matched": matched,
