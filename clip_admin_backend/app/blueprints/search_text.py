@@ -9,6 +9,7 @@ from flask import Blueprint, request, jsonify
 from flask_cors import CORS
 from app import db
 from app.utils.logging_config import log_error, log_nlp, log_verbose, log_search, LogCategory
+from app.utils.system_config import system_config
 from app.models.client import Client
 from app.models.category import Category
 from app.models.product import Product
@@ -906,7 +907,9 @@ def text_search():
                 "message": "Query vacío"
             }), 400
 
-        limit = min(int(data.get('limit', 10)), 50)
+        # Obtener límite del sistema (igual que en api.py)
+        default_max_results = system_config.get('search', 'max_results', 10)
+        limit = min(int(data.get('limit', default_max_results)), default_max_results)
 
         log_search(f"[TEXT_SEARCH] Query original recibida: '{query_text}'")
 

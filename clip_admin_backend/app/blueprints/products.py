@@ -327,50 +327,29 @@ def create():
 
             db.session.commit()
 
-            # Generar embeddings y actualizar centroide de la categoría del producto recién creado
-            try:
-                _process_embeddings_and_centroid_for_product(product)
-            except Exception as e:
-                # No bloquear la creación por un fallo en embeddings; mostrar aviso suave
-                flash(f"El producto se creó, pero hubo un problema generando el embedding: {str(e)}", "warning")
+            # ⚠️ PROCESAMIENTO DE EMBEDDINGS DESHABILITADO TEMPORALMENTE
+            # Causa timeouts en Railway al crear productos con imágenes grandes
+            # El usuario puede procesar embeddings después desde /embeddings
+            #
+            # try:
+            #     _process_embeddings_and_centroid_for_product(product)
+            # except Exception as e:
+            #     flash(f"El producto se creó, pero hubo un problema generando el embedding: {str(e)}", "warning")
 
-            # 🤖 Auto-completar atributos usando CLIP (solo si hay imágenes y atributos configurados)
-            try:
-                from app.services.attribute_autofill_service import AttributeAutofillService
+            # ⚠️ AUTO-COMPLETADO DE ATRIBUTOS DESHABILITADO TEMPORALMENTE
+            # Depende de embeddings que ya no se generan automáticamente
+            #
+            # try:
+            #     from app.services.attribute_autofill_service import AttributeAutofillService
+            #     if images_processed > 0:
+            #         result = AttributeAutofillService.autofill_product_attributes(product, overwrite=False)
+            #         if result['success']:
+            #             # Mergear atributos detectados
+            #             ...
+            # except Exception as e:
+            #     print(f"⚠️ No se pudo auto-completar atributos: {e}")
 
-                # Solo ejecutar si el producto tiene imágenes y atributos vacíos/incompletos
-                if images_processed > 0:
-                    result = AttributeAutofillService.autofill_product_attributes(
-                        product,
-                        overwrite=False  # No sobrescribir valores que el usuario ya puso
-                    )
-
-                    if result['success']:
-                        # Mergear atributos detectados con los existentes
-                        current_attrs = product.attributes or {}
-                        detected_attrs = result['attributes']
-
-                        # Solo agregar atributos que no existan o estén vacíos
-                        updated = False
-                        for key, value in detected_attrs.items():
-                            if key not in current_attrs or not current_attrs.get(key):
-                                current_attrs[key] = value
-                                updated = True
-
-                        # Actualizar tags si no tiene
-                        if result['tags'] and not product.tags:
-                            product.tags = result['tags']
-                            updated = True
-
-                        if updated:
-                            product.attributes = current_attrs
-                            db.session.commit()
-                            flash(f"✨ Auto-completado: {result['message']}", "info")
-
-            except Exception as e:
-                # No bloquear la creación si falla el autofill
-                print(f"⚠️ No se pudo auto-completar atributos: {e}")
-
+            flash(f"✅ Producto '{product.name}' creado exitosamente. Recuerda procesar embeddings desde el panel de Embeddings.", "success")
             return redirect(url_for("products.view", product_id=product.id))
 
         except ValueError as ve:
