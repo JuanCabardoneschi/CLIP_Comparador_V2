@@ -261,15 +261,21 @@ def gaps():
     # 4. Categorías detectadas vs matcheadas (eficiencia)
     category_efficiency = db.session.execute(
         text(f"""
+            WITH unnested AS (
+                SELECT
+                    unnest(categories_detected) as category_name,
+                    categories_matched
+                FROM search_logs
+                WHERE created_at >= :start_date
+                  {client_filter}
+                  AND categories_detected IS NOT NULL
+                  AND array_length(categories_detected, 1) > 0
+            )
             SELECT
-                unnest(categories_detected) as category_name,
+                category_name,
                 COUNT(*) as detected_count,
-                SUM(CASE WHEN unnest(categories_detected) = ANY(categories_matched) THEN 1 ELSE 0 END) as matched_count
-            FROM search_logs
-            WHERE created_at >= :start_date
-              {client_filter}
-              AND categories_detected IS NOT NULL
-              AND array_length(categories_detected, 1) > 0
+                SUM(CASE WHEN category_name = ANY(categories_matched) THEN 1 ELSE 0 END) as matched_count
+            FROM unnested
             GROUP BY category_name
             ORDER BY detected_count DESC
             LIMIT 15
