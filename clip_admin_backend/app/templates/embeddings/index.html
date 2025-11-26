@@ -344,17 +344,10 @@ body .progress .progress-bar.progress-bar-striped.progress-bar-animated[style*="
                         </div>
                     </div>
                     <div class="row mt-2">
-                        <div class="col-md-6">
-                            <button class="btn btn-outline-primary w-100" onclick="reprocessAllWithCentroids()"
-                                    {% if total_images == 0 %}disabled{% endif %}>
-                                <i class="fas fa-recycle"></i> Reprocesar TODO + Centroides
-                                <br><small>Resetear embeddings, procesar y recalcular centroides</small>
-                            </button>
-                        </div>
-                        <div class="col-md-6">
+                        <div class="col-md-12">
                             <button class="btn btn-info w-100" onclick="viewLogs()">
                                 <i class="fas fa-list-alt"></i> Ver Logs
-                                <br><small>Historial detallado</small>
+                                <br><small>Historial detallado de procesamiento</small>
                             </button>
                         </div>
                     </div>
@@ -871,37 +864,6 @@ function recalcCentroids(silent = false) {
     .catch(err => {
         console.error(err);
         showAlert('error', 'Error de red recalculando centroides');
-    });
-}
-
-function reprocessAllWithCentroids() {
-    const totalCount = parseInt(document.getElementById('total-count').textContent);
-    if (totalCount === 0) {
-        showAlert('warning', 'No hay imágenes para reprocesar');
-        return;
-    }
-
-    if (!confirm(`⚠️ Esto reseteará ${totalCount} embeddings y volverá a procesar todo.\nLuego recalculará los centroides. ¿Continuar?`)) {
-        return;
-    }
-
-    // 1) Resetear
-    fetch('{{ url_for("embeddings.reset_all") }}', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (!data.success) {
-            showAlert('error', data.message || 'Error al resetear');
-            return;
-        }
-        // 2) Procesar pendientes con modal y polling
-        recalcAfterProcessing = true; // 3) Al terminar, recalcular centroides auto
-        processPending();
-    })
-    .catch(err => {
-        console.error(err);
-        showAlert('error', 'Error de red durante el reset');
     });
 }
 </script>
