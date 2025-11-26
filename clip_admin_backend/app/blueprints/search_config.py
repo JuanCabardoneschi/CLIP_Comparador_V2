@@ -91,20 +91,17 @@ def index():
     - Cliente Admin: Ve solo su configuración
     """
     if current_user.is_super_admin:
-        # Super admin ve todas las configuraciones
-        configs = (
-            db.session.query(StoreSearchConfig, Client)
-            .join(Client, StoreSearchConfig.store_id == Client.id)
-            .order_by(Client.name)
-            .all()
-        )
-        configs_data = [
-            {
-                'config': config,
-                'client': client
-            }
-            for config, client in configs
-        ]
+        # Super Admin: mostrar TODOS los clientes, incluso sin configuración
+        clients = Client.query.order_by(Client.name).all()
+        configs_data = []
+        for client in clients:
+            # Intentar obtener configuración; si no existe, crear default sin forzar commit global
+            config = StoreSearchConfig.query.get(client.id)
+            if not config:
+                # Crear configuración por defecto para que la card no quede vacía
+                config = StoreSearchConfig.get_or_create_default(client.id, commit=True)
+
+            configs_data.append({'config': config, 'client': client})
     else:
         # Cliente admin ve solo su configuración
         client_id = current_user.client_id

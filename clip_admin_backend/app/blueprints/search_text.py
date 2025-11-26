@@ -1530,8 +1530,8 @@ def text_search():
                             primary_image = Image.query.filter_by(product_id=p.id, is_primary=True).first()
                             if not primary_image:
                                 primary_image = Image.query.filter_by(product_id=p.id).first()
-                            if primary_image and getattr(primary_image, 'optimized_url', None):
-                                image_url = primary_image.optimized_url  # Base64 cacheado
+                            if primary_image and getattr(primary_image, 'base64_data', None):
+                                image_url = primary_image.base64_data  # NUNCA Cloudinary
                         except Exception:
                             image_url = None
 
@@ -1832,8 +1832,8 @@ def text_search():
                             primary_image = Image.query.filter_by(product_id=p.id, is_primary=True).first()
                             if not primary_image:
                                 primary_image = Image.query.filter_by(product_id=p.id).first()
-                            if primary_image and getattr(primary_image, 'optimized_url', None):
-                                image_url = primary_image.optimized_url  # Base64 cacheado
+                            if primary_image and getattr(primary_image, 'base64_data', None):
+                                image_url = primary_image.base64_data  # NUNCA Cloudinary
                         except Exception:
                             image_url = None
 
@@ -2151,6 +2151,31 @@ def text_search():
             matched_count = len(matched)
             match_ratio = float(matched_count / requested_count) if requested_count > 0 else 0.0
 
+            # Forzar base64 y loguear si falta
+            try:
+                if primary_image and not getattr(primary_image, 'base64_data', None):
+                    from app.utils.logging_config import log_error
+                    log_error(f"Imagen sin base64 en BD (text search): {primary_image.id} - regenerando")
+                    from app.services.image_manager import image_manager
+                    _ = image_manager.get_image_base64(primary_image)
+            except Exception:
+                pass
+
+            # Si aún no hay base64, usar placeholder (NUNCA Cloudinary)
+            try:
+                if primary_image:
+                    img_url_tmp = primary_image.base64_data
+                    if not (img_url_tmp and img_url_tmp.startswith('data:image')):
+                        from app.utils.logging_config import log_error
+                        log_error(f"Respuesta (text) sin base64, usando placeholder. Producto={product.id} Imagen={primary_image.id if primary_image else 'NA'}")
+                        # 1x1 PNG transparente
+                        primary_image.base64_data = (
+                            'data:image/png;base64,'
+                            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+                        )
+            except Exception:
+                pass
+
             formatted_results.append({
                 "id": product.id,
                 "name": product.name,
@@ -2159,8 +2184,8 @@ def text_search():
                 # Ordenamiento: primero por atributos cumplidos, luego por similitud
                 # El widget usa final_score para badge. Mantenemos similitud y exponemos match_ratio aparte
                 "final_score": round(result['similarity'], 3),
-                "image": primary_image.optimized_url if primary_image else None,  # Base64 cacheado
-                "image_url": primary_image.optimized_url if primary_image else None,  # Widget espera este campo
+                "image": primary_image.base64_data if primary_image and primary_image.base64_data else '/static/images/placeholder.svg',
+                "image_url": primary_image.base64_data if primary_image and primary_image.base64_data else '/static/images/placeholder.svg',
                 "category": product.category.name if product.category else None,
                 "attributes": prod_attrs,
                 "attributes_matched": matched,

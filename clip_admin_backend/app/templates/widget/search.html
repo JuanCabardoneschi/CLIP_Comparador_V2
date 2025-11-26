@@ -136,6 +136,7 @@
             window.history.replaceState({}, document.title, cleanUrl);
         }
     </script>    <!-- Cargar el widget JavaScript -->
-    <script src="{{ url_for('static', filename='js/clip-widget-embed-unified.js') }}"></script>
+    <!-- Cache-busting para asegurar que toma el JS actualizado -->
+    <script src="{{ url_for('static', filename='js/clip-widget-embed-unified.js') }}?v=3"></script>
 </body>
 </html>

@@ -458,13 +458,45 @@ def _build_search_results(product_best_match, limit):
                 primary_image = img
 
             # Retornar base64 cacheado (evita descargas de Cloudinary)
-            image_url = primary_image.optimized_url if primary_image else None
+            if primary_image and not getattr(primary_image, 'base64_data', None):
+                from app.utils.logging_config import log_error
+                from app.services.image_manager import image_manager
+                log_error(f"Imagen sin base64 en BD (visual search): {primary_image.id} - regenerando")
+                try:
+                    image_manager.get_image_base64(primary_image)
+                except Exception as _e:
+                    pass
+            image_url = primary_image.base64_data if primary_image and primary_image.base64_data else '/static/images/placeholder.svg'
+            try:
+                if image_url and not image_url.startswith('data:image'):
+                    from app.utils.logging_config import log_error
+                    log_error(f"Respuesta (visual) sin base64, usando placeholder. Imagen={primary_image.id if primary_image else 'NA'}")
+                    image_url = (
+                        'data:image/png;base64,'
+                        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+                    )
+            except Exception:
+                pass
         except Exception as e:
             print(f"❌ Error obteniendo imagen primaria: {e}")
             # CRITICAL: Hacer rollback para que queries posteriores funcionen
             db.session.rollback()
             # Si falla, usar la imagen que hizo match
-            image_url = img.optimized_url if img else None
+            if img and not getattr(img, 'base64_data', None):
+                try:
+                    from app.services.image_manager import image_manager
+                    image_manager.get_image_base64(img)
+                except Exception:
+                    pass
+            image_url = img.base64_data if img and img.base64_data else '/static/images/placeholder.svg'
+            try:
+                if image_url and not image_url.startswith('data:image'):
+                    image_url = (
+                        'data:image/png;base64,'
+                        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+                    )
+            except Exception:
+                pass
 
         # Preparar atributos dinámicos del producto (JSONB)
         product_attrs = {}

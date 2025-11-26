@@ -938,7 +938,8 @@
             formData.append('image', file);
             formData.append('multi_category', 'true'); // ✅ MODO MULTI-CATEGORÍA
 
-            fetch(`${config.serverUrl}/api/search`, {
+            // Usar endpoint unificado con GPT-4V (multi-categoría + base64 seguro)
+            fetch(`${config.serverUrl}/api/search/gpt4v-unified`, {
                 method: 'POST',
                 headers: { 'X-API-Key': config.apiKey },
                 body: formData

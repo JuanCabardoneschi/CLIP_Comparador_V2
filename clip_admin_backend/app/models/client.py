@@ -4,6 +4,9 @@ import secrets
 from datetime import datetime
 from slugify import slugify
 from . import db
+from sqlalchemy import event
+from datetime import datetime as _dt
+from app.models.store_search_config import StoreSearchConfig
 
 class Client(db.Model):
     __tablename__ = "clients"
@@ -72,6 +75,32 @@ class Client(db.Model):
 
     def __repr__(self):
         return f"<Client {self.name}>"
+
+
+# Auto-crear configuración de búsqueda por defecto al crear un cliente
+@event.listens_for(Client, 'after_insert')
+def _create_default_search_config(mapper, connection, target):
+    try:
+        table = StoreSearchConfig.__table__
+        connection.execute(
+            table.insert().values(
+                store_id=target.id,
+                visual_weight=0.6,
+                metadata_weight=0.3,
+                business_weight=0.1,
+                metadata_config={
+                    'color': {'enabled': True, 'weight': 0.3},
+                    'brand': {'enabled': True, 'weight': 0.3},
+                    'pattern': {'enabled': False, 'weight': 0.2}
+                },
+                created_at=_dt.utcnow(),
+                updated_at=_dt.utcnow()
+            )
+        )
+    except Exception:
+        # Evitar que falle la creación del cliente si la config ya existe
+        # o si hay un problema no crítico al insertar la configuración.
+        pass
 
 # COMENTADO: No existe la tabla api_keys en la base de datos real
 # class APIKey(db.Model):
