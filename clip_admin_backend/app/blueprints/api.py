@@ -1053,10 +1053,12 @@ def visual_search():
 
             if not detected_categories:
                 print(f"âŒ MULTI-CATEGORY: No se detectÃ³ ninguna categorÃ­a")
+                # Mensaje genérico adaptado al rubro del cliente
+                industry_msg = f"productos de {client.industry}" if client.industry and client.industry != 'general' else "productos"
                 return jsonify({
                     "success": False,
                     "error": "category_not_detected",
-                    "message": f"Esta imagen no corresponde a productos que comercializa {client.name}",
+                    "message": f"La imagen no contiene {industry_msg} que comercializa {client.name}",
                     "details": "No pudimos identificar categorÃ­as comercializadas en la imagen.",
                     "available_categories": [cat.name for cat in Category.query.filter_by(client_id=client.id, is_active=True).all()],
                     "processing_time": round(time.time() - start_time, 3)
@@ -1238,10 +1240,12 @@ def visual_search():
         if detected_category is None:
             # No se pudo detectar una categorÃ­a vÃ¡lida
             railway_log(f" LOG: CATEGORÃA NO DETECTADA - devolviendo error")
+            # Mensaje genérico adaptado al rubro del cliente
+            industry_msg = f"productos de {client.industry}" if client.industry and client.industry != 'general' else "productos"
             return jsonify({
                 "success": False,
                 "error": "category_not_detected",
-                "message": f"Esta imagen no corresponde a productos que comercializa {client.name}",
+                "message": f"La imagen no contiene {industry_msg} que comercializa {client.name}",
                 "details": f"La imagen no pudo identificarse dentro de nuestras categorÃ­as disponibles (confianza mÃ¡xima: {category_confidence:.1%}). Por favor, intenta con una imagen de un producto de nuestro catÃ¡logo.",
                 "available_categories": [cat.name for cat in Category.query.filter_by(client_id=client.id, is_active=True).all()],
                 "processing_time": round(time.time() - start_time, 3)
@@ -2293,5 +2297,6 @@ def gpt4v_unified_search():
             "error": "internal_error",
             "message": str(e)
         }), 500
+
 
 
