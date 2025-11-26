@@ -1,0 +1,213 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Rendimiento del Sistema - Analytics{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-0">⚡ Rendimiento del Sistema</h2>
+                    <p class="text-muted mb-0">Métricas de performance y tiempos de respuesta</p>
+                </div>
+                <a href="{{ url_for('analytics.index') }}" class="btn btn-outline-secondary">
+                    <i class="bi bi-arrow-left"></i> Volver a Analytics
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Métricas de Performance -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card border-primary h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted mb-1 small">Tiempo Promedio</p>
+                            <h3 class="mb-0">{{ "%.0f"|format(avg_response_time) }}ms</h3>
+                            <small class="text-muted">Respuesta de búsquedas</small>
+                        </div>
+                        <div class="fs-2 text-primary">⚡</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-success h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted mb-1 small">Embeddings Procesados</p>
+                            <h3 class="mb-0">{{ "{:,}".format(embedding_stats.total_embeddings).replace(',', '.') }}</h3>
+                            <small class="text-muted">Imágenes con CLIP</small>
+                        </div>
+                        <div class="fs-2 text-success">🎯</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-warning h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted mb-1 small">Pendientes</p>
+                            <h3 class="mb-0">{{ "{:,}".format(embedding_stats.images_without_embeddings).replace(',', '.') }}</h3>
+                            <small class="text-muted">Imágenes sin procesar</small>
+                        </div>
+                        <div class="fs-2 text-warning">⏳</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Últimas 100 Búsquedas - Tiempos de Respuesta -->
+    <div class="card mb-4">
+        <div class="card-header bg-white">
+            <h5 class="mb-0">📊 Distribución de Tiempos de Respuesta (Últimas 100 búsquedas)</h5>
+        </div>
+        <div class="card-body">
+            {% if response_times %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Fecha/Hora</th>
+                            <th>Tiempo (ms)</th>
+                            <th>Resultados</th>
+                            <th>Performance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for rt in response_times %}
+                        <tr>
+                            <td class="text-nowrap">
+                                <small>{{ rt.created_at.strftime('%d/%m %H:%M') if rt.created_at else '-' }}</small>
+                            </td>
+                            <td>
+                                <strong>{{ rt.response_time_ms if rt.response_time_ms else '-' }}</strong>
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ rt.results_count }}</span>
+                            </td>
+                            <td>
+                                {% if rt.response_time_ms %}
+                                {% set time_ms = rt.response_time_ms %}
+                                {% if time_ms < 500 %}
+                                <span class="badge bg-success">Excelente</span>
+                                <div class="progress" style="height: 8px; width: 100px;">
+                                    <div class="progress-bar bg-success" style="width: {{ (time_ms / 2000 * 100)|round }}%"></div>
+                                </div>
+                                {% elif time_ms < 1000 %}
+                                <span class="badge bg-primary">Bueno</span>
+                                <div class="progress" style="height: 8px; width: 100px;">
+                                    <div class="progress-bar bg-primary" style="width: {{ (time_ms / 2000 * 100)|round }}%"></div>
+                                </div>
+                                {% elif time_ms < 2000 %}
+                                <span class="badge bg-warning text-dark">Aceptable</span>
+                                <div class="progress" style="height: 8px; width: 100px;">
+                                    <div class="progress-bar bg-warning" style="width: {{ (time_ms / 2000 * 100)|round }}%"></div>
+                                </div>
+                                {% else %}
+                                <span class="badge bg-danger">Lento</span>
+                                <div class="progress" style="height: 8px; width: 100px;">
+                                    <div class="progress-bar bg-danger" style="width: 100%"></div>
+                                </div>
+                                {% endif %}
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5 text-muted">
+                <div class="fs-1">📭</div>
+                <p class="mb-0">No hay datos de tiempos de respuesta registrados</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Estadísticas de Embeddings -->
+    <div class="card">
+        <div class="card-header bg-white">
+            <h5 class="mb-0">🎯 Estado de Embeddings CLIP</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="text-muted mb-3">Cobertura del Catálogo</h6>
+                    {% set total_images = embedding_stats.total_embeddings + embedding_stats.images_without_embeddings %}
+                    {% if total_images > 0 %}
+                    {% set coverage = (embedding_stats.total_embeddings / total_images * 100)|round(1) %}
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span>Procesadas</span>
+                            <strong>{{ coverage }}%</strong>
+                        </div>
+                        <div class="progress" style="height: 30px;">
+                            <div class="progress-bar bg-success" style="width: {{ coverage }}%">
+                                {{ embedding_stats.total_embeddings }} imágenes
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span>Pendientes</span>
+                            <strong>{{ (100 - coverage)|round(1) }}%</strong>
+                        </div>
+                        <div class="progress" style="height: 30px;">
+                            <div class="progress-bar bg-warning" style="width: {{ (100 - coverage)|round }}%">
+                                {{ embedding_stats.images_without_embeddings }} imágenes
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        No hay imágenes en el sistema todavía
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <h6 class="text-muted mb-3">Recomendaciones</h6>
+                    {% if embedding_stats.images_without_embeddings > 0 %}
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>Acción requerida:</strong> Hay {{ embedding_stats.images_without_embeddings }}
+                        imágenes sin procesar.
+                        <a href="{{ url_for('images.index') }}" class="alert-link">Procesar ahora</a>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-success">
+                        <i class="bi bi-check-circle"></i>
+                        <strong>Excelente:</strong> Todas las imágenes del catálogo tienen embeddings CLIP procesados.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .progress {
+        background-color: #e9ecef;
+    }
+
+    .card {
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
+
+    .table-hover tbody tr:hover {
+        background-color: rgba(0, 123, 255, 0.05);
+    }
+</style>
+{% endblock %}
