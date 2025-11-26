@@ -1096,10 +1096,6 @@ def process_pending():
         for i in range(0, total_images, batch_size):
             batch = pending_images[i:i + batch_size]
 
-            # Pre-descargar imágenes en paralelo
-            log_verbose(LogCategory.EMBEDDING, f"Pre-descargando {len(batch)} imagenes en paralelo...")
-            preloaded_cache = preload_images_parallel(batch, max_workers=5)
-
             for image in batch:
                 try:
                     log_verbose(LogCategory.EMBEDDING, f"Procesando {image.filename}...")
@@ -1110,20 +1106,9 @@ def process_pending():
                         image.error_message = "No hay URL de Cloudinary disponible"
                         continue
 
-                    # Usar imagen pre-descargada del cache
-                    cached_item = preloaded_cache.get(image.id)
-
-                    if cached_item is None:
-                        log_verbose(LogCategory.EMBEDDING, f"{image.filename} no encontrada en cache, descargando...")
-                        image_source = image.cloudinary_url
-                    elif isinstance(cached_item, str):
-                        raise Exception(f"Error en descarga paralela: {cached_item}")
-                    else:
-                        image_source = cached_item
-                        log_verbose(LogCategory.EMBEDDING, f"Usando imagen pre-descargada de {image.filename}")
-
                     # Generar embedding optimizado con CLIP
-                    embedding, metadata = generate_clip_embedding(image_source, image)
+                    # Nota: Se eliminó preload paralelo para evitar problemas de contexto Flask
+                    embedding, metadata = generate_clip_embedding(image.cloudinary_url, image)
 
                     if embedding is None:
                         raise Exception("Error generando embedding")

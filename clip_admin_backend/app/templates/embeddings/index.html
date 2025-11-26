@@ -532,14 +532,14 @@ function processPending() {
             showAlert('error', data.message);
         } else {
             console.log('✅ Procesamiento completado correctamente');
-            
+
             // Procesamiento síncrono completado
             isProcessing = false;
             stopPolling();
             processingModal.hide();
-            
+
             showAlert('success', data.message);
-            
+
             // Recargar estadísticas
             setTimeout(() => {
                 location.reload();
