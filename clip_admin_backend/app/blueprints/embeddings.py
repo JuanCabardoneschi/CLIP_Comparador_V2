@@ -1067,44 +1067,104 @@ def _process_pending_background(client_id, app):
 @bp.route("/process_pending", methods=["POST"])
 @login_required
 def process_pending():
-    """Disparar procesamiento de imágenes pendientes en background.
+    """Procesar imágenes pendientes de forma síncrona.
 
-    NUEVO: Procesamiento asíncrono que permite cerrar el navegador.
-    El proceso continúa ejecutándose en Railway hasta completarse.
+    IMPORTANTE: Procesamiento síncrono para Railway.
+    Railway puede matar threads daemon rápidamente, por lo que procesamos
+    directamente en la request con timeout extendido.
     """
     if not current_user.client_id:
         return jsonify({"success": False, "message": "Usuario no asignado a cliente"})
 
     try:
-        # Verificar que hay imágenes pendientes
-        pending_count = Image.query.filter_by(
+        # Obtener imágenes pendientes
+        pending_images = Image.query.filter_by(
             client_id=current_user.client_id,
             is_processed=False,
             upload_status='pending'
-        ).count()
+        ).all()
 
-        if pending_count == 0:
+        if not pending_images:
             return jsonify({"success": False, "message": "No hay imágenes pendientes para procesar"})
 
-        # Disparar procesamiento en background thread
-        thread = threading.Thread(
-            target=_process_pending_background,
-            args=(current_user.client_id, current_app._get_current_object()),
-            daemon=True  # Thread daemon se cierra cuando termina la app
-        )
-        thread.start()
+        total_images = len(pending_images)
+        processed_count = 0
+        batch_size = 5
 
-        log_embedding(f"Procesamiento en background iniciado para {pending_count} imagenes")
-        log_verbose(LogCategory.EMBEDDING, "El proceso continuara incluso si cierras el navegador")
+        log_embedding(f"Procesamiento de {total_images} imagenes con CLIP iniciado")
+
+        for i in range(0, total_images, batch_size):
+            batch = pending_images[i:i + batch_size]
+
+            # Pre-descargar imágenes en paralelo
+            log_verbose(LogCategory.EMBEDDING, f"Pre-descargando {len(batch)} imagenes en paralelo...")
+            preloaded_cache = preload_images_parallel(batch, max_workers=5)
+
+            for image in batch:
+                try:
+                    log_verbose(LogCategory.EMBEDDING, f"Procesando {image.filename}...")
+
+                    if not image.cloudinary_url:
+                        log_error(f"Error: {image.filename} no tiene URL de Cloudinary")
+                        image.upload_status = 'failed'
+                        image.error_message = "No hay URL de Cloudinary disponible"
+                        continue
+
+                    # Usar imagen pre-descargada del cache
+                    cached_item = preloaded_cache.get(image.id)
+
+                    if cached_item is None:
+                        log_verbose(LogCategory.EMBEDDING, f"{image.filename} no encontrada en cache, descargando...")
+                        image_source = image.cloudinary_url
+                    elif isinstance(cached_item, str):
+                        raise Exception(f"Error en descarga paralela: {cached_item}")
+                    else:
+                        image_source = cached_item
+                        log_verbose(LogCategory.EMBEDDING, f"Usando imagen pre-descargada de {image.filename}")
+
+                    # Generar embedding optimizado con CLIP
+                    embedding, metadata = generate_clip_embedding(image_source, image)
+
+                    if embedding is None:
+                        raise Exception("Error generando embedding")
+
+                    # Guardar embedding y metadata
+                    image.clip_embedding = json.dumps(embedding)
+                    image.is_processed = True
+                    image.upload_status = 'completed'
+                    image.updated_at = datetime.utcnow()
+
+                    if hasattr(image, 'metadata') and metadata:
+                        image.metadata = json.dumps(metadata)
+
+                    processed_count += 1
+
+                    method = metadata.get('optimization_method', 'unknown') if metadata else 'unknown'
+                    confidence = metadata.get('confidence_score', 0) if metadata else 0
+                    log_verbose(LogCategory.EMBEDDING, f"{image.filename} procesado con {method} (confianza: {confidence:.3f})")
+
+                except Exception as e:
+                    log_error(f"Error procesando {image.filename}: {e}")
+                    image.upload_status = 'failed'
+                    image.error_message = str(e)
+
+            # Commit por lote
+            db.session.commit()
+            log_verbose(LogCategory.EMBEDDING, f"Lote guardado: {processed_count}/{total_images} imagenes procesadas")
+
+        log_embedding(f"Procesamiento completado: {processed_count}/{total_images} imagenes procesadas exitosamente")
 
         return jsonify({
             "success": True,
-            "message": f"Procesamiento iniciado para {pending_count} imágenes. El proceso continuará en background, puedes cerrar esta ventana.",
-            "pending_count": pending_count,
-            "background": True
+            "message": f"Procesamiento completado: {processed_count}/{total_images} imágenes procesadas.",
+            "processed_count": processed_count,
+            "total_count": total_images,
+            "background": False
         })
 
     except Exception as e:
+        log_error(f"Error en procesamiento: {e}")
+        db.session.rollback()
         return jsonify({"success": False, "message": f"Error: {str(e)}"})
 
 
