@@ -531,19 +531,19 @@ function processPending() {
             processingModal.hide();
             showAlert('error', data.message);
         } else {
-            console.log('✅ Procesamiento iniciado correctamente');
-
-            // Si es procesamiento en background, mostrar mensaje especial
-            if (data.background) {
-                document.getElementById('processing-message').innerHTML = `
-                    <strong>🚀 Procesamiento en background iniciado</strong><br>
-                    <small>${data.pending_count} imágenes en cola</small><br>
-                    <small class="text-muted">✅ Puedes cerrar esta ventana. El proceso continuará en el servidor.</small>
-                `;
-
-                // El polling continuará mostrando el progreso real
-                console.log('ℹ️ Procesamiento asíncrono - UI puede cerrarse sin interrumpir');
-            }
+            console.log('✅ Procesamiento completado correctamente');
+            
+            // Procesamiento síncrono completado
+            isProcessing = false;
+            stopPolling();
+            processingModal.hide();
+            
+            showAlert('success', data.message);
+            
+            // Recargar estadísticas
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
         }
     })
     .catch(error => {
@@ -575,54 +575,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // 🆕 DETECTAR si hay procesamiento en curso al cargar la página
-    checkForOngoingProcessing();
+    // Ya no detectamos procesamiento en curso automáticamente
+    // El usuario debe iniciar el procesamiento manualmente
 });
-
-function checkForOngoingProcessing() {
-    // Verificar si hay imágenes pendientes y si el progreso está entre 0-100%
-    const totalCount = parseInt(document.getElementById('total-count').textContent);
-    const processedCount = parseInt(document.getElementById('processed-count').textContent);
-    const pendingCount = parseInt(document.getElementById('pending-count').textContent);
-
-    // Si hay imágenes totales, algunas procesadas y algunas pendientes = procesamiento en curso
-    if (totalCount > 0 && processedCount > 0 && pendingCount > 0) {
-        const progressPercentage = (processedCount / totalCount * 100).toFixed(1);
-
-        console.log('🔄 Procesamiento en curso detectado:', {
-            total: totalCount,
-            processed: processedCount,
-            pending: pendingCount,
-            progress: progressPercentage + '%'
-        });
-
-        // Mostrar modal informativo (no bloqueante)
-        isProcessing = true;
-        processingModal.show();
-
-        document.getElementById('processing-message').innerHTML = `
-            <strong>🔄 Procesamiento en curso detectado</strong><br>
-            <small>${processedCount}/${totalCount} imágenes procesadas (${progressPercentage}%)</small><br>
-            <small>${pendingCount} imágenes pendientes</small><br>
-            <small class="text-muted">✨ El proceso continúa en background en el servidor.</small>
-        `;
-
-        // Actualizar barra de progreso del modal
-        const progressBar = document.getElementById('processing-progress');
-        if (progressBar) {
-            progressBar.style.width = progressPercentage + '%';
-            progressBar.setAttribute('aria-valuenow', progressPercentage);
-            progressBar.classList.add('processing');
-        }
-
-        // Iniciar polling para ver actualizaciones
-        startPolling();
-
-        console.log('✅ Polling iniciado para monitorear progreso');
-    } else {
-        console.log('ℹ️ No hay procesamiento en curso');
-    }
-}
 
 function refreshStats() {
     fetch('{{ url_for("embeddings.get_stats") }}')
