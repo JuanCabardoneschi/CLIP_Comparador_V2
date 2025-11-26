@@ -64,10 +64,12 @@ def clients():
 @login_required
 def searches():
     """Analytics de búsquedas"""
-    # Búsquedas por día (últimos 30 días)
+    # Periodo de análisis (por defecto 30 días)
+    days = request.args.get('days', 30, type=int)
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=30)
+    start_date = end_date - timedelta(days=days)
 
+    # Búsquedas por día
     daily_searches = db.session.query(
         func.date(SearchLog.created_at).label("date"),
         func.count(SearchLog.id).label("count")
@@ -77,12 +79,13 @@ def searches():
         func.date(SearchLog.created_at)
     ).order_by("date").all()
 
-    # Top términos de búsqueda
+    # Top queries de texto
     top_queries = db.session.query(
         SearchLog.query_text,
         func.count(SearchLog.id).label("count")
     ).filter(
-        SearchLog.query_text.isnot(None)
+        SearchLog.query_text.isnot(None),
+        SearchLog.created_at >= start_date
     ).group_by(
         SearchLog.query_text
     ).order_by(desc("count")).limit(20).all()
@@ -91,14 +94,30 @@ def searches():
     search_types = db.session.query(
         SearchLog.search_type,
         func.count(SearchLog.id).label("count")
+    ).filter(
+        SearchLog.created_at >= start_date
     ).group_by(
         SearchLog.search_type
     ).all()
 
+    # 🆕 Tasa de éxito (búsquedas con resultados vs sin resultados)
+    success_rate = db.session.query(
+        func.sum(func.cast(SearchLog.had_results, db.Integer)).label('with_results'),
+        func.count(SearchLog.id).label('total')
+    ).filter(
+        SearchLog.created_at >= start_date
+    ).first()
+
+    success_percentage = 0
+    if success_rate and success_rate.total > 0:
+        success_percentage = round((success_rate.with_results / success_rate.total) * 100, 1)
+
     return render_template("analytics/searches.html",
                            daily_searches=daily_searches,
                            top_queries=top_queries,
-                           search_types=search_types)
+                           search_types=search_types,
+                           success_percentage=success_percentage,
+                           days=days)
 
 
 @bp.route("/performance")
@@ -130,6 +149,90 @@ def performance():
                            avg_response_time=avg_response_time,
                            response_times=response_times,
                            embedding_stats=embedding_stats)
+
+
+@bp.route("/gaps")
+@login_required
+def gaps():
+    """🆕 Analytics de Gap Detection - Oportunidades de catálogo"""
+    # Periodo de análisis (por defecto 60 días)
+    days = request.args.get('days', 60, type=int)
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days)
+
+    # 1. Categorías más buscadas que NO están en el catálogo
+    from sqlalchemy import func, text
+    missing_categories = db.session.execute(
+        text("""
+            SELECT
+                unnest(categories_missing) as category_name,
+                COUNT(*) as search_count
+            FROM search_logs
+            WHERE created_at >= :start_date
+              AND categories_missing IS NOT NULL
+              AND array_length(categories_missing, 1) > 0
+            GROUP BY category_name
+            ORDER BY search_count DESC
+            LIMIT 20
+        """),
+        {"start_date": start_date}
+    ).fetchall()
+
+    # 2. Términos/atributos más buscados que NO matchean
+    unmatched_terms = db.session.execute(
+        text("""
+            SELECT
+                unnest(terms_unmatched) as term,
+                COUNT(*) as search_count
+            FROM search_logs
+            WHERE created_at >= :start_date
+              AND terms_unmatched IS NOT NULL
+              AND array_length(terms_unmatched, 1) > 0
+            GROUP BY term
+            ORDER BY search_count DESC
+            LIMIT 30
+        """),
+        {"start_date": start_date}
+    ).fetchall()
+
+    # 3. Búsquedas sin resultados (0 products found)
+    zero_results = db.session.query(
+        SearchLog.query_text,
+        SearchLog.categories_detected,
+        func.count(SearchLog.id).label("count")
+    ).filter(
+        SearchLog.created_at >= start_date,
+        SearchLog.results_count == 0,
+        SearchLog.query_text.isnot(None)
+    ).group_by(
+        SearchLog.query_text,
+        SearchLog.categories_detected
+    ).order_by(desc("count")).limit(20).all()
+
+    # 4. Categorías detectadas vs matcheadas (eficiencia)
+    category_efficiency = db.session.execute(
+        text("""
+            SELECT
+                unnest(categories_detected) as category_name,
+                COUNT(*) as detected_count,
+                SUM(CASE WHEN unnest(categories_detected) = ANY(categories_matched) THEN 1 ELSE 0 END) as matched_count
+            FROM search_logs
+            WHERE created_at >= :start_date
+              AND categories_detected IS NOT NULL
+              AND array_length(categories_detected, 1) > 0
+            GROUP BY category_name
+            ORDER BY detected_count DESC
+            LIMIT 15
+        """),
+        {"start_date": start_date}
+    ).fetchall()
+
+    return render_template("analytics/gaps.html",
+                           missing_categories=missing_categories,
+                           unmatched_terms=unmatched_terms,
+                           zero_results=zero_results,
+                           category_efficiency=category_efficiency,
+                           days=days)
 
 
 @bp.route("/client/<client_id>")
@@ -240,3 +343,55 @@ def api_client_stats(client_id):
             SearchLog.created_at >= datetime.now() - timedelta(days=30)
         ).count()
     })
+
+
+@bp.route("/api/stats/gaps")
+@login_required
+def api_gaps():
+    """🆕 API endpoint para gap detection data"""
+    days = request.args.get('days', 60, type=int)
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days)
+
+    from sqlalchemy import text
+
+    # Categorías faltantes
+    missing_cats = db.session.execute(
+        text("""
+            SELECT
+                unnest(categories_missing) as category,
+                COUNT(*) as count
+            FROM search_logs
+            WHERE created_at >= :start_date
+              AND categories_missing IS NOT NULL
+              AND array_length(categories_missing, 1) > 0
+            GROUP BY category
+            ORDER BY count DESC
+            LIMIT 10
+        """),
+        {"start_date": start_date}
+    ).fetchall()
+
+    # Términos no matcheados
+    unmatched = db.session.execute(
+        text("""
+            SELECT
+                unnest(terms_unmatched) as term,
+                COUNT(*) as count
+            FROM search_logs
+            WHERE created_at >= :start_date
+              AND terms_unmatched IS NOT NULL
+              AND array_length(terms_unmatched, 1) > 0
+            GROUP BY term
+            ORDER BY count DESC
+            LIMIT 15
+        """),
+        {"start_date": start_date}
+    ).fetchall()
+
+    return jsonify({
+        "missing_categories": [{"name": row[0], "count": row[1]} for row in missing_cats],
+        "unmatched_terms": [{"term": row[0], "count": row[1]} for row in unmatched],
+        "period_days": days
+    })
+

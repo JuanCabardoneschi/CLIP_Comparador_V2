@@ -14,6 +14,7 @@ from app.models.client import Client
 from app.models.category import Category
 from app.models.product import Product
 from app.models.image import Image
+from app.models.search_log import SearchLog
 from sqlalchemy import text, func
 import time
 import numpy as np
@@ -2427,6 +2428,58 @@ def text_search():
         else:
             # Enviar resultados en lista plana (comportamiento original)
             response_data["results"] = formatted_results
+
+        # 📊 ANALYTICS: Registrar búsqueda (async)
+        try:
+            # Extraer categorías
+            cats_detected = [c['name'] for c in detection_metadata.get('matched_categories', [])] if detection_metadata else []
+            cats_matched = list(results_by_category.keys()) if group_by_category and results_by_category else (
+                [cats_detected[0]] if cats_detected and formatted_results else []
+            )
+            cats_missing = [c for c in cats_detected if c not in cats_matched]
+
+            # Extraer términos (modificadores y atributos)
+            terms_extracted = []
+            if 'attributes' in attr_info and isinstance(attr_info['attributes'], dict):
+                for key, val in attr_info['attributes'].items():
+                    if isinstance(val, list):
+                        terms_extracted.extend([str(v).lower() for v in val])
+                    else:
+                        terms_extracted.append(str(val).lower())
+
+            # Términos matcheados: atributos que aparecen en los resultados
+            terms_matched = []
+            terms_unmatched = list(terms_extracted)  # Inicialmente todos no matcheados
+            if formatted_results:
+                for result in formatted_results[:10]:  # Analizar top 10 para términos
+                    result_attrs = result.get('attributes', {})
+                    for term in list(terms_unmatched):
+                        # Verificar si el término aparece en algún valor de atributo
+                        for attr_val in result_attrs.values():
+                            attr_str = str(attr_val).lower() if attr_val else ''
+                            if term in attr_str:
+                                if term not in terms_matched:
+                                    terms_matched.append(term)
+                                if term in terms_unmatched:
+                                    terms_unmatched.remove(term)
+                                break
+
+            SearchLog.log_search(
+                client_id=client.id,
+                search_type='text_nlp',
+                query_text=query_text,
+                image_url=None,
+                categories_detected=cats_detected,
+                categories_matched=cats_matched,
+                categories_missing=cats_missing,
+                terms_extracted=terms_extracted if terms_extracted else None,
+                terms_matched=terms_matched if terms_matched else None,
+                terms_unmatched=terms_unmatched if terms_unmatched else None,
+                results_count=len(formatted_results),
+                response_time_ms=int(elapsed * 1000)
+            )
+        except Exception as log_err:
+            log_error(f"Error logging analytics: {log_err}")
 
         response = jsonify(response_data)
 

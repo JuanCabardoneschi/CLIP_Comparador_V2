@@ -23,7 +23,7 @@ from app.models.client import Client
 from app.models.category import Category
 from app.models.product import Product
 from app.models.image import Image
-# from app.models.search_log import SearchLog  # Deshabilitado - no se usa logging de búsquedas
+from app.models.search_log import SearchLog
 from app.models.store_search_config import StoreSearchConfig
 from app.services.image_manager import image_manager
 from app.core.search_optimizer import SearchOptimizer
@@ -2258,6 +2258,28 @@ def gpt4v_unified_search():
         }
 
         railway_log(f"✅ Búsqueda completada: {total_products_found} productos en {processing_time:.0f}ms")
+
+        # 📊 ANALYTICS: Registrar búsqueda (async)
+        try:
+            # Extraer categorías detectadas y matcheadas
+            cats_detected = categories_detected if categories_detected else []
+            cats_matched = [name for name, data in results_by_category.items() if data.get('results_returned', 0) > 0]
+            cats_missing = [c for c in cats_detected if c not in cats_matched]
+
+            SearchLog.log_search(
+                client_id=client.id,
+                search_type='gpt4v_visual',
+                query_text=None,
+                image_url=None,  # No guardamos imagen por privacidad
+                categories_detected=cats_detected,
+                categories_matched=cats_matched,
+                categories_missing=cats_missing,
+                results_count=total_products_found,
+                response_time_ms=int(processing_time),
+                threshold_used=threshold
+            )
+        except Exception as log_err:
+            railway_log(f"⚠️ Error logging analytics: {log_err}")
 
         return jsonify(response_data), 200
 

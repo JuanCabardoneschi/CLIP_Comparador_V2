@@ -1,0 +1,246 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Gap Detection - Oportunidades de Catálogo{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1><i class="fas fa-lightbulb"></i> Gap Detection - Oportunidades</h1>
+                <div>
+                    <select class="form-select" id="periodSelector" onchange="changePeriod()">
+                        <option value="30" {% if days == 30 %}selected{% endif %}>Últimos 30 días</option>
+                        <option value="60" {% if days == 60 %}selected{% endif %}>Últimos 60 días</option>
+                        <option value="90" {% if days == 90 %}selected{% endif %}>Últimos 90 días</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i>
+        <strong>¿Qué es Gap Detection?</strong> Analiza lo que tus clientes buscan pero no encuentran en tu catálogo.
+        Identifica nuevas oportunidades de productos, categorías y atributos para expandir tu inventario.
+    </div>
+
+    <!-- Categorías Faltantes -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0"><i class="fas fa-folder-open"></i> Categorías Más Buscadas (NO en catálogo)</h5>
+                </div>
+                <div class="card-body">
+                    {% if missing_categories %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Categoría</th>
+                                    <th>Búsquedas</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in missing_categories %}
+                                <tr>
+                                    <td>{{ loop.index }}</td>
+                                    <td><strong>{{ row[0] }}</strong></td>
+                                    <td>
+                                        <span class="badge bg-danger">{{ row[1] }} búsquedas</span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary" onclick="addCategory('{{ row[0] }}')">
+                                            <i class="fas fa-plus"></i> Agregar Categoría
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">
+                        <i class="fas fa-check-circle"></i> ¡Excelente! No hay categorías faltantes detectadas.
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Términos/Atributos No Matcheados -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-warning">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0"><i class="fas fa-tags"></i> Atributos/Términos Más Buscados (Sin Match)</h5>
+                </div>
+                <div class="card-body">
+                    {% if unmatched_terms %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Estos términos son buscados frecuentemente pero no coinciden con los atributos de tus productos.
+                        Considera agregar estos atributos a tu configuración.
+                    </div>
+                    <div class="row">
+                        {% for row in unmatched_terms %}
+                        <div class="col-md-4 mb-3">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h6 class="mb-0">{{ row[0] }}</h6>
+                                            <small class="text-muted">{{ row[1] }} búsquedas</small>
+                                        </div>
+                                        <button class="btn btn-sm btn-outline-success" onclick="addAttribute('{{ row[0] }}')">
+                                            <i class="fas fa-plus"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">
+                        <i class="fas fa-check-circle"></i> Todos los términos buscados tienen match con tus productos.
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Búsquedas sin Resultados -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-secondary">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="fas fa-search-minus"></i> Búsquedas Sin Resultados (0 productos)</h5>
+                </div>
+                <div class="card-body">
+                    {% if zero_results %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Query</th>
+                                    <th>Categorías Detectadas</th>
+                                    <th>Frecuencia</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in zero_results %}
+                                <tr>
+                                    <td><code>{{ row.query_text }}</code></td>
+                                    <td>
+                                        {% if row.categories_detected %}
+                                            {% for cat in row.categories_detected %}
+                                                <span class="badge bg-secondary">{{ cat }}</span>
+                                            {% endfor %}
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><span class="badge bg-dark">{{ row.count }}</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">
+                        <i class="fas fa-check-circle"></i> Todas las búsquedas han retornado al menos 1 resultado.
+                    </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Eficiencia por Categoría -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Eficiencia de Categorías (Detectadas vs Matcheadas)</h5>
+                </div>
+                <div class="card-body">
+                    {% if category_efficiency %}
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Categoría</th>
+                                    <th>Veces Detectada</th>
+                                    <th>Veces Matcheada</th>
+                                    <th>Eficiencia</th>
+                                    <th>Barra</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in category_efficiency %}
+                                {% set detected = row[1] %}
+                                {% set matched = row[2] %}
+                                {% set efficiency = (matched / detected * 100) if detected > 0 else 0 %}
+                                <tr>
+                                    <td><strong>{{ row[0] }}</strong></td>
+                                    <td>{{ detected }}</td>
+                                    <td>{{ matched }}</td>
+                                    <td>
+                                        {% if efficiency >= 80 %}
+                                            <span class="badge bg-success">{{ "%.1f"|format(efficiency) }}%</span>
+                                        {% elif efficiency >= 50 %}
+                                            <span class="badge bg-warning">{{ "%.1f"|format(efficiency) }}%</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">{{ "%.1f"|format(efficiency) }}%</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar {% if efficiency >= 80 %}bg-success{% elif efficiency >= 50 %}bg-warning{% else %}bg-danger{% endif %}"
+                                                 role="progressbar"
+                                                 style="width: {{ efficiency }}%;"
+                                                 aria-valuenow="{{ efficiency }}"
+                                                 aria-valuemin="0"
+                                                 aria-valuemax="100">
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">No hay datos de eficiencia disponibles.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function changePeriod() {
+    const days = document.getElementById('periodSelector').value;
+    window.location.href = `{{ url_for('analytics.gaps') }}?days=${days}`;
+}
+
+function addCategory(name) {
+    if (confirm(`¿Crear categoría "${name}"?`)) {
+        alert('Funcionalidad próximamente. Puedes crear la categoría manualmente desde el panel de Categorías.');
+    }
+}
+
+function addAttribute(name) {
+    if (confirm(`¿Agregar atributo "${name}"?`)) {
+        alert('Funcionalidad próximamente. Puedes configurar atributos desde el panel de Productos.');
+    }
+}
+</script>
+{% endblock %}
