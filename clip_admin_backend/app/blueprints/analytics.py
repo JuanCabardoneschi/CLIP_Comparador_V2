@@ -11,7 +11,7 @@ from app.models.product import Product
 from app.models.image import Image
 from app.models.search_log import SearchLog
 from app.models.category import Category
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, text
 from datetime import datetime, timedelta
 
 bp = Blueprint("analytics", __name__)
@@ -97,7 +97,7 @@ def searches():
         func.count(SearchLog.id).label('total'),
         func.sum(func.cast(SearchLog.had_results, db.Integer)).label('with_results'),
         func.avg(SearchLog.results_count).label('avg_results'),
-        func.avg(SearchLog.processing_time_ms).label('avg_time')
+        func.avg(SearchLog.response_time_ms).label('avg_time')
     ).filter(SearchLog.created_at >= start_date)
     if client_filter:
         stats = stats.filter_by(**client_filter)
