@@ -74,14 +74,14 @@ def build_categories_catalog_with_hints(categories_list, client_id):
     return catalog, hints_section
 
 
-def detect_categories_with_gpt4v(image_data, categories_list, client_id=None):
+def detect_categories_with_gpt4v(image_data, categories_list, client=None):
     """
     Detectar TODAS las categorías/prendas en una imagen usando GPT-4 Vision
 
     Args:
         image_data: bytes o PIL.Image
         categories_list: list[str] - Categorías disponibles del cliente
-        client_id: str (opcional) - ID del cliente para logging
+        client: Client model instance (opcional) - Para acceder a client.id y client.industry
 
     Returns:
         dict: {
@@ -112,49 +112,53 @@ def detect_categories_with_gpt4v(image_data, categories_list, client_id=None):
 
         image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
+        # Extraer datos del cliente
+        client_id = client.id if client else None
+        industry = client.industry if client and hasattr(client, 'industry') else 'general'
+        industry_context = f" (industria: {industry})" if industry and industry != 'general' else ""
+
         # Construir catálogo (hints eliminados)
         catalog, hints_section = build_categories_catalog_with_hints(categories_list, client_id)
 
         # Prompt optimizado del usuario (multi-categoría con mapeo dinámico)
-        prompt = f"""Analiza la imagen y detecta TODAS las prendas de ropa visibles (industria textil).
+        prompt = f"""Analiza la imagen y detecta TODOS los productos comercializables visibles{industry_context}.
 
 CATÁLOGO: CATEGORÍAS DISPONIBLES (USAR EXACTAMENTE COMO APARECEN)
 {catalog}{hints_section}
 
 REGLAS DE MAPEO A CATEGORÍAS:
-1) Para CADA prenda detectada, elige la categoría MÁS ADECUADA de la lista por similitud conceptual.
+1) Para CADA producto detectado, elige la categoría MÁS ADECUADA de la lista por similitud conceptual.
 2) Devuelve el nombre EXACTO en MAYÚSCULAS tal como aparece en la lista (entre comillas).
 3) IMPORTANTE: Compara sin importar mayúsculas/minúsculas. Ej: si detectas "top" → busca "TOP" en la lista.
 4) Si ninguna categoría aplica de forma razonable → usa null.
 5) NO inventes categorías ni modifiques nombres.
 
-Para CADA prenda identifica:
-- tipo: nombre claro y específico (ej.: camisa, pantalón, chaqueta, falda, gorro, top, etc.)
+Para CADA producto identifica:
+- tipo: nombre claro y específico del producto
 - color: color principal percibido
 - confianza: alta | media | baja
-- categoria_sugerida: nombre EXACTO EN MAYÚSCULAS de la lista (ej: "TOP", "BERMUDAS") o null
+- categoria_sugerida: nombre EXACTO EN MAYÚSCULAS de la lista o null
 
 REGLAS DE COLOR:
 - Usa nombres comunes: blanco, negro, azul, rojo, verde, amarillo, marrón, beige, gris, rosa, naranja, morado
 - No confundas tonos cálidos con grises: si ves amarillento/anaranjado → marrón/beige; si ves azulado → gris
 
 REGLAS GENERALES:
-    - Lista TODAS las prendas visibles (pueden ser varias)
-    - No inventes prendas que no estén claramente visibles
+    - Lista TODOS los productos visibles que puedan comercializarse (pueden ser varios)
+    - No inventes productos que no estén claramente visibles
     - Si hay dudas entre dos categorías, elige la más cercana conceptualmente de la lista; si la duda es alta → null
 
 EJEMPLOS (GENÉRICOS):
-- Prenda superior tipo "camisa" o "blusa" → usa la categoría relacionada a prendas superiores si existe; si no, null
-- Prenda inferior tipo "pantalón" o "falda" → usa la categoría relacionada a prendas inferiores si existe; si no, null
-- Prenda exterior tipo "chaqueta" o "saco" → usa la categoría relacionada a prendas exteriores si existe; si no, null
-- Accesorio textil (por ejemplo, "gorro" o "bufanda") → usa la categoría relacionada a accesorios textiles si existe; si no, null
+- Producto del catálogo visible → usa la categoría relacionada si existe en la lista; si no, null
+- Si el producto no coincide con ninguna categoría del catálogo → null
+- Si la imagen no contiene productos comercializables del catálogo → devuelve array vacío
 
 RESPUESTA (JSON ESTRICTO):
 {{
     "prendas": [
-        {{"tipo": "camisa", "color": "blanca", "confianza": "alta", "categoria_sugerida": null}}
+        {{"tipo": "nombre_producto", "color": "color_principal", "confianza": "alta", "categoria_sugerida": null}}
     ],
-    "mensaje_usuario": "Descripción detallada (2-3 oraciones) de lo que el usuario busca basado en las prendas detectadas. Menciona colores, tipos de prendas y estilo. Si alguna prenda NO tiene categoría disponible en el catálogo, menciona explícitamente qué producto no se comercializa."
+    "mensaje_usuario": "Descripción detallada (2-3 oraciones) de lo que el usuario busca basado en los productos detectados. Menciona colores, tipos de productos y características. Si algún producto NO tiene categoría disponible en el catálogo, menciona explícitamente qué producto no se comercializa."
 }}"""
 
         logger.info(f"🔍 GPT-4V detectando prendas (multi-cat) para cliente {client_id or 'N/A'}...")

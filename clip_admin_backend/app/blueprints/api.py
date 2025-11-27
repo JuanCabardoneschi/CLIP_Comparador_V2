@@ -1914,7 +1914,7 @@ def gpt4v_unified_search():
             gpt4v_result = detect_categories_with_gpt4v(
                 image_for_detection,
                 categories_list,
-                str(client.id)
+                client  # Pasar objeto client completo con industry
             )
 
             prendas = gpt4v_result.get('prendas', [])
