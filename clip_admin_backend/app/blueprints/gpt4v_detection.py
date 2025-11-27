@@ -74,14 +74,15 @@ def build_categories_catalog_with_hints(categories_list, client_id):
     return catalog, hints_section
 
 
-def detect_categories_with_gpt4v(image_data, categories_list, client=None):
+def detect_categories_with_gpt4v(image_data, categories_list, client_id=None, industry='general'):
     """
     Detectar TODAS las categorías/prendas en una imagen usando GPT-4 Vision
 
     Args:
         image_data: bytes o PIL.Image
         categories_list: list[str] - Categorías disponibles del cliente
-        client: Client model instance (opcional) - Para acceder a client.id y client.industry
+        client_id: str (opcional) - ID del cliente para logging
+        industry: str - Industria/rubro del cliente para contexto en el prompt
 
     Returns:
         dict: {
@@ -112,9 +113,7 @@ def detect_categories_with_gpt4v(image_data, categories_list, client=None):
 
         image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
-        # Extraer datos del cliente
-        client_id = client.id if client else None
-        industry = client.industry if client and hasattr(client, 'industry') else 'general'
+        # Contexto de industria para el prompt
         industry_context = f" (industria: {industry})" if industry and industry != 'general' else ""
 
         # Construir catálogo (hints eliminados)
