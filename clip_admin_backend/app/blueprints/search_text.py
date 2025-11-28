@@ -1207,11 +1207,21 @@ def text_search():
                 # 3.1: Obtener productos de las categorías detectadas
                 if not matched_category_ids:
                     print(f"⚠️ Sin categorías detectadas, no se puede filtrar")
+                    # Recuperar TODAS las categorías activas del cliente para que el frontend pueda mostrar chips
+                    try:
+                        all_active_categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
+                        available_names = [c.name for c in all_active_categories]
+                    except Exception as _cat_err:
+                        print(f"⚠️ Error obteniendo categorías activas: {_cat_err}")
+                        available_names = []
+                    # Respuesta enriquecida (mantiene error para UI roja, pero incluye datos de categorías)
                     return jsonify({
                         "success": False,
                         "error": "no_category",
                         "message": "No se detectó ninguna categoría válida",
-                        "testing_mode": True
+                        "testing_mode": True,
+                        "categories_available": available_names,
+                        "categories_searched": available_names
                     })
 
                 base_products = Product.query.filter(
