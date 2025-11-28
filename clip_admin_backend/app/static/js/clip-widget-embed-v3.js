@@ -987,8 +987,17 @@
                 hideLoading();
 
                 if (!data.success) {
-                        console.warn('[CLIP TEXT SEARCH] Error respuesta:', data);
-                    showError(data.message || data.error || 'Error en la búsqueda');
+                    console.warn('[CLIP TEXT SEARCH] Error respuesta:', data);
+                    // Si hay categories_available o categories_searched, pasar a showNoResults para mostrar chips
+                    if (data.categories_available || data.categories_searched) {
+                        showNoResults({
+                            message: data.message || 'No se detectó ninguna categoría válida',
+                            categories_available: data.categories_available || [],
+                            categories_searched: data.categories_searched || []
+                        });
+                    } else {
+                        showError(data.message || data.error || 'Error en la búsqueda');
+                    }
                     return;
                 }
 
@@ -1298,6 +1307,27 @@
         function showNoResults(partialMatchInfo) {
             const resultsDiv = container.querySelector('#clip-results');
 
+            // Renderizar chips de categorías si están disponibles
+            const categoriesChipsHtml = (partialMatchInfo?.categories_available || partialMatchInfo?.categories_searched) ? `
+                <div style="margin-bottom: 16px;">
+                    <div style="font-size: 14px; color: #666; margin-bottom: 8px; font-weight: 500;">Buscando en:</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        ${(partialMatchInfo.categories_searched || partialMatchInfo.categories_available).map(cat => `
+                            <span style="
+                                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                color: white;
+                                padding: 6px 12px;
+                                border-radius: 16px;
+                                font-size: 13px;
+                                font-weight: 500;
+                                display: inline-block;
+                                box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+                            ">${cat}</span>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : '';
+
             const messageHtml = partialMatchInfo ? `
                 <div class="clip-no-results-message" style="
                     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -1319,11 +1349,12 @@
             ` : '';
 
             resultsDiv.innerHTML = `
+                ${categoriesChipsHtml}
                 ${messageHtml}
                 <div class="clip-no-results">
                     <div class="clip-no-results-icon">😔</div>
                     <div class="clip-no-results-text">${partialMatchInfo ? 'No hay coincidencias exactas' : 'No se encontraron productos similares'}</div>
-                    <div class="clip-no-results-hint">Intenta con otra imagen</div>
+                    <div class="clip-no-results-hint">Intenta con otra imagen o descripción</div>
                 </div>
             `;
             resultsDiv.classList.add('active');
