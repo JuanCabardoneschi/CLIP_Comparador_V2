@@ -1307,26 +1307,13 @@
         function showNoResults(partialMatchInfo) {
             const resultsDiv = container.querySelector('#clip-results');
 
-            // Renderizar chips de categorías si están disponibles
-            const categoriesChipsHtml = (partialMatchInfo?.categories_available || partialMatchInfo?.categories_searched) ? `
-                <div style="margin-bottom: 16px;">
-                    <div style="font-size: 14px; color: #666; margin-bottom: 8px; font-weight: 500;">Buscando en:</div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                        ${(partialMatchInfo.categories_searched || partialMatchInfo.categories_available).map(cat => `
-                            <span style="
-                                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                                color: white;
-                                padding: 6px 12px;
-                                border-radius: 16px;
-                                font-size: 13px;
-                                font-weight: 500;
-                                display: inline-block;
-                                box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
-                            ">${cat}</span>
-                        `).join('')}
-                    </div>
-                </div>
-            ` : '';
+            // Construir mensaje con categorías disponibles integradas si existen
+            const categoriesList = partialMatchInfo?.categories_available || partialMatchInfo?.categories_searched;
+            const categoriesText = categoriesList && categoriesList.length > 0
+                ? `<div style="font-size: 14px; margin-top: 12px; line-height: 1.6;">
+                    Comercializamos productos de las siguientes categorías: <strong>${categoriesList.join(', ')}</strong>
+                   </div>`
+                : '';
 
             const messageHtml = partialMatchInfo ? `
                 <div class="clip-no-results-message" style="
@@ -1340,6 +1327,7 @@
                     <div style="font-size: 18px; font-weight: 600; margin-bottom: 10px;">
                         ${partialMatchInfo.message}
                     </div>
+                    ${categoriesText}
                     ${partialMatchInfo.suggestion ? `
                         <div style="font-size: 14px; margin-top: 8px;">
                             ${partialMatchInfo.suggestion}
@@ -1349,7 +1337,6 @@
             ` : '';
 
             resultsDiv.innerHTML = `
-                ${categoriesChipsHtml}
                 ${messageHtml}
                 <div class="clip-no-results">
                     <div class="clip-no-results-icon">😔</div>
