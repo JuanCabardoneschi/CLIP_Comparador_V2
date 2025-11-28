@@ -1991,12 +1991,13 @@ def text_search():
             # Obtener todas las categorías comercializables del cliente
             available_categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
             available_names = [cat.name for cat in available_categories]
-            # Mensaje especial para el usuario
+            # Mensaje especial para el usuario y datos para UI (chips "Buscando en:")
             user_feedback = {
-                "message": f"La categoría solicitada no se encuentra entre las comercializables. Categorías disponibles: {', '.join(available_names)}.",
+                "message": f"La categoría solicitada no se encuentra entre las comercializables.",
                 "has_results": False,
                 "categories_available": available_names
             }
+            # Incluir 'categories_searched' para que el frontend muestre chips tipo "Buscando en: ..."
             response_data = {
                 "success": True,
                 "query": query_text,
@@ -2008,7 +2009,8 @@ def text_search():
                 "user_feedback": user_feedback,
                 "results": [],
                 "results_by_category": {},
-                "group_by_category": False
+                "group_by_category": False,
+                "categories_searched": available_names
             }
             response = jsonify(response_data)
             response.headers['Access-Control-Allow-Origin'] = '*'
