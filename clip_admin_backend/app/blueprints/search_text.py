@@ -1219,7 +1219,7 @@ def text_search():
                         "success": False,
                         "error": "no_category",
                         "message": "No se detectó ninguna categoría válida",
-                        "testing_mode": True,
+                        "testing_mode": False,
                         "categories_available": available_names,
                         "categories_searched": available_names
                     })
@@ -1632,7 +1632,7 @@ def text_search():
 
                 return jsonify({
                     "success": True,
-                    "testing_mode": True,
+                    "testing_mode": False,
                     "query_original": query_text,
                     "query_normalizada": cleaned_query,
                     "extraction": {
@@ -1949,7 +1949,7 @@ def text_search():
 
                 return jsonify({
                     "success": True,
-                    "testing_mode": True,
+                    "testing_mode": False,
                     "query_original": data.get('query', ''),
                     "query_normalizada": cleaned_query,
                     "extraction": {
