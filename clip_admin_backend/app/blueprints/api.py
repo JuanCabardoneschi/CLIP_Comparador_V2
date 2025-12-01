@@ -1163,6 +1163,19 @@ def visual_search():
                         # Usar base64 guardado en BD
                         image_base64 = primary_image.base64_data if primary_image and primary_image.base64_data else None
 
+                        # Filtrado de atributos por configuración (case-insensitive)
+                        try:
+                            if product.attributes:
+                                if exposed_keys:
+                                    ek = {str(k).strip().lower() for k in exposed_keys}
+                                    prod_attrs = {k: v for k, v in product.attributes.items() if str(k).strip().lower() in ek}
+                                else:
+                                    prod_attrs = dict(product.attributes)
+                            else:
+                                prod_attrs = {}
+                        except Exception:
+                            prod_attrs = {}
+
                         prod_dict = {
                             "id": str(product.id),
                             "name": product.name,
@@ -1172,7 +1185,7 @@ def visual_search():
                             "category": category.name,
                             "image_url": image_base64,  # âœ… BASE64 desde BD
                             "similarity": float(score),
-                            "attributes": product.attributes or {},
+                            "attributes": prod_attrs,
                             "product_url": product.attributes.get('url_producto') if product.attributes else None,
                             "optimizer_scores": optimizer_scores
                         }
@@ -2044,8 +2057,9 @@ def gpt4v_unified_search():
                         ),
                         {"client_id": client.id},
                     ).fetchall()
-                    exposed_keys_cache = {r[0] for r in rows}
-                    railway_log(f"✅ Config cache: {len(exposed_keys_cache)} atributos expuestos")
+                    # Case-insensitive: normalizar claves a minúsculas para comparar con JSONB
+                    exposed_keys_cache = {str(r[0]).strip().lower() for r in rows if r and r[0]}
+                    railway_log(f"✅ Config cache: {len(exposed_keys_cache)} atributos expuestos (case-insensitive)")
             except Exception as e:
                 railway_log(f"⚠️ Error consultando product_attribute_config: {e}")
                 db.session.rollback()
@@ -2205,7 +2219,8 @@ def gpt4v_unified_search():
                             # 2) Filtrar atributos según configuración (usar cache)
                             if exposed_keys_cache is not None:
                                 product_attrs = {
-                                    k: v for k, v in p.attributes.items() if k in exposed_keys_cache
+                                    k: v for k, v in p.attributes.items()
+                                    if (str(k).strip().lower() in exposed_keys_cache)
                                 }
                             else:
                                 product_attrs = dict(p.attributes)
