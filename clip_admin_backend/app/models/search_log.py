@@ -2,7 +2,7 @@ from datetime import datetime
 from .. import db
 import uuid
 from sqlalchemy.dialects.postgresql import ARRAY
-from ..logging_config import log_error, log_info
+from ..utils.logging_config import log_error, log_info
 
 class SearchLog(db.Model):
     """Modelo para registrar búsquedas realizadas por los clientes
