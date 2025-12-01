@@ -18,7 +18,7 @@
         return;
     }
 
-    function initWidget() {
+    function initWidget(isOverlayMode = false) {
         const config = {
             apiKey: window.CLIPWidget.apiKey,
             serverUrl: window.CLIPWidget.serverUrl || 'https://clipcomparadorv2-production.up.railway.app',
@@ -915,10 +915,10 @@
                     if (userIntent) {
                         const detectionDiv = container.querySelector('#clip-detection');
                         const itemsDiv = container.querySelector('#clip-detection-items');
-                        
+
                         // Limpiar tags de categorías
                         itemsDiv.innerHTML = '';
-                        
+
                         // Mostrar solo intención
                         const intentHtml = `
                             <div class="clip-user-intent">
@@ -929,7 +929,7 @@
                         itemsDiv.insertAdjacentHTML('afterend', intentHtml);
                         detectionDiv.classList.add('active');
                     }
-                    
+
                     // Mostrar mensaje de error (sin productos)
                     showError('No se detectaron categorías válidas para esta imagen. Por favor, sube una imagen relacionada con los productos disponibles en la tienda.');
                     return;
@@ -1478,6 +1478,13 @@
                 font-size: 1.5rem;
                 font-weight: 700;
                 margin: 0;
+                line-height: 1.3;
+            }
+            .clip-overlay-subtitle {
+                font-size: 0.9rem;
+                opacity: 0.9;
+                margin: 0.25rem 0 0 0;
+                font-weight: 400;
             }
             .clip-overlay-close {
                 background: rgba(255, 255, 255, 0.2);
@@ -1526,7 +1533,10 @@
 
             container.innerHTML = `
                 <div class="clip-overlay-header">
-                    <h2 class="clip-overlay-title">🔍 Búsqueda Visual</h2>
+                    <div>
+                        <h2 class="clip-overlay-title">🤖 Búsqueda Inteligente</h2>
+                        <p class="clip-overlay-subtitle">Encuentra productos similares con IA</p>
+                    </div>
                     <button class="clip-overlay-close" onclick="window.CLIPV2.overlay.close()">×</button>
                 </div>
                 <div class="clip-overlay-content">

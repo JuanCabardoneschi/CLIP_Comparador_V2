@@ -269,15 +269,15 @@
     <button class="visual-search-fab" onclick="openVisualSearch()" aria-label="Búsqueda Visual"></button>
 
     <!-- ============================================ -->
-    <!-- INTEGRACIÓN WIDGET CLIP - SOLO 3 LÍNEAS -->
+    <!-- INTEGRACIÓN WIDGET CLIP V4 - SOLO 2 LÍNEAS -->
     <!-- ============================================ -->
     <script>
         window.CLIPWidget = {
             apiKey: 'clip_fe117bcd62de8a1e05a214c5',
-            serverUrl: 'https://clipcomparadorv2-production.up.railway.app'
+            serverUrl: 'http://localhost:5000'
         };
     </script>
-    <script src="./js/clip-widget-embed-v3.js" data-mode="overlay"></script>
+    <script src="./js/clip-widget-embed-v4.js"></script>
     <script>
         function openVisualSearch() {
             if (window.CLIPV2 && window.CLIPV2.overlay) {
