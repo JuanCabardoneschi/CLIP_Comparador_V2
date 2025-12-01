@@ -910,6 +910,47 @@
 
             // Ocultar resultados previos
             container.querySelector('#clip-results').classList.remove('active');
+
+                // 🔄 Normalización especial para respuesta GPT4V Unified (objeto results_by_category en formato mapa)
+                if (data.success && data.results_by_category && !Array.isArray(data.results_by_category) && typeof data.results_by_category === 'object') {
+                    console.log('🧪 Normalizando formato gpt4v-unified (mapa → arreglo)');
+                    const prendas = (data.detection && Array.isArray(data.detection.prendas)) ? data.detection.prendas : [];
+                    const confidenceMap = {};
+                    prendas.forEach(p => {
+                        if (p && p.categoria_sugerida) {
+                            // usar confianza si viene, si no 0
+                            confidenceMap[p.categoria_sugerida] = typeof p.confianza === 'number' ? p.confianza : 0;
+                        }
+                    });
+
+                    const transformed = Object.entries(data.results_by_category).map(([categoryName, info]) => {
+                        const rawProducts = Array.isArray(info.products) ? info.products : [];
+                        // unificar campo similarity para el renderizador (usa similarity_score del endpoint nuevo)
+                        const products = rawProducts.map(p => {
+                            if (p && typeof p === 'object') {
+                                return {
+                                    ...p,
+                                    similarity: typeof p.similarity === 'number' ? p.similarity : (typeof p.similarity_score === 'number' ? p.similarity_score : undefined)
+                                };
+                            }
+                            return p;
+                        });
+                        return {
+                            category_name: categoryName,
+                            products,
+                            product_count: info.results_returned || products.length || 0,
+                            confidence: confidenceMap[categoryName] || 0
+                        };
+                    });
+
+                    const totalProducts = (data.metadata && typeof data.metadata.total_products_found === 'number') ? data.metadata.total_products_found : transformed.reduce((acc, c) => acc + c.product_count, 0);
+
+                    // Reutilizar render multi-categoría existente
+                    if (transformed.length > 0) {
+                        displayMultiCategoryResults(transformed, totalProducts, labelMap);
+                        return; // salir para evitar rama legacy
+                    }
+                }
             container.querySelector('#clip-error').classList.remove('active');
             container.querySelector('#clip-refinement').classList.remove('active');
         }
