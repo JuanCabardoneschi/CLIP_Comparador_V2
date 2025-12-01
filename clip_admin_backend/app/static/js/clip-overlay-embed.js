@@ -60,7 +60,8 @@
 
     var modal = createEl('div', { id: 'clip-overlay-modal', style: [
       'background:#fff', 'border-radius:16px', 'max-width:1000px', 'width:95%',
-      'max-height:90vh', 'overflow:auto', 'box-shadow:0 20px 60px rgba(0,0,0,0.25)'
+      'max-height:90vh', 'overflow:auto', 'box-shadow:0 20px 60px rgba(0,0,0,0.25)',
+      'margin:auto', 'position:relative'
     ].join(';')});
 
     var header = createEl('div', { style: [
@@ -121,12 +122,26 @@
     // Si ya cargamos el widget anteriormente, sólo mostrar (el DOM persiste)
     if(widgetLoaded){
       overlayRoot.style.display = 'flex';
+      // Re-centrar y asegurar scroll al inicio
+      try {
+        modal.scrollTop = 0;
+        overlayRoot.scrollTop = 0;
+      } catch(e) {}
       return;
     }
 
     // Cargar y luego mostrar
     ensureWidgetLoaded()
-      .then(function(){ overlayRoot.style.display = 'flex'; })
+      .then(function(){
+        overlayRoot.style.display = 'flex';
+        try {
+          modal.scrollTop = 0;
+          overlayRoot.scrollTop = 0;
+          // Llevar foco al título para accesibilidad y centrado perceptivo
+          const titleEl = modal.querySelector('div[style*="font-weight:700"]');
+          if(titleEl) titleEl.scrollIntoView({behavior:'instant', block:'start'});
+        } catch(e) {}
+      })
       .catch(function(err){
         console.error('CLIP Overlay: error cargando widget unificado', err);
         alert('No se pudo cargar el buscador. Intenta nuevamente más tarde.');
