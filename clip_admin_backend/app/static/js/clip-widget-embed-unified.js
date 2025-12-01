@@ -199,8 +199,12 @@
             }
 
             .clip-preview.active {
-                display: block;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
             }
+
+            .clip-preview-container { margin-bottom: 1.25rem; }
 
             .clip-preview-container {
                 display: inline-block;
@@ -493,6 +497,60 @@
                 font-size: 0.95rem;
                 font-weight: 500;
                 display: none;
+            }
+
+            .clip-detection-summary {
+                background: #fef9c3;
+                border: 1px solid #fde68a;
+                padding: 1.25rem 1.25rem 1rem;
+                border-radius: 12px;
+                margin-bottom: 1.75rem;
+                animation: clipFadeIn 0.3s ease;
+            }
+            .clip-detection-summary-title {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                font-weight: 700;
+                font-size: 1rem;
+                color: #92400e;
+                margin: 0 0 0.75rem 0;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .clip-detected-category-tags {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                margin-bottom: 0.75rem;
+            }
+            .clip-detected-category-tag {
+                background: #fff;
+                border: 1px solid #fbbf24;
+                color: #92400e;
+                padding: 0.4rem 0.85rem;
+                border-radius: 20px;
+                font-size: 0.75rem;
+                font-weight: 600;
+                letter-spacing: 0.5px;
+            }
+            .clip-intention-box {
+                background: #fff8e1;
+                border: 1px solid #fcd34d;
+                border-radius: 8px;
+                padding: 0.85rem 1rem;
+                font-size: 0.85rem;
+                line-height: 1.4;
+                color: #78350f;
+                display: flex;
+                gap: 0.6rem;
+            }
+            .clip-intention-icon {
+                flex-shrink: 0;
+                display: flex;
+                align-items: start;
+                margin-top: 2px;
+                color: #f59e0b;
             }
 
             .clip-grid {
@@ -793,6 +851,7 @@
                         <div class="clip-results-count" id="clip-results-count"></div>
                         <div class="clip-category-substitution" id="clip-category-substitution"></div>
                     </div>
+                    <div id="clip-detection-summary" class="clip-detection-summary" style="display:none;"></div>
                     <div class="clip-grid" id="clip-grid"></div>
                 </div>
             </div>
@@ -953,6 +1012,18 @@
                 // Extraer labelMap del response
                 const labelMap = data.exposed_attribute_labels || {};
 
+                // 📦 EXTRAER METADATA DE DETECCIÓN (prendas, categories_detected, mensaje_usuario)
+                let detectionMeta = null;
+                if (data.detection) {
+                    const prendas = Array.isArray(data.detection.prendas) ? data.detection.prendas : [];
+                    const catsDetected = data.detection.categories_detected || data.detection.categories_detected_raw || [];
+                    const userIntent = data.detection.mensaje_usuario || data.detection.user_intent || '';
+                    detectionMeta = {
+                        categoriesDetected: Array.isArray(catsDetected) ? catsDetected : [],
+                        intention: userIntent || ''
+                    };
+                }
+
                 // 🔄 Normalización especial para respuesta GPT4V Unified (results_by_category como objeto)
                 if (data.success && data.results_by_category && !Array.isArray(data.results_by_category) && typeof data.results_by_category === 'object') {
                     try {
@@ -985,7 +1056,7 @@
                             ? data.metadata.total_products_found
                             : transformed.reduce((acc, c) => acc + c.product_count, 0);
                         if (transformed.length > 0) {
-                            displayMultiCategoryResults(transformed, totalProducts, labelMap);
+                            displayMultiCategoryResults(transformed, totalProducts, labelMap, detectionMeta);
                             return; // Evitar lógica legacy
                         }
                     } catch (normErr) {
@@ -995,11 +1066,11 @@
 
                 // Modo multi-categoría
                 if (data.mode === 'multi_category' && data.results_by_category) {
-                    displayMultiCategoryResults(data.results_by_category, data.total_results, labelMap);
+                    displayMultiCategoryResults(data.results_by_category, data.total_results, labelMap, detectionMeta);
                 }
                 // Fallback single categoría
                 else if (data.success && data.results && data.results.length > 0) {
-                    displayResults(data.results, data.total_results, labelMap);
+                    displayResults(data.results, data.total_results, labelMap, detectionMeta);
                 }
                 // Error específico: categoría no detectada
                 else if (data.error === 'category_not_detected') {
@@ -1078,6 +1149,17 @@
                     // Extraer labelMap del response
                     const labelMap = data.exposed_attribute_labels || {};
 
+                    // Metadata de detección (si existe)
+                    let detectionMeta = null;
+                    if (data.detection) {
+                        const catsDetected = data.detection.categories_detected || [];
+                        const userIntent = data.detection.mensaje_usuario || data.detection.user_intent || '';
+                        detectionMeta = {
+                            categoriesDetected: Array.isArray(catsDetected) ? catsDetected : [],
+                            intention: userIntent || ''
+                        };
+                    }
+
                     // Mostrar mensaje de sustitución de categoría si aplica
                     const subsDiv = container.querySelector('#clip-category-substitution');
                     if (subsDiv) {
@@ -1090,7 +1172,7 @@
                             subsDiv.style.display = 'none';
                         }
                     }
-                    displayResults(data.results, data.total_results, labelMap);
+                    displayResults(data.results, data.total_results, labelMap, detectionMeta);
                 } else if (data.error === 'category_not_detected') {
                     showCategoryNotDetectedError(data.message, data.details, data.available_categories);
                 } else {
@@ -1136,14 +1218,46 @@
         }
 
         // Display multi-category results
-        function displayMultiCategoryResults(resultsByCategory, totalResults, labelMap = {}) {
+        function displayMultiCategoryResults(resultsByCategory, totalResults, labelMap = {}, detectionMeta = null) {
             const resultsDiv = container.querySelector('#clip-results');
             const countDiv = container.querySelector('#clip-results-count');
             const gridDiv = container.querySelector('#clip-grid');
+            const summaryDiv = container.querySelector('#clip-detection-summary');
 
             const totalProductCount = resultsByCategory.reduce((sum, cat) => sum + cat.product_count, 0);
             const totalCategories = resultsByCategory.length;
             countDiv.textContent = `${totalProductCount} productos en ${totalCategories} categoría${totalCategories !== 1 ? 's' : ''}`;
+
+            // Construir resumen de detección (categorías detectadas + intención)
+            try {
+                if (detectionMeta && (detectionMeta.categoriesDetected?.length || detectionMeta.intention)) {
+                    let tagsHtml = '';
+                    if (Array.isArray(detectionMeta.categoriesDetected)) {
+                        tagsHtml = `<div class="clip-detected-category-tags">${detectionMeta.categoriesDetected.map(c => `<span class=\"clip-detected-category-tag\">${c}</span>`).join('')}</div>`;
+                    }
+                    let intentionHtml = '';
+                    if (detectionMeta.intention) {
+                        intentionHtml = `
+                            <div class="clip-intention-box">
+                                <span class="clip-intention-icon">⚡</span>
+                                <span>${detectionMeta.intention}</span>
+                            </div>
+                        `;
+                    }
+                    summaryDiv.innerHTML = `
+                        <div class="clip-detection-summary-title">Categorías Detectadas</div>
+                        ${tagsHtml}
+                        ${intentionHtml}
+                    `;
+                    summaryDiv.style.display = 'block';
+                } else {
+                    summaryDiv.style.display = 'none';
+                    summaryDiv.innerHTML = '';
+                }
+            } catch(e) {
+                console.warn('Resumen detección no generado:', e);
+                summaryDiv.style.display = 'none';
+            }
 
             console.log(`✨ Mostrando ${totalCategories} categorías con ${totalProductCount} productos totales`);
 
@@ -1152,8 +1266,9 @@
             resultsByCategory.forEach((categoryData) => {
                 const categoryName = categoryData.category_name;
                 const products = categoryData.products;
-                const confidence = Math.round(categoryData.confidence * 100);
+                const confidencePercent = Math.round((categoryData.confidence || 0) * 100);
                 const productCount = products.length;
+                const confidenceSpan = confidencePercent > 0 ? `<span class=\"clip-category-confidence\">${confidencePercent}% de confianza</span>` : '';
 
                 sectionsHtml += `
                     <div class="clip-category-section">
@@ -1161,7 +1276,7 @@
                             <h3 class="clip-category-title">${categoryName}</h3>
                             <div class="clip-category-meta">
                                 <span class="clip-category-count">${productCount} producto${productCount !== 1 ? 's' : ''}</span>
-                                <span class="clip-category-confidence">${confidence}% de confianza</span>
+                                ${confidenceSpan}
                             </div>
                         </div>
                         <div class="clip-category-grid">
@@ -1173,17 +1288,48 @@
 
             gridDiv.innerHTML = sectionsHtml;
             resultsDiv.classList.add('active');
-            // Scroll suave al inicio de resultados dentro del overlay o página
             try { resultsDiv.scrollIntoView({behavior:'smooth', block:'start'}); } catch(e) {}
         }
 
         // Display single category results
-        function displayResults(results, total, labelMap = {}) {
+        function displayResults(results, total, labelMap = {}, detectionMeta = null) {
             const resultsDiv = container.querySelector('#clip-results');
             const countDiv = container.querySelector('#clip-results-count');
             const gridDiv = container.querySelector('#clip-grid');
+            const summaryDiv = container.querySelector('#clip-detection-summary');
 
             countDiv.textContent = `${total} producto${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}`;
+
+            // Construir resumen de detección si hay metadata
+            try {
+                if (detectionMeta && (detectionMeta.categoriesDetected?.length || detectionMeta.intention)) {
+                    let tagsHtml = '';
+                    if (Array.isArray(detectionMeta.categoriesDetected)) {
+                        tagsHtml = `<div class="clip-detected-category-tags">${detectionMeta.categoriesDetected.map(c => `<span class=\"clip-detected-category-tag\">${c}</span>`).join('')}</div>`;
+                    }
+                    let intentionHtml = '';
+                    if (detectionMeta.intention) {
+                        intentionHtml = `
+                            <div class="clip-intention-box">
+                                <span class="clip-intention-icon">⚡</span>
+                                <span>${detectionMeta.intention}</span>
+                            </div>
+                        `;
+                    }
+                    summaryDiv.innerHTML = `
+                        <div class="clip-detection-summary-title">Categorías Detectadas</div>
+                        ${tagsHtml}
+                        ${intentionHtml}
+                    `;
+                    summaryDiv.style.display = 'block';
+                } else {
+                    summaryDiv.style.display = 'none';
+                    summaryDiv.innerHTML = '';
+                }
+            } catch(e) {
+                console.warn('Resumen detección no generado:', e);
+                summaryDiv.style.display = 'none';
+            }
 
             gridDiv.innerHTML = results.map(r => renderProductCard(r, labelMap)).join('');
             resultsDiv.classList.add('active');
