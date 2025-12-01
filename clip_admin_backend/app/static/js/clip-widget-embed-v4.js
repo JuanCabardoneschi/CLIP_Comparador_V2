@@ -882,6 +882,10 @@
                     detectionDiv.classList.add('active');
                 }
 
+                // Detener spinner y mostrar búsqueda completada
+                hideLoading();
+                showLoadingSuccess();
+
                 // Mostrar mensaje de error (sin productos)
                 showError('No se detectaron categorías válidas para esta imagen. Por favor, sube una imagen relacionada con los productos disponibles en la tienda.');
                 return;
