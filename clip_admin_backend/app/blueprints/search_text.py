@@ -1449,7 +1449,7 @@ def text_search():
 
                             # Determinar tipo de match
                             tiene_fuertes = False
-                            tiene_debiles = modificadores_no_configurados and sim_score > 0.25  # Umbral mínimo
+                            tiene_debiles = modificadores_no_configurados and sim_score > 0.50  # Umbral elevado para máxima precisión
 
                             if atributos_encontrados:
                                 # Verificar si tiene algún atributo configurado
@@ -1562,7 +1562,7 @@ def text_search():
 
                         # Débil (CLIP) en base a similitud y presencia de modificadores no configurados
                         sim = float(clip_scores.get(p.id, 0.0)) if isinstance(clip_scores, dict) else 0.0
-                        weak_applied = bool(modificadores_no_configurados) and sim > 0.25
+                        weak_applied = bool(modificadores_no_configurados) and sim > 0.50
 
                         # match_type
                         has_strong = any(c.get('exists') for c in coverage) if coverage else False
@@ -1862,7 +1862,7 @@ def text_search():
                             })
 
                         sim = float(clip_scores.get(p.id, 0.0)) if isinstance(clip_scores, dict) else 0.0
-                        weak_applied = bool(modificadores_no_configurados) and sim > 0.25
+                        weak_applied = bool(modificadores_no_configurados) and sim > 0.50
 
                         has_strong = any(c.get('exists') for c in coverage) if coverage else False
                         if has_strong and weak_applied:

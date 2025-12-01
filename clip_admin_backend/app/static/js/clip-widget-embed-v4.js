@@ -1248,7 +1248,7 @@
                 if (anyMatch) strongMatches += 1;
             });
 
-            const weakSimilarityMatched = (weakMods.length > 0 && prod.clip_similarity > 0.25);
+            const weakSimilarityMatched = (weakMods.length > 0 && prod.clip_similarity > 0.50);
             const weakMatches = weakSimilarityMatched ? weakMods.length : 0;
             const weakCriteria = weakMods.length;
 
@@ -1300,7 +1300,7 @@
                 .join(' ');
 
             const weakBadges = weakMods.length > 0 ? weakMods.map(mod => {
-                const ok = prod.clip_similarity > 0.25;
+                const ok = prod.clip_similarity > 0.50;
                 const icon = ok ? '✅' : '❌';
                 return `<span style="background:${ok ? '#eff6ff' : '#fef2f2'};color:${ok ? '#1e40af' : '#991b1b'};padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid ${ok ? '#bfdbfe' : '#fecaca'};white-space:nowrap;">${icon} ${mod}</span>`;
             }).join(' ') : '';
