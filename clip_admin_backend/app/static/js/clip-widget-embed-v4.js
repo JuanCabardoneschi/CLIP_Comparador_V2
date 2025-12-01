@@ -1178,6 +1178,8 @@
     }
 
     function displayTextSearchResults(data) {
+        // Mostrar TODOS los atributos visibles, no solo los que coinciden
+        // Ajustar cálculo de porcentaje para listas multi-valor
         const resultsDiv = widgetContainer.querySelector('#clip-results');
         const productos = data.filtering.top_5_productos || [];
         const exposedKeys = data.exposed_attribute_keys || [];
@@ -1227,13 +1229,23 @@
                 const req = requiredStrong[key];
                 const item = coverageByKey[key];
                 if (!item) return;
-                const rawVal = (item.value !== undefined && item.value !== null) ? String(item.value).trim() : '';
-                const normVal = rawVal.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'');
+                const raw = item.value;
+                const valuesList = Array.isArray(raw) ? raw : (raw !== undefined && raw !== null ? [raw] : []);
+                let anyMatch = false;
                 if (req.values === null) {
-                    if (rawVal) strongMatches += 1;
+                    if (valuesList.length > 0 && valuesList.some(v => String(v).trim())) {
+                        anyMatch = true;
+                    }
                 } else {
-                    if (req.values.has(normVal)) strongMatches += 1;
+                    for (const val of valuesList) {
+                        const normVal = String(val).trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'');
+                        if (req.values.has(normVal)) {
+                            anyMatch = true;
+                            break;
+                        }
+                    }
                 }
+                if (anyMatch) strongMatches += 1;
             });
 
             const weakSimilarityMatched = (weakMods.length > 0 && prod.clip_similarity > 0.25);
@@ -1252,20 +1264,40 @@
                 const coverage = coverageByKey[key];
                 const label = (coverage && (coverage.label || coverage.key)) || key;
                 const req = requiredStrong[key];
-                let rawVal = coverage && coverage.value !== undefined && coverage.value !== null ? String(coverage.value).trim() : '';
-                let valueSuffix = rawVal ? `: ${rawVal}` : '';
+                const raw = coverage ? coverage.value : undefined;
+                const valuesList = Array.isArray(raw) ? raw : (raw !== undefined && raw !== null ? [raw] : []);
+                const displayVal = valuesList.map(v => typeof v === 'object' ? (v.label || v.value || v.name || '') : String(v)).filter(Boolean).join(', ');
                 let ok = false;
                 if (coverage) {
                     if (req.values === null) {
-                        ok = rawVal.length > 0;
+                        ok = valuesList.length > 0;
                     } else {
-                        const normVal = rawVal.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'');
-                        ok = req.values.has(normVal);
+                        for (const val of valuesList) {
+                            const normVal = String(val).trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'');
+                            if (req.values.has(normVal)) { ok = true; break; }
+                        }
                     }
                 }
                 const icon = ok ? '✅' : '❌';
+                const valueSuffix = displayVal ? `: ${displayVal}` : '';
                 return `<span style="background:${ok ? '#ecfdf5' : '#fef2f2'};color:${ok ? '#065f46' : '#991b1b'};padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid ${ok ? '#a7f3d0' : '#fecaca'};white-space:nowrap;">${icon} ${label}${valueSuffix}</span>`;
             }).join(' ');
+
+            // Mostrar también los atributos visibles NO requeridos para la búsqueda
+            const visibleExtraBadges = exposedKeys
+                .filter(k => !requiredStrongKeys.includes(k))
+                .map(k => {
+                    const attrVal = (prod.attributes || {})[k];
+                    const label = labelMap[k] || k;
+                    if (attrVal === undefined || attrVal === null) return '';
+                    let valuesList = Array.isArray(attrVal) ? attrVal : (typeof attrVal === 'object' && attrVal !== null && !Array.isArray(attrVal) ? [attrVal] : [attrVal]);
+                    valuesList = valuesList.filter(v => v !== null && v !== undefined);
+                    const displayVal = valuesList.map(v => typeof v === 'object' ? (v.label || v.value || v.name || '') : String(v)).filter(Boolean).join(', ');
+                    if (!displayVal) return '';
+                    return `<span style="background:#f1f5f9;color:#334155;padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid #e2e8f0;white-space:nowrap;">${label}: ${displayVal}</span>`;
+                })
+                .filter(Boolean)
+                .join(' ');
 
             const weakBadges = weakMods.length > 0 ? weakMods.map(mod => {
                 const ok = prod.clip_similarity > 0.25;
@@ -1273,7 +1305,7 @@
                 return `<span style="background:${ok ? '#eff6ff' : '#fef2f2'};color:${ok ? '#1e40af' : '#991b1b'};padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid ${ok ? '#bfdbfe' : '#fecaca'};white-space:nowrap;">${icon} ${mod}</span>`;
             }).join(' ') : '';
 
-            const allBadges = [strongBadges, weakBadges].filter(x => x).join(' ');
+            const allBadges = [strongBadges, weakBadges, visibleExtraBadges].filter(x => x).join(' ');
 
             return `
                 <div class="clip-product">
