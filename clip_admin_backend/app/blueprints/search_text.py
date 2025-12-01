@@ -2544,7 +2544,9 @@ def text_search():
                 response_time_ms=int(elapsed * 1000)
             )
         except Exception as log_err:
-            log_error(f"Error logging analytics: {log_err}")
+            import traceback
+            log_error(f"❌ ERROR logging analytics: {log_err}")
+            log_error(f"   Traceback: {traceback.format_exc()}")
 
         response = jsonify(response_data)
 

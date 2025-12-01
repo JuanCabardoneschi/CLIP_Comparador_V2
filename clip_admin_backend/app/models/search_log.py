@@ -2,6 +2,7 @@ from datetime import datetime
 from .. import db
 import uuid
 from sqlalchemy.dialects.postgresql import ARRAY
+from ..logging_config import log_error, log_info
 
 class SearchLog(db.Model):
     """Modelo para registrar búsquedas realizadas por los clientes
@@ -54,17 +55,22 @@ class SearchLog(db.Model):
             search_type: 'visual', 'text', 'gpt4v-unified'
             **kwargs: Campos opcionales del modelo
         """
-        log = SearchLog(
-            client_id=client_id,
-            search_type=search_type,
-            **kwargs
-        )
-        db.session.add(log)
         try:
+            log = SearchLog(
+                client_id=client_id,
+                search_type=search_type,
+                **kwargs
+            )
+            db.session.add(log)
+            db.session.flush()  # Flush antes del commit para detectar errores de validación
             db.session.commit()
+            log_info(f"✅ SearchLog guardado: client={client_id}, type={search_type}, results={kwargs.get('results_count', 0)}")
         except Exception as e:
             db.session.rollback()
-            print(f"⚠️ Error guardando search log: {e}")
+            log_error(f"⚠️ ERROR guardando search log: {e}")
+            log_error(f"   client_id={client_id}, search_type={search_type}")
+            log_error(f"   kwargs={kwargs}")
+            raise  # Re-lanzar la excepción para que se vea en los logs superiores
 
     def to_dict(self):
         return {
