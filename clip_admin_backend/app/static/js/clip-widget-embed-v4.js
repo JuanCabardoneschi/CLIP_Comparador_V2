@@ -1044,7 +1044,14 @@
 
         const resultsDiv = widgetContainer.querySelector('#clip-results');
 
-        const html = Object.entries(resultsByCategory).map(([categoryName, categoryData]) => {
+        // Ordenar categorías: primero las que tienen productos, luego las vacías
+        const sortedCategories = Object.entries(resultsByCategory).sort(([, dataA], [, dataB]) => {
+            const hasProductsA = dataA.products.length > 0 ? 1 : 0;
+            const hasProductsB = dataB.products.length > 0 ? 1 : 0;
+            return hasProductsB - hasProductsA; // Descendente: con productos primero
+        });
+
+        const html = sortedCategories.map(([categoryName, categoryData]) => {
             // Si no hay productos pero hay mensaje de "no similar", mostrar categoría con mensaje
             if (categoryData.products.length === 0) {
                 if (categoryData.no_similar_message) {
