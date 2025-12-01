@@ -1379,9 +1379,184 @@
         }
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initWidget);
+    // Detectar modo de operación
+    const scriptTag = document.currentScript;
+    const mode = scriptTag ? scriptTag.getAttribute('data-mode') : null;
+
+    if (mode === 'overlay') {
+        // Modo overlay: crear modal y exponer API global
+        createOverlayMode();
     } else {
-        initWidget();
+        // Modo normal: inicializar en contenedor
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initWidget);
+        } else {
+            initWidget();
+        }
+    }
+
+    function createOverlayMode() {
+        // Crear namespace global
+        window.CLIPV2 = window.CLIPV2 || {};
+        
+        let overlayContainer = null;
+        let widgetInitialized = false;
+
+        // CSS para el overlay
+        const overlayStyle = document.createElement('style');
+        overlayStyle.textContent = `
+            .clip-overlay-backdrop {
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.7);
+                backdrop-filter: blur(4px);
+                z-index: 99998;
+                display: none;
+                animation: clipFadeIn 0.3s ease;
+            }
+            .clip-overlay-backdrop.active {
+                display: block;
+            }
+            .clip-overlay-container {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 90%;
+                max-width: 1000px;
+                max-height: 90vh;
+                background: white;
+                border-radius: 20px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                z-index: 99999;
+                display: none;
+                overflow: hidden;
+                animation: clipSlideUp 0.3s ease;
+            }
+            .clip-overlay-container.active {
+                display: flex;
+                flex-direction: column;
+            }
+            .clip-overlay-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 1.5rem 2rem;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+            }
+            .clip-overlay-title {
+                font-size: 1.5rem;
+                font-weight: 700;
+                margin: 0;
+            }
+            .clip-overlay-close {
+                background: rgba(255, 255, 255, 0.2);
+                border: none;
+                color: white;
+                width: 36px;
+                height: 36px;
+                border-radius: 50%;
+                cursor: pointer;
+                font-size: 1.5rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: background 0.2s;
+            }
+            .clip-overlay-close:hover {
+                background: rgba(255, 255, 255, 0.3);
+            }
+            .clip-overlay-content {
+                flex: 1;
+                overflow-y: auto;
+                padding: 0;
+            }
+            @keyframes clipFadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes clipSlideUp {
+                from { opacity: 0; transform: translate(-50%, -45%); }
+                to { opacity: 1; transform: translate(-50%, -50%); }
+            }
+        `;
+        document.head.appendChild(overlayStyle);
+
+        // Crear estructura HTML del overlay
+        function buildOverlay() {
+            const backdrop = document.createElement('div');
+            backdrop.className = 'clip-overlay-backdrop';
+            backdrop.id = 'clip-overlay-backdrop';
+            backdrop.onclick = closeOverlay;
+
+            const container = document.createElement('div');
+            container.className = 'clip-overlay-container';
+            container.id = 'clip-overlay-modal';
+            container.onclick = (e) => e.stopPropagation();
+
+            container.innerHTML = `
+                <div class="clip-overlay-header">
+                    <h2 class="clip-overlay-title">🔍 Búsqueda Visual</h2>
+                    <button class="clip-overlay-close" onclick="window.CLIPV2.overlay.close()">×</button>
+                </div>
+                <div class="clip-overlay-content">
+                    <div id="clip-widget-overlay"></div>
+                </div>
+            `;
+
+            document.body.appendChild(backdrop);
+            document.body.appendChild(container);
+
+            return { backdrop, container };
+        }
+
+        function openOverlay() {
+            if (!overlayContainer) {
+                overlayContainer = buildOverlay();
+            }
+
+            // Inicializar widget si es la primera vez
+            if (!widgetInitialized) {
+                // Cambiar containerId temporalmente
+                const originalContainerId = window.CLIPWidget.containerId;
+                window.CLIPWidget.containerId = 'clip-widget-overlay';
+                
+                initWidget();
+                widgetInitialized = true;
+
+                // Restaurar containerId original
+                window.CLIPWidget.containerId = originalContainerId || 'clip-widget';
+            }
+
+            // Mostrar overlay
+            overlayContainer.backdrop.classList.add('active');
+            overlayContainer.container.classList.add('active');
+            
+            // Resetear scroll
+            const content = overlayContainer.container.querySelector('.clip-overlay-content');
+            if (content) content.scrollTop = 0;
+
+            // Prevenir scroll del body
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeOverlay() {
+            if (!overlayContainer) return;
+
+            overlayContainer.backdrop.classList.remove('active');
+            overlayContainer.container.classList.remove('active');
+
+            // Restaurar scroll del body
+            document.body.style.overflow = '';
+        }
+
+        // Exponer API pública
+        window.CLIPV2.overlay = {
+            open: openOverlay,
+            close: closeOverlay
+        };
+
+        console.log('✅ CLIP Widget V3 - Modo Overlay activado');
     }
 })();
