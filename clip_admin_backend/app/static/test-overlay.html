@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CLIP Overlay Test</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; }
+    .hero { max-width: 900px; margin: 0 auto 24px; }
+    .btn { appearance: none; border: none; background: linear-gradient(135deg,#667eea,#764ba2); color:#fff; padding: 12px 18px; border-radius: 10px; cursor: pointer; font-weight: 700; }
+    .btn:focus { outline: 3px solid rgba(102,126,234,.4); outline-offset: 2px; }
+    .box { background:#f8fafc; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-top:12px; }
+    code { background: #0f172a; color: #f8fafc; padding: 2px 6px; border-radius: 6px; }
+  </style>
+  <!-- Wrapper overlay (usa el widget unificado ya existente) -->
+  <script src="/static/js/clip-overlay-embed.js"
+          data-api-key="test-api-key-demo-fashion-store-2024"
+          data-endpoint="http://localhost:5000"
+          data-auto-mount="true"></script>
+</head>
+<body>
+  <div class="hero">
+    <h1>CLIP Overlay Test</h1>
+    <p>Este test abre un modal superpuesto con el buscador unificado al hacer clic.</p>
+    <div class="box">
+      <p>Snippet mínimo de integración recomendado:</p>
+      <pre><code>&lt;script src="https://TU_DOMINIO/static/js/clip-overlay-embed.js" data-api-key="pk_XXXX" data-endpoint="https://api.clipv2.com" data-auto-mount="true"&gt;&lt;/script&gt;
+&lt;button data-clip-trigger="true"&gt;Buscar por imagen o texto&lt;/button&gt;</code></pre>
+    </div>
+    <p style="margin-top:16px;">
+      <button class="btn" data-clip-trigger="true">Buscar por imagen o texto</button>
+    </p>
+  </div>
+  <script>
+    // Exponer botón adicional vía API por consola: window.CLIPV2.overlay.open()
+    console.log('CLIP Overlay test listo. Usa window.CLIPV2.overlay.open() para abrir por API.');
+  </script>
+  <!-- El widget unificado se carga dinámicamente al primer uso por el overlay wrapper -->
+</body>
+<\/html>
