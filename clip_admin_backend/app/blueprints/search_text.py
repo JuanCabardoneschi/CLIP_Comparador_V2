@@ -2530,7 +2530,7 @@ def text_search():
 
             SearchLog.log_search(
                 client_id=client.id,
-                search_type='text_nlp',
+                search_type='text',
                 query_text=query_text,
                 image_url=None,
                 categories_detected=cats_detected,
@@ -2540,6 +2540,7 @@ def text_search():
                 terms_matched=terms_matched if terms_matched else None,
                 terms_unmatched=terms_unmatched if terms_unmatched else None,
                 results_count=len(formatted_results),
+                had_results=bool(formatted_results),
                 response_time_ms=int(elapsed * 1000)
             )
         except Exception as log_err:
