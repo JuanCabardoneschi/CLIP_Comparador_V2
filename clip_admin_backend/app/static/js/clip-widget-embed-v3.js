@@ -906,6 +906,35 @@
                     return;
                 }
 
+                // 🚨 VERIFICACIÓN CRÍTICA: Si GPT-4V no detectó categorías válidas
+                const categoriesDetected = data.detection?.categories_detected || data.detection?.categories_detected_raw || [];
+                const userIntent = data.detection?.user_intent || data.detection?.mensaje_usuario || '';
+
+                if (categoriesDetected.length === 0) {
+                    // Mostrar solo el bloque de detección con intención (si existe)
+                    if (userIntent) {
+                        const detectionDiv = container.querySelector('#clip-detection');
+                        const itemsDiv = container.querySelector('#clip-detection-items');
+                        
+                        // Limpiar tags de categorías
+                        itemsDiv.innerHTML = '';
+                        
+                        // Mostrar solo intención
+                        const intentHtml = `
+                            <div class="clip-user-intent">
+                                <strong>💡 Intención detectada:</strong><br>
+                                ${userIntent}
+                            </div>
+                        `;
+                        itemsDiv.insertAdjacentHTML('afterend', intentHtml);
+                        detectionDiv.classList.add('active');
+                    }
+                    
+                    // Mostrar mensaje de error (sin productos)
+                    showError('No se detectaron categorías válidas para esta imagen. Por favor, sube una imagen relacionada con los productos disponibles en la tienda.');
+                    return;
+                }
+
                 // Mostrar detección
                 displayDetection(data.detection);
 
@@ -1398,7 +1427,7 @@
     function createOverlayMode() {
         // Crear namespace global
         window.CLIPV2 = window.CLIPV2 || {};
-        
+
         let overlayContainer = null;
         let widgetInitialized = false;
 
@@ -1521,7 +1550,7 @@
                 // Cambiar containerId temporalmente
                 const originalContainerId = window.CLIPWidget.containerId;
                 window.CLIPWidget.containerId = 'clip-widget-overlay';
-                
+
                 initWidget();
                 widgetInitialized = true;
 
@@ -1532,7 +1561,7 @@
             // Mostrar overlay
             overlayContainer.backdrop.classList.add('active');
             overlayContainer.container.classList.add('active');
-            
+
             // Resetear scroll
             const content = overlayContainer.container.querySelector('.clip-overlay-content');
             if (content) content.scrollTop = 0;
