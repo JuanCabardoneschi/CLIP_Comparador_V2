@@ -2142,9 +2142,8 @@ def gpt4v_unified_search():
                 for idx, (product, img) in enumerate(product_refs):
                     sim = float(similarities[idx])
 
-                    # Log temporal para debug de gorras
-                    if 'gorro' in category_name.lower() or 'gorra' in category_name.lower():
-                        railway_log(f"      → {product.name} (SKU: {product.sku}): similarity={sim:.4f}, threshold={threshold:.4f}, pass={'✅' if sim >= threshold else '❌'}")
+                    # Log de similitudes para TODAS las categorías
+                    railway_log(f"      → {product.name} (SKU: {product.sku}): similarity={sim:.4f}, threshold={threshold:.4f}, pass={'✅' if sim >= threshold else '❌'}")
 
                     # Aplicar threshold
                     if sim >= threshold:
@@ -2155,6 +2154,17 @@ def gpt4v_unified_search():
                         })
 
                 railway_log(f"      ⚡ Similitudes calculadas en {(time.time()-start_vectorize):.3f}s")
+
+                # Si no hay productos que pasen threshold, agregar categoría vacía con mensaje
+                if not product_similarities:
+                    railway_log(f"      ⚠️ Ningún producto supera threshold {threshold:.2f} en {category_name}")
+                    results_by_category[category_name] = {
+                        'products': [],
+                        'total_in_category': len(products),
+                        'results_returned': 0,
+                        'no_similar_message': f"No se encontraron productos similares en {category_name}. Intenta con otra imagen o ajusta la búsqueda."
+                    }
+                    continue
 
                 # Ordenar por similitud descendente
                 product_similarities.sort(key=lambda x: x['similarity'], reverse=True)

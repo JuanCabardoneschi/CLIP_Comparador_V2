@@ -1045,7 +1045,27 @@
         const resultsDiv = widgetContainer.querySelector('#clip-results');
 
         const html = Object.entries(resultsByCategory).map(([categoryName, categoryData]) => {
-            if (categoryData.products.length === 0) return '';
+            // Si no hay productos pero hay mensaje de "no similar", mostrar categoría con mensaje
+            if (categoryData.products.length === 0) {
+                if (categoryData.no_similar_message) {
+                    return `
+                        <div class="clip-category-section">
+                            <div class="clip-category-header">
+                                <div class="clip-category-name">${categoryName}</div>
+                                <div class="clip-category-count">
+                                    0 de ${categoryData.total_in_category} productos
+                                </div>
+                            </div>
+                            <div class="clip-no-results" style="padding: 20px; text-align: center; color: #64748b; background: #f8fafc; border-radius: 8px; margin-top: 12px;">
+                                <div style="font-size: 2rem; margin-bottom: 8px;">🔍</div>
+                                <div style="font-weight: 500; margin-bottom: 4px;">No se encontraron coincidencias</div>
+                                <div style="font-size: 0.875rem;">${categoryData.no_similar_message}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+                return '';
+            }
 
             return `
                 <div class="clip-category-section">
