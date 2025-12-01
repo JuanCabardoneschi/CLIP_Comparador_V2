@@ -1,11 +1,23 @@
 /**
- * CLIP Widget V2 - Modern Tab Design
+ * CLIP Widget Unified - Best of V1 + V2 + Multi-Crop Backend
+ *
+ * Features:
+ * ✅ Multi-category mode by default (multi_category: 'true')
+ * ✅ Overlay de bloqueo por tab (previene doble submit)
+ * ✅ isProcessing flag con guards
+ * ✅ Refinement suggestions con chips interactivos
+ * ✅ Display multi-categoría con secciones verticales
+ * ✅ Error handling avanzado (category_not_detected)
+ * ✅ Atributos dinámicos + URL producto
+ * ✅ SVG icons (no emojis para evitar encoding issues)
+ * ✅ Integrado con backend multi-crop (8 crops + region weights + pair exclusion)
+ *
  * El cliente solo necesita:
  * <script>
  *   window.CLIPWidget = { apiKey: "YOUR_KEY", serverUrl: "https://..." };
  * </script>
  * <div id="clip-widget"></div>
- * <script src="/static/js/clip-widget-embed-v2.js"></script>
+ * <script src="/static/js/clip-widget-embed-unified.js"></script>
  */
 
 (function() {
@@ -80,13 +92,15 @@
 
             .clip-tab-icon {
                 font-size: 1.5rem;
+                display: flex;
+                align-items: center;
             }
 
             .clip-tab-content {
                 display: none;
                 padding: 2.5rem;
                 animation: clipFadeIn 0.3s ease;
-                position: relative; /* Para overlays de bloqueo */
+                position: relative;
             }
 
             .clip-tab-content.active {
@@ -96,6 +110,11 @@
             @keyframes clipFadeIn {
                 from { opacity: 0; transform: translateY(10px); }
                 to { opacity: 1; transform: translateY(0); }
+            }
+
+            @keyframes slideDown {
+                from { opacity: 0; transform: translate(-50%, -20px); }
+                to { opacity: 1; transform: translate(-50%, 0); }
             }
 
             .clip-search-title {
@@ -155,10 +174,10 @@
             .clip-upload-icon {
                 font-size: 4rem;
                 margin-bottom: 1rem;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #667eea;
             }
 
             .clip-upload-text {
@@ -278,28 +297,33 @@
                 transform: translateY(-50%);
                 font-size: 1.3rem;
                 color: #94a3b8;
+                display: flex;
+                align-items: center;
             }
 
-            /* REMOVIDO: Estilos de ejemplos populares ya no se usan */
-
-            /* Loading */
-            .clip-loading {
+            /* Overlay de bloqueo durante procesamiento */
+            .clip-overlay {
+                position: absolute;
+                inset: 0;
+                background: rgba(255, 255, 255, 0.85);
                 display: none;
-                text-align: center;
-                padding: 3rem;
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+                z-index: 20;
+                backdrop-filter: blur(2px);
             }
 
-            .clip-loading.active {
-                display: block;
+            .clip-overlay.active {
+                display: flex;
             }
 
-            .clip-spinner {
+            .clip-overlay .clip-spinner {
                 border: 4px solid #f3f4f6;
                 border-top: 4px solid #667eea;
                 border-radius: 50%;
                 width: 60px; height: 60px;
                 animation: clipSpin 1s linear infinite;
-                margin: 0 auto 1rem;
             }
 
             @keyframes clipSpin {
@@ -307,32 +331,11 @@
                 100% { transform: rotate(360deg); }
             }
 
-            .clip-loading-text {
-                color: #64748b;
-                font-size: 1.1rem;
-            }
-
-            /* Overlay de bloqueo durante procesamiento */
-            .clip-overlay {
-                position: absolute;
-                inset: 0;
-                background: rgba(255, 255, 255, 0.7);
-                display: none;
-                align-items: center;
-                justify-content: center;
-                flex-direction: column;
-                z-index: 20;
-                backdrop-filter: blur(1px);
-            }
-
-            .clip-overlay.active {
-                display: flex;
-            }
-
             .clip-overlay .clip-loading-text {
-                margin-top: 0.75rem;
+                margin-top: 1rem;
                 color: #475569;
                 font-weight: 600;
+                font-size: 1.1rem;
             }
 
             /* Error */
@@ -340,9 +343,9 @@
                 display: none;
                 background: #fee2e2;
                 color: #991b1b;
-                padding: 1rem;
-                border-radius: 8px;
-                margin-top: 1rem;
+                padding: 1.25rem;
+                border-radius: 12px;
+                margin-top: 1.5rem;
             }
 
             .clip-error.active {
@@ -371,6 +374,18 @@
                 border-radius: 8px;
             }
 
+            .clip-category-tag {
+                display: inline-block;
+                background: white;
+                color: #991b1b;
+                padding: 0.4rem 0.8rem;
+                border-radius: 16px;
+                margin: 0.25rem;
+                font-size: 0.9rem;
+                font-weight: 500;
+                border: 1px solid #fca5a5;
+            }
+
             /* Refinement Suggestions */
             .clip-refinement {
                 background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
@@ -379,11 +394,19 @@
                 padding: 1.5rem;
                 margin: 1.5rem 0;
                 animation: clipFadeIn 0.3s ease;
+                display: none;
+            }
+
+            .clip-refinement.active {
+                display: block;
             }
 
             .clip-refinement-icon {
                 font-size: 2rem;
                 margin-bottom: 0.5rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }
 
             .clip-refinement-message {
@@ -391,6 +414,7 @@
                 font-weight: 600;
                 color: #78350f;
                 margin-bottom: 1rem;
+                text-align: center;
             }
 
             .clip-refinement-label {
@@ -429,18 +453,6 @@
                 box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
             }
 
-            .clip-category-tag {
-                display: inline-block;
-                background: white;
-                color: #991b1b;
-                padding: 0.4rem 0.8rem;
-                border-radius: 16px;
-                margin: 0.25rem;
-                font-size: 0.9rem;
-                font-weight: 500;
-                border: 1px solid #fca5a5;
-            }
-
             /* Results */
             .clip-results {
                 display: none;
@@ -456,6 +468,8 @@
                 align-items: center;
                 justify-content: space-between;
                 margin-bottom: 1.5rem;
+                flex-wrap: wrap;
+                gap: 1rem;
             }
 
             .clip-results-title {
@@ -469,17 +483,78 @@
                 font-size: 1rem;
             }
 
+            .clip-category-substitution {
+                flex: 1 1 100%;
+                background: #fff3cd;
+                border: 1px solid #ffeeba;
+                color: #856404;
+                padding: 0.75rem 1rem;
+                border-radius: 8px;
+                font-size: 0.95rem;
+                font-weight: 500;
+                display: none;
+            }
+
             .clip-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
                 gap: 1.5rem;
             }
 
-            /* Cuando tiene secciones de categorías, hacerlo vertical */
+            /* Multi-Category Sections (Vertical Layout) */
             .clip-grid:has(.clip-category-section) {
                 display: block;
             }
 
+            .clip-category-section {
+                margin-bottom: 3rem;
+                padding-bottom: 2rem;
+                border-bottom: 2px solid #e5e7eb;
+            }
+
+            .clip-category-section:last-child {
+                border-bottom: none;
+                margin-bottom: 0;
+                padding-bottom: 0;
+            }
+
+            .clip-category-header {
+                margin-bottom: 1.5rem;
+                padding: 1.25rem;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                border-radius: 12px;
+                color: white;
+            }
+
+            .clip-category-title {
+                font-size: 1.5rem;
+                font-weight: 700;
+                margin: 0 0 0.5rem 0;
+            }
+
+            .clip-category-meta {
+                display: flex;
+                gap: 1.5rem;
+                font-size: 0.9rem;
+                opacity: 0.95;
+                flex-wrap: wrap;
+            }
+
+            .clip-category-count {
+                font-weight: 600;
+            }
+
+            .clip-category-confidence {
+                opacity: 0.85;
+            }
+
+            .clip-category-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+                gap: 1.5rem;
+            }
+
+            /* Product Cards */
             .clip-product {
                 background: white;
                 border: 1px solid #e5e7eb;
@@ -518,6 +593,7 @@
                 border-radius: 20px;
                 font-weight: 600;
                 font-size: 0.9rem;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.2);
             }
 
             .clip-product-info {
@@ -537,6 +613,7 @@
                 font-weight: 600;
                 color: #111827;
                 margin-bottom: 0.75rem;
+                line-height: 1.4;
             }
 
             .clip-product-price {
@@ -600,55 +677,43 @@
                 box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
             }
 
-            /* Multi-Category Sections (Vertical Layout) */
-            .clip-category-section {
-                margin-bottom: 3rem;
-                padding-bottom: 2rem;
-                border-bottom: 2px solid #e5e7eb;
-            }
+            /* Responsive */
+            @media (max-width: 768px) {
+                .clip-tab {
+                    padding: 1rem 1.5rem;
+                    font-size: 1rem;
+                }
 
-            .clip-category-section:last-child {
-                border-bottom: none;
-                margin-bottom: 0;
-                padding-bottom: 0;
-            }
+                .clip-tab-content {
+                    padding: 1.5rem;
+                }
 
-            .clip-category-header {
-                margin-bottom: 1.5rem;
-                padding: 1rem;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                border-radius: 8px;
-                color: white;
-            }
+                .clip-search-title {
+                    font-size: 1.5rem;
+                }
 
-            .clip-category-title {
-                font-size: 1.5rem;
-                font-weight: 700;
-                margin: 0 0 0.5rem 0;
-            }
+                .clip-grid,
+                .clip-category-grid {
+                    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                    gap: 1rem;
+                }
 
-            .clip-category-meta {
-                display: flex;
-                gap: 1.5rem;
-                font-size: 0.9rem;
-                opacity: 0.95;
-            }
-
-            .clip-category-count {
-                font-weight: 600;
-            }
-
-            .clip-category-confidence {
-                opacity: 0.85;
-            }
-
-            .clip-category-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-                gap: 1.5rem;
+                .clip-preview img {
+                    max-width: 100%;
+                    max-height: 300px;
+                }
             }
         `;
         document.head.appendChild(style);
+
+        // Iconos SVG inline
+        const icons = {
+            camera: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>',
+            chat: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>',
+            search: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>',
+            bulb: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path></svg>',
+            magnifier: '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>'
+        };
 
         // HTML
         const container = document.getElementById(config.containerId);
@@ -656,14 +721,6 @@
             console.error(`CLIP Widget: Container #${config.containerId} not found`);
             return;
         }
-
-        // Iconos inline (SVG) para evitar problemas de codificación de emojis
-        const icons = {
-            camera: '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 3l-1.5 2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1.5L15 3H9zm3 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10z"></path></svg>',
-            search: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21 20l-5.586-5.586A7 7 0 1 0 9 16a7 7 0 0 0 6.414-3.586L21 18.999V20zM4 9a5 5 0 1 1 10 0A5 5 0 0 1 4 9z"></path></svg>',
-            chat: '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"></path></svg>',
-            bulb: '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9 21h6v-1H9v1zm3-19a7 7 0 0 0-4 12.917V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.083A7 7 0 0 0 12 2z"></path></svg>'
-        };
 
         container.innerHTML = `
             <div class="clip-widget-wrap">
@@ -680,7 +737,7 @@
 
                 <div class="clip-tab-content active" id="clip-visual-tab">
                     <h2 class="clip-search-title">Encuentra productos con una foto</h2>
-                    <p class="clip-search-subtitle">Sube una imagen y encontraremos productos similares</p>
+                    <p class="clip-search-subtitle">Sube una imagen y encontraremos productos similares en múltiples categorías</p>
 
                     <div class="clip-upload-area" id="clip-upload">
                         <div class="clip-upload-icon">${icons.camera}</div>
@@ -697,10 +754,9 @@
                         <button class="clip-search-btn" id="clip-visual-search-btn">Buscar productos similares</button>
                     </div>
 
-                    <!-- Overlay de procesamiento (visual) -->
                     <div class="clip-overlay" id="clip-visual-overlay">
                         <div class="clip-spinner"></div>
-                        <div class="clip-loading-text">Analizando imagen...</div>
+                        <div class="clip-loading-text">Analizando imagen con IA...</div>
                     </div>
                 </div>
 
@@ -712,26 +768,20 @@
                         <div class="clip-input-wrap">
                             <span class="clip-input-icon">${icons.search}</span>
                             <input type="text" class="clip-input" id="clip-text-input"
-                                   placeholder="Ej: camisa blanca, remera azul, pantalón negro...">
+                                   placeholder="Ej: camisa blanca, delantal azul, remera casual...">
                         </div>
                         <button class="clip-search-btn" id="clip-text-search-btn">Buscar productos</button>
                     </div>
 
-                    <!-- Overlay de procesamiento (text) -->
                     <div class="clip-overlay" id="clip-text-overlay">
                         <div class="clip-spinner"></div>
                         <div class="clip-loading-text">Buscando productos...</div>
                     </div>
                 </div>
 
-                <div class="clip-loading" id="clip-loading">
-                    <div class="clip-spinner"></div>
-                    <div class="clip-loading-text">Analizando con inteligencia artificial...</div>
-                </div>
-
                 <div class="clip-error" id="clip-error"></div>
 
-                <div class="clip-refinement" id="clip-refinement" style="display: none;">
+                <div class="clip-refinement" id="clip-refinement">
                     <div class="clip-refinement-icon">${icons.bulb}</div>
                     <div class="clip-refinement-message" id="clip-refinement-message"></div>
                     <div id="clip-suggestions-container"></div>
@@ -739,8 +789,9 @@
 
                 <div class="clip-results" id="clip-results">
                     <div class="clip-results-header">
-                        <h2 class="clip-results-title">Productos Encontrados</h2>
+                        <h2 class="clip-results-title">✨ Productos Encontrados</h2>
                         <div class="clip-results-count" id="clip-results-count"></div>
+                        <div class="clip-category-substitution" id="clip-category-substitution"></div>
                     </div>
                     <div class="clip-grid" id="clip-grid"></div>
                 </div>
@@ -748,12 +799,13 @@
         `;
 
         // State
-    let selectedFile = null;
-    let isProcessing = false; // Evitar múltiples requests simultáneos
+        let selectedFile = null;
+        let isProcessing = false;
 
         // Tab switching
         container.querySelectorAll('.clip-tab').forEach(tab => {
             tab.addEventListener('click', function() {
+                if (isProcessing) return; // No cambiar tabs durante procesamiento
                 const targetTab = this.dataset.tab;
                 container.querySelectorAll('.clip-tab').forEach(t => t.classList.remove('active'));
                 this.classList.add('active');
@@ -770,11 +822,13 @@
         const removeBtn = container.querySelector('#clip-remove');
         const visualSearchBtn = container.querySelector('#clip-visual-search-btn');
 
-    upload.addEventListener('click', () => { if (!isProcessing) fileInput.click(); });
+        upload.addEventListener('click', () => {
+            if (!isProcessing) fileInput.click();
+        });
 
         upload.addEventListener('dragover', (e) => {
             e.preventDefault();
-            upload.classList.add('drag-over');
+            if (!isProcessing) upload.classList.add('drag-over');
         });
 
         upload.addEventListener('dragleave', () => {
@@ -784,6 +838,7 @@
         upload.addEventListener('drop', (e) => {
             e.preventDefault();
             upload.classList.remove('drag-over');
+            if (isProcessing) return;
             const file = e.dataTransfer.files[0];
             if (file && file.type.startsWith('image/')) {
                 handleFile(file);
@@ -807,6 +862,7 @@
         }
 
         removeBtn.addEventListener('click', () => {
+            if (isProcessing) return;
             selectedFile = null;
             preview.classList.remove('active');
             upload.style.display = 'block';
@@ -837,19 +893,10 @@
             if (e.key === 'Enter' && !isProcessing) textSearchBtn.click();
         });
 
-        // Example tags (REMOVIDO: ya no se usan ejemplos hardcodeados)
-        // container.querySelectorAll('.clip-example-tag').forEach(tag => {
-        //     tag.addEventListener('click', function() {
-        //         const query = this.dataset.query;
-        //         textInput.value = query;
-        //         textSearchBtn.click();
-        //     });
-        // });
-
-        // Visual search API
+        // Processing control
         function beginProcessing(scope) {
             isProcessing = true;
-            // Deshabilitar controles según scope
+
             if (scope === 'visual') {
                 visualSearchBtn.disabled = true;
                 fileInput.disabled = true;
@@ -860,14 +907,16 @@
                 textInput.disabled = true;
                 container.querySelector('#clip-text-overlay').classList.add('active');
             }
-            // Ocultar resultados/errores para evitar interacción
+
+            // Ocultar resultados previos
             container.querySelector('#clip-results').classList.remove('active');
             container.querySelector('#clip-error').classList.remove('active');
-            container.querySelector('#clip-refinement').style.display = 'none';
+            container.querySelector('#clip-refinement').classList.remove('active');
         }
 
         function endProcessing(scope) {
             isProcessing = false;
+
             if (scope === 'visual') {
                 visualSearchBtn.disabled = false;
                 fileInput.disabled = false;
@@ -880,14 +929,17 @@
             }
         }
 
+        // Visual search API
         function performVisualSearch(file) {
             if (isProcessing) return;
             beginProcessing('visual');
+
             const formData = new FormData();
             formData.append('image', file);
-            formData.append('multi_category', 'true'); // ✅ ACTIVAR MODO MULTI-CATEGORÍA
+            formData.append('multi_category', 'true'); // ✅ MODO MULTI-CATEGORÍA
 
-            fetch(`${config.serverUrl}/api/search`, {
+            // Usar endpoint unificado con GPT-4V (multi-categoría + base64 seguro)
+            fetch(`${config.serverUrl}/api/search/gpt4v-unified`, {
                 method: 'POST',
                 headers: { 'X-API-Key': config.apiKey },
                 body: formData
@@ -896,157 +948,184 @@
             .then(data => {
                 endProcessing('visual');
 
+                console.log('🎯 API Response:', data);
+
+                // Extraer labelMap del response
+                const labelMap = data.exposed_attribute_labels || {};
+
                 // Modo multi-categoría
                 if (data.mode === 'multi_category' && data.results_by_category) {
-                    displayMultiCategoryResults(data.results_by_category, data.total_results);
+                    displayMultiCategoryResults(data.results_by_category, data.total_results, labelMap);
                 }
-                // Modo single categoría (actual)
+                // Fallback single categoría
                 else if (data.success && data.results && data.results.length > 0) {
-                    const total = data.total_results || data.results.length;
-                    displayResults(data.results, total);
+                    displayResults(data.results, data.total_results, labelMap);
                 }
-                else if (data && data.error === 'category_not_detected') {
-                    // Mostrar mensaje especial con categorías disponibles (igual que en texto)
+                // Error específico: categoría no detectada
+                else if (data.error === 'category_not_detected') {
                     showCategoryNotDetectedError(data.message, data.details, data.available_categories);
-                } else {
-                    showError(data && data.error ? data.error : 'No se encontraron productos similares');
+                }
+                else {
+                    showError(data.error || 'No se encontraron productos similares');
                 }
             })
             .catch(err => {
                 endProcessing('visual');
-                showError('Error al realizar la búsqueda. Intenta nuevamente.');
-                console.error(err);
+                showError('Error al realizar la búsqueda. Por favor intenta nuevamente.');
+                console.error('❌ Search error:', err);
             });
         }
 
-        // Text search API
-        function performTextSearch(query) {
+        // Text search API con clasificación previa
+        async function performTextSearch(query) {
             if (isProcessing) return;
-            beginProcessing('text');
 
-            fetch(`${config.serverUrl}/api/search`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-API-Key': config.apiKey
-                },
-                body: JSON.stringify({ query })
-            })
-            .then(res => res.json())
-            .then(data => {
+            try {
+                // Paso 1: Clasificar la query (fast endpoint sin costo)
+                const classifyUrl = `${config.serverUrl}/api/search/classify?q=${encodeURIComponent(query)}`;
+                const classifyResp = await fetch(classifyUrl, {
+                    headers: { 'X-API-Key': config.apiKey }
+                });
+                const classification = await classifyResp.json();
+
+                console.log('🔍 Query clasificada:', classification);
+
+                // Paso 2: Si es compleja, mostrar banner antes de comenzar procesamiento
+                let complexBanner = null;
+                if (classification.success && classification.classification === 'complex') {
+                    complexBanner = showComplexQueryBanner();
+                }
+
+                // Paso 3: Iniciar procesamiento real
+                beginProcessing('text');
+
+                const searchResp = await fetch(`${config.serverUrl}/api/search/text`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': config.apiKey
+                    },
+                    body: JSON.stringify({ query })
+                });
+
+                const data = await searchResp.json();
+
+                // Ocultar banner si existía
+                if (complexBanner) {
+                    complexBanner.remove();
+                }
+
                 endProcessing('text');
 
-                // Detectar si necesita refinamiento
+                console.log('🎯 API Response:', data);
+
+                // 📊 Log del modo de procesamiento (fast vs full)
+                if (data.processing_mode) {
+                    const modeEmoji = data.processing_mode === 'fast' ? '⚡' : '🔄';
+                    console.log(`${modeEmoji} Modo de procesamiento: ${data.processing_mode.toUpperCase()}`);
+                    if (data.processing_time) {
+                        console.log(`⏱️ Tiempo total: ${data.processing_time}s`);
+                    }
+                }
+
+                // Refinement suggestions
                 if (data.needs_refinement) {
                     showRefinementSuggestions(data);
                     return;
                 }
 
                 if (data.success && data.results && data.results.length > 0) {
-                    const total = data.total_results || data.results.length;
-                    displayResults(data.results, total);
+                    // Extraer labelMap del response
+                    const labelMap = data.exposed_attribute_labels || {};
+
+                    // Mostrar mensaje de sustitución de categoría si aplica
+                    const subsDiv = container.querySelector('#clip-category-substitution');
+                    if (subsDiv) {
+                        if (data.category_substitution_info) {
+                            const info = data.category_substitution_info;
+                            const simText = (typeof info.similarity === 'number') ? ` (similitud ${info.similarity})` : '';
+                            subsDiv.textContent = `La categoría más cercana a '${info.requested_text}' es '${info.matched_category}'${simText}.`;
+                            subsDiv.style.display = 'block';
+                        } else {
+                            subsDiv.style.display = 'none';
+                        }
+                    }
+                    displayResults(data.results, data.total_results, labelMap);
                 } else if (data.error === 'category_not_detected') {
-                    // Mostrar mensaje especial con categorías disponibles
                     showCategoryNotDetectedError(data.message, data.details, data.available_categories);
                 } else {
                     showError(data.error || 'No se encontraron productos');
                 }
-            })
-            .catch(err => {
+            } catch (err) {
                 endProcessing('text');
-                showError('Error al realizar la búsqueda. Intenta nuevamente.');
-                console.error(err);
-            });
+                showError('Error al realizar la búsqueda. Por favor intenta nuevamente.');
+                console.error('❌ Search error:', err);
+            }
         }
 
-        // Display results
-        function displayMultiCategoryResults(resultsByCategory, totalResults) {
+        // Mostrar banner para consultas complejas
+        function showComplexQueryBanner() {
+            const banner = document.createElement('div');
+            banner.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 1rem 2rem;
+                border-radius: 12px;
+                box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+                z-index: 10000;
+                font-size: 1rem;
+                font-weight: 600;
+                animation: slideDown 0.3s ease-out;
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+            `;
+            banner.innerHTML = `
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <span>Analizando tu consulta, esto puede tardar unos segundos...</span>
+            `;
+            document.body.appendChild(banner);
+            return banner;
+        }
+
+        // Display multi-category results
+        function displayMultiCategoryResults(resultsByCategory, totalResults, labelMap = {}) {
             const resultsDiv = container.querySelector('#clip-results');
             const countDiv = container.querySelector('#clip-results-count');
             const gridDiv = container.querySelector('#clip-grid');
 
-            // Calcular total de productos
             const totalProductCount = resultsByCategory.reduce((sum, cat) => sum + cat.product_count, 0);
             const totalCategories = resultsByCategory.length;
             countDiv.textContent = `${totalProductCount} productos en ${totalCategories} categoría${totalCategories !== 1 ? 's' : ''}`;
 
-            console.log('🎯 MULTI-CATEGORY: Mostrando resultados agrupados', resultsByCategory);
+            console.log(`✨ Mostrando ${totalCategories} categorías con ${totalProductCount} productos totales`);
 
-            // Mostrar cada categoría como una sección vertical
             let sectionsHtml = '';
 
-            resultsByCategory.forEach((categoryData, index) => {
-                const categoryName = categoryData.category_name; // ✅ CORREGIDO: usar category_name
+            resultsByCategory.forEach((categoryData) => {
+                const categoryName = categoryData.category_name;
                 const products = categoryData.products;
                 const confidence = Math.round(categoryData.confidence * 100);
-                const totalProducts = products.length;
+                const productCount = products.length;
 
-                // Encabezado de categoría
                 sectionsHtml += `
                     <div class="clip-category-section">
                         <div class="clip-category-header">
                             <h3 class="clip-category-title">${categoryName}</h3>
                             <div class="clip-category-meta">
-                                <span class="clip-category-count">${totalProducts} producto${totalProducts !== 1 ? 's' : ''}</span>
-                                <span class="clip-category-confidence">${confidence}% confianza</span>
+                                <span class="clip-category-count">${productCount} producto${productCount !== 1 ? 's' : ''}</span>
+                                <span class="clip-category-confidence">${confidence}% de confianza</span>
                             </div>
                         </div>
                         <div class="clip-category-grid">
-                            ${products.map(r => {
-                                // Construir atributos dinámicos
-                                let attributesHtml = '';
-                                if (r.attributes && typeof r.attributes === 'object') {
-                                    const visibleAttrs = Object.entries(r.attributes)
-                                        .filter(([key, value]) => {
-                                            if (key === 'url_producto') return false;
-                                            return value !== null && value !== undefined && value !== '';
-                                        })
-                                        .map(([key, value]) => {
-                                            const label = key.replace(/_/g, ' ').charAt(0).toUpperCase() + key.replace(/_/g, ' ').slice(1);
-                                            const displayValue = Array.isArray(value) ? value.join(', ') : value;
-                                            return `
-                                                <div class="clip-product-attribute">
-                                                    <span class="clip-attr-label">${label}:</span>
-                                                    <span class="clip-attr-value">${displayValue}</span>
-                                                </div>
-                                            `;
-                                        })
-                                        .join('');
-
-                                    if (visibleAttrs) {
-                                        attributesHtml = `<div class="clip-product-attributes">${visibleAttrs}</div>`;
-                                    }
-                                }
-
-                                // Botón URL del producto
-                                const productUrl = r.product_url || (r.attributes && r.attributes.url_producto);
-                                const urlButtonHtml = productUrl ? `
-                                    <a href="${productUrl}" target="_blank" class="clip-product-link">
-                                        Ver Producto →
-                                    </a>
-                                ` : '';
-
-                                return `
-                                    <div class="clip-product">
-                                        <div class="clip-product-img-wrap">
-                                            <img src="${r.image_url}" alt="${r.name}" class="clip-product-img">
-                                            ${r.similarity ? `<div class="clip-similarity-badge">${Math.round(r.similarity * 100)}%</div>` : ''}
-                                        </div>
-                                        <div class="clip-product-info">
-                                            <div class="clip-product-category">${r.category || 'Producto'}</div>
-                                            <div class="clip-product-name">${r.name}</div>
-                                            <div class="clip-product-price">$${r.price ? r.price.toFixed(2) : 'N/A'}</div>
-                                            ${r.stock !== undefined ? `
-                                                <div class="clip-product-stock ${r.stock > 0 ? 'in-stock' : ''}">
-                                                    ${r.stock > 0 ? `✓ Stock: ${r.stock}` : '✗ Sin stock'}
-                                                </div>
-                                            ` : ''}
-                                            ${attributesHtml}
-                                            ${urlButtonHtml}
-                                        </div>
-                                    </div>
-                                `;
-                            }).join('')}
+                            ${products.map(r => renderProductCard(r, labelMap)).join('')}
                         </div>
                     </div>
                 `;
@@ -1055,97 +1134,79 @@
             gridDiv.innerHTML = sectionsHtml;
             resultsDiv.classList.add('active');
         }
-        function displayResults(results, total) {
+
+        // Display single category results
+        function displayResults(results, total, labelMap = {}) {
             const resultsDiv = container.querySelector('#clip-results');
             const countDiv = container.querySelector('#clip-results-count');
             const gridDiv = container.querySelector('#clip-grid');
 
             countDiv.textContent = `${total} producto${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}`;
 
-            // DEBUG: Ver qué está llegando
-            console.log('🔍 DEBUG displayResults:', results);
-            if (results.length > 0) {
-                console.log('📦 Primer resultado:', results[0]);
-                console.log('📋 Atributos:', results[0].attributes);
-                console.log('🔗 product_url:', results[0].product_url);
-            }
-
-            gridDiv.innerHTML = results.map(r => {
-                // Construir atributos dinámicos visibles
-                let attributesHtml = '';
-                if (r.attributes && typeof r.attributes === 'object') {
-                    console.log(`🎨 Procesando atributos de ${r.name}:`, r.attributes);
-                    const visibleAttrs = Object.entries(r.attributes)
-                        .filter(([key, value]) => {
-                            // Excluir url_producto (se muestra como botón)
-                            if (key === 'url_producto') return false;
-                            // Mostrar solo atributos con valor
-                            return value !== null && value !== undefined && value !== '';
-                        })
-                        .map(([key, value]) => {
-                            const label = key.replace(/_/g, ' ').charAt(0).toUpperCase() + key.replace(/_/g, ' ').slice(1);
-                            const displayValue = Array.isArray(value) ? value.join(', ') : value;
-                            return `
-                                <div class="clip-product-attribute">
-                                    <span class="clip-attr-label">${label}:</span>
-                                    <span class="clip-attr-value">${displayValue}</span>
-                                </div>
-                            `;
-                        })
-                        .join('');
-
-                    if (visibleAttrs) {
-                        attributesHtml = `<div class="clip-product-attributes">${visibleAttrs}</div>`;
-                    }
-                }
-
-                // Botón de URL del producto
-                const productUrl = r.product_url || (r.attributes && r.attributes.url_producto);
-                console.log(`🔗 URL para ${r.name}:`, productUrl);
-                const urlButtonHtml = productUrl ? `
-                    <a href="${productUrl}" target="_blank" class="clip-product-link">
-                        Ver Producto →
-                    </a>
-                ` : '';
-
-                return `
-                    <div class="clip-product">
-                        <div class="clip-product-img-wrap">
-                            <img src="${r.image_url}" alt="${r.name}" class="clip-product-img">
-                            ${r.similarity ? `<div class="clip-similarity-badge">${Math.round(r.similarity * 100)}%</div>` : ''}
-                        </div>
-                        <div class="clip-product-info">
-                            <div class="clip-product-category">${r.category || 'Producto'}</div>
-                            <div class="clip-product-name">${r.name}</div>
-                            <div class="clip-product-price">$${r.price ? r.price.toFixed(2) : 'N/A'}</div>
-                            ${r.stock !== undefined ? `
-                                <div class="clip-product-stock ${r.stock > 0 ? 'in-stock' : ''}">
-                                    ${r.stock > 0 ? `✓ Stock: ${r.stock}` : '✗ Sin stock'}
-                                </div>
-                            ` : ''}
-                            ${attributesHtml}
-                            ${urlButtonHtml}
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
+            gridDiv.innerHTML = results.map(r => renderProductCard(r, labelMap)).join('');
             resultsDiv.classList.add('active');
         }
 
-        // Helpers
-        // Deprecated: se reemplaza por overlays por sección (visual/text)
-        function showLoading() { /* noop */ }
-        function hideLoading() { /* noop */ }
+        // Render product card (shared)
+        function renderProductCard(r, labelMap = {}) {
+            // Atributos dinámicos
+            let attributesHtml = '';
+            if (r.attributes && typeof r.attributes === 'object') {
+                const visibleAttrs = Object.entries(r.attributes)
+                    .filter(([key, value]) => {
+                        if (key === 'url_producto') return false;
+                        return value !== null && value !== undefined && value !== '';
+                    })
+                    .map(([key, value]) => {
+                        // 🏷️ Usar label del backend si existe, sino formatear el key
+                        const keyLower = key.toLowerCase();
+                        const label = labelMap[keyLower] || (key.replace(/_/g, ' ').charAt(0).toUpperCase() + key.replace(/_/g, ' ').slice(1));
+                        const displayValue = Array.isArray(value) ? value.join(', ') : value;
+                        return `
+                            <div class="clip-product-attribute">
+                                <span class="clip-attr-label">${label}:</span>
+                                <span class="clip-attr-value">${displayValue}</span>
+                            </div>
+                        `;
+                    })
+                    .join('');
 
-        function showError(msg) {
-            const errorDiv = container.querySelector('#clip-error');
-            errorDiv.textContent = msg;
-            errorDiv.classList.add('active');
-            container.querySelector('#clip-results').classList.remove('active');
-            container.querySelector('#clip-refinement').style.display = 'none';
+                if (visibleAttrs) {
+                    attributesHtml = `<div class="clip-product-attributes">${visibleAttrs}</div>`;
+                }
+            }
+
+            // URL del producto
+            const productUrl = r.product_url || (r.attributes && r.attributes.url_producto);
+            const urlButtonHtml = productUrl ? `
+                <a href="${productUrl}" target="_blank" class="clip-product-link">
+                    Ver Producto →
+                </a>
+            ` : '';
+
+            return `
+                <div class="clip-product">
+                    <div class="clip-product-img-wrap">
+                        <img src="${r.image_url}" alt="${r.name}" class="clip-product-img" loading="lazy">
+                        ${r.similarity ? `<div class="clip-similarity-badge">${Math.round(r.similarity * 100)}%</div>` : ''}
+                    </div>
+                    <div class="clip-product-info">
+                        <div class="clip-product-category">${r.category || 'Producto'}</div>
+                        <div class="clip-product-name">${r.name}</div>
+                        <div class="clip-product-price">$${r.price ? r.price.toFixed(2) : 'N/A'}</div>
+                        ${r.stock !== undefined ? `
+                            <div class="clip-product-stock ${r.stock > 0 ? 'in-stock' : ''}">
+                                ${r.stock > 0 ? `✓ Stock: ${r.stock}` : '✗ Sin stock'}
+                            </div>
+                        ` : ''}
+                        ${attributesHtml}
+                        ${urlButtonHtml}
+                    </div>
+                </div>
+            `;
         }
 
+        // Show refinement suggestions
         function showRefinementSuggestions(data) {
             const refinementDiv = container.querySelector('#clip-refinement');
             const messageDiv = container.querySelector('#clip-refinement-message');
@@ -1155,7 +1216,6 @@
 
             let suggestionsHTML = '';
 
-            // Sugerencias de colores
             if (data.suggestions && data.suggestions.colores && data.suggestions.colores.length > 0) {
                 suggestionsHTML += `
                     <div class="clip-refinement-label">Colores disponibles:</div>
@@ -1169,7 +1229,6 @@
                 `;
             }
 
-            // Sugerencias de contextos/estilos
             if (data.suggestions && data.suggestions.contextos && data.suggestions.contextos.length > 0) {
                 suggestionsHTML += `
                     <div class="clip-refinement-label" style="margin-top: 1rem;">Estilos disponibles:</div>
@@ -1184,18 +1243,17 @@
             }
 
             suggestionsContainer.innerHTML = suggestionsHTML;
-            refinementDiv.style.display = 'block';
+            refinementDiv.classList.add('active');
 
-            // Agregar event listeners a los chips
+            // Event listeners para chips
             suggestionsContainer.querySelectorAll('.clip-suggestion-chip').forEach(chip => {
                 chip.addEventListener('click', function() {
                     const value = this.dataset.value;
-                    const currentQuery = container.querySelector('#clip-text-input').value;
+                    const currentQuery = textInput.value;
                     const baseQuery = currentQuery.replace(/\b(de\s+)?colores?\b/gi, '').trim();
                     const newQuery = `${baseQuery} ${value}`.trim();
 
-                    // Actualizar input y ejecutar búsqueda
-                    container.querySelector('#clip-text-input').value = newQuery;
+                    textInput.value = newQuery;
                     performTextSearch(newQuery);
                 });
             });
@@ -1204,6 +1262,7 @@
             container.querySelector('#clip-error').classList.remove('active');
         }
 
+        // Show category not detected error
         function showCategoryNotDetectedError(message, details, categories) {
             const errorDiv = container.querySelector('#clip-error');
             const categoriesList = categories && categories.length > 0
@@ -1215,13 +1274,23 @@
 
             errorDiv.innerHTML = `
                 <div class="clip-category-error">
-                    <div class="clip-error-icon">🔍</div>
+                    <div class="clip-error-icon">${icons.magnifier}</div>
                     <div class="clip-error-message">${message}</div>
                     ${categoriesList}
                 </div>
             `;
             errorDiv.classList.add('active');
             container.querySelector('#clip-results').classList.remove('active');
+            container.querySelector('#clip-refinement').classList.remove('active');
+        }
+
+        // Show generic error
+        function showError(msg) {
+            const errorDiv = container.querySelector('#clip-error');
+            errorDiv.innerHTML = `<div class="clip-error-message">${msg}</div>`;
+            errorDiv.classList.add('active');
+            container.querySelector('#clip-results').classList.remove('active');
+            container.querySelector('#clip-refinement').classList.remove('active');
         }
     }
 
