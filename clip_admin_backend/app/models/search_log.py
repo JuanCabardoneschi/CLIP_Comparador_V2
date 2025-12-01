@@ -2,7 +2,7 @@ from datetime import datetime
 from .. import db
 import uuid
 from sqlalchemy.dialects.postgresql import ARRAY
-from ..utils.logging_config import log_error, log_info
+from ..utils.logging_config import log_error, log_system
 
 class SearchLog(db.Model):
     """Modelo para registrar búsquedas realizadas por los clientes
@@ -64,7 +64,7 @@ class SearchLog(db.Model):
             db.session.add(log)
             db.session.flush()  # Flush antes del commit para detectar errores de validación
             db.session.commit()
-            log_info(f"✅ SearchLog guardado: client={client_id}, type={search_type}, results={kwargs.get('results_count', 0)}")
+            log_system(f"✅ SearchLog guardado: client={client_id}, type={search_type}, results={kwargs.get('results_count', 0)}")
         except Exception as e:
             db.session.rollback()
             log_error(f"⚠️ ERROR guardando search log: {e}")
