@@ -1404,8 +1404,37 @@ def text_search():
                             item['attr_matches'] = attr_matches
                             item['attr_total'] = attr_total
 
+                        # Boost por TAGS: si la query coincide con tags del producto, sumar componente
+                        try:
+                            import unicodedata as _ud
+                            import re as _re
+
+                            def _norm_txt(s: str) -> str:
+                                txt = str(s or '').strip().lower()
+                                return ''.join(ch for ch in _ud.normalize('NFD', txt) if _ud.category(ch) != 'Mn')
+
+                            query_terms = {_norm_txt(w) for w in (cleaned_query or '').split() if len(w.strip()) > 1}
+                            tag_matches_map = {}
+
+                            for item in scored_products:
+                                p = item['product']
+                                matched = []
+                                if hasattr(p, 'tags') and p.tags:
+                                    tokens = [t.strip() for t in _re.split(r'[;,|]', p.tags) if t.strip()]
+                                    for t in tokens:
+                                        if _norm_txt(t) in query_terms:
+                                            matched.append(t)
+                                # Pequeño boost: 0.10 por tag coincidente, máx 0.20
+                                tag_component = min(0.20, 0.10 * len(matched)) if matched else 0.0
+                                item['hybrid_score'] = float(item.get('hybrid_score', 0.0)) + tag_component
+                                item['tags_matched'] = matched
+                                tag_matches_map[p.id] = matched
+                        except Exception:
+                            # Si algo falla, continuar sin boost por tags
+                            tag_matches_map = {}
+
                         # Ordenar por score híbrido (mayor a menor)
-                        scored_products.sort(key=lambda x: (x['attr_matches'], x['similarity']), reverse=True)
+                        scored_products.sort(key=lambda x: x.get('hybrid_score', 0.0), reverse=True)
 
                         print(f"\n📊 RESULTADOS HÍBRIDOS (Atributos + CLIP):")
                         print(f"   Total productos evaluados: {len(scored_products)}")
@@ -1526,7 +1555,7 @@ def text_search():
                             'label': a.get('atributo_label') or a.get('atributo_key')
                         })
 
-                    # Mapa de similitudes CLIP si existe
+                        # Mapa de similitudes CLIP si existe
                     try:
                         clip_scores  # noqa: F401 (puede no existir si no hubo CLIP)
                     except NameError:
@@ -1587,7 +1616,8 @@ def text_search():
                             'attributes_coverage': coverage,
                             'weak_modifiers': modificadores_no_configurados or [],
                             'clip_similarity': round(sim, 3) if sim else 0.0,
-                            'match_type': match_type
+                            'match_type': match_type,
+                            'tags_matched': tag_matches_map.get(p.id, [])
                         })
                 except Exception as _e:
                     print(f"⚠️ Enriquecimiento top_5 falló: {_e}")

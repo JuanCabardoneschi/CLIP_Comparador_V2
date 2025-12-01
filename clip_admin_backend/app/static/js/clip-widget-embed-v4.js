@@ -1305,7 +1305,12 @@
                 return `<span style="background:${ok ? '#eff6ff' : '#fef2f2'};color:${ok ? '#1e40af' : '#991b1b'};padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid ${ok ? '#bfdbfe' : '#fecaca'};white-space:nowrap;">${icon} ${mod}</span>`;
             }).join(' ') : '';
 
-            const allBadges = [strongBadges, weakBadges, visibleExtraBadges].filter(x => x).join(' ');
+            // Tags coincidentes (si el backend los envía en top_5_productos)
+            const tagBadges = Array.isArray(prod.tags_matched) && prod.tags_matched.length > 0
+                ? prod.tags_matched.map(t => `<span style="background:#f5f3ff;color:#6d28d9;padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:700;border:1px solid #ddd6fe;white-space:nowrap;">#${t}</span>`).join(' ')
+                : '';
+
+            const allBadges = [strongBadges, weakBadges, visibleExtraBadges, tagBadges].filter(x => x).join(' ');
 
             return `
                 <div class="clip-product">
