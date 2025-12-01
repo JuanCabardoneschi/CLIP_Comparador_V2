@@ -2,6 +2,23 @@ import psycopg2
 import re
 from pathlib import Path
 
+def normalize_data_url(b64: str) -> str:
+    """Normaliza cualquier valor base64 a un data URL válido.
+
+    - Quita espacios y saltos de línea.
+    - Si ya viene con prefijo data:image/...;base64, lo estandariza y evita duplicarlo.
+    - Si viene solo el payload base64, agrega 'data:image/jpeg;base64,' por defecto.
+    """
+    if not b64:
+        return ""
+    cleaned = re.sub(r"\s+", "", b64)
+    m = re.match(r"^data:(image/[^;]+);base64,", cleaned, flags=re.IGNORECASE)
+    if m:
+        mime = m.group(1).lower()
+        payload = re.sub(r"^data:(image/[^;]+);base64,", "", cleaned, flags=re.IGNORECASE)
+        return f"data:{mime};base64,{payload}"
+    return f"data:image/jpeg;base64,{cleaned}"
+
 # 1) Obtener 6 productos de Eve's Store con base64 primario
 conn = psycopg2.connect(
     host="ballast.proxy.rlwy.net",
@@ -34,16 +51,17 @@ for name, price, b64 in rows:
     # sanitizar
     name_html = (name or '').strip()
     price_val = float(price or 0)
+    src_val = normalize_data_url(b64 or "")
     cards.append(f"""
-            <div class=\"product-card\">
-                <div class=\"product-image\">
-                    <img src=\"data:image/jpeg;base64,{b64}\" alt=\"{name_html}\" style=\"width: 100%; height: 100%; object-fit: cover;\">
-                </div>
-                <div class=\"product-info\">
-                    <h3 class=\"product-name\">{name_html}</h3>
-                    <p class=\"product-price\">${price_val:.2f}</p>
-                </div>
-            </div>
+            <div class=\"product-card\">\r
+                <div class=\"product-image\">\r
+                    <img src=\"{src_val}\" alt=\"{name_html}\" style=\"width: 100%; height: 100%; object-fit: cover;\">\r
+                </div>\r
+                <div class=\"product-info\">\r
+                    <h3 class=\"product-name\">{name_html}</h3>\r
+                    <p class=\"product-price\">${price_val:.2f}</p>\r
+                </div>\r
+            </div>\r
     """)
 
 new_grid_inner = "\n".join(cards)
