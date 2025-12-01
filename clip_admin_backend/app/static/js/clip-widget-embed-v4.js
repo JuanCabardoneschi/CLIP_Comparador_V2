@@ -1083,7 +1083,32 @@
                         </div>
                     </div>
                     <div class="clip-product-grid">
-                        ${categoryData.products.map(p => `
+                        ${categoryData.products.map(p => {
+                            // Render badges de atributos visibles (provenientes del API ya filtrados)
+                            const entries = (p.attributes && typeof p.attributes === 'object')
+                                ? Object.entries(p.attributes)
+                                : [];
+
+                            const attrBadges = entries
+                                .filter(([k]) => k && !['url_producto','product_url'].includes(String(k).toLowerCase()))
+                                .map(([k, v]) => {
+                                    let val;
+                                    if (v === null || v === undefined) {
+                                        val = '';
+                                    } else if (Array.isArray(v)) {
+                                        val = v.join(', ');
+                                    } else if (typeof v === 'object') {
+                                        val = v.label || v.value || v.name || '';
+                                    } else {
+                                        val = String(v);
+                                    }
+                                    const label = String(k);
+                                    const text = val ? `${label}: ${val}` : label;
+                                    return `<span style="background:#f1f5f9;color:#0f172a;padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid #e2e8f0;white-space:nowrap;">${text}</span>`;
+                                })
+                                .join(' ');
+
+                            return `
                             <div class="clip-product">
                                 <div class="clip-product-img-wrap">
                                     <img src="${p.image_url}" alt="${p.name}" class="clip-product-img">
@@ -1096,14 +1121,15 @@
                                     <div class="clip-product-price">
                                         ${p.price ? `$${p.price.toFixed(2)}` : 'Consultar'}
                                     </div>
+                                    ${attrBadges ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${attrBadges}</div>` : ''}
                                     ${p.stock !== undefined ? `
                                         <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
                                             ${p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock'}
                                         </div>
                                     ` : ''}
                                 </div>
-                            </div>
-                        `).join('')}
+                            </div>`;
+                        }).join('')}
                     </div>
                 </div>
             `;
