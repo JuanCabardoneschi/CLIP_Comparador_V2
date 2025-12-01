@@ -578,16 +578,19 @@
 
             .clip-category-header {
                 margin-bottom: 1.5rem;
-                padding: 1.25rem;
+                padding: 0.85rem 1.25rem;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 border-radius: 12px;
                 color: white;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
             }
 
             .clip-category-title {
-                font-size: 1.5rem;
+                font-size: 1.3rem;
                 font-weight: 700;
-                margin: 0 0 0.5rem 0;
+                margin: 0;
             }
 
             .clip-category-meta {
@@ -596,6 +599,7 @@
                 font-size: 0.9rem;
                 opacity: 0.95;
                 flex-wrap: wrap;
+                align-items: center;
             }
 
             .clip-category-count {
@@ -1024,6 +1028,30 @@
                     };
                 }
 
+                // 🚨 VERIFICAR SI GPT-4V DETECTÓ CATEGORÍAS VÁLIDAS
+                // Si no hay categorías detectadas, mostrar error en lugar de buscar productos
+                if (detectionMeta && Array.isArray(detectionMeta.categoriesDetected) && detectionMeta.categoriesDetected.length === 0) {
+                    // Mostrar bloque de intención (si existe) + mensaje de error
+                    const resultsDiv = container.querySelector('#clip-results');
+                    const summaryDiv = container.querySelector('#clip-detection-summary');
+                    
+                    // Mostrar intención detectada si existe
+                    if (detectionMeta.intention) {
+                        summaryDiv.innerHTML = `
+                            <div class="clip-detection-summary-title">Categorías Detectadas</div>
+                            <div class="clip-intention-box">
+                                <span class="clip-intention-icon">⚡</span>
+                                <span>${detectionMeta.intention}</span>
+                            </div>
+                        `;
+                        summaryDiv.style.display = 'block';
+                    }
+                    
+                    // Mostrar error de categoría no detectada
+                    showError('No se detectaron categorías válidas para esta imagen. Por favor, sube una imagen relacionada con los productos disponibles en la tienda.');
+                    return;
+                }
+
                 // 🔄 Normalización especial para respuesta GPT4V Unified (results_by_category como objeto)
                 if (data.success && data.results_by_category && !Array.isArray(data.results_by_category) && typeof data.results_by_category === 'object') {
                     try {
@@ -1049,6 +1077,7 @@
                                 category_name: categoryName,
                                 products,
                                 product_count: info.results_returned || products.length || 0,
+                                total_in_category: info.total_in_category || info.results_returned || products.length || 0,
                                 confidence: confidenceMap[categoryName] || 0
                             };
                         });
@@ -1266,18 +1295,13 @@
             resultsByCategory.forEach((categoryData) => {
                 const categoryName = categoryData.category_name;
                 const products = categoryData.products;
-                const confidencePercent = Math.round((categoryData.confidence || 0) * 100);
-                const productCount = products.length;
-                const confidenceSpan = confidencePercent > 0 ? `<span class=\"clip-category-confidence\">${confidencePercent}% de confianza</span>` : '';
+                const totalInCategory = categoryData.total_in_category || categoryData.product_count || products.length;
 
                 sectionsHtml += `
                     <div class="clip-category-section">
                         <div class="clip-category-header">
                             <h3 class="clip-category-title">${categoryName}</h3>
-                            <div class="clip-category-meta">
-                                <span class="clip-category-count">${productCount} producto${productCount !== 1 ? 's' : ''}</span>
-                                ${confidenceSpan}
-                            </div>
+                            <span class="clip-category-count">${totalInCategory} producto${totalInCategory !== 1 ? 's' : ''}</span>
                         </div>
                         <div class="clip-category-grid">
                             ${products.map(r => renderProductCard(r, labelMap)).join('')}
