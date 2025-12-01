@@ -2032,6 +2032,8 @@ def gpt4v_unified_search():
             # OPTIMIZACIÓN 2: Cache de configuración de atributos (UNA VEZ)
             # ===================================================================
             exposed_keys_cache = None
+            exposed_labels_map = {}
+            exposed_types_map = {}
             try:
                 total_configs = db.session.execute(
                     text(
@@ -2045,12 +2047,15 @@ def gpt4v_unified_search():
                 ).fetchone()
 
                 if total_configs and total_configs[0] == 0:
-                    exposed_keys_cache = None  # Sin configuración, exponer todo
+                    # Sin configuración, exponer todo y sin mapas auxiliares
+                    exposed_keys_cache = None
+                    exposed_labels_map = {}
+                    exposed_types_map = {}
                 else:
                     rows = db.session.execute(
                         text(
                             """
-                            SELECT key
+                            SELECT key, label, type
                             FROM product_attribute_config
                             WHERE client_id = :client_id AND expose_in_search = true
                             """
@@ -2058,12 +2063,27 @@ def gpt4v_unified_search():
                         {"client_id": client.id},
                     ).fetchall()
                     # Case-insensitive: normalizar claves a minúsculas para comparar con JSONB
-                    exposed_keys_cache = {str(r[0]).strip().lower() for r in rows if r and r[0]}
+                    exposed_keys_cache = set()
+                    for r in rows:
+                        if not r:
+                            continue
+                        key = str(r[0]).strip() if r[0] is not None else ''
+                        label = str(r[1]).strip() if len(r) > 1 and r[1] is not None else ''
+                        atype = str(r[2]).strip().lower() if len(r) > 2 and r[2] is not None else ''
+                        if key:
+                            kl = key.lower()
+                            exposed_keys_cache.add(kl)
+                            if label:
+                                exposed_labels_map[kl] = label
+                            if atype:
+                                exposed_types_map[kl] = atype
                     railway_log(f"✅ Config cache: {len(exposed_keys_cache)} atributos expuestos (case-insensitive)")
             except Exception as e:
                 railway_log(f"⚠️ Error consultando product_attribute_config: {e}")
                 db.session.rollback()
                 exposed_keys_cache = None
+                exposed_labels_map = {}
+                exposed_types_map = {}
 
             # ===================================================================
             # OPTIMIZACIÓN 3: Batch Query - Traer TODOS los productos de una vez
@@ -2282,7 +2302,10 @@ def gpt4v_unified_search():
                 "max_results_per_category": max_results,
                 "max_results_config": max_results_config,
                 "processing_time_ms": round(processing_time, 2),
-                "similarity_threshold": threshold
+                "similarity_threshold": threshold,
+                # Mapas auxiliares para UI: etiquetas y tipos de atributos expuestos
+                "exposed_attribute_labels": exposed_labels_map,
+                "exposed_attribute_types": exposed_types_map
             }
         }
 

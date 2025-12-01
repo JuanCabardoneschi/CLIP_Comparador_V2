@@ -1074,6 +1074,10 @@
                 return '';
             }
 
+            // Mapas auxiliares para etiquetas y tipos
+            const labelMap = (metadata && metadata.exposed_attribute_labels) || {};
+            const typesMap = (metadata && metadata.exposed_attribute_types) || {};
+
             return `
                 <div class="clip-category-section">
                     <div class="clip-category-header">
@@ -1092,21 +1096,54 @@
                             const attrBadges = entries
                                 .filter(([k]) => k && !['url_producto','product_url'].includes(String(k).toLowerCase()))
                                 .map(([k, v]) => {
-                                    let val;
+                                    const kLower = String(k).toLowerCase();
+                                    let val = '';
                                     if (v === null || v === undefined) {
                                         val = '';
                                     } else if (Array.isArray(v)) {
-                                        val = v.join(', ');
+                                        // Soportar listas con strings u objetos {label|value|name}
+                                        const parts = v.map(item => {
+                                            if (item === null || item === undefined) return '';
+                                            if (typeof item === 'object') {
+                                                return item.label || item.value || item.name || '';
+                                            }
+                                            return String(item);
+                                        }).filter(Boolean);
+                                        val = parts.join(', ');
                                     } else if (typeof v === 'object') {
+                                        // Objeto único
+                                        if ((typesMap[kLower] || '').toLowerCase() === 'url') {
+                                            const urlVal = v.url || v.value || '';
+                                            if (urlVal) {
+                                                const safeUrl = String(urlVal);
+                                                const label = labelMap[kLower] || String(k);
+                                                return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="background:#eef2ff;color:#1e40af;padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid #c7d2fe;white-space:nowrap;text-decoration:none;">${label}</a>`;
+                                            }
+                                        }
                                         val = v.label || v.value || v.name || '';
                                     } else {
                                         val = String(v);
                                     }
-                                    const label = String(k);
+                                    const label = labelMap[kLower] || String(k);
                                     const text = val ? `${label}: ${val}` : label;
                                     return `<span style="background:#f1f5f9;color:#0f172a;padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid #e2e8f0;white-space:nowrap;">${text}</span>`;
                                 })
                                 .join(' ');
+
+                            // Link a producto si existe (atributo tipo URL o campo product_url)
+                            let productLinkHtml = '';
+                            if (p.product_url) {
+                                let href = '';
+                                if (typeof p.product_url === 'object') {
+                                    href = p.product_url.url || p.product_url.value || '';
+                                } else {
+                                    href = String(p.product_url);
+                                }
+                                if (href) {
+                                    const btn = `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:8px;background:#0ea5e9;color:#fff;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;">Ver producto ↗</a>`;
+                                    productLinkHtml = btn;
+                                }
+                            }
 
                             return `
                             <div class="clip-product">
@@ -1122,6 +1159,7 @@
                                         ${p.price ? `$${p.price.toFixed(2)}` : 'Consultar'}
                                     </div>
                                     ${attrBadges ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${attrBadges}</div>` : ''}
+                                    ${productLinkHtml}
                                     ${p.stock !== undefined ? `
                                         <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
                                             ${p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock'}
