@@ -13,7 +13,7 @@ bp = Blueprint('tiendanube_oauth', __name__, url_prefix='/oauth')
 TIENDANUBE_CLIENT_ID = '22436'
 TIENDANUBE_CLIENT_SECRET = 'd2d37cc732c511993531d58e8a3d354b14de11a92a29313d'
 TIENDANUBE_REDIRECT_URI = 'https://clipcomparadorv2-production.up.railway.app/oauth/callback'
-TIENDANUBE_TOKEN_URL = 'https://www.tiendanube.com/apps/authorize/token'
+TIENDANUBE_TOKEN_URL = 'https://apps.tiendanube.com/oauth/token'
 TIENDANUBE_API_BASE = 'https://api.tiendanube.com/v1'
 
 @bp.route('/callback', methods=['GET'])
@@ -35,14 +35,14 @@ def oauth_callback():
             'client_secret': TIENDANUBE_CLIENT_SECRET,
             'grant_type': 'authorization_code',
             'code': code,
-            # 'redirect_uri': TIENDANUBE_REDIRECT_URI  # opcional según implementación
+            'redirect_uri': TIENDANUBE_REDIRECT_URI
         }
 
         logger.info(f"Solicitando token con code: {code[:10]}...")
         response = requests.post(
             TIENDANUBE_TOKEN_URL,
-            json=token_data,
-            headers={'Content-Type': 'application/json'}
+            data=token_data,
+            headers={'Content-Type': 'application/x-www-form-urlencoded'}
         )
 
         if response.status_code != 200:
@@ -307,12 +307,13 @@ def oauth_exchange():
         'client_secret': TIENDANUBE_CLIENT_SECRET,
         'grant_type': 'authorization_code',
         'code': code,
+        'redirect_uri': TIENDANUBE_REDIRECT_URI,
     }
 
     response = requests.post(
         TIENDANUBE_TOKEN_URL,
-        json=token_data,
-        headers={'Content-Type': 'application/json'}
+        data=token_data,
+        headers={'Content-Type': 'application/x-www-form-urlencoded'}
     )
 
     try:
