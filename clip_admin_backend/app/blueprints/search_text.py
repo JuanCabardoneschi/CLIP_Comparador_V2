@@ -2495,6 +2495,7 @@ def text_search():
 
         # 📊 ANALYTICS: Registrar búsqueda (async)
         try:
+            print(f"🔍 ANALYTICS: Iniciando registro de búsqueda para client={client.id}", flush=True)
             # Extraer categorías
             cats_detected = [c['name'] for c in detection_metadata.get('matched_categories', [])] if detection_metadata else []
             cats_matched = list(results_by_category.keys()) if group_by_category and results_by_category else (
@@ -2528,6 +2529,7 @@ def text_search():
                                     terms_unmatched.remove(term)
                                 break
 
+            print(f"🔍 ANALYTICS: Llamando a SearchLog.log_search()", flush=True)
             SearchLog.log_search(
                 client_id=client.id,
                 search_type='text',
@@ -2543,8 +2545,11 @@ def text_search():
                 had_results=bool(formatted_results),
                 response_time_ms=int(elapsed * 1000)
             )
+            print(f"✅ ANALYTICS: SearchLog.log_search() completado", flush=True)
         except Exception as log_err:
             import traceback
+            print(f"❌ ANALYTICS ERROR: {log_err}", flush=True)
+            print(f"   Traceback: {traceback.format_exc()}", flush=True)
             log_error(f"❌ ERROR logging analytics: {log_err}")
             log_error(f"   Traceback: {traceback.format_exc()}")
 
