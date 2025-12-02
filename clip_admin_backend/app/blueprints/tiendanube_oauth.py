@@ -8,6 +8,7 @@ import logging
 import urllib3
 from app.models.client import Client
 from app.models.tiendanube_integration import TiendanubeIntegration
+from app.models.user import User
 from app import db
 
 # Deshabilitar warnings de SSL
@@ -121,7 +122,42 @@ def oauth_callback():
 
             logger.info(f"Cliente creado: {client.id} para tienda {store_name}")
 
-            # 5. Crear integración con token encriptado
+            # 5a. Crear usuario STORE_ADMIN automáticamente
+            admin_username = f"admin_{store_name.lower().replace(' ', '_')}"
+            admin_email = store_email or f'{user_id}@tiendanube.com'
+
+            # Verificar si ya existe un usuario con ese email
+            existing_user = User.query.filter_by(email=admin_email).first()
+
+            if not existing_user:
+                from werkzeug.security import generate_password_hash
+                import secrets
+
+                # Generar contraseña temporal
+                temp_password = secrets.token_urlsafe(12)
+
+                admin_user = User(
+                    username=admin_username,
+                    email=admin_email,
+                    password_hash=generate_password_hash(temp_password),
+                    role='STORE_ADMIN',
+                    client_id=client.id,
+                    is_active=True
+                )
+                db.session.add(admin_user)
+                db.session.flush()
+
+                logger.info(f"Usuario STORE_ADMIN creado: {admin_username} (contraseña temporal: {temp_password})")
+
+                # Guardar credenciales en config del cliente para mostrarlas
+                if not client.integration_config:
+                    client.integration_config = {}
+                client.integration_config['admin_username'] = admin_username
+                client.integration_config['admin_temp_password'] = temp_password
+            else:
+                logger.info(f"Usuario existente encontrado: {existing_user.username}")
+
+            # 5b. Crear integración con token encriptado
             integration = TiendanubeIntegration(
                 client_id=client.id,
                 store_id=str(user_id),
@@ -175,13 +211,16 @@ def oauth_callback():
             # No fallar el OAuth si la sync falla; se puede reintentar después
 
         # 9. Renderizar página de éxito
+        admin_credentials = client.integration_config.get('admin_username'), client.integration_config.get('admin_temp_password')
         return render_template_string(
             render_success_page(
                 store_name=store_name,
                 store_id=user_id,
                 scope=scope,
                 api_key=client.api_key,
-                has_script=(script_id is not None)
+                has_script=(script_id is not None),
+                admin_username=admin_credentials[0],
+                admin_password=admin_credentials[1]
             )
         )
 
@@ -303,13 +342,30 @@ def inject_widget_script(store_id, access_token, api_key):
         return None
 
 
-def render_success_page(store_name, store_id, scope, api_key, has_script=False):
+def render_success_page(store_name, store_id, scope, api_key, has_script=False, admin_username=None, admin_password=None):
     """Renderiza página de éxito con instrucciones según disponibilidad de script"""
+
+    # Sección de credenciales de admin
+    admin_section = ""
+    if admin_username and admin_password:
+        admin_section = f"""
+        <div class="alert alert-info">
+            <strong>🔐 Credenciales de Acceso al Panel Admin</strong><br><br>
+            <strong>URL:</strong> <a href="https://clipcomparadorv2-production.up.railway.app/auth/login" target="_blank">
+                https://clipcomparadorv2-production.up.railway.app/auth/login
+            </a><br>
+            <strong>Usuario:</strong> <code>{admin_username}</code><br>
+            <strong>Contraseña temporal:</strong> <code>{admin_password}</code><br>
+            <br>
+            <small>⚠️ Guardá estas credenciales en un lugar seguro. Podrás cambiar la contraseña una vez que inicies sesión.</small>
+        </div>
+        """
+
     script_status = """
         <div class="info-item">
             <span class="info-label">Widget:</span> ✅ Instalado automáticamente
         </div>
-    """ if has_script else """
+    """ if has_script else f"""
         <div class="info-item">
             <span class="info-label">Widget:</span> ⚠️ Configuración manual requerida
         </div>
@@ -386,6 +442,23 @@ def render_success_page(store_name, store_id, scope, api_key, has_script=False):
                 text-align: left;
                 color: #92400e;
             }}
+            .alert-info {{
+                background: #dbeafe;
+                border: 2px solid #3b82f6;
+                padding: 15px;
+                border-radius: 8px;
+                margin: 15px 0;
+                text-align: left;
+                color: #1e40af;
+            }}
+            .alert-info a {{
+                color: #1d4ed8;
+                text-decoration: none;
+                font-weight: bold;
+            }}
+            .alert-info a:hover {{
+                text-decoration: underline;
+            }}
             .alert-warning code {{
                 background: white;
                 padding: 2px 6px;
@@ -444,6 +517,8 @@ def render_success_page(store_name, store_id, scope, api_key, has_script=False):
                 </div>
                 {script_status}
             </div>
+
+            {admin_section}
 
             <div class="next-steps">
                 <h3>📋 Próximos Pasos</h3>

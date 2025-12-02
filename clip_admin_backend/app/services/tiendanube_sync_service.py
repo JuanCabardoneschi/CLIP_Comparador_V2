@@ -443,7 +443,7 @@ class TiendanubeSyncService:
 
                     # Procesar con CLIP
                     inputs = clip_processor(images=pil_image, return_tensors="pt")
-                    
+
                     # Mover a GPU si está disponible
                     if torch.cuda.is_available():
                         inputs = {k: v.cuda() for k, v in inputs.items()}
