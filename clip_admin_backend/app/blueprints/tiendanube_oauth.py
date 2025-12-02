@@ -92,11 +92,11 @@ def get_store_info(store_id, access_token):
     """
     try:
         headers = {
-            'Authorization': f'Bearer {access_token}',
+            'Authentication': f'bearer {access_token}',
             'User-Agent': 'CLIP Comparador V2 (info@clipcomparador.com)'
         }
         response = requests.get(
-            f'{TIENDANUBE_API_BASE}/{store_id}/store',
+            f'{TIENDANUBE_API_BASE}/store/',
             headers=headers,
             timeout=10,
             verify=False  # Deshabilitar verificación SSL temporalmente
