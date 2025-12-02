@@ -72,26 +72,48 @@ class Image(db.Model):
         except Exception:
             return "demo_fashion_store"  # Fallback seguro
 
+    def _is_tiendanube_client(self):
+        """Verifica si el cliente es de Tiendanube"""
+        try:
+            if hasattr(self, '_is_tiendanube_cache'):
+                return self._is_tiendanube_cache
+
+            from app.models.client import Client
+            client = Client.query.get(self.client_id)
+            self._is_tiendanube_cache = (client and client.integration_type == 'tiendanube')
+            return self._is_tiendanube_cache
+        except Exception:
+            return False
+
     @property
     def thumbnail_url(self):
-        """Genera URL de thumbnail - SOLO Cloudinary"""
-        # SOLO usar Cloudinary - no hay fallback local
+        """Genera URL de thumbnail - Tiendanube source_url o Cloudinary"""
+        # Si es cliente Tiendanube, usar source_url
+        if self._is_tiendanube_client() and self.source_url:
+            return self.source_url
+        # Clientes standalone usan Cloudinary
         if self.cloudinary_url:
             return self.cloudinary_url
         return '/static/images/placeholder.svg'
 
     @property
     def medium_url(self):
-        """Genera URL de imagen mediana - SOLO Cloudinary"""
-        # SOLO usar Cloudinary - no hay fallback local
+        """Genera URL de imagen mediana - Tiendanube source_url o Cloudinary"""
+        # Si es cliente Tiendanube, usar source_url
+        if self._is_tiendanube_client() and self.source_url:
+            return self.source_url
+        # Clientes standalone usan Cloudinary
         if self.cloudinary_url:
             return self.cloudinary_url
         return '/static/images/placeholder.svg'
 
     @property
     def display_url(self):
-        """URL principal para mostrar la imagen - SOLO Cloudinary"""
-        # SOLO usar Cloudinary - no hay fallback local
+        """URL principal para mostrar la imagen - Tiendanube source_url o Cloudinary"""
+        # Si es cliente Tiendanube, usar source_url
+        if self._is_tiendanube_client() and self.source_url:
+            return self.source_url
+        # Clientes standalone usan Cloudinary
         if self.cloudinary_url:
             return self.cloudinary_url
         return '/static/images/placeholder.svg'
@@ -99,21 +121,25 @@ class Image(db.Model):
     @property
     def optimized_url(self):
         """
-        URL optimizada que prioriza base64 cacheado sobre Cloudinary.
+        URL optimizada que prioriza base64 cacheado sobre Cloudinary/Tiendanube.
         Usar este método para:
         - Generación de embeddings CLIP (evita descargas repetidas)
-        - Respuestas de API de búsqueda (reduce llamadas a Cloudinary)
+        - Respuestas de API de búsqueda (reduce llamadas externas)
         - Cualquier operación que necesite la imagen frecuentemente
         """
         # 1. Priorizar base64 si existe (ya está en Railway, sin latencia)
         if self.base64_data:
             return self.base64_data
 
-        # 2. Fallback a Cloudinary
+        # 2. Si es Tiendanube, usar source_url
+        if self._is_tiendanube_client() and self.source_url:
+            return self.source_url
+
+        # 3. Fallback a Cloudinary para clientes standalone
         if self.cloudinary_url:
             return self.cloudinary_url
 
-        # 3. Placeholder si no hay nada
+        # 4. Placeholder si no hay nada
         return '/static/images/placeholder.svg'
 
     @property
