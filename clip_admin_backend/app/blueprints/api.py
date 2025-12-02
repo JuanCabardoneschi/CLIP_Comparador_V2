@@ -2248,6 +2248,13 @@ def gpt4v_unified_search():
                         railway_log(f"⚠️ Error procesando atributos de {p.id}: {e}")
                         product_attrs = {}
 
+                    # Priorizar external_url (Tiendanube/externo) sobre url_producto (atributo custom)
+                    final_product_url = None
+                    if hasattr(p, 'external_url') and p.external_url:
+                        final_product_url = p.external_url
+                    elif product_url_value:
+                        final_product_url = product_url_value
+
                     products_data.append({
                         'id': str(p.id),
                         'name': p.name,
@@ -2258,7 +2265,7 @@ def gpt4v_unified_search():
                         'similarity_score': result['similarity'],
                         'attributes': product_attrs,
                         'stock': p.stock if hasattr(p, 'stock') and p.stock is not None else 0,
-                        'product_url': product_url_value
+                        'product_url': final_product_url
                     })
 
                 total_products_found += len(products_data)

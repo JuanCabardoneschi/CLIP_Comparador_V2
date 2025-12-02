@@ -1143,23 +1143,30 @@
 
                             // Link a producto si existe (atributo tipo URL o campo product_url)
                             let productLinkHtml = '';
+                            let productUrl = '';
                             if (p.product_url) {
-                                let href = '';
                                 if (typeof p.product_url === 'object') {
-                                    href = p.product_url.url || p.product_url.value || '';
+                                    productUrl = p.product_url.url || p.product_url.value || '';
                                 } else {
-                                    href = String(p.product_url);
+                                    productUrl = String(p.product_url);
                                 }
-                                if (href) {
-                                    const btn = `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:8px;background:#0ea5e9;color:#fff;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;">Ver producto ↗</a>`;
+                                if (productUrl) {
+                                    const btn = `<a href="${productUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:8px;background:#0ea5e9;color:#fff;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;">Ver producto ↗</a>`;
                                     productLinkHtml = btn;
                                 }
                             }
 
+                            // Hacer la imagen clickeable si hay URL
+                            const imgContent = productUrl
+                                ? `<a href="${productUrl}" target="_blank" rel="noopener noreferrer" style="display:block;height:100%;cursor:pointer;">
+                                    <img src="${p.image_url}" alt="${p.name}" class="clip-product-img">
+                                   </a>`
+                                : `<img src="${p.image_url}" alt="${p.name}" class="clip-product-img">`;
+
                             return `
                             <div class="clip-product">
                                 <div class="clip-product-img-wrap">
-                                    <img src="${p.image_url}" alt="${p.name}" class="clip-product-img">
+                                    ${imgContent}
                                     <div class="clip-similarity-badge">
                                         ${Math.round(p.similarity_score * 100)}% Match
                                     </div>

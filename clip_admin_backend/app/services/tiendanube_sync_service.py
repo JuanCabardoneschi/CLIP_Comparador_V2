@@ -265,6 +265,16 @@ class TiendanubeSyncService:
             # Stock: sumar todas las variantes
             stock = sum(v.get('stock', 0) for v in variants)
 
+            # Construir external_url correctamente
+            handle_data = prod_data.get('handle', {})
+            if isinstance(handle_data, dict):
+                # handle es un dict multiidioma: {'es': 'remera-roja', 'pt': 'camisa-vermelha'}
+                handle = handle_data.get('es', handle_data.get('pt', str(external_id)))
+            else:
+                handle = str(handle_data) if handle_data else str(external_id)
+
+            external_url = f"https://{self.integration.store_domain}/productos/{handle}"
+
             if product:
                 # Actualizar existente
                 product.name = name
@@ -274,6 +284,7 @@ class TiendanubeSyncService:
                 product.price = price
                 product.stock = stock
                 product.category_id = category.id
+                product.external_url = external_url
                 product.last_sync_at = datetime.utcnow()
                 product.sync_status = 'synced'
                 self.stats['products_updated'] += 1
@@ -289,7 +300,7 @@ class TiendanubeSyncService:
                     price=price,
                     stock=stock,
                     external_id=external_id,
-                    external_url=f"https://{self.integration.store_domain}/products/{prod_data.get('handle', external_id)}",
+                    external_url=external_url,
                     last_sync_at=datetime.utcnow(),
                     sync_status='synced'
                 )
