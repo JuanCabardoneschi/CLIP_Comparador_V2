@@ -19,7 +19,9 @@ def widget():
     Página del widget que se embebe en Tiendanube
     Muestra el comparador visual completo
     """
-    return render_template('tiendanube_widget.html')
+    # Permitir pasar la API Key por querystring: ?api_key=...
+    api_key = request.args.get('api_key') or request.args.get('key') or request.args.get('apikey')
+    return render_template('tiendanube_widget.html', api_key=api_key)
 
 @bp.route('/config')
 def config():
@@ -35,7 +37,8 @@ def config():
     if store_id and access_token:
         script_installed = install_floating_button(store_id, access_token)
 
-    widget_url = 'https://clipcomparadorv2-production.up.railway.app/tiendanube/widget'
+    # Sugerir URL con placeholder de API Key para que cada tienda use su clave
+    widget_url = 'https://clipcomparadorv2-production.up.railway.app/tiendanube/widget?api_key=TU_API_KEY'
 
     html = f"""
     <!DOCTYPE html>

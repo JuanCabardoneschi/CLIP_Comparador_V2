@@ -57,7 +57,7 @@
     <script>
         // Configuración requerida por clip-widget-embed-v4.js
         window.CLIPWidget = {
-            apiKey: 'eve-api-key-2024',
+            apiKey: '{{ (api_key or "")|e if api_key is not none else "eve-api-key-2024" }}',
             serverUrl: 'https://clipcomparadorv2-production.up.railway.app'
         };
         function openClipOverlay() {
