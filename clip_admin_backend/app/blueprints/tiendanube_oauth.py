@@ -298,17 +298,17 @@ def register_webhooks(store_id, access_token):
         'Content-Type': 'application/json'
     }
 
-    webhook_url_base = 'https://clipcomparadorv2-production.up.railway.app/webhooks/tiendanube'
+    webhook_url_base = 'https://clipcomparadorv2-production.up.railway.app/api/webhooks/tiendanube'
 
     webhooks_to_create = [
-        {'event': 'product/created', 'url': f'{webhook_url_base}/product/created'},
-        {'event': 'product/updated', 'url': f'{webhook_url_base}/product/updated'},
-        {'event': 'product/deleted', 'url': f'{webhook_url_base}/product/deleted'},
-        {'event': 'category/created', 'url': f'{webhook_url_base}/category/created'},
-        {'event': 'category/updated', 'url': f'{webhook_url_base}/category/updated'},
-        {'event': 'category/deleted', 'url': f'{webhook_url_base}/category/deleted'},
-        {'event': 'app/uninstalled', 'url': f'{webhook_url_base}/app/uninstalled'},
-        {'event': 'store/redact', 'url': f'{webhook_url_base}/store/redact'},
+        {'event': 'product/created', 'url': f'{webhook_url_base}/product'},
+        {'event': 'product/updated', 'url': f'{webhook_url_base}/product'},
+        {'event': 'product/deleted', 'url': f'{webhook_url_base}/product'},
+        {'event': 'category/created', 'url': f'{webhook_url_base}/category'},
+        {'event': 'category/updated', 'url': f'{webhook_url_base}/category'},
+        {'event': 'category/deleted', 'url': f'{webhook_url_base}/category'},
+        {'event': 'app/uninstalled', 'url': f'{webhook_url_base}/app'},
+        {'event': 'store/redact', 'url': f'{webhook_url_base}/app'},
     ]
 
     for webhook in webhooks_to_create:

@@ -299,6 +299,19 @@ def webhook_app():
             logger.info(f"Integración desinstalada: store_id={store_id}, client_id={integration.client_id}")
             return jsonify({"status": "uninstalled"}), 200
 
+        elif event == 'store/redact':
+            # GDPR: Solicitud de eliminación de datos de la tienda
+            integration.is_active = False
+            integration.integration_status = 'redacted'
+
+            # Desactivar cliente y marcar para revisión GDPR
+            client = integration.client
+            client.is_active = False
+
+            db.session.commit()
+            logger.warning(f"🔒 GDPR: Solicitud de eliminación de datos - store_id={store_id}, client_id={integration.client_id}")
+            return jsonify({"status": "redacted", "message": "Data marked for deletion"}), 200
+
         else:
             logger.warning(f"Evento desconocido: {event}")
             return jsonify({"error": "Unknown event"}), 400
