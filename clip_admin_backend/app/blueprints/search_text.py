@@ -1228,15 +1228,31 @@ def text_search():
                         ]
                         terms_unmatched = [str(m).lower() for m in (modificadores_no_configurados or []) if str(m).strip()]
 
+                        # Intentar marcar la categoría solicitada (sustantivo principal) como missing si existe
+                        categoria_solicitada = None
+                        try:
+                            # categoria_extraida definida arriba por extractor
+                            if 'categoria_extraida' in locals() and categoria_extraida:
+                                categoria_solicitada = categoria_extraida.strip()
+                        except Exception:
+                            categoria_solicitada = None
+                        categories_detected_log = None
+                        categories_missing_log = None
+                        if categoria_solicitada:
+                            # Evitar marcar si coincide exactamente con alguna disponible
+                            if categoria_solicitada not in available_names:
+                                categories_detected_log = [categoria_solicitada]
+                                categories_missing_log = [categoria_solicitada]
+
                         elapsed_ms = int((_t.time() - start_time) * 1000)
                         SearchLog.log_search(
                             client_id=client.id,
                             search_type='text',
                             query_text=query_text,
                             image_url=None,
-                            categories_detected=None,
+                            categories_detected=categories_detected_log,
                             categories_matched=None,
-                            categories_missing=None,
+                            categories_missing=categories_missing_log,
                             terms_extracted=terms_extracted or None,
                             terms_matched=terms_matched or None,
                             terms_unmatched=terms_unmatched or None,
@@ -1256,7 +1272,8 @@ def text_search():
                         "error": "no_category",
                         "message": "No se detectó ninguna categoría válida",
                         "categories_available": available_names,
-                        "categories_searched": available_names
+                        "categories_searched": available_names,
+                        "category_requested": categoria_solicitada
                     })
 
                 base_products = Product.query.filter(
