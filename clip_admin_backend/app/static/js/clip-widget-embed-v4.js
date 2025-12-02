@@ -872,15 +872,27 @@
                 if (userIntent) {
                     const detectionDiv = widgetContainer.querySelector('#clip-detection');
                     const itemsDiv = widgetContainer.querySelector('#clip-detection-items');
+                    const costDiv = widgetContainer.querySelector('#clip-detection-cost');
 
-                    // Mostrar intención del usuario directamente en itemsDiv
-                    itemsDiv.innerHTML = `
-                        <div class="clip-user-intent" style="margin-top: 10px; padding: 12px; background: #f8f9fa; border-left: 3px solid #007bff; border-radius: 4px; font-size: 14px; line-height: 1.5;">
-                            <strong>💡 Análisis de imagen:</strong><br>
+                    // Limpiar contenedores
+                    itemsDiv.innerHTML = '';
+                    costDiv.textContent = '';
+                    const existingIntent = detectionDiv.querySelector('.clip-user-intent');
+                    if (existingIntent) existingIntent.remove();
+
+                    // Mostrar user_intent EXACTAMENTE como en displayDetection (sin tags de categorías)
+                    const intentHtml = `
+                        <div class="clip-user-intent">
                             ${userIntent}
                         </div>
                     `;
+                    costDiv.insertAdjacentHTML('beforebegin', intentHtml);
                     detectionDiv.classList.add('active');
+
+                    // Hacer scroll al bloque de detección
+                    setTimeout(() => {
+                        detectionDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
 
                     // NO mostrar showError() para permitir que el mensaje de intención sea visible
                 } else {
