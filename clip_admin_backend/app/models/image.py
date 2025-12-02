@@ -15,10 +15,18 @@ class Image(db.Model):
     original_filename = db.Column(db.String(500))  # Nombre del archivo original al subir
     cloudinary_url = db.Column(db.String(500))  # URL completa de Cloudinary
     cloudinary_public_id = db.Column(db.String(255))  # ID público de Cloudinary
-    base64_data = db.Column(db.Text)  # Imagen en base64 para API (generado una sola vez)
+
+    # 🔗 PIPELINE BASE64 TIENDANUBE
+    base64_data = db.Column(db.Text)  # Imagen completa en base64 (opcional)
+    base64_thumb = db.Column(db.Text)  # Thumbnail base64 para UI/embeddings
+    source_url = db.Column(db.Text)  # URL original de Tiendanube
+    source_updated_at = db.Column(db.DateTime)  # Última actualización de fuente
+    hash_sha256 = db.Column(db.String(128))  # Hash para detectar cambios
+    size_bytes = db.Column(db.Integer)  # Tamaño en bytes (corregir nombre de file_size)
+
     width = db.Column(db.Integer)
     height = db.Column(db.Integer)
-    file_size = db.Column(db.Integer)  # Tamaño en bytes
+    file_size = db.Column(db.Integer)  # DEPRECATED: usar size_bytes
     mime_type = db.Column(db.String(100))
     alt_text = db.Column(db.String(255))  # Texto alternativo para accesibilidad
     display_order = db.Column(db.Integer, default=0)  # Orden de visualización de la imagen

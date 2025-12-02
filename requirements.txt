@@ -18,6 +18,7 @@ redis==5.0.1                    # Cache y sesiones
 # ============================================================================
 Flask-Login==0.6.3              # User session management
 Flask-JWT-Extended==4.6.0       # JWT tokens para API (incluye PyJWT)
+cryptography==41.0.7            # Token encryption para Tiendanube OAuth
 
 # ============================================================================
 # AI & ML - CLIP VISUAL SEARCH (CPU-only para Railway)

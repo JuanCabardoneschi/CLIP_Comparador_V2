@@ -1,0 +1,726 @@
+"""
+Servicio de sincronización con Tiendanube
+Pipeline completo: Categorías → Productos → Imágenes Base64 → Embeddings → Centroides
+"""
+import requests
+import logging
+import base64
+import hashlib
+import io
+from PIL import Image as PILImage
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+import json
+import time
+
+from app import db
+from app.models.client import Client
+from app.models.tiendanube_integration import TiendanubeIntegration
+from app.models.category import Category
+from app.models.product import Product
+from app.models.image import Image
+
+logger = logging.getLogger(__name__)
+
+TIENDANUBE_API_BASE = 'https://api.tiendanube.com/v1'
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # segundos
+
+class TiendanubeSyncService:
+    """Servicio para sincronización inicial e incremental con Tiendanube"""
+
+    def __init__(self, integration_or_client_id):
+        """
+        Inicializa el servicio de sincronización.
+
+        Args:
+            integration_or_client_id: Puede ser un objeto TiendanubeIntegration o un client_id (str)
+        """
+        if isinstance(integration_or_client_id, str):
+            # Es un client_id
+            self.client = Client.query.get(integration_or_client_id)
+            if not self.client:
+                raise ValueError(f"Cliente {integration_or_client_id} no encontrado")
+
+            self.integration = TiendanubeIntegration.query.filter_by(
+                client_id=integration_or_client_id, is_active=True
+            ).first()
+
+            if not self.integration:
+                raise ValueError(f"No hay integración activa para cliente {integration_or_client_id}")
+        else:
+            # Es un objeto TiendanubeIntegration
+            self.integration = integration_or_client_id
+            self.client = Client.query.get(self.integration.client_id)
+            if not self.client:
+                raise ValueError(f"Cliente {self.integration.client_id} no encontrado")
+
+        self.store_id = self.integration.store_id
+        self.access_token = self.integration.get_access_token()
+        self.headers = {
+            'Authentication': f'bearer {self.access_token}',
+            'User-Agent': 'CLIP Comparador V2 (info@clipcomparador.com)',
+            'Content-Type': 'application/json'
+        }
+
+        # Stats de sincronización
+        self.stats = {
+            'categories_created': 0,
+            'categories_updated': 0,
+            'products_created': 0,
+            'products_updated': 0,
+            'images_processed': 0,
+            'errors': []
+        }
+
+    def full_sync(self) -> Dict:
+        """
+        Sincronización completa inicial:
+        1. Sincronizar categorías
+        2. Sincronizar productos con imágenes
+        3. Generar embeddings CLIP
+        4. Calcular centroides de categorías
+        """
+        try:
+            logger.info(f"Iniciando sincronización completa para store_id={self.store_id}")
+            self.integration.sync_status = 'in_progress'
+            self.integration.sync_error = None
+            db.session.commit()
+
+            start_time = time.time()
+
+            # 1. Sincronizar categorías
+            logger.info("Paso 1/4: Sincronizando categorías...")
+            self.sync_categories()
+
+            # 2. Sincronizar productos con imágenes
+            logger.info("Paso 2/4: Sincronizando productos e imágenes...")
+            self.sync_products()
+
+            # 3. Generar embeddings CLIP (si no existen)
+            logger.info("Paso 3/4: Generando embeddings CLIP...")
+            self.generate_embeddings()
+
+            # 4. Calcular centroides de categorías
+            logger.info("Paso 4/4: Calculando centroides de categorías...")
+            self.calculate_category_centroids()
+
+            duration = time.time() - start_time
+
+            # Actualizar estado de integración
+            self.integration.sync_status = 'completed'
+            self.integration.last_sync_at = datetime.utcnow()
+            db.session.commit()
+
+            logger.info(f"Sincronización completa exitosa en {duration:.2f}s")
+
+            return {
+                'success': True,
+                'duration_seconds': duration,
+                'stats': self.stats
+            }
+
+        except Exception as e:
+            logger.error(f"Error en sincronización completa: {str(e)}", exc_info=True)
+            self.integration.sync_status = 'error'
+            self.integration.sync_error = str(e)
+            db.session.commit()
+
+            return {
+                'success': False,
+                'error': str(e),
+                'stats': self.stats
+            }
+
+    def sync_categories(self):
+        """Sincroniza categorías desde Tiendanube"""
+        try:
+            page = 1
+            per_page = 50
+
+            while True:
+                url = f'{TIENDANUBE_API_BASE}/{self.store_id}/categories'
+                params = {'page': page, 'per_page': per_page}
+
+                response = self._api_request('GET', url, params=params)
+                if not response:
+                    break
+
+                categories = response.json()
+                if not categories:
+                    break
+
+                for cat_data in categories:
+                    self._sync_category(cat_data)
+
+                if len(categories) < per_page:
+                    break
+
+                page += 1
+                time.sleep(0.5)  # Rate limiting
+
+        except Exception as e:
+            logger.error(f"Error sincronizando categorías: {str(e)}")
+            self.stats['errors'].append(f"Categorías: {str(e)}")
+
+    def _sync_category(self, cat_data: Dict):
+        """Sincroniza una categoría individual"""
+        try:
+            external_id = str(cat_data['id'])
+
+            # Buscar categoría existente
+            category = Category.query.filter_by(
+                client_id=self.client.id,
+                external_id=external_id
+            ).first()
+
+            name = cat_data.get('name', {}).get('es', f'Categoría {external_id}')
+            description = cat_data.get('description', {}).get('es', '')
+
+            if category:
+                # Actualizar existente
+                category.name = name
+                category.description = description
+                category.last_sync_at = datetime.utcnow()
+                category.sync_status = 'synced'
+                self.stats['categories_updated'] += 1
+            else:
+                # Crear nueva
+                category = Category(
+                    client_id=self.client.id,
+                    name=name,
+                    description=description,
+                    external_id=external_id,
+                    last_sync_at=datetime.utcnow(),
+                    sync_status='synced'
+                )
+                db.session.add(category)
+                self.stats['categories_created'] += 1
+
+            db.session.commit()
+
+        except Exception as e:
+            logger.error(f"Error sincronizando categoría {cat_data.get('id')}: {str(e)}")
+            self.stats['errors'].append(f"Categoría {cat_data.get('id')}: {str(e)}")
+
+    def sync_products(self):
+        """Sincroniza productos con sus imágenes desde Tiendanube"""
+        try:
+            page = 1
+            per_page = 50
+
+            while True:
+                url = f'{TIENDANUBE_API_BASE}/{self.store_id}/products'
+                params = {'page': page, 'per_page': per_page}
+
+                response = self._api_request('GET', url, params=params)
+                if not response:
+                    break
+
+                products = response.json()
+                if not products:
+                    break
+
+                for prod_data in products:
+                    self._sync_product(prod_data)
+
+                if len(products) < per_page:
+                    break
+
+                page += 1
+                time.sleep(0.5)  # Rate limiting
+
+        except Exception as e:
+            logger.error(f"Error sincronizando productos: {str(e)}")
+            self.stats['errors'].append(f"Productos: {str(e)}")
+
+    def _sync_product(self, prod_data: Dict):
+        """Sincroniza un producto individual con sus imágenes"""
+        try:
+            external_id = str(prod_data['id'])
+
+            # Mapear categoría
+            category = self._map_category(prod_data.get('categories'))
+            if not category:
+                logger.warning(f"Producto {external_id} sin categoría válida, usando 'Sin categoría'")
+                category = self._get_or_create_default_category()
+
+            # Buscar producto existente
+            product = Product.query.filter_by(
+                client_id=self.client.id,
+                external_id=external_id
+            ).first()
+
+            name = prod_data.get('name', {}).get('es', f'Producto {external_id}')
+            description = prod_data.get('description', {}).get('es', '')
+            brand = prod_data.get('brand', '')
+            sku = prod_data.get('sku', '')
+
+            # Precio: tomar el de la primer variante o default
+            price = None
+            variants = prod_data.get('variants', [])
+            if variants and len(variants) > 0:
+                price = variants[0].get('price')
+
+            # Stock: sumar todas las variantes
+            stock = sum(v.get('stock', 0) for v in variants)
+
+            if product:
+                # Actualizar existente
+                product.name = name
+                product.description = description
+                product.brand = brand
+                product.sku = sku
+                product.price = price
+                product.stock = stock
+                product.category_id = category.id
+                product.last_sync_at = datetime.utcnow()
+                product.sync_status = 'synced'
+                self.stats['products_updated'] += 1
+            else:
+                # Crear nuevo
+                product = Product(
+                    client_id=self.client.id,
+                    category_id=category.id,
+                    name=name,
+                    description=description,
+                    brand=brand,
+                    sku=sku,
+                    price=price,
+                    stock=stock,
+                    external_id=external_id,
+                    external_url=f"https://{self.integration.store_domain}/products/{prod_data.get('handle', external_id)}",
+                    last_sync_at=datetime.utcnow(),
+                    sync_status='synced'
+                )
+                db.session.add(product)
+                db.session.flush()  # Obtener product.id
+                self.stats['products_created'] += 1
+
+            db.session.commit()
+
+            # Sincronizar imágenes
+            images = prod_data.get('images', [])
+            if images:
+                self._sync_product_images(product, images)
+
+        except Exception as e:
+            logger.error(f"Error sincronizando producto {prod_data.get('id')}: {str(e)}")
+            self.stats['errors'].append(f"Producto {prod_data.get('id')}: {str(e)}")
+            db.session.rollback()
+
+    def _sync_product_images(self, product: Product, images_data: List[Dict]):
+        """Sincroniza imágenes de un producto con pipeline Base64"""
+        try:
+            for idx, img_data in enumerate(images_data):
+                source_url = img_data.get('src')
+                if not source_url:
+                    continue
+
+                # Calcular hash de la URL para detectar cambios
+                url_hash = hashlib.sha256(source_url.encode()).hexdigest()
+
+                # Buscar imagen existente por hash
+                existing_image = Image.query.filter_by(
+                    product_id=product.id,
+                    hash_sha256=url_hash
+                ).first()
+
+                if existing_image:
+                    # Imagen ya existe y no cambió
+                    continue
+
+                # Descargar y convertir a Base64
+                base64_full, base64_thumb, mime_type, width, height, size_bytes = self._download_and_convert_image(source_url)
+
+                if not base64_thumb:
+                    logger.warning(f"No se pudo procesar imagen {source_url}")
+                    continue
+
+                # Crear nueva imagen
+                image = Image(
+                    client_id=self.client.id,
+                    product_id=product.id,
+                    filename=f"tn_{product.external_id}_{idx}.{mime_type.split('/')[-1]}",
+                    original_filename=source_url.split('/')[-1],
+                    source_url=source_url,
+                    base64_data=base64_full,  # Opcional: puede ser None para ahorrar espacio
+                    base64_thumb=base64_thumb,
+                    mime_type=mime_type,
+                    width=width,
+                    height=height,
+                    size_bytes=size_bytes,
+                    hash_sha256=url_hash,
+                    is_primary=(idx == 0),
+                    display_order=idx,
+                    upload_status='completed',
+                    is_processed=False  # Se generará embedding después
+                )
+                db.session.add(image)
+                db.session.commit()
+
+                self.stats['images_processed'] += 1
+
+        except Exception as e:
+            logger.error(f"Error sincronizando imágenes del producto {product.id}: {str(e)}")
+            self.stats['errors'].append(f"Imágenes producto {product.id}: {str(e)}")
+
+    def _download_and_convert_image(self, url: str, thumb_size: Tuple[int, int] = (300, 300)) -> Tuple[Optional[str], Optional[str], str, int, int, int]:
+        """
+        Descarga imagen y la convierte a Base64 (full y thumbnail).
+        Retorna: (base64_full, base64_thumb, mime_type, width, height, size_bytes)
+        """
+        try:
+            response = requests.get(url, timeout=15, verify=False)
+            if response.status_code != 200:
+                return None, None, '', 0, 0, 0
+
+            image_bytes = response.content
+            size_bytes = len(image_bytes)
+
+            # Abrir con PIL
+            img = PILImage.open(io.BytesIO(image_bytes))
+            width, height = img.size
+            mime_type = f"image/{img.format.lower()}" if img.format else "image/jpeg"
+
+            # Convertir a RGB si es necesario
+            if img.mode in ('RGBA', 'LA', 'P'):
+                background = PILImage.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[-1] if 'A' in img.mode else None)
+                img = background
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+
+            # Base64 full (opcional, puede ser None para ahorrar espacio)
+            # base64_full = base64.b64encode(image_bytes).decode('utf-8')
+            base64_full = None  # Por defecto no guardamos full, solo thumbnail
+
+            # Generar thumbnail
+            img_thumb = img.copy()
+            img_thumb.thumbnail(thumb_size, PILImage.Resampling.LANCZOS)
+
+            thumb_buffer = io.BytesIO()
+            img_thumb.save(thumb_buffer, format='JPEG', quality=85, optimize=True)
+            thumb_buffer.seek(0)
+            base64_thumb = base64.b64encode(thumb_buffer.read()).decode('utf-8')
+
+            return base64_full, base64_thumb, mime_type, width, height, size_bytes
+
+        except Exception as e:
+            logger.error(f"Error descargando/convirtiendo imagen {url}: {str(e)}")
+            return None, None, '', 0, 0, 0
+
+    def generate_embeddings(self):
+        """Genera embeddings CLIP para imágenes sin procesar"""
+        try:
+            # Importar CLIP engine
+            from app.core.clip_engine import CLIPEngine
+            clip_engine = CLIPEngine()
+
+            # Obtener imágenes sin procesar
+            unprocessed_images = Image.query.filter_by(
+                client_id=self.client.id,
+                is_processed=False
+            ).filter(
+                Image.base64_thumb.isnot(None)
+            ).all()
+
+            logger.info(f"Generando embeddings para {len(unprocessed_images)} imágenes...")
+
+            for image in unprocessed_images:
+                try:
+                    # Decodificar Base64 a bytes
+                    image_bytes = base64.b64decode(image.base64_thumb)
+
+                    # Generar embedding
+                    embedding = clip_engine.get_image_embedding_from_bytes(image_bytes)
+
+                    # Serializar y guardar
+                    image.clip_embedding = json.dumps(embedding.tolist())
+                    image.is_processed = True
+                    image.upload_status = 'completed'
+                    db.session.commit()
+
+                except Exception as e:
+                    logger.error(f"Error generando embedding para imagen {image.id}: {str(e)}")
+                    image.upload_status = 'failed'
+                    image.error_message = str(e)
+                    db.session.commit()
+
+            logger.info(f"Embeddings generados exitosamente")
+
+        except Exception as e:
+            logger.error(f"Error en generate_embeddings: {str(e)}")
+            self.stats['errors'].append(f"Embeddings: {str(e)}")
+
+    def calculate_category_centroids(self):
+        """Calcula centroides CLIP para cada categoría"""
+        try:
+            from app.core.clip_engine import CLIPEngine
+            import numpy as np
+
+            clip_engine = CLIPEngine()
+
+            # Obtener categorías del cliente
+            categories = Category.query.filter_by(client_id=self.client.id).all()
+
+            for category in categories:
+                try:
+                    # Obtener productos de la categoría con embeddings
+                    products = Product.query.filter_by(
+                        client_id=self.client.id,
+                        category_id=category.id,
+                        is_active=True
+                    ).all()
+
+                    embeddings = []
+                    for product in products:
+                        for image in product.images:
+                            if image.is_processed and image.clip_embedding:
+                                try:
+                                    emb = json.loads(image.clip_embedding)
+                                    embeddings.append(emb)
+                                except Exception:
+                                    continue
+
+                    if embeddings:
+                        # Calcular centroide (media)
+                        embeddings_array = np.array(embeddings)
+                        centroid = np.mean(embeddings_array, axis=0)
+
+                        # Guardar centroide
+                        category.centroid_embedding = json.dumps(centroid.tolist())
+                        db.session.commit()
+
+                        logger.info(f"Centroide calculado para categoría {category.name}: {len(embeddings)} embeddings")
+
+                except Exception as e:
+                    logger.error(f"Error calculando centroide para categoría {category.id}: {str(e)}")
+
+        except Exception as e:
+            logger.error(f"Error en calculate_category_centroids: {str(e)}")
+            self.stats['errors'].append(f"Centroides: {str(e)}")
+
+    def _map_category(self, categories_data: List[Dict]) -> Optional[Category]:
+        """Mapea categoría de Tiendanube a categoría local"""
+        if not categories_data:
+            return None
+
+        # Tomar primera categoría
+        cat_data = categories_data[0]
+        external_id = str(cat_data['id'])
+
+        # Buscar categoría local por external_id
+        category = Category.query.filter_by(
+            client_id=self.client.id,
+            external_id=external_id
+        ).first()
+
+        return category
+
+    def _get_or_create_default_category(self) -> Category:
+        """Obtiene o crea categoría 'Sin categoría'"""
+        category = Category.query.filter_by(
+            client_id=self.client.id,
+            name='Sin categoría'
+        ).first()
+
+        if not category:
+            category = Category(
+                client_id=self.client.id,
+                name='Sin categoría',
+                description='Productos sin categoría asignada'
+            )
+            db.session.add(category)
+            db.session.commit()
+
+        return category
+
+    def _api_request(self, method: str, url: str, **kwargs):
+        """Realiza petición a la API de Tiendanube con reintentos"""
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = requests.request(
+                    method, url,
+                    headers=self.headers,
+                    timeout=30,
+                    verify=False,
+                    **kwargs
+                )
+
+                if response.status_code == 429:  # Rate limit
+                    logger.warning(f"Rate limit alcanzado, esperando {RETRY_DELAY}s...")
+                    time.sleep(RETRY_DELAY)
+                    continue
+
+                if response.status_code >= 400:
+                    logger.error(f"Error API {response.status_code}: {response.text}")
+                    return None
+
+                return response
+
+            except Exception as e:
+                logger.error(f"Error en petición API (intento {attempt + 1}/{MAX_RETRIES}): {str(e)}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_DELAY)
+                else:
+                    return None
+
+        return None
+
+
+    def _sync_single_product(self, product_id: str) -> Optional[Product]:
+        """
+        Sincroniza un único producto desde Tiendanube (para webhooks).
+
+        Args:
+            product_id: ID externo del producto en Tiendanube
+
+        Returns:
+            Product object o None si falla
+        """
+        try:
+            # Obtener producto desde API
+            url = f'{TIENDANUBE_API_BASE}/{self.store_id}/products/{product_id}'
+            response = self._api_request('GET', url)
+
+            if not response:
+                logger.error(f"No se pudo obtener producto {product_id} desde Tiendanube")
+                return None
+
+            prod_data = response.json()
+
+            # Sincronizar usando método existente
+            product = self._sync_product(prod_data)
+
+            # Generar embeddings si hay imágenes nuevas
+            if product:
+                images = Image.query.filter_by(
+                    product_id=product.id,
+                    is_processed=False
+                ).all()
+
+                if images:
+                    from app.services.clip_service import CLIPService
+                    clip_service = CLIPService()
+
+                    for image in images:
+                        if image.base64_data:
+                            embedding = clip_service.generate_embedding_from_base64(image.base64_data)
+                            if embedding:
+                                image.clip_embedding = json.dumps(embedding.tolist())
+                                image.is_processed = True
+
+                    db.session.commit()
+
+                # Actualizar centroide de categoría
+                if product.category_id:
+                    category = Category.query.get(product.category_id)
+                    if category:
+                        self._calculate_single_category_centroid(category)
+
+            return product
+
+        except Exception as e:
+            logger.error(f"Error sincronizando producto individual {product_id}: {str(e)}", exc_info=True)
+            return None
+
+    def _sync_single_category(self, category_id: str) -> Optional[Category]:
+        """
+        Sincroniza una única categoría desde Tiendanube (para webhooks).
+
+        Args:
+            category_id: ID externo de la categoría en Tiendanube
+
+        Returns:
+            Category object o None si falla
+        """
+        try:
+            # Obtener categoría desde API
+            url = f'{TIENDANUBE_API_BASE}/{self.store_id}/categories/{category_id}'
+            response = self._api_request('GET', url)
+
+            if not response:
+                logger.error(f"No se pudo obtener categoría {category_id} desde Tiendanube")
+                return None
+
+            cat_data = response.json()
+
+            # Sincronizar usando método existente
+            self._sync_category(cat_data)
+
+            # Buscar categoría recién sincronizada
+            category = Category.query.filter_by(
+                client_id=self.client.id,
+                external_id=category_id
+            ).first()
+
+            return category
+
+        except Exception as e:
+            logger.error(f"Error sincronizando categoría individual {category_id}: {str(e)}", exc_info=True)
+            return None
+
+    def _calculate_single_category_centroid(self, category: Category):
+        """
+        Calcula centroide para una única categoría.
+
+        Args:
+            category: Objeto Category
+        """
+        try:
+            import numpy as np
+
+            # Obtener embeddings de productos en esta categoría
+            products = Product.query.filter_by(
+                client_id=self.client.id,
+                category_id=category.id,
+                is_active=True
+            ).all()
+
+            embeddings = []
+            for product in products:
+                images = Image.query.filter_by(
+                    product_id=product.id,
+                    is_processed=True
+                ).all()
+
+                for image in images:
+                    if image.clip_embedding:
+                        try:
+                            emb = json.loads(image.clip_embedding)
+                            embeddings.append(emb)
+                        except Exception:
+                            continue
+
+            if embeddings:
+                # Calcular centroide (media)
+                embeddings_array = np.array(embeddings)
+                centroid = np.mean(embeddings_array, axis=0)
+
+                # Guardar centroide
+                category.centroid_embedding = json.dumps(centroid.tolist())
+                db.session.commit()
+
+                logger.info(f"Centroide actualizado para categoría {category.name}: {len(embeddings)} embeddings")
+
+        except Exception as e:
+            logger.error(f"Error calculando centroide para categoría {category.id}: {str(e)}")
+
+
+def start_full_sync(client_id: str) -> Dict:
+    """
+    Función auxiliar para iniciar sincronización completa.
+    Puede ser llamada desde un task asíncrono o endpoint.
+    """
+    try:
+        service = TiendanubeSyncService(client_id)
+        return service.full_sync()
+    except Exception as e:
+        logger.error(f"Error iniciando sincronización para cliente {client_id}: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e)
+        }

@@ -1,10 +1,14 @@
 """
-Blueprint para manejar OAuth con Tiendanube (sin base de datos)
+Blueprint para manejar OAuth con Tiendanube
+Flujo completo: OAuth → Crear Cliente → Registrar Integración → Webhooks → Widget
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, render_template_string
 import requests
 import logging
 import urllib3
+from app.models.client import Client
+from app.models.tiendanube_integration import TiendanubeIntegration
+from app import db
 
 # Deshabilitar warnings de SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -23,17 +27,22 @@ TIENDANUBE_API_BASE = 'https://api.tiendanube.com/v1'
 @bp.route('/callback', methods=['GET'])
 def oauth_callback():
     """
-    Callback OAuth: intercambia el `code` por `access_token` y
-    devuelve JSON con `access_token`, `user_id` y `scope`.
-    No persiste nada en base de datos.
+    Callback OAuth completo:
+    1. Intercambia code por access_token
+    2. Crea nuevo Cliente en el sistema
+    3. Guarda integración con token encriptado
+    4. Registra webhooks
+    5. Intenta inyectar widget (con fallback)
+    6. Redirige a página de éxito
     """
     try:
         code = request.args.get('code')
         if not code:
             error = request.args.get('error', 'No se recibió código de autorización')
             logger.error(f"OAuth error: {error}")
-            return jsonify({'success': False, 'error': error}), 400
+            return render_template_string(render_error_page(error)), 400
 
+        # 1. Intercambio de código por token
         token_data = {
             'client_id': TIENDANUBE_CLIENT_ID,
             'client_secret': TIENDANUBE_CLIENT_SECRET,
@@ -57,33 +66,127 @@ def oauth_callback():
             except Exception:
                 error_msg = f"HTTP {response.status_code}"
             logger.error(f"Error al obtener token: {error_msg}")
-            return jsonify({'success': False, 'error': error_msg}), 400
+            return render_template_string(render_error_page(error_msg)), 400
 
         token_response = response.json()
         access_token = token_response.get('access_token')
-        token_type = token_response.get('token_type', 'bearer')
         scope = token_response.get('scope', '')
-        user_id = token_response.get('user_id')
+        user_id = token_response.get('user_id')  # store_id
 
-        if not access_token:
-            return jsonify({'success': False, 'error': 'No se recibió access_token'}), 400
+        if not access_token or not user_id:
+            return render_template_string(render_error_page('No se recibió access_token o user_id')), 400
 
-        # Intentar obtener info de tienda (opcional)
-        store_info = {}
-        if user_id:
-            store_info = get_store_info(user_id, access_token) or {}
+        # 2. Obtener información de la tienda
+        store_info = get_store_info(user_id, access_token)
+        if not store_info:
+            return render_template_string(render_error_page('No se pudo obtener información de la tienda')), 400
 
-        return jsonify({
-            'success': True,
-            'access_token': access_token,
-            'token_type': token_type,
-            'scope': scope,
-            'user_id': user_id,
-            'store': store_info
-        })
+        store_name = store_info.get('name', {}).get('es', f'Tienda {user_id}')
+        store_email = store_info.get('email', '')
+        store_domain = store_info.get('original_domain', store_info.get('main_domain', ''))
+
+        # 3. Verificar si ya existe integración (reinstalación)
+        existing_integration = TiendanubeIntegration.query.filter_by(store_id=str(user_id)).first()
+
+        if existing_integration:
+            # Reinstalación: actualizar token y reactivar
+            logger.info(f"Reinstalación detectada para store_id={user_id}")
+            existing_integration.set_access_token(access_token)
+            existing_integration.scopes = scope.split() if scope else []
+            existing_integration.is_active = True
+            existing_integration.uninstalled_at = None
+            existing_integration.sync_status = 'pending'
+            db.session.commit()
+
+            client = existing_integration.client
+            logger.info(f"Cliente reactivado: {client.id}")
+        else:
+            # 4. Crear nuevo Cliente
+            client = Client(
+                name=store_name,
+                email=store_email or f'{user_id}@tiendanube.com',
+                industry='ecommerce',
+                integration_type='tiendanube',
+                is_read_only=True,
+                integration_config={
+                    'store_id': str(user_id),
+                    'store_domain': store_domain,
+                    'installed_at': str(db.func.now())
+                }
+            )
+            db.session.add(client)
+            db.session.flush()  # Obtener client.id
+
+            logger.info(f"Cliente creado: {client.id} para tienda {store_name}")
+
+            # 5. Crear integración con token encriptado
+            integration = TiendanubeIntegration(
+                client_id=client.id,
+                store_id=str(user_id),
+                store_name=store_name,
+                store_email=store_email,
+                store_domain=store_domain,
+                scopes=scope.split() if scope else [],
+                sync_status='pending'
+            )
+            integration.set_access_token(access_token)
+            db.session.add(integration)
+            db.session.commit()
+
+            logger.info(f"Integración creada: {integration.id}")
+
+        # 6. Registrar webhooks (asíncrono recomendado, pero por ahora inline)
+        webhook_ids = register_webhooks(user_id, access_token)
+        if webhook_ids:
+            if existing_integration:
+                existing_integration.webhook_ids = webhook_ids
+            else:
+                integration.webhook_ids = webhook_ids
+            db.session.commit()
+            logger.info(f"Webhooks registrados: {webhook_ids}")
+
+        # 7. Intentar inyectar widget script
+        script_id = inject_widget_script(user_id, access_token, client.api_key)
+        if script_id:
+            if existing_integration:
+                existing_integration.script_id = script_id
+            else:
+                integration.script_id = script_id
+            db.session.commit()
+            logger.info(f"Widget script inyectado: {script_id}")
+        else:
+            logger.warning(f"No se pudo inyectar script; usar fallback de enlace")
+
+        # 8. Iniciar sincronización inicial (asíncrono recomendado, pero inline por ahora)
+        logger.info(f"Iniciando sincronización inicial para cliente {client.id}...")
+        try:
+            from app.services.tiendanube_sync_service import start_full_sync
+            # TODO: En producción, ejecutar esto en background task (Celery/RQ)
+            # Por ahora lo hacemos inline para simplificar
+            sync_result = start_full_sync(client.id)
+            if sync_result.get('success'):
+                logger.info(f"Sincronización inicial completada: {sync_result.get('stats')}")
+            else:
+                logger.error(f"Error en sincronización inicial: {sync_result.get('error')}")
+        except Exception as e:
+            logger.error(f"Error iniciando sincronización: {str(e)}")
+            # No fallar el OAuth si la sync falla; se puede reintentar después
+
+        # 9. Renderizar página de éxito
+        return render_template_string(
+            render_success_page(
+                store_name=store_name,
+                store_id=user_id,
+                scope=scope,
+                api_key=client.api_key,
+                has_script=(script_id is not None)
+            )
+        )
+
     except Exception as e:
         logger.error(f"Error en OAuth callback: {str(e)}", exc_info=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        db.session.rollback()
+        return render_template_string(render_error_page(str(e))), 500
 
 
 def get_store_info(store_id, access_token):
@@ -96,23 +199,125 @@ def get_store_info(store_id, access_token):
             'User-Agent': 'CLIP Comparador V2 (info@clipcomparador.com)'
         }
         response = requests.get(
-            f'{TIENDANUBE_API_BASE}/store/',
+            f'{TIENDANUBE_API_BASE}/{store_id}/store',
             headers=headers,
             timeout=10,
-            verify=False  # Deshabilitar verificación SSL temporalmente
+            verify=False
         )
         if response.status_code == 200:
             return response.json()
         else:
             logger.warning(f"No se pudo obtener info de tienda: {response.status_code}")
-            return {}
+            return None
     except Exception as e:
         logger.error(f"Error al obtener info de tienda: {str(e)}")
-        return {}
+        return None
 
 
-def render_success_page(store_name, store_id, scope):
-    """Renderiza página de éxito"""
+def register_webhooks(store_id, access_token):
+    """
+    Registra webhooks para productos, categorías y app lifecycle.
+    Retorna dict con IDs de webhooks creados.
+    """
+    webhook_ids = {}
+    headers = {
+        'Authentication': f'bearer {access_token}',
+        'User-Agent': 'CLIP Comparador V2 (info@clipcomparador.com)',
+        'Content-Type': 'application/json'
+    }
+
+    webhook_url_base = 'https://clipcomparadorv2-production.up.railway.app/webhooks/tiendanube'
+
+    webhooks_to_create = [
+        {'event': 'product/created', 'url': f'{webhook_url_base}/product/created'},
+        {'event': 'product/updated', 'url': f'{webhook_url_base}/product/updated'},
+        {'event': 'product/deleted', 'url': f'{webhook_url_base}/product/deleted'},
+        {'event': 'category/created', 'url': f'{webhook_url_base}/category/created'},
+        {'event': 'category/updated', 'url': f'{webhook_url_base}/category/updated'},
+        {'event': 'category/deleted', 'url': f'{webhook_url_base}/category/deleted'},
+        {'event': 'app/uninstalled', 'url': f'{webhook_url_base}/app/uninstalled'},
+        {'event': 'store/redact', 'url': f'{webhook_url_base}/store/redact'},
+    ]
+
+    for webhook in webhooks_to_create:
+        try:
+            response = requests.post(
+                f'{TIENDANUBE_API_BASE}/{store_id}/webhooks',
+                json=webhook,
+                headers=headers,
+                timeout=10,
+                verify=False
+            )
+            if response.status_code in [200, 201]:
+                data = response.json()
+                webhook_ids[webhook['event']] = data.get('id')
+                logger.info(f"Webhook {webhook['event']} registrado: {data.get('id')}")
+            else:
+                logger.warning(f"No se pudo crear webhook {webhook['event']}: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Error creando webhook {webhook['event']}: {str(e)}")
+
+    return webhook_ids if webhook_ids else None
+
+
+def inject_widget_script(store_id, access_token, api_key):
+    """
+    Intenta inyectar el script del widget en la tienda.
+    Retorna script_id si tiene éxito, None si falla (plan no soporta scripts).
+    """
+    try:
+        headers = {
+            'Authentication': f'bearer {access_token}',
+            'User-Agent': 'CLIP Comparador V2 (info@clipcomparador.com)',
+            'Content-Type': 'application/json'
+        }
+
+        script_src = f'https://clipcomparadorv2-production.up.railway.app/static/widget/clip-widget-embed-unified.js?api_key={api_key}'
+
+        script_data = {
+            'src': script_src,
+            'event': 'onload',  # Script se ejecuta al cargar la página
+            'where': 'footer'   # Cargar en footer
+        }
+
+        response = requests.post(
+            f'{TIENDANUBE_API_BASE}/{store_id}/scripts',
+            json=script_data,
+            headers=headers,
+            timeout=10,
+            verify=False
+        )
+
+        if response.status_code in [200, 201]:
+            data = response.json()
+            script_id = data.get('id')
+            logger.info(f"Script inyectado exitosamente: {script_id}")
+            return script_id
+        else:
+            logger.warning(f"No se pudo inyectar script (plan puede no soportarlo): {response.status_code}")
+            return None
+    except Exception as e:
+        logger.error(f"Error inyectando script: {str(e)}")
+        return None
+
+
+def render_success_page(store_name, store_id, scope, api_key, has_script=False):
+    """Renderiza página de éxito con instrucciones según disponibilidad de script"""
+    script_status = """
+        <div class="info-item">
+            <span class="info-label">Widget:</span> ✅ Instalado automáticamente
+        </div>
+    """ if has_script else """
+        <div class="info-item">
+            <span class="info-label">Widget:</span> ⚠️ Configuración manual requerida
+        </div>
+        <div class="alert alert-warning">
+            <strong>Tu plan no permite scripts automáticos.</strong><br>
+            Podés agregar el widget manualmente desde tu panel de administración:<br>
+            <code>Menú → Agregar enlace → https://clipcomparadorv2-production.up.railway.app/tiendanube/widget?api_key={api_key}</code>
+        </div>
+    """
+
     html = f"""
     <!DOCTYPE html>
     <html lang="es">
@@ -136,7 +341,7 @@ def render_success_page(store_name, store_id, scope):
                 padding: 40px;
                 border-radius: 20px;
                 box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                max-width: 500px;
+                max-width: 600px;
                 text-align: center;
             }}
             .success-icon {{
@@ -170,6 +375,23 @@ def render_success_page(store_name, store_id, scope):
                 font-weight: bold;
                 color: #1f2937;
             }}
+            .alert-warning {{
+                background: #fef3c7;
+                border: 2px solid #f59e0b;
+                padding: 15px;
+                border-radius: 8px;
+                margin: 15px 0;
+                text-align: left;
+                color: #92400e;
+            }}
+            .alert-warning code {{
+                background: white;
+                padding: 2px 6px;
+                border-radius: 4px;
+                display: block;
+                margin-top: 10px;
+                word-break: break-all;
+            }}
             .button {{
                 display: inline-block;
                 background: #667eea;
@@ -182,6 +404,21 @@ def render_success_page(store_name, store_id, scope):
             }}
             .button:hover {{
                 background: #5568d3;
+            }}
+            .next-steps {{
+                background: #e0e7ff;
+                padding: 20px;
+                border-radius: 10px;
+                margin: 20px 0;
+                text-align: left;
+            }}
+            .next-steps h3 {{
+                color: #3730a3;
+                margin-top: 0;
+            }}
+            .next-steps ul {{
+                color: #4c1d95;
+                text-align: left;
             }}
         </style>
     </head>
@@ -198,11 +435,22 @@ def render_success_page(store_name, store_id, scope):
                     <span class="info-label">Store ID:</span> {store_id}
                 </div>
                 <div class="info-item">
-                    <span class="info-label">Permisos:</span> {scope}
+                    <span class="info-label">API Key:</span> <code>{api_key[:20]}...</code>
                 </div>
                 <div class="info-item">
-                    <span class="info-label">Estado:</span> Activo
+                    <span class="info-label">Permisos:</span> {scope}
                 </div>
+                {script_status}
+            </div>
+
+            <div class="next-steps">
+                <h3>📋 Próximos Pasos</h3>
+                <ul>
+                    <li>La sincronización inicial de tus productos comenzará automáticamente</li>
+                    <li>Recibirás un email cuando esté completa (puede tomar algunos minutos)</li>
+                    <li>Podés gestionar tu integración desde el panel de administración</li>
+                    <li>El widget de búsqueda visual ya está {"activo en tu tienda" if has_script else "listo para configurar"}</li>
+                </ul>
             </div>
 
             <p style="color: #6b7280; margin-top: 20px;">

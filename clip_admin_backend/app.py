@@ -437,6 +437,26 @@ def register_blueprints(app):
     except Exception as e:
         print(f"✗ Error registrando tiendanube_config blueprint: {e}")
 
+    # Blueprint de administración Tiendanube
+    try:
+        from app.blueprints.tiendanube_admin import bp as tiendanube_admin_bp
+        app.register_blueprint(tiendanube_admin_bp)
+        print("✓ Blueprint tiendanube_admin registrado")
+    except ImportError as e:
+        print(f"✗ Error importando tiendanube_admin blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando tiendanube_admin blueprint: {e}")
+
+    # Blueprint de webhooks Tiendanube
+    try:
+        from app.blueprints.tiendanube_webhooks import tiendanube_webhooks_bp
+        app.register_blueprint(tiendanube_webhooks_bp)
+        print("✓ Blueprint tiendanube_webhooks registrado")
+    except ImportError as e:
+        print(f"✗ Error importando tiendanube_webhooks blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando tiendanube_webhooks blueprint: {e}")
+
     # 🆕 Registrar módulos personalizados de búsqueda por cliente
     try:
         from app.search_modules import register_client_module

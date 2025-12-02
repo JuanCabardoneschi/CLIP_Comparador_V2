@@ -33,6 +33,12 @@ class Category(db.Model):
     # Campos de interfaz
     color = db.Column(db.String(7), default='#007bff')  # Color hex para la UI
     is_active = db.Column(db.Boolean, default=True)
+
+    # 🔗 INTEGRACIÓN TIENDANUBE
+    external_id = db.Column(db.String(100), index=True)  # ID de categoría en Tiendanube
+    last_sync_at = db.Column(db.DateTime)  # Última sincronización
+    sync_status = db.Column(db.String(50), default='synced')  # 'synced', 'pending', 'error'
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

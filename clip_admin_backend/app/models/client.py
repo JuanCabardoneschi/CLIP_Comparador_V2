@@ -26,6 +26,11 @@ class Client(db.Model):
     category_confidence_threshold = db.Column(db.Integer, default=70)  # Confianza mínima para detectar categoría (70%)
     product_similarity_threshold = db.Column(db.Integer, default=30)   # Similitud mínima para matching de productos (30%)
 
+    # 🔗 INTEGRACIÓN TIENDANUBE
+    integration_type = db.Column(db.String(50), default='standalone', nullable=False)  # 'standalone' | 'tiendanube'
+    integration_config = db.Column(db.JSON, default=dict, nullable=False)  # Metadatos de integración
+    is_read_only = db.Column(db.Boolean, default=False, nullable=False)  # TRUE para Tiendanube
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

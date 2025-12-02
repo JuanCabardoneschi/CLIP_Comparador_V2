@@ -19,6 +19,14 @@ class Product(db.Model):
     stock = db.Column(db.Integer, default=0)
     tags = db.Column(db.Text)  # Tags separados por comas para búsqueda
     is_active = db.Column(db.Boolean, default=True)
+
+    # 🔗 INTEGRACIÓN TIENDANUBE
+    external_id = db.Column(db.String(100), index=True)  # ID del producto en Tiendanube
+    external_variant_id = db.Column(db.String(100))  # ID de variante (si aplica)
+    external_url = db.Column(db.Text)  # URL pública del producto
+    last_sync_at = db.Column(db.DateTime)  # Última sincronización
+    sync_status = db.Column(db.String(50), default='synced')  # 'synced', 'pending', 'error'
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
