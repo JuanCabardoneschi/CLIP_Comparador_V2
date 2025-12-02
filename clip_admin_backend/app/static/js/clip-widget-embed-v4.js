@@ -864,30 +864,29 @@
             const userIntent = data.detection?.user_intent || data.detection?.mensaje_usuario || '';
 
             if (categoriesDetected.length === 0) {
-                // Mostrar solo el bloque de detección con intención (si existe)
-                if (userIntent) {
-                    const detectionDiv = widgetContainer.querySelector('#clip-detection');
-                    const itemsDiv = widgetContainer.querySelector('#clip-detection-items');
-
-                    // Limpiar tags de categorías
-                    itemsDiv.innerHTML = '';
-
-                    // Mostrar solo intención
-                    const intentHtml = `
-                        <div class="clip-user-intent">
-                            ${userIntent}
-                        </div>
-                    `;
-                    itemsDiv.insertAdjacentHTML('afterend', intentHtml);
-                    detectionDiv.classList.add('active');
-                }
-
                 // Detener spinner y mostrar búsqueda completada
                 hideLoading();
                 showLoadingSuccess();
 
-                // Mostrar mensaje de error (sin productos)
-                showError('No se detectaron categorías válidas para esta imagen. Por favor, sube una imagen relacionada con los productos disponibles en la tienda.');
+                // Mostrar bloque de detección con intención (si existe)
+                if (userIntent) {
+                    const detectionDiv = widgetContainer.querySelector('#clip-detection');
+                    const itemsDiv = widgetContainer.querySelector('#clip-detection-items');
+
+                    // Mostrar intención del usuario directamente en itemsDiv
+                    itemsDiv.innerHTML = `
+                        <div class="clip-user-intent" style="margin-top: 10px; padding: 12px; background: #f8f9fa; border-left: 3px solid #007bff; border-radius: 4px; font-size: 14px; line-height: 1.5;">
+                            <strong>💡 Análisis de imagen:</strong><br>
+                            ${userIntent}
+                        </div>
+                    `;
+                    detectionDiv.classList.add('active');
+
+                    // NO mostrar showError() para permitir que el mensaje de intención sea visible
+                } else {
+                    // Solo si no hay intención, mostrar error genérico
+                    showError('No se detectaron categorías válidas para esta imagen. Por favor, sube una imagen relacionada con los productos disponibles en la tienda.');
+                }
                 return;
             }
 
