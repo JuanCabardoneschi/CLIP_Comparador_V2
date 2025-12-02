@@ -588,43 +588,53 @@ TiendaNube usa `variants` con `attributes` y `values`:
 
 ## 🛠️ Implementación por Fases
 
-### Fase 1: Infraestructura Base (Semana 1)
-- [ ] Crear tablas de BD
-- [ ] Implementar modelos SQLAlchemy
-- [ ] Blueprint básico `/api/tiendanube`
-- [ ] OAuth flow completo
-- [ ] Almacenamiento seguro de tokens
+### ✅ Fase 1: Infraestructura Base (COMPLETADO)
+- [x] Crear tablas de BD (`tiendanube_integrations`, `tiendanube_product_mapping`, `tiendanube_webhooks_log`)
+- [x] Implementar modelos SQLAlchemy (TiendanubeIntegration, mapping tables)
+- [x] Blueprint básico `/oauth/tiendanube`
+- [x] OAuth flow completo con callback
+- [x] Almacenamiento seguro de tokens en `integration_config` (JSONB encrypted)
+- [x] Campo `is_read_only` en tabla `clients` para marcar clientes Tiendanube
 
-### Fase 2: Webhooks y Sincronización Básica (Semana 2)
-- [ ] Endpoint webhook receiver
-- [ ] Verificación HMAC
-- [ ] Procesamiento de `product/created`, `product/updated`
-- [ ] Data mapper: TiendaNube → CLIP
-- [ ] Descarga y subida de imágenes
-- [ ] Tests unitarios
+### ✅ Fase 2: Webhooks y Sincronización Básica (COMPLETADO)
+- [x] Endpoint webhook receiver en `/webhooks/tiendanube`
+- [x] Verificación HMAC SHA256 de webhooks
+- [x] Procesamiento de `product/created`, `product/updated`, `product/deleted`
+- [x] Procesamiento de `category/created`, `category/updated`, `category/deleted`
+- [x] Data mapper: TiendaNube → CLIP con estructura completa
+- [x] Sistema de sincronización en background (threading con app_context)
+- [x] Manejo de imágenes desde source_url de Tiendanube
+- [x] Tests básicos de integración OAuth
 
-### Fase 3: Sistema de Importación Continua (Semana 3)
-- [ ] Procesamiento de webhooks en background (Celery)
-- [ ] Rate limiting para importación masiva
-- [ ] Webhook `order/paid` → reducir stock (opcional)
-- [ ] Sistema de cola para embeddings
-- [ ] Logs y auditoría completa
-- [ ] Manejo de productos desactivados en TN
+### ✅ Fase 3: Sistema de Importación Continua (COMPLETADO)
+- [x] Procesamiento de webhooks en background (threading con Flask app_context)
+- [x] Sincronización completa de productos con atributos dinámicos
+- [x] Sistema de cola para embeddings CLIP automático
+- [x] Logs y auditoría completa en `tiendanube_webhooks_log`
+- [x] Manejo de productos desactivados en TN (`sync_status = 'deleted'`)
+- [x] Image model modificado para detectar `integration_type='tiendanube'` y usar `source_url`
+- [x] Auto-creación de usuario admin con credenciales Tiendanube
 
-### Fase 4: UI de Administración (Semana 4)
-- [ ] Página de integraciones
-- [ ] Modal de configuración de importación
-- [ ] Dashboard de sincronización
-- [ ] Vista READ-ONLY para productos TiendaNube
-- [ ] Badge "Gestionado por TiendaNube" en UI
-- [ ] Sistema de notificaciones de errores
-- [ ] Documentación para usuarios
+### 🔄 Fase 4: UI de Administración (EN PROGRESO)
+- [x] Dashboard de integraciones en `/admin/tiendanube`
+- [x] Vista de sincronización con estadísticas
+- [x] Badge "🔒 Gestionado por TiendaNube" en productos sincronizados
+- [ ] Restricciones UI: Deshabilitar edición/eliminación de productos TN en admin
+- [ ] Restricciones UI: Deshabilitar edición/eliminación de categorías TN en admin
+- [ ] Restricciones UI: Deshabilitar subida/eliminación de imágenes TN en admin
+- [ ] Modal de advertencia cuando se intenta editar producto TN
+- [ ] Sistema de notificaciones de errores de sincronización
+- [ ] Documentación para usuarios finales
 
-### Fase 5: Testing y Optimización (Semana 5)
-- [ ] Tests de integración
+### 🔄 Fase 5: Widget y E-commerce Integration (EN PROGRESO)
+- [x] Widget embebible funcional con búsqueda visual
+- [x] Soporte de atributos dinámicos en cards de productos
+- [ ] **Botón "Agregar al carrito" para productos Tiendanube**
+- [ ] **Link directo a página de producto en Tiendanube**
+- [ ] Integración con TiendaScript para agregar productos al carrito
 - [ ] Tests end-to-end con tienda de prueba
 - [ ] Optimización de embeddings batch
-- [ ] Monitoreo y alertas
+- [ ] Monitoreo y alertas de sincronización
 - [ ] Documentación técnica completa
 
 ## ⚠️ Consideraciones Importantes
@@ -717,5 +727,364 @@ Para dudas sobre la integración:
 ✅ **UX clara:** Usuario sabe que TiendaNube es donde gestiona productos
 
 ---
+
+## 🔒 Limitaciones del Admin Panel para Clientes Tiendanube
+
+Cuando un cliente tiene `integration_type='tiendanube'` y `is_read_only=true`, el admin de CLIP debe **bloquear** las siguientes operaciones:
+
+### ❌ Operaciones BLOQUEADAS (Solo Tiendanube)
+
+#### 1. **Gestión de Productos**
+- ❌ **Crear productos** (`/products/create`) - Solo desde Tiendanube
+- ❌ **Editar productos** (`/products/<id>/edit`) - Solo desde Tiendanube
+  - Nombre, descripción, SKU, precio, stock, tags, categoría
+  - Atributos dinámicos (talla, color, etc.)
+- ❌ **Eliminar productos** (`/products/<id>/delete`) - Solo desde Tiendanube
+- ❌ **Auto-completar atributos con CLIP** (`/products/<id>/autofill-attributes`) - Generado desde TN
+- ❌ **Ajustar stock manualmente** (`/inventory/api/adjust-stock`) - Stock gestionado por TN
+
+#### 2. **Gestión de Imágenes**
+- ❌ **Subir imágenes** (`/products/<id>/upload-images`) - Imágenes desde TN
+- ❌ **Eliminar imágenes** (`/products/<id>/images/<id>/delete`) - Imágenes desde TN
+- ❌ **Editar imágenes** (`/images/<id>/edit`) - Metadatos desde TN
+- ❌ **Reordenar imágenes** - Orden definido en TN
+- ❌ **Marcar imagen primaria** - Primera imagen de TN es primaria
+
+#### 3. **Gestión de Categorías**
+- ❌ **Crear categorías** (`/categories/create`) - Solo desde Tiendanube
+- ❌ **Editar categorías** (`/categories/<id>/edit`) - Solo desde Tiendanube
+  - Nombre, slug, descripción, color
+  - CLIP prompt, vision hints (generados automáticamente)
+- ❌ **Eliminar categorías** (`/categories/<id>/delete`) - Solo desde Tiendanube
+- ⚠️ **Recalcular centroides** - Permitido (no afecta datos en TN)
+
+#### 4. **Configuración de Atributos**
+- ❌ **Crear atributos** (`/attributes/create`) - Detectados automáticamente desde TN
+- ❌ **Editar atributos** (`/attributes/<id>/edit`) - Estructura desde TN
+- ❌ **Eliminar atributos** (`/attributes/<id>/delete`) - Estructura desde TN
+- ⚠️ **Configurar visibilidad en búsqueda** - Permitido (solo afecta widget)
+
+### ✅ Operaciones PERMITIDAS (Read-Only y Configuración CLIP)
+
+#### 1. **Visualización**
+- ✅ Ver listado de productos
+- ✅ Ver detalles de productos
+- ✅ Ver imágenes y embeddings
+- ✅ Ver categorías y centroides
+- ✅ Ver estadísticas de inventario
+
+#### 2. **Configuración CLIP (No afecta Tiendanube)**
+- ✅ **Configurar pesos de búsqueda** (`/search-config/edit`) - Solo afecta algoritmo CLIP
+- ✅ **Ajustar sensibilidad de categorías** (`/clients/<id>/update-sensitivity`) - Solo afecta matching
+- ✅ **Recalcular embeddings** (`/embeddings/generate`) - Regenerar desde imágenes existentes
+- ✅ **Recalcular centroides** (`/categories/<id>/recalculate-centroid`) - Solo afecta búsqueda
+- ✅ **Configurar atributos expuestos en búsqueda** - Qué mostrar en widget
+
+#### 3. **Sincronización**
+- ✅ **Forzar sincronización completa** (`/admin/tiendanube/<id>/sync`)
+- ✅ **Ver logs de webhooks** (`/admin/tiendanube/<id>/logs`)
+- ✅ **Reintentar webhooks fallidos** (`/admin/tiendanube/<id>/retry-webhook`)
+- ✅ **Desconectar integración** (mantiene datos históricos)
+
+### 🎨 Implementación en UI
+
+**Estrategia:** Detectar `current_user.client.is_read_only` en templates y blueprints:
+
+```python
+# En blueprints (products.py, categories.py, etc.)
+@bp.route("/<product_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit(product_id):
+    # Verificar si el cliente es read-only
+    client = Client.query.get(current_user.client_id)
+    if client.is_read_only:
+        flash("⚠️ Este producto es gestionado por Tiendanube. Edítalo desde tu panel de Tiendanube.", "warning")
+        return redirect(url_for('products.view', product_id=product_id))
+
+    # Resto de la lógica de edición...
+```
+
+**En Templates (Jinja2):**
+```html
+{% if not current_user.client.is_read_only %}
+    <a href="{{ url_for('products.create') }}" class="btn btn-primary">
+        <i class="bi bi-plus-circle"></i> Nuevo Producto
+    </a>
+{% else %}
+    <div class="alert alert-info">
+        🔒 Los productos son gestionados desde tu panel de Tiendanube
+    </div>
+{% endif %}
+```
+
+**Botones deshabilitados:**
+```html
+<button
+    class="btn btn-danger"
+    {% if current_user.client.is_read_only %}disabled title="Gestionado por Tiendanube"{% endif %}
+>
+    Eliminar
+</button>
+```
+
+---
+
+## 🛒 URLs de Productos y E-commerce para Tiendanube
+
+### Estrategia de URLs por Tipo de Cliente
+
+Los productos en CLIP pueden tener diferentes estrategias de enlace según el tipo de integración:
+
+#### 1. **Clientes Standalone (integration_type='standalone')**
+- **Comportamiento actual:** Atributo dinámico `url_producto` (tipo URL) genera link "Ver producto ↗"
+- **Uso:** Links a sitios externos, catálogos PDF, páginas de producto custom
+- **Widget:** Muestra botón si existe el atributo `url_producto`
+
+#### 2. **Clientes Tiendanube (integration_type='tiendanube')** ⭐ NUEVO
+
+**Productos Tiendanube tienen URLs nativas:**
+```json
+{
+  "product_id": "uuid-clip",
+  "tiendanube_product_id": "1948209",
+  "permalink": "https://mitienda.mitiendanube.com/productos/remera-roja-talle-m",
+  "store_url": "https://mitienda.mitiendanube.com"
+}
+```
+
+**Estrategias de E-commerce:**
+
+##### Opción A: Link Directo a Página de Producto (Simple)
+```javascript
+// En widget: Generar URL desde datos del producto
+const productUrl = `${storeUrl}/productos/${productHandle}`;
+// o usar directamente el permalink si viene del API
+```
+
+**Ventajas:**
+- ✅ Implementación simple
+- ✅ Usuario ve toda la información del producto
+- ✅ Puede elegir variantes, cantidad, etc.
+- ✅ Experiencia nativa de Tiendanube
+
+**Desventajas:**
+- ⚠️ Requiere un clic adicional para agregar al carrito
+- ⚠️ Usuario sale del contexto de búsqueda visual
+
+##### Opción B: Botón "Agregar al Carrito" Directo (Avanzado) ⭐ RECOMENDADO
+```javascript
+// Usar TiendaScript API para agregar al carrito sin salir del widget
+// https://github.com/TiendaNube/api-docs/blob/master/resources/script.md
+
+function addToCart(variantId, quantity = 1) {
+    if (window.LS && window.LS.addToCart) {
+        // TiendaScript disponible
+        window.LS.addToCart(variantId, quantity, function(data) {
+            if (data.success) {
+                alert('✓ Producto agregado al carrito');
+                // Opcional: Abrir mini-cart
+                window.LS.openCart();
+            }
+        });
+    } else {
+        // Fallback: Redirect a URL de carrito
+        window.location.href = `${storeUrl}/cart/add?variant=${variantId}`;
+    }
+}
+```
+
+**Ventajas:**
+- ✅ Experiencia fluida: agregar sin salir del widget
+- ✅ Usuario puede seguir comparando productos
+- ✅ TiendaScript maneja stock, precios, descuentos automáticamente
+- ✅ Compatible con checkout nativo de Tiendanube
+
+**Desventajas:**
+- ⚠️ Requiere que el widget esté embebido en el sitio de Tiendanube
+- ⚠️ No funciona en dominios externos (usar Opción A como fallback)
+
+##### Opción C: Combinación (Flexible) ⭐ MEJOR PRÁCTICA
+```javascript
+// En cards de productos del widget
+if (isTiendanubeClient) {
+    const isEmbeddedInStore = window.location.hostname.includes('tiendanube.com') ||
+                              window.location.hostname.includes('nuvemshop.com');
+
+    if (isEmbeddedInStore && window.LS) {
+        // Mostrar botón "Agregar al carrito"
+        html += `<button onclick="addToCart('${variantId}')" class="clip-add-to-cart">
+            🛒 Agregar al carrito
+        </button>`;
+    } else {
+        // Mostrar link a página de producto
+        html += `<a href="${permalink}" target="_blank" class="clip-view-product">
+            Ver producto ↗
+        </a>`;
+    }
+}
+```
+
+### Implementación en el Widget
+
+**Modificaciones necesarias en `clip-widget-embed-v4.js`:**
+
+```javascript
+// 1. Detectar tipo de cliente en respuesta del API
+// El API debe incluir:
+{
+    "client_info": {
+        "integration_type": "tiendanube",
+        "store_url": "https://mitienda.mitiendanube.com"
+    },
+    "products": [
+        {
+            "id": "uuid",
+            "name": "Remera Roja M",
+            "permalink": "https://mitienda.mitiendanube.com/productos/remera-roja-m",
+            "tiendanube_variant_id": "101234",  // Para addToCart
+            // ... otros campos
+        }
+    ]
+}
+
+// 2. Modificar renderizado de cards de productos
+function renderProductCard(product, clientInfo) {
+    let ctaButton = '';
+
+    if (clientInfo.integration_type === 'tiendanube') {
+        const isEmbedded = checkIfEmbeddedInStore(clientInfo.store_url);
+
+        if (isEmbedded && window.LS && product.tiendanube_variant_id) {
+            // Botón agregar al carrito
+            ctaButton = `
+                <button
+                    onclick="CLIPV2.addToCart('${product.tiendanube_variant_id}')"
+                    class="clip-btn-add-cart"
+                    ${product.stock <= 0 ? 'disabled' : ''}
+                >
+                    ${product.stock > 0 ? '🛒 Agregar al carrito' : '✗ Sin stock'}
+                </button>
+            `;
+        } else if (product.permalink) {
+            // Link a página de producto
+            ctaButton = `
+                <a href="${product.permalink}"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   class="clip-btn-view-product">
+                    Ver en tienda ↗
+                </a>
+            `;
+        }
+    } else if (product.product_url) {
+        // Cliente standalone con URL custom
+        ctaButton = `
+            <a href="${product.product_url}"
+               target="_blank"
+               class="clip-btn-view-product">
+                Ver producto ↗
+            </a>
+        `;
+    }
+
+    return `
+        <div class="clip-product">
+            <!-- ... imagen, nombre, precio, atributos ... -->
+            ${ctaButton}
+        </div>
+    `;
+}
+
+// 3. Función para agregar al carrito
+window.CLIPV2.addToCart = function(variantId, quantity = 1) {
+    if (!window.LS || !window.LS.addToCart) {
+        console.error('TiendaScript no disponible');
+        return;
+    }
+
+    window.LS.addToCart(variantId, quantity, function(response) {
+        if (response.success) {
+            // Mostrar notificación de éxito
+            showNotification('✓ Producto agregado al carrito');
+
+            // Opcional: Abrir mini-cart
+            setTimeout(() => window.LS.openCart(), 500);
+        } else {
+            showNotification('✗ Error al agregar producto', 'error');
+        }
+    });
+};
+```
+
+### Cambios en el API de Búsqueda
+
+**Endpoint `/api/search` debe incluir:**
+
+```python
+# En app/blueprints/api.py
+@bp.route('/search', methods=['POST'])
+def search():
+    # ... lógica de búsqueda existente ...
+
+    # Obtener info del cliente
+    client = Client.query.get(api_key.client_id)
+
+    response = {
+        "client_info": {
+            "integration_type": client.integration_type,
+            "store_url": None
+        },
+        "results": []
+    }
+
+    # Si es Tiendanube, incluir store_url
+    if client.integration_type == 'tiendanube':
+        integration = TiendanubeIntegration.query.filter_by(
+            client_id=client.id,
+            is_active=True
+        ).first()
+
+        if integration:
+            response["client_info"]["store_url"] = integration.store_url
+
+    # Agregar datos de productos
+    for product in products:
+        product_data = {
+            "id": str(product.id),
+            "name": product.name,
+            "price": product.price,
+            "stock": product.stock,
+            # ... otros campos ...
+        }
+
+        # Si es Tiendanube, incluir permalink y variant_id
+        if client.integration_type == 'tiendanube':
+            mapping = TiendanubeProductMapping.query.filter_by(
+                clip_product_id=product.id
+            ).first()
+
+            if mapping:
+                product_data["permalink"] = f"{integration.store_url}/productos/{product.slug}"
+                product_data["tiendanube_variant_id"] = mapping.tiendanube_variant_id
+
+        # Si es standalone, incluir URL custom si existe
+        elif 'url_producto' in product.attributes:
+            product_data["product_url"] = product.attributes['url_producto']
+
+        response["results"].append(product_data)
+
+    return jsonify(response)
+```
+
+---
+
+**Próximos pasos implementación:**
+
+1. ✅ Actualizar documento con limitaciones del admin (COMPLETADO)
+2. 🔄 Implementar restricciones UI en blueprints de productos/categorías/imágenes
+3. 🔄 Modificar widget para soportar botones de Tiendanube
+4. 🔄 Actualizar API `/api/search` para incluir `client_info` y `permalink`
+5. 🔄 Testing end-to-end con tienda Tiendanube real
+
 
 **Próximos pasos:** Comenzar con Fase 1 - Crear tablas de BD y estructura básica del blueprint.

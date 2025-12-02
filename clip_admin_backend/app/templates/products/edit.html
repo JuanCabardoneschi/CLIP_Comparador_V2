@@ -273,17 +273,24 @@
             </div>
 
             <!-- Gestión de imágenes -->
-            {% if not is_tiendanube %}
             <div class="col-lg-6">
                 <div class="form-section">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="section-title mb-0">
                             <i class="bi bi-images"></i> Imágenes Actuales ({{ product.images.count() }})
                         </h5>
+                        {% if not is_tiendanube %}
                         <a href="{{ url_for('products.view', product_id=product.id) }}" class="btn btn-outline-primary btn-sm">
                             <i class="bi bi-plus-circle"></i> Gestionar Imágenes
                         </a>
+                        {% endif %}
                     </div>
+
+                    {% if is_tiendanube %}
+                    <div class="alert alert-info alert-sm mb-3">
+                        <i class="bi bi-info-circle"></i> Las imágenes se sincronizan desde Tiendanube
+                    </div>
+                    {% endif %}
 
                     {% if product.images.count() > 0 %}
                         <div class="current-images">
@@ -292,6 +299,7 @@
                                 <img src="{{ image.thumbnail_url }}"
                                      alt="Imagen {{ loop.index }}">
 
+                                {% if not is_tiendanube %}
                                 <div class="image-controls">
                                     {% if not image.is_primary %}
                                         <button type="button"
@@ -308,6 +316,7 @@
                                         <i class="bi bi-x"></i>
                                     </button>
                                 </div>
+                                {% endif %}
 
                                 {% if image.is_primary %}
                                     <div class="primary-badge">Principal</div>
@@ -316,6 +325,7 @@
                             {% endfor %}
                         </div>
 
+                        {% if not is_tiendanube %}
                         <div class="mt-3 p-3 bg-light rounded">
                             <h6><i class="bi bi-info-circle"></i> Gestión de Imágenes</h6>
                             <p class="small mb-2">Para gestionar las imágenes (agregar, eliminar, cambiar principal),
@@ -326,22 +336,28 @@
                                 • Embeddings: Se generan automáticamente para búsqueda visual
                             </p>
                         </div>
+                        {% endif %}
                     {% else %}
                         <div class="text-center py-4">
                             <i class="bi bi-image text-muted" style="font-size: 3rem;"></i>
                             <h6 class="text-muted mt-2">Sin imágenes</h6>
+                            {% if not is_tiendanube %}
                             <p class="text-muted small">
                                 Ve a la <a href="{{ url_for('products.view', product_id=product.id) }}">página del producto</a>
                                 para agregar imágenes.
                             </p>
+                            {% else %}
+                            <p class="text-muted small">
+                                Las imágenes se sincronizarán automáticamente desde Tiendanube
+                            </p>
+                            {% endif %}
                         </div>
                     {% endif %}
                 </div>
             </div>
-            {% endif %}
 
             <!-- Información adicional -->
-            <div class="col-lg-{% if is_tiendanube %}12{% else %}6{% endif %}">
+            <div class="col-lg-6">
                 <div class="form-section">
                     <h5 class="section-title">
                         <i class="bi bi-clock"></i> Información del Sistema

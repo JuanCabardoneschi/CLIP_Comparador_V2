@@ -49,11 +49,11 @@ def _is_tiendanube_readonly():
     """Verifica si el usuario actual es STORE_ADMIN de un cliente Tiendanube read-only"""
     if current_user.is_super_admin:
         return False
-    
+
     client = Client.query.get(current_user.client_id)
     if not client:
         return False
-    
+
     return client.integration_type == 'tiendanube' or client.is_read_only
 
 
@@ -294,7 +294,7 @@ def create():
     if _is_tiendanube_readonly():
         flash("No puedes crear productos. Los productos se sincronizan automáticamente desde Tiendanube.", "error")
         return redirect(url_for("products.index"))
-    
+
     categories = Category.query.filter_by(client_id=current_user.client_id).all()
     attribute_configs = _get_client_attribute_config(current_user.client_id)
 
@@ -500,15 +500,15 @@ def edit(product_id):
                 dynamic_attributes = _process_dynamic_attributes(request.form, attribute_configs)
                 _validate_attribute_options(dynamic_attributes, attribute_configs)
                 product.attributes = dynamic_attributes if dynamic_attributes else None
-                
+
                 # Actualizar tags
                 product.tags = request.form.get("tags", "").strip() or None
                 product.updated_at = datetime.utcnow()
-                
+
                 db.session.commit()
                 flash("Atributos y tags actualizados correctamente", "success")
                 return redirect(url_for("products.view", product_id=product.id))
-            
+
             # ⚙️ Si NO es Tiendanube: edición completa (comportamiento original)
             # Actualizar datos del producto
             product.name = request.form.get("name", "").strip()
@@ -603,7 +603,7 @@ def delete(product_id):
     if _is_tiendanube_readonly():
         flash("No puedes eliminar productos. Los productos se sincronizan desde Tiendanube.", "error")
         return redirect(url_for("products.index"))
-    
+
     product = Product.query.filter_by(
         id=product_id,
         client_id=current_user.client_id

@@ -37,26 +37,40 @@ def list_integrations():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@bp.route('/integrations/<integration_id>', methods=['GET'])
+
+@bp.route('/integrations/<integration_id>', methods=['GET', 'POST'])
 @login_required
 def get_integration(integration_id):
-    """Obtiene detalle de una integración"""
-    try:
-        integration = TiendanubeIntegration.query.get(integration_id)
-        if not integration:
-            return jsonify({'success': False, 'error': 'Integración no encontrada'}), 404
+    """Detalle de integración Tiendanube y formulario de sync manual."""
+    integration = TiendanubeIntegration.query.get(integration_id)
+    if not integration:
+        return render_template("errors/404.html", message="Integración no encontrada"), 404
 
-        # Verificar permisos
-        if current_user.role != 'SUPER_ADMIN' and integration.client_id != current_user.client_id:
-            return jsonify({'success': False, 'error': 'Acceso denegado'}), 403
+    # Verificar permisos
+    if current_user.role != 'SUPER_ADMIN' and integration.client_id != current_user.client_id:
+        return render_template("errors/403.html", message="Acceso denegado"), 403
 
-        return jsonify({
-            'success': True,
-            'integration': integration.to_dict(include_token=False)
-        })
-    except Exception as e:
-        logger.error(f"Error obteniendo integración: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    if request.method == 'POST':
+        if integration.sync_status == 'in_progress':
+            return render_template("tiendanube_admin/integration_detail.html", integration=integration, error="Ya hay una sincronización en progreso")
+
+        # Leer opciones del formulario
+        sync_options = {
+            'products': bool(request.form.get('sync_products')),
+            'categories': bool(request.form.get('sync_categories')),
+            'images': bool(request.form.get('sync_images')),
+            'stock': bool(request.form.get('sync_stock')),
+            'attributes': bool(request.form.get('sync_attributes')),
+            'embeddings': bool(request.form.get('sync_embeddings')),
+        }
+        # Llama al servicio de sync con las opciones
+        from app.services.tiendanube_sync_service import start_full_sync
+        result = start_full_sync(integration.client_id, sync_options)
+        # Recarga el objeto por si cambió el estado
+        db.session.refresh(integration)
+        return render_template("tiendanube_admin/integration_detail.html", integration=integration, result=result)
+
+    return render_template("tiendanube_admin/integration_detail.html", integration=integration)
 
 
 @bp.route('/integrations/<integration_id>/sync', methods=['POST'])

@@ -1,0 +1,54 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Integración Tiendanube{% endblock %}
+{% block content %}
+<div class="container">
+    <h2 class="mb-3">Integración Tiendanube</h2>
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">{{ integration.store_name or 'Tienda' }}</h5>
+            <p class="mb-1"><strong>Cliente:</strong> {{ integration.client_id }}</p>
+            <p class="mb-1"><strong>Estado:</strong> {{ 'Activa' if integration.is_active else 'Inactiva' }}</p>
+            <p class="mb-1"><strong>Última sincronización:</strong> {{ integration.last_sync_at or 'Nunca' }}</p>
+            <p class="mb-1"><strong>Estado de sincronización:</strong> <span id="sync-status">{{ integration.sync_status or 'Sin ejecutar' }}</span></p>
+            {% if integration.sync_error %}
+            <p class="text-danger"><strong>Error:</strong> {{ integration.sync_error }}</p>
+            {% endif %}
+        </div>
+    </div>
+    <form id="sync-form" method="post" action="{{ url_for('tiendanube_admin.trigger_sync', integration_id=integration.id) }}">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">¿Qué deseas sincronizar?</h5>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="sync_products" id="sync_products" checked>
+                    <label class="form-check-label" for="sync_products">Productos</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="sync_categories" id="sync_categories" checked>
+                    <label class="form-check-label" for="sync_categories">Categorías</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="sync_images" id="sync_images" checked>
+                    <label class="form-check-label" for="sync_images">Imágenes</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="sync_stock" id="sync_stock" checked>
+                    <label class="form-check-label" for="sync_stock">Stock</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="sync_attributes" id="sync_attributes" checked>
+                    <label class="form-check-label" for="sync_attributes">Atributos dinámicos</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="sync_embeddings" id="sync_embeddings">
+                    <label class="form-check-label" for="sync_embeddings">Embeddings y centroides</label>
+                </div>
+                <button type="submit" class="btn btn-primary mt-3" id="sync-btn" {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>Iniciar sincronización</button>
+                {% if integration.sync_status == 'in_progress' %}
+                <span class="badge bg-warning text-dark ms-2">Sincronización en progreso...</span>
+                {% endif %}
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
