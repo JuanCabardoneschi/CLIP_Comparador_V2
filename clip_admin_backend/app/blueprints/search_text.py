@@ -1706,16 +1706,19 @@ def text_search():
                     cats_matched = [c for c in cats_matched if c]
                     cats_missing = [c for c in cats_detected if c not in cats_matched]
 
-                    terms_extracted = []
-                    for af in (atributos_encontrados or []):
-                        mo = af.get('modificador_original')
-                        if mo:
-                            terms_extracted.append(str(mo).lower())
+                    # Fase 1: reglas claras de términos
+                    # - terms_extracted: todos los modificadores extraídos del query
+                    # - terms_matched: solo los modificadores que matchearon atributos (por key/label/valor)
+                    # - terms_unmatched: modificadores que NO matchearon atributos
+                    terms_extracted = [str(m).lower() for m in (modificadores or []) if str(m).strip()]
+                    terms_matched = [
+                        str(af.get('modificador_original')).lower()
+                        for af in (atributos_encontrados or [])
+                        if af.get('modificador_original')
+                    ]
+                    terms_unmatched = [str(m).lower() for m in (modificadores_no_configurados or []) if str(m).strip()]
 
-                    # Heurística simple para matched/unmatched en modo testing
                     had_results_flag = bool(filtered_products)
-                    terms_matched = terms_extracted if had_results_flag else []
-                    terms_unmatched = [] if had_results_flag else terms_extracted
 
                     elapsed_ms = int(( _t.time() - start_time ) * 1000)
                     SearchLog.log_search(
@@ -2068,15 +2071,16 @@ def text_search():
                     cats_matched = [c for c in cats_matched if c]
                     cats_missing = [c for c in cats_detected if c not in cats_matched]
 
-                    terms_extracted = []
-                    for af in (atributos_encontrados or []):
-                        mo = af.get('modificador_original')
-                        if mo:
-                            terms_extracted.append(str(mo).lower())
+                    # Fase 1 fallback: mismas reglas que early
+                    terms_extracted = [str(m).lower() for m in (modificadores or []) if str(m).strip()]
+                    terms_matched = [
+                        str(af.get('modificador_original')).lower()
+                        for af in (atributos_encontrados or [])
+                        if af.get('modificador_original')
+                    ]
+                    terms_unmatched = [str(m).lower() for m in (modificadores_no_configurados or []) if str(m).strip()]
 
                     had_results_flag = bool('filtered_products' in locals() and filtered_products)
-                    terms_matched = terms_extracted if had_results_flag else []
-                    terms_unmatched = [] if had_results_flag else terms_extracted
 
                     elapsed_ms = int(( _t.time() - start_time ) * 1000)
                     SearchLog.log_search(
