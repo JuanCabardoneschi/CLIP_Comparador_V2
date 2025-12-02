@@ -178,27 +178,34 @@ def config():
             </div>
 
             <div class="section">
-                <h2>📋 Instrucciones de uso</h2>
+                <h2>📋 Cómo agregar la búsqueda a tu tienda</h2>
                 <div class="steps">
                     <div class="step">
-                        <h3>Crear una página</h3>
-                        <p>Ve a <strong>Tienda online → Páginas → Nueva página</strong></p>
+                        <h3>Agregar enlace en el menú</h3>
+                        <p>Ve a <strong>Tienda online → Navegación → Menú principal</strong></p>
+                        <p>Agregá un nuevo enlace:</p>
+                        <ul style="margin-top: 10px; padding-left: 20px;">
+                            <li><strong>Texto:</strong> Búsqueda con IA</li>
+                            <li><strong>URL:</strong> Copiá la URL de abajo</li>
+                        </ul>
                     </div>
 
                     <div class="step">
-                        <h3>Agregar el código</h3>
-                        <p>En el contenido de la página, pega este código:</p>
-                        <div class="code-block">&lt;iframe src="{widget_url}" width="100%" height="800" style="border:none;"&gt;&lt;/iframe&gt;</div>
+                        <h3>URL del comparador</h3>
+                        <div class="code-block" style="word-break: break-all;">{widget_url}</div>
+                        <p style="margin-top: 10px;">El enlace abrirá el buscador visual en una nueva pestaña</p>
                     </div>
 
                     <div class="step">
-                        <h3>Publicar la página</h3>
-                        <p>Dale un título como "Búsqueda con IA" y publica</p>
+                        <h3>Alternativa: Botón flotante</h3>
+                        <p>Si tenés un plan pago de Tiendanube, podés editar el código del tema y agregar:</p>
+                        <div class="code-block">&lt;script src="https://clipcomparadorv2-production.up.railway.app/static/tiendanube-floating-button.js"&gt;&lt;/script&gt;</div>
+                        <p style="margin-top: 10px;">Esto agregará un botón morado flotante en todas las páginas</p>
                     </div>
 
                     <div class="step">
                         <h3>¡Listo!</h3>
-                        <p>Tus clientes ya pueden buscar productos con imágenes</p>
+                        <p>Tus clientes ya pueden buscar productos con imágenes desde el menú de tu tienda</p>
                     </div>
                 </div>
             </div>
