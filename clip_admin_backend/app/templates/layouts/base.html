@@ -238,7 +238,7 @@
                     {% if current_user.client and current_user.client.integration_type == 'tiendanube' %}
                     <li class="nav-item">
                                 <a class="nav-link {% if request.endpoint and 'tiendanube_admin' in request.endpoint %}active{% endif %}"
-                                    href="{{ url_for('tiendanube_admin.trigger_sync', integration_id=current_user.client_id) }}">
+                                    href="{{ url_for('tiendanube_admin.get_integration', integration_id=current_user.client_id) }}">
                             <i class="bi bi-shop me-2"></i>
                             Integración Tiendanube
                         </a>
