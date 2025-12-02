@@ -415,9 +415,13 @@ class TiendanubeSyncService:
     def generate_embeddings(self):
         """Genera embeddings CLIP para imágenes sin procesar"""
         try:
-            # Importar CLIP engine
-            from app.core.clip_engine import CLIPEngine
-            clip_engine = CLIPEngine()
+            # Importar funciones de embeddings
+            from app.blueprints.embeddings import get_clip_model, load_image_from_source
+            import torch
+            import numpy as np
+
+            # Cargar modelo CLIP
+            clip_model, clip_processor = get_clip_model()
 
             # Obtener imágenes sin procesar
             unprocessed_images = Image.query.filter_by(
@@ -434,8 +438,22 @@ class TiendanubeSyncService:
                     # Decodificar Base64 a bytes
                     image_bytes = base64.b64decode(image.base64_thumb)
 
+                    # Cargar imagen
+                    pil_image = load_image_from_source(image_bytes)
+
+                    # Procesar con CLIP
+                    inputs = clip_processor(images=pil_image, return_tensors="pt")
+                    
+                    # Mover a GPU si está disponible
+                    if torch.cuda.is_available():
+                        inputs = {k: v.cuda() for k, v in inputs.items()}
+
                     # Generar embedding
-                    embedding = clip_engine.get_image_embedding_from_bytes(image_bytes)
+                    with torch.no_grad():
+                        image_features = clip_model.get_image_features(**inputs)
+                        # Normalizar
+                        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+                        embedding = image_features.cpu().numpy().flatten()
 
                     # Serializar y guardar
                     image.clip_embedding = json.dumps(embedding.tolist())
@@ -458,10 +476,7 @@ class TiendanubeSyncService:
     def calculate_category_centroids(self):
         """Calcula centroides CLIP para cada categoría"""
         try:
-            from app.core.clip_engine import CLIPEngine
             import numpy as np
-
-            clip_engine = CLIPEngine()
 
             # Obtener categorías del cliente
             categories = Category.query.filter_by(client_id=self.client.id).all()

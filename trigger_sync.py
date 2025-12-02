@@ -7,7 +7,7 @@ sys.path.insert(0, 'clip_admin_backend')
 from app.services.tiendanube_sync_service import start_full_sync
 
 # Cliente Test Clip
-CLIENT_ID = 'e8c4a5b5-7402-4fdd-beb6-53fb7d84d2a6'  # Obtendremos esto de la DB
+CLIENT_ID = '2cb75338-f232-4f8e-88be-bfc0a06b2516'
 
 if __name__ == '__main__':
     print("🚀 Iniciando sincronización de Test Clip...")
