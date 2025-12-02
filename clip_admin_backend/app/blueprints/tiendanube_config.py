@@ -2,7 +2,6 @@
 Blueprint para configuración de app Tiendanube
 """
 from flask import Blueprint, render_template, request, jsonify
-from app.models.tiendanube_integration import TiendanubeIntegration
 from app.models.client import Client
 import logging
 import requests
@@ -23,18 +22,6 @@ def widget():
     """
     # Permitir pasar la API Key por querystring: ?api_key=...
     api_key = request.args.get('api_key') or request.args.get('key') or request.args.get('apikey')
-    if not api_key:
-        # Intentar resolver por store_id (user_id de Tiendanube)
-        store_id = request.args.get('store_id') or request.args.get('user_id') or request.args.get('shop_id')
-        if store_id:
-            try:
-                integ = TiendanubeIntegration.query.filter_by(store_id=str(store_id)).first()
-                if integ:
-                    client = Client.query.get(integ.client_id)
-                    if client and client.is_active and client.api_key:
-                        api_key = client.api_key
-            except Exception:
-                api_key = None
     return render_template('tiendanube_widget.html', api_key=api_key)
 
 @bp.route('/config')
@@ -52,9 +39,8 @@ def config():
         script_installed = install_floating_button(store_id, access_token)
 
     # Sugerir URL con placeholder de API Key para que cada tienda use su clave
-    # Ofrecer dos opciones: por api_key directa o por store_id (si está mapeado en nuestra BD)
+    # URL con api_key (única forma soportada)
     widget_url_api = 'https://clipcomparadorv2-production.up.railway.app/tiendanube/widget?api_key=TU_API_KEY'
-    widget_url_store = 'https://clipcomparadorv2-production.up.railway.app/tiendanube/widget?store_id=TU_STORE_ID'
 
     html = f"""
     <!DOCTYPE html>
@@ -231,11 +217,8 @@ def config():
 
             <div class="section">
                 <h2>🔗 URL del Widget</h2>
-                <p>Elegí una de estas opciones:</p>
                 <div class="code-block">{widget_url_api}</div>
-                <p style="margin-top:8px;">o</p>
-                <div class="code-block">{widget_url_store}</div>
-                <p>Si usás <strong>store_id</strong>, debemos haber mapeado tu tienda previamente en nuestro sistema.</p>
+                <p>Copiá esta URL y reemplazá <strong>TU_API_KEY</strong> por tu clave.</p>
             </div>
 
             <a href="{widget_url_api}" target="_blank" class="button">Ver Demo del Widget</a>
