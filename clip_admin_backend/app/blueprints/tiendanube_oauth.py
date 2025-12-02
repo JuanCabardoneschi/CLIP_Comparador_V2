@@ -123,23 +123,33 @@ def oauth_callback():
             logger.info(f"Cliente creado: {client.id} para tienda {store_name}")
 
             # 5a. Crear usuario STORE_ADMIN automáticamente
-            admin_username = f"admin_{store_name.lower().replace(' ', '_')}"
-            admin_email = store_email or f'{user_id}@tiendanube.com'
+            admin_full_name = f"Admin {store_name}"
+            # Usar SIEMPRE el email real del usuario de la tienda (store_email)
+            admin_email = store_email
 
             # Verificar si ya existe un usuario con ese email
-            existing_user = User.query.filter_by(email=admin_email).first()
+            existing_user = None
+            if admin_email:
+                existing_user = User.query.filter_by(email=admin_email, client_id=client.id).first()
 
-            if not existing_user:
+            # Crear usuario admin:
+            # - Si tenemos email: crear con email
+            # - Si NO hay email: crear sin email, usando full_name como identificador
+            if (admin_email and not existing_user) or (not admin_email):
                 from werkzeug.security import generate_password_hash
                 import secrets
 
                 # Generar contraseña temporal
                 temp_password = secrets.token_urlsafe(12)
 
+                # Si no hay email, usar un placeholder para cumplir NOT NULL
+                if not admin_email:
+                    admin_email = f"{user_id}@no-email.local"
+
                 admin_user = User(
-                    username=admin_username,
                     email=admin_email,
                     password_hash=generate_password_hash(temp_password),
+                    full_name=admin_full_name,
                     role='STORE_ADMIN',
                     client_id=client.id,
                     is_active=True
@@ -147,15 +157,24 @@ def oauth_callback():
                 db.session.add(admin_user)
                 db.session.flush()
 
-                logger.info(f"Usuario STORE_ADMIN creado: {admin_username} (contraseña temporal: {temp_password})")
+                logger.info(f"Usuario STORE_ADMIN creado: {admin_email} (contraseña temporal: {temp_password})")
 
                 # Guardar credenciales en config del cliente para mostrarlas
                 if not client.integration_config:
                     client.integration_config = {}
-                client.integration_config['admin_username'] = admin_username
+                client.integration_config['admin_email'] = admin_email
+                client.integration_config['admin_name'] = admin_full_name
                 client.integration_config['admin_temp_password'] = temp_password
+            elif existing_user:
+                logger.info(f"Usuario existente encontrado: {existing_user.email}")
             else:
-                logger.info(f"Usuario existente encontrado: {existing_user.username}")
+                # No tenemos email del dueño de la tienda; no crear usuario automático
+                logger.warning("No se recibió store_email desde Tiendanube; no se crea usuario STORE_ADMIN automáticamente")
+                if not client.integration_config:
+                    client.integration_config = {}
+                client.integration_config['admin_email'] = None
+                client.integration_config['admin_name'] = None
+                client.integration_config['admin_temp_password'] = None
 
             # 5b. Crear integración con token encriptado
             integration = TiendanubeIntegration(
@@ -195,23 +214,27 @@ def oauth_callback():
         else:
             logger.warning(f"No se pudo inyectar script; usar fallback de enlace")
 
-        # 8. Iniciar sincronización inicial (asíncrono recomendado, pero inline por ahora)
-        logger.info(f"Iniciando sincronización inicial para cliente {client.id}...")
+        # 8. Disparar sincronización inicial en background (no bloqueante)
         try:
+            import threading
             from app.services.tiendanube_sync_service import start_full_sync
-            # TODO: En producción, ejecutar esto en background task (Celery/RQ)
-            # Por ahora lo hacemos inline para simplificar
-            sync_result = start_full_sync(str(client.id))
-            if sync_result.get('success'):
-                logger.info(f"Sincronización inicial completada: {sync_result.get('stats')}")
-            else:
-                logger.error(f"Error en sincronización inicial: {sync_result.get('error')}")
+
+            def _run_sync(cid: str):
+                try:
+                    logger.info(f"[SYNC] Iniciando sincronización inicial para cliente {cid}...")
+                    result = start_full_sync(cid)
+                    if result.get('success'):
+                        logger.info(f"[SYNC] Sincronización completada: {result.get('stats')}")
+                    else:
+                        logger.error(f"[SYNC] Error en sincronización: {result.get('error')}")
+                except Exception as ex:
+                    logger.error(f"[SYNC] Excepción en hilo de sincronización: {str(ex)}")
+
+            threading.Thread(target=_run_sync, args=(str(client.id),), daemon=True).start()
         except Exception as e:
-            logger.error(f"Error iniciando sincronización: {str(e)}")
-            # No fallar el OAuth si la sync falla; se puede reintentar después
+            logger.error(f"No se pudo iniciar sincronización en background: {str(e)}")
 
         # 9. Renderizar página de éxito
-        admin_credentials = client.integration_config.get('admin_username'), client.integration_config.get('admin_temp_password')
         return render_template_string(
             render_success_page(
                 store_name=store_name,
@@ -219,8 +242,9 @@ def oauth_callback():
                 scope=scope,
                 api_key=client.api_key,
                 has_script=(script_id is not None),
-                admin_username=admin_credentials[0],
-                admin_password=admin_credentials[1]
+                admin_email=client.integration_config.get('admin_email'),
+                admin_name=client.integration_config.get('admin_name'),
+                admin_password=client.integration_config.get('admin_temp_password')
             )
         )
 
@@ -342,24 +366,25 @@ def inject_widget_script(store_id, access_token, api_key):
         return None
 
 
-def render_success_page(store_name, store_id, scope, api_key, has_script=False, admin_username=None, admin_password=None):
+def render_success_page(store_name, store_id, scope, api_key, has_script=False, admin_email=None, admin_name=None, admin_password=None):
     """Renderiza página de éxito con instrucciones según disponibilidad de script"""
 
-    # Sección de credenciales de admin
-    admin_section = ""
-    if admin_username and admin_password:
-        admin_section = f"""
-        <div class="alert alert-info">
-            <strong>🔐 Credenciales de Acceso al Panel Admin</strong><br><br>
-            <strong>URL:</strong> <a href="https://clipcomparadorv2-production.up.railway.app/auth/login" target="_blank">
-                https://clipcomparadorv2-production.up.railway.app/auth/login
-            </a><br>
-            <strong>Usuario:</strong> <code>{admin_username}</code><br>
-            <strong>Contraseña temporal:</strong> <code>{admin_password}</code><br>
-            <br>
-            <small>⚠️ Guardá estas credenciales en un lugar seguro. Podrás cambiar la contraseña una vez que inicies sesión.</small>
-        </div>
-        """
+        # Sección de credenciales de admin
+        admin_section = ""
+        if admin_email and admin_password:
+            admin_section = f"""
+            <div class=\"alert alert-info\">
+                <strong>🔐 Credenciales de Acceso al Panel Admin</strong><br><br>
+                <strong>URL:</strong> <a href=\"https://clipcomparadorv2-production.up.railway.app/auth/login\" target=\"_blank\">
+                    https://clipcomparadorv2-production.up.railway.app/auth/login
+                </a><br>
+                <strong>Email:</strong> <code>{admin_email}</code><br>
+                <strong>Nombre:</strong> <code>{admin_name}</code><br>
+                <strong>Contraseña temporal:</strong> <code>{admin_password}</code><br>
+                <br>
+                <small>⚠️ Guardá estas credenciales en un lugar seguro. Podrás cambiar la contraseña una vez que inicies sesión.</small>
+            </div>
+            """
 
     script_status = """
         <div class="info-item">
