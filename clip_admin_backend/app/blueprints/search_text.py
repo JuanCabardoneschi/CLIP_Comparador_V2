@@ -1214,6 +1214,42 @@ def text_search():
                     except Exception as _cat_err:
                         print(f"⚠️ Error obteniendo categorías activas: {_cat_err}")
                         available_names = []
+                    # Antes de retornar error, registrar analytics para no perder el conteo
+                    try:
+                        import time as _t
+                        print(f"🔍 ANALYTICS (no_category): Registrando búsqueda sin categoría para client={client.id}", flush=True)
+
+                        # Fase 1: términos claros
+                        terms_extracted = [str(m).lower() for m in (modificadores or []) if str(m).strip()]
+                        terms_matched = [
+                            str(af.get('modificador_original')).lower()
+                            for af in (atributos_encontrados or [])
+                            if af.get('modificador_original')
+                        ]
+                        terms_unmatched = [str(m).lower() for m in (modificadores_no_configurados or []) if str(m).strip()]
+
+                        elapsed_ms = int((_t.time() - start_time) * 1000)
+                        SearchLog.log_search(
+                            client_id=client.id,
+                            search_type='text',
+                            query_text=query_text,
+                            image_url=None,
+                            categories_detected=None,
+                            categories_matched=None,
+                            categories_missing=None,
+                            terms_extracted=terms_extracted or None,
+                            terms_matched=terms_matched or None,
+                            terms_unmatched=terms_unmatched or None,
+                            results_count=0,
+                            had_results=False,
+                            response_time_ms=elapsed_ms
+                        )
+                        print(f"✅ ANALYTICS (no_category): SearchLog.log_search() completado", flush=True)
+                    except Exception as _log_nc:
+                        import traceback as _tb
+                        print(f"❌ ANALYTICS (no_category) ERROR: {_log_nc}", flush=True)
+                        print(f"   Traceback: {_tb.format_exc()}", flush=True)
+
                     # Respuesta enriquecida (mantiene error para UI roja, pero incluye datos de categorías)
                     return jsonify({
                         "success": False,
