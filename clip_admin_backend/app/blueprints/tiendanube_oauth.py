@@ -165,6 +165,10 @@ def oauth_callback():
                 client.integration_config['admin_email'] = admin_email
                 client.integration_config['admin_name'] = admin_full_name
                 client.integration_config['admin_temp_password'] = temp_password
+                
+                # Marcar como modificado para que SQLAlchemy persista el cambio
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(client, 'integration_config')
             elif existing_user:
                 logger.info(f"Usuario existente encontrado: {existing_user.email}")
             else:
