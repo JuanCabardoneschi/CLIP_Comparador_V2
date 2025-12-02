@@ -165,7 +165,7 @@ def oauth_callback():
                 client.integration_config['admin_email'] = admin_email
                 client.integration_config['admin_name'] = admin_full_name
                 client.integration_config['admin_temp_password'] = temp_password
-                
+
                 # Marcar como modificado para que SQLAlchemy persista el cambio
                 from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(client, 'integration_config')
@@ -221,22 +221,25 @@ def oauth_callback():
         # 8. Disparar sincronización inicial en background (no bloqueante)
         try:
             import threading
+            from flask import current_app
             from app.services.tiendanube_sync_service import start_full_sync
 
-            def _run_sync(cid: str):
+            def _run_sync(app, cid: str):
                 try:
-                    logger.info(f"[SYNC] Iniciando sincronización inicial para cliente {cid}...")
-                    result = start_full_sync(cid)
-                    if result.get('success'):
-                        logger.info(f"[SYNC] Sincronización completada: {result.get('stats')}")
-                    else:
-                        logger.error(f"[SYNC] Error en sincronización: {result.get('error')}")
+                    with app.app_context():
+                        logger.info(f"[SYNC] Iniciando sincronización inicial para cliente {cid}...")
+                        result = start_full_sync(cid)
+                        if result.get('success'):
+                            logger.info(f"[SYNC] Sincronización completada: {result.get('stats')}")
+                        else:
+                            logger.error(f"[SYNC] Error en sincronización: {result.get('error')}")
                 except Exception as ex:
-                    logger.error(f"[SYNC] Excepción en hilo de sincronización: {str(ex)}")
+                    logger.error(f"[SYNC] Excepción en hilo de sincronización: {str(ex)}", exc_info=True)
 
-            threading.Thread(target=_run_sync, args=(str(client.id),), daemon=True).start()
+            threading.Thread(target=_run_sync, args=(current_app._get_current_object(), str(client.id)), daemon=True).start()
+            logger.info(f"[SYNC] Thread de sincronización lanzado para cliente {client.id}")
         except Exception as e:
-            logger.error(f"No se pudo iniciar sincronización en background: {str(e)}")
+            logger.error(f"No se pudo iniciar sincronización en background: {str(e)}", exc_info=True)
 
         # 9. Renderizar página de éxito
         return render_template_string(
