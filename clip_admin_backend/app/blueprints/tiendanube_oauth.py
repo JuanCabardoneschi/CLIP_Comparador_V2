@@ -4,6 +4,10 @@ Blueprint para manejar OAuth con Tiendanube (sin base de datos)
 from flask import Blueprint, request, jsonify
 import requests
 import logging
+import urllib3
+
+# Deshabilitar warnings de SSL
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +46,8 @@ def oauth_callback():
         response = requests.post(
             TIENDANUBE_TOKEN_URL,
             data=token_data,
-            headers={'Content-Type': 'application/x-www-form-urlencoded'}
+            headers={'Content-Type': 'application/x-www-form-urlencoded'},
+            verify=False  # Deshabilitar verificación SSL temporalmente
         )
 
         if response.status_code != 200:
@@ -93,7 +98,8 @@ def get_store_info(store_id, access_token):
         response = requests.get(
             f'{TIENDANUBE_API_BASE}/{store_id}/store',
             headers=headers,
-            timeout=10
+            timeout=10,
+            verify=False  # Deshabilitar verificación SSL temporalmente
         )
         if response.status_code == 200:
             return response.json()
@@ -313,7 +319,8 @@ def oauth_exchange():
     response = requests.post(
         TIENDANUBE_TOKEN_URL,
         data=token_data,
-        headers={'Content-Type': 'application/x-www-form-urlencoded'}
+        headers={'Content-Type': 'application/x-www-form-urlencoded'},
+        verify=False  # Deshabilitar verificación SSL temporalmente
     )
 
     try:
