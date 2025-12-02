@@ -78,7 +78,7 @@
                 const fallback = document.querySelector('.fallback');
                 if (fallback) fallback.style.display = 'none';
             });
-            
+
             const back = document.getElementById('back-store');
             if (back) back.addEventListener('click', returnToStore);
         });
@@ -103,51 +103,28 @@
                 if (fallback) fallback.style.display = 'none';
             }, 150);
 
-            // Monitorear cierre del overlay detectando cuando desaparece del DOM
+            // Monitorear cierre del overlay detectando cuando .clip-overlay-backdrop desaparece o pierde 'active'
             function watchOverlayClose() {
-                let overlayFound = false;
                 const checkInterval = setInterval(function() {
-                    // Buscar el elemento del overlay con múltiples selectores
-                    const selectors = [
-                        '[class*="clip"]',
-                        '[id*="clip"]',
-                        '.modal',
-                        '.overlay',
-                        '[class*="modal"]',
-                        '[class*="overlay"]',
-                        'iframe[src*="search"]',
-                        'div[style*="z-index"]'
-                    ];
-                    
-                    let overlayEl = null;
-                    for (let sel of selectors) {
-                        const found = document.querySelectorAll(sel);
-                        if (found.length > 0) {
-                            // Filtrar elementos que no sean el fallback
-                            for (let el of found) {
-                                if (!el.classList.contains('fallback') && el.id !== 'clip-open') {
-                                    overlayEl = el;
-                                    if (!overlayFound) {
-                                        console.log('🔍 Overlay detectado:', sel, el);
-                                        overlayFound = true;
-                                    }
-                                    break;
-                                }
-                            }
+                    // Buscar el backdrop del overlay
+                    const overlayEl = document.querySelector('.clip-overlay-backdrop');
+
+                    // Si existe y tiene la clase 'active', el overlay está abierto
+                    const isOpen = overlayEl && overlayEl.classList.contains('active');
+
+                    if (isOpen) {
+                        window._overlayWasOpen = true;
+                        if (!window._overlayLogged) {
+                            console.log('🔍 Overlay abierto');
+                            window._overlayLogged = true;
                         }
-                        if (overlayEl) break;
                     }
 
-                    // Si antes estaba y ahora no está, significa que se cerró
-                    if (window._overlayWasOpen && !overlayEl) {
+                    // Si antes estaba abierto y ahora no, redirigir
+                    if (window._overlayWasOpen && !isOpen) {
                         console.log('✅ Overlay cerrado, redirigiendo...');
                         clearInterval(checkInterval);
                         returnToStore();
-                    }
-
-                    // Marcar que el overlay estuvo abierto
-                    if (overlayEl) {
-                        window._overlayWasOpen = true;
                     }
                 }, 300);
             }
