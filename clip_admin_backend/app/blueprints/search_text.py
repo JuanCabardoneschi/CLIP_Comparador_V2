@@ -1560,6 +1560,12 @@ def text_search():
                     except NameError:
                         clip_scores = {}
 
+                    # Asegurar existencia de tag_matches_map aunque no se haya calculado el boost por tags
+                    try:
+                        tag_matches_map  # noqa: F401
+                    except NameError:
+                        tag_matches_map = {}
+
                     enriched_top5 = []
                     for p in (filtered_products[:5] if filtered_products else []):
                         # Imagen principal
@@ -1629,7 +1635,40 @@ def text_search():
                         } for p in filtered_products[:5]
                     ]
 
-                return jsonify({
+                # Construir respuesta de testing
+                # Helper seguro para normalizar categorías (objeto SQLAlchemy o dict)
+                def _cat_to_dict(cat):
+                    if isinstance(cat, dict):
+                        return {
+                            "id": cat.get("id"),
+                            "name": cat.get("name"),
+                            "name_en": cat.get("name_en"),
+                            "slug": cat.get("slug")
+                        }
+                    return {
+                        "id": getattr(cat, "id", None),
+                        "name": getattr(cat, "name", None),
+                        "name_en": getattr(cat, "name_en", None),
+                        "slug": getattr(cat, "slug", None)
+                    }
+
+                # Helper seguro para normalizar categorías también en fallback
+                def _cat_to_dict(cat):
+                    if isinstance(cat, dict):
+                        return {
+                            "id": cat.get("id"),
+                            "name": cat.get("name"),
+                            "name_en": cat.get("name_en"),
+                            "slug": cat.get("slug")
+                        }
+                    return {
+                        "id": getattr(cat, "id", None),
+                        "name": getattr(cat, "name", None),
+                        "name_en": getattr(cat, "name_en", None),
+                        "slug": getattr(cat, "slug", None)
+                    }
+
+                response_data = {
                     "success": True,
                     "query_original": query_text,
                     "query_normalizada": cleaned_query,
@@ -1639,14 +1678,7 @@ def text_search():
                     },
                     "detection": {
                         "tiene_match": len(matched_categories) > 0,
-                        "categorias_matched": [
-                            {
-                                "id": cat.id,
-                                "name": cat.name,
-                                "name_en": cat.name_en,
-                                "slug": cat.slug
-                            } for cat in matched_categories
-                        ],
+                        "categorias_matched": [ _cat_to_dict(cat) for cat in (matched_categories or []) ],
                         "categorias_cliente_total": len(client_categories)
                     },
                     "analysis": {
@@ -1662,7 +1694,56 @@ def text_search():
                         "top_5_productos": enriched_top5
                     },
                     "next_step": "Testing completado - Ver cobertura en servidor y UI de prueba"
-                })
+                }
+
+                # 📊 También registrar analytics antes de retornar (evita perder conteo por early return)
+                try:
+                    import time as _t
+                    print(f"🔍 ANALYTICS (early): Iniciando registro de búsqueda para client={client.id}", flush=True)
+                    cats_detected = [ (c.get('name') if isinstance(c, dict) else getattr(c, 'name', None)) for c in (matched_categories or []) ]
+                    cats_detected = [c for c in cats_detected if c]
+                    cats_matched = list({(getattr(p.category, 'name', None) or '') for p in (filtered_products or []) if getattr(p, 'category', None)})
+                    cats_matched = [c for c in cats_matched if c]
+                    cats_missing = [c for c in cats_detected if c not in cats_matched]
+
+                    terms_extracted = []
+                    for af in (atributos_encontrados or []):
+                        mo = af.get('modificador_original')
+                        if mo:
+                            terms_extracted.append(str(mo).lower())
+
+                    # Heurística simple para matched/unmatched en modo testing
+                    had_results_flag = bool(filtered_products)
+                    terms_matched = terms_extracted if had_results_flag else []
+                    terms_unmatched = [] if had_results_flag else terms_extracted
+
+                    elapsed_ms = int(( _t.time() - start_time ) * 1000)
+                    SearchLog.log_search(
+                        client_id=client.id,
+                        search_type='text',
+                        query_text=query_text,
+                        image_url=None,
+                        categories_detected=cats_detected or None,
+                        categories_matched=cats_matched or None,
+                        categories_missing=cats_missing or None,
+                        terms_extracted=terms_extracted or None,
+                        terms_matched=terms_matched or None,
+                        terms_unmatched=terms_unmatched or None,
+                        results_count=len(filtered_products or []),
+                        had_results=had_results_flag,
+                        response_time_ms=elapsed_ms
+                    )
+                    print(f"✅ ANALYTICS (early): SearchLog.log_search() completado", flush=True)
+                except Exception as _log_e:
+                    import traceback as _tb
+                    print(f"❌ ANALYTICS (early) ERROR: {_log_e}", flush=True)
+                    print(f"   Traceback: {_tb.format_exc()}", flush=True)
+
+                _resp = jsonify(response_data)
+                _resp.headers['Access-Control-Allow-Origin'] = '*'
+                _resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+                _resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+                return _resp
 
             except Exception as e:
                 attribute_labels = {}  # label normalizado -> objeto config
@@ -1945,7 +2026,7 @@ def text_search():
                 except Exception:
                     pass
 
-                return jsonify({
+                response_data = {
                     "success": True,
                     "query_original": data.get('query', ''),
                     "query_normalizada": cleaned_query,
@@ -1955,7 +2036,7 @@ def text_search():
                     },
                     "detection": {
                         "categorias_cliente_total": len(client_categories),
-                        "categorias_matched": matched_categories,
+                        "categorias_matched": [ _cat_to_dict(cat) for cat in (matched_categories or []) ],
                         "tiene_match": len(matched_categories) > 0
                     },
                     "analysis": {
@@ -1975,7 +2056,55 @@ def text_search():
                     "exposed_attribute_keys": exposed_attribute_keys,
                     "exposed_attribute_labels": exposed_attribute_labels,
                     "next_step": "Testing completado - Ver cobertura en servidor y UI de prueba"
-                })
+                }
+
+                # 📊 Registrar analytics también en este early return (fallback)
+                try:
+                    import time as _t
+                    print(f"🔍 ANALYTICS (early/fallback): Iniciando registro de búsqueda para client={client.id}", flush=True)
+                    cats_detected = [ (c.get('name') if isinstance(c, dict) else getattr(c, 'name', None)) for c in (matched_categories or []) ]
+                    cats_detected = [c for c in cats_detected if c]
+                    cats_matched = list({(getattr(p.category, 'name', None) or '') for p in (filtered_products or []) if getattr(p, 'category', None)}) if 'filtered_products' in locals() else []
+                    cats_matched = [c for c in cats_matched if c]
+                    cats_missing = [c for c in cats_detected if c not in cats_matched]
+
+                    terms_extracted = []
+                    for af in (atributos_encontrados or []):
+                        mo = af.get('modificador_original')
+                        if mo:
+                            terms_extracted.append(str(mo).lower())
+
+                    had_results_flag = bool('filtered_products' in locals() and filtered_products)
+                    terms_matched = terms_extracted if had_results_flag else []
+                    terms_unmatched = [] if had_results_flag else terms_extracted
+
+                    elapsed_ms = int(( _t.time() - start_time ) * 1000)
+                    SearchLog.log_search(
+                        client_id=client.id,
+                        search_type='text',
+                        query_text=query_text,
+                        image_url=None,
+                        categories_detected=cats_detected or None,
+                        categories_matched=cats_matched or None,
+                        categories_missing=cats_missing or None,
+                        terms_extracted=terms_extracted or None,
+                        terms_matched=terms_matched or None,
+                        terms_unmatched=terms_unmatched or None,
+                        results_count=len(filtered_products or []) if 'filtered_products' in locals() else 0,
+                        had_results=had_results_flag,
+                        response_time_ms=elapsed_ms
+                    )
+                    print(f"✅ ANALYTICS (early/fallback): SearchLog.log_search() completado", flush=True)
+                except Exception as _log_e:
+                    import traceback as _tb
+                    print(f"❌ ANALYTICS (early/fallback) ERROR: {_log_e}", flush=True)
+                    print(f"   Traceback: {_tb.format_exc()}", flush=True)
+
+                _resp = jsonify(response_data)
+                _resp.headers['Access-Control-Allow-Origin'] = '*'
+                _resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+                _resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+                return _resp
 
             except Exception as e:
                 print(f"⚠️ Error en detección de categorías: {e}")
