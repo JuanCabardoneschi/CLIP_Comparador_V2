@@ -165,7 +165,7 @@ def oauth_callback():
             from app.services.tiendanube_sync_service import start_full_sync
             # TODO: En producción, ejecutar esto en background task (Celery/RQ)
             # Por ahora lo hacemos inline para simplificar
-            sync_result = start_full_sync(client.id)
+            sync_result = start_full_sync(str(client.id))
             if sync_result.get('success'):
                 logger.info(f"Sincronización inicial completada: {sync_result.get('stats')}")
             else:
