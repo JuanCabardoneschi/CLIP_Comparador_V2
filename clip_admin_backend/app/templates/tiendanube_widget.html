@@ -101,6 +101,45 @@
         // Intento de auto-apertura cuando el script terminó de cargar
         window.addEventListener('load', function() {
             setTimeout(openClipOverlay, 150);
+            // Intentar enganchar evento de cierre del overlay para volver a la tienda
+            function bindOverlayCloseHandler() {
+                try {
+                    if (window.CLIPV2 && window.CLIPV2.overlay) {
+                        const ov = window.CLIPV2.overlay;
+                        // Variantes defensivas según API disponible
+                        if (typeof ov.on === 'function') {
+                            ov.on('close', function(){
+                                // Al cerrar overlay, intentar volver a tienda
+                                try { window.history.back(); } catch(e) {}
+                                {% if referer %}
+                                try { window.location.href = '{{ referer|e }}'; } catch(e) {}
+                                {% endif %}
+                            });
+                        } else if (typeof ov.setOnClose === 'function') {
+                            ov.setOnClose(function(){
+                                try { window.history.back(); } catch(e) {}
+                                {% if referer %}
+                                try { window.location.href = '{{ referer|e }}'; } catch(e) {}
+                                {% endif %}
+                            });
+                        } else {
+                            // Fallback: escuchar Escape para cierre manual
+                            document.addEventListener('keydown', function(ev){
+                                if (ev.key === 'Escape') {
+                                    try { window.history.back(); } catch(e) {}
+                                    {% if referer %}
+                                    try { window.location.href = '{{ referer|e }}'; } catch(e) {}
+                                    {% endif %}
+                                }
+                            });
+                        }
+                    }
+                } catch(e) { /* no-op */ }
+            }
+            // Intentar varias veces por si el overlay inicializa tarde
+            bindOverlayCloseHandler();
+            setTimeout(bindOverlayCloseHandler, 300);
+            setTimeout(bindOverlayCloseHandler, 1000);
         });
     </script>
 </body>
