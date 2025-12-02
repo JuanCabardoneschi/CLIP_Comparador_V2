@@ -1,0 +1,205 @@
+"""
+Blueprint para configuración de app Tiendanube
+"""
+from flask import Blueprint, render_template, request
+import logging
+
+logger = logging.getLogger(__name__)
+
+bp = Blueprint('tiendanube_config', __name__, url_prefix='/tiendanube')
+
+@bp.route('/widget')
+def widget():
+    """
+    Página del widget que se embebe en Tiendanube
+    Muestra el comparador visual completo
+    """
+    return render_template('tiendanube_widget.html')
+
+@bp.route('/config')
+def config():
+    """
+    Página de configuración de la app (para el panel de Tiendanube)
+    Aquí el comerciante ve instrucciones de cómo usar el widget
+    """
+    store_id = request.args.get('store_id', '')
+    
+    widget_url = 'https://clipcomparadorv2-production.up.railway.app/tiendanube/widget'
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>CLIP Comparador - Configuración</title>
+        <style>
+            * {{
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }}
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                padding: 40px 20px;
+                min-height: 100vh;
+            }}
+            .container {{
+                max-width: 800px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 20px;
+                padding: 40px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            }}
+            h1 {{
+                color: #1f2937;
+                margin-bottom: 10px;
+                font-size: 32px;
+            }}
+            .subtitle {{
+                color: #6b7280;
+                margin-bottom: 30px;
+                font-size: 18px;
+            }}
+            .success-icon {{
+                font-size: 64px;
+                text-align: center;
+                margin-bottom: 20px;
+            }}
+            .section {{
+                margin: 30px 0;
+                padding: 20px;
+                background: #f9fafb;
+                border-radius: 10px;
+                border-left: 4px solid #667eea;
+            }}
+            .section h2 {{
+                color: #374151;
+                margin-bottom: 15px;
+                font-size: 20px;
+            }}
+            .section p {{
+                color: #6b7280;
+                line-height: 1.6;
+                margin-bottom: 10px;
+            }}
+            .code-block {{
+                background: #1f2937;
+                color: #10b981;
+                padding: 15px;
+                border-radius: 8px;
+                font-family: 'Courier New', monospace;
+                font-size: 14px;
+                overflow-x: auto;
+                margin: 15px 0;
+            }}
+            .button {{
+                display: inline-block;
+                background: #667eea;
+                color: white;
+                padding: 12px 30px;
+                border-radius: 8px;
+                text-decoration: none;
+                margin-top: 20px;
+                transition: background 0.3s;
+                text-align: center;
+            }}
+            .button:hover {{
+                background: #5568d3;
+            }}
+            .store-info {{
+                background: #dbeafe;
+                padding: 15px;
+                border-radius: 8px;
+                margin: 20px 0;
+            }}
+            .store-info strong {{
+                color: #1e40af;
+            }}
+            .steps {{
+                counter-reset: step;
+            }}
+            .step {{
+                position: relative;
+                padding-left: 50px;
+                margin: 25px 0;
+            }}
+            .step:before {{
+                counter-increment: step;
+                content: counter(step);
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 35px;
+                height: 35px;
+                background: #667eea;
+                color: white;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+            }}
+            .step h3 {{
+                color: #1f2937;
+                margin-bottom: 10px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="success-icon">✅</div>
+            <h1>¡App instalada correctamente!</h1>
+            <p class="subtitle">Tu tienda ahora tiene búsqueda visual con inteligencia artificial</p>
+            
+            <div class="store-info">
+                <strong>Store ID:</strong> {store_id or 'No detectado'}
+            </div>
+
+            <div class="section">
+                <h2>🎯 ¿Cómo funciona?</h2>
+                <p>CLIP Comparador permite a tus clientes buscar productos usando imágenes o texto. 
+                La inteligencia artificial encuentra productos similares en tu catálogo.</p>
+            </div>
+
+            <div class="section">
+                <h2>📋 Instrucciones de uso</h2>
+                <div class="steps">
+                    <div class="step">
+                        <h3>Crear una página</h3>
+                        <p>Ve a <strong>Tienda online → Páginas → Nueva página</strong></p>
+                    </div>
+                    
+                    <div class="step">
+                        <h3>Agregar el código</h3>
+                        <p>En el contenido de la página, pega este código:</p>
+                        <div class="code-block">&lt;iframe src="{widget_url}" width="100%" height="800" style="border:none;"&gt;&lt;/iframe&gt;</div>
+                    </div>
+                    
+                    <div class="step">
+                        <h3>Publicar la página</h3>
+                        <p>Dale un título como "Búsqueda con IA" y publica</p>
+                    </div>
+                    
+                    <div class="step">
+                        <h3>¡Listo!</h3>
+                        <p>Tus clientes ya pueden buscar productos con imágenes</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>🔗 URL del Widget</h2>
+                <div class="code-block">{widget_url}</div>
+                <p>Copiá esta URL para usarla en tu tienda</p>
+            </div>
+
+            <a href="{widget_url}" target="_blank" class="button">Ver Demo del Widget</a>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
