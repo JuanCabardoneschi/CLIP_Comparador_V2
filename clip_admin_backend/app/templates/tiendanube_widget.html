@@ -53,6 +53,9 @@
         <h1>Búsqueda inteligente</h1>
         <p>Si no se abre automáticamente, hacé clic en el botón:</p>
         <button id="clip-open" class="btn-open">Abrir búsqueda con IA</button>
+        <div class="actions">
+            <a id="back-store" class="link">← Volver a la tienda</a>
+        </div>
     </div>
 
     <!-- Widget CLIP V4 (Overlay) -->
@@ -75,6 +78,9 @@
                 const fallback = document.querySelector('.fallback');
                 if (fallback) fallback.style.display = 'none';
             });
+            
+            const back = document.getElementById('back-store');
+            if (back) back.addEventListener('click', returnToStore);
         });
     </script>
     <script src="https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed-v4.js"></script>
@@ -99,12 +105,42 @@
 
             // Monitorear cierre del overlay detectando cuando desaparece del DOM
             function watchOverlayClose() {
+                let overlayFound = false;
                 const checkInterval = setInterval(function() {
-                    // Buscar el elemento del overlay (el modal tiene clase específica)
-                    const overlayEl = document.querySelector('[class*="clip-overlay"], [id*="clip-overlay"], .modal-overlay, #clipv2-overlay');
+                    // Buscar el elemento del overlay con múltiples selectores
+                    const selectors = [
+                        '[class*="clip"]',
+                        '[id*="clip"]',
+                        '.modal',
+                        '.overlay',
+                        '[class*="modal"]',
+                        '[class*="overlay"]',
+                        'iframe[src*="search"]',
+                        'div[style*="z-index"]'
+                    ];
+                    
+                    let overlayEl = null;
+                    for (let sel of selectors) {
+                        const found = document.querySelectorAll(sel);
+                        if (found.length > 0) {
+                            // Filtrar elementos que no sean el fallback
+                            for (let el of found) {
+                                if (!el.classList.contains('fallback') && el.id !== 'clip-open') {
+                                    overlayEl = el;
+                                    if (!overlayFound) {
+                                        console.log('🔍 Overlay detectado:', sel, el);
+                                        overlayFound = true;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        if (overlayEl) break;
+                    }
 
                     // Si antes estaba y ahora no está, significa que se cerró
                     if (window._overlayWasOpen && !overlayEl) {
+                        console.log('✅ Overlay cerrado, redirigiendo...');
                         clearInterval(checkInterval);
                         returnToStore();
                     }
@@ -113,10 +149,10 @@
                     if (overlayEl) {
                         window._overlayWasOpen = true;
                     }
-                }, 500);
+                }, 300);
             }
 
-            setTimeout(watchOverlayClose, 1000);
+            setTimeout(watchOverlayClose, 500);
         });
     </script>
 </body>
