@@ -22,7 +22,9 @@ def widget():
     """
     # Permitir pasar la API Key por querystring: ?api_key=...
     api_key = request.args.get('api_key') or request.args.get('key') or request.args.get('apikey')
-    return render_template('tiendanube_widget.html', api_key=api_key)
+    # Capturar Referer para permitir "volver a la tienda" en el widget
+    referer = request.headers.get('Referer')
+    return render_template('tiendanube_widget.html', api_key=api_key, referer=referer)
 
 @bp.route('/config')
 def config():

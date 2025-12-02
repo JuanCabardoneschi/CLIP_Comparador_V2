@@ -55,6 +55,9 @@
         <button id="clip-open" class="btn-open">Abrir búsqueda con IA</button>
         <div class="actions">
             <a id="back-store" class="link">Volver a la tienda</a>
+            {% if referer %}
+            <span class="link" id="back-store-alt" style="display:none;">Volver (fallback)</span>
+            {% endif %}
         </div>
     </div>
 
@@ -75,8 +78,20 @@
             if (btn) btn.addEventListener('click', openClipOverlay);
             const back = document.getElementById('back-store');
             if (back) back.addEventListener('click', function(){
-                try { window.close(); } catch(e) { window.history.back(); }
+                // Intentar cerrar si se abrió en ventana separada; si no, volver atrás
+                try { window.close(); } catch(e) {}
+                try { window.history.back(); } catch(e) {}
+                // Si tenemos referer explícito, redirigir como último recurso
+                {% if referer %}
+                try { window.location.href = '{{ referer|e }}'; } catch(e) {}
+                {% endif %}
             });
+            {% if referer %}
+            const backAlt = document.getElementById('back-store-alt');
+            if (backAlt) backAlt.addEventListener('click', function(){
+                window.location.href = '{{ referer|e }}';
+            });
+            {% endif %}
             // Intento de compactar ventana si es popup
             try { window.resizeTo(800, 700); } catch(e) {}
         });
