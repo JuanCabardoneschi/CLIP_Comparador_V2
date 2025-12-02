@@ -53,12 +53,6 @@
         <h1>Búsqueda inteligente</h1>
         <p>Si no se abre automáticamente, hacé clic en el botón:</p>
         <button id="clip-open" class="btn-open">Abrir búsqueda con IA</button>
-        <div class="actions">
-            <a id="back-store" class="link">Volver a la tienda</a>
-            {% if referer %}
-            <span class="link" id="back-store-alt" style="display:none;">Volver (fallback)</span>
-            {% endif %}
-        </div>
     </div>
 
     <!-- Widget CLIP V4 (Overlay) -->
@@ -75,71 +69,54 @@
         }
         document.addEventListener('DOMContentLoaded', function() {
             const btn = document.getElementById('clip-open');
-            if (btn) btn.addEventListener('click', openClipOverlay);
-            const back = document.getElementById('back-store');
-            if (back) back.addEventListener('click', function(){
-                // Intentar cerrar si se abrió en ventana separada; si no, volver atrás
-                try { window.close(); } catch(e) {}
-                try { window.history.back(); } catch(e) {}
-                // Si tenemos referer explícito, redirigir como último recurso
-                {% if referer %}
-                try { window.location.href = '{{ referer|e }}'; } catch(e) {}
-                {% endif %}
+            if (btn) btn.addEventListener('click', function() {
+                openClipOverlay();
+                // Ocultar fallback al abrir manualmente
+                const fallback = document.querySelector('.fallback');
+                if (fallback) fallback.style.display = 'none';
             });
-            {% if referer %}
-            const backAlt = document.getElementById('back-store-alt');
-            if (backAlt) backAlt.addEventListener('click', function(){
-                window.location.href = '{{ referer|e }}';
-            });
-            {% endif %}
-            // Intento de compactar ventana si es popup
-            try { window.resizeTo(800, 700); } catch(e) {}
         });
     </script>
     <script src="https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed-v4.js"></script>
     <script>
+        // Función para volver a la tienda
+        function returnToStore() {
+            {% if referer %}
+            window.location.href = '{{ referer|e }}';
+            {% else %}
+            window.history.back();
+            {% endif %}
+        }
+
         // Intento de auto-apertura cuando el script terminó de cargar
         window.addEventListener('load', function() {
-            setTimeout(openClipOverlay, 150);
-            // Intentar enganchar evento de cierre del overlay para volver a la tienda
-            function bindOverlayCloseHandler() {
-                try {
-                    if (window.CLIPV2 && window.CLIPV2.overlay) {
-                        const ov = window.CLIPV2.overlay;
-                        // Variantes defensivas según API disponible
-                        if (typeof ov.on === 'function') {
-                            ov.on('close', function(){
-                                // Al cerrar overlay, intentar volver a tienda
-                                try { window.history.back(); } catch(e) {}
-                                {% if referer %}
-                                try { window.location.href = '{{ referer|e }}'; } catch(e) {}
-                                {% endif %}
-                            });
-                        } else if (typeof ov.setOnClose === 'function') {
-                            ov.setOnClose(function(){
-                                try { window.history.back(); } catch(e) {}
-                                {% if referer %}
-                                try { window.location.href = '{{ referer|e }}'; } catch(e) {}
-                                {% endif %}
-                            });
-                        } else {
-                            // Fallback: escuchar Escape para cierre manual
-                            document.addEventListener('keydown', function(ev){
-                                if (ev.key === 'Escape') {
-                                    try { window.history.back(); } catch(e) {}
-                                    {% if referer %}
-                                    try { window.location.href = '{{ referer|e }}'; } catch(e) {}
-                                    {% endif %}
-                                }
-                            });
-                        }
+            setTimeout(function() {
+                openClipOverlay();
+                // Ocultar el fallback cuando el overlay se abre
+                const fallback = document.querySelector('.fallback');
+                if (fallback) fallback.style.display = 'none';
+            }, 150);
+
+            // Monitorear cierre del overlay detectando cuando desaparece del DOM
+            function watchOverlayClose() {
+                const checkInterval = setInterval(function() {
+                    // Buscar el elemento del overlay (el modal tiene clase específica)
+                    const overlayEl = document.querySelector('[class*="clip-overlay"], [id*="clip-overlay"], .modal-overlay, #clipv2-overlay');
+
+                    // Si antes estaba y ahora no está, significa que se cerró
+                    if (window._overlayWasOpen && !overlayEl) {
+                        clearInterval(checkInterval);
+                        returnToStore();
                     }
-                } catch(e) { /* no-op */ }
+
+                    // Marcar que el overlay estuvo abierto
+                    if (overlayEl) {
+                        window._overlayWasOpen = true;
+                    }
+                }, 500);
             }
-            // Intentar varias veces por si el overlay inicializa tarde
-            bindOverlayCloseHandler();
-            setTimeout(bindOverlayCloseHandler, 300);
-            setTimeout(bindOverlayCloseHandler, 1000);
+
+            setTimeout(watchOverlayClose, 1000);
         });
     </script>
 </body>
