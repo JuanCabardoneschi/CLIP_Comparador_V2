@@ -369,22 +369,22 @@ def inject_widget_script(store_id, access_token, api_key):
 def render_success_page(store_name, store_id, scope, api_key, has_script=False, admin_email=None, admin_name=None, admin_password=None):
     """Renderiza página de éxito con instrucciones según disponibilidad de script"""
 
-        # Sección de credenciales de admin
-        admin_section = ""
-        if admin_email and admin_password:
-            admin_section = f"""
-            <div class=\"alert alert-info\">
-                <strong>🔐 Credenciales de Acceso al Panel Admin</strong><br><br>
-                <strong>URL:</strong> <a href=\"https://clipcomparadorv2-production.up.railway.app/auth/login\" target=\"_blank\">
-                    https://clipcomparadorv2-production.up.railway.app/auth/login
-                </a><br>
-                <strong>Email:</strong> <code>{admin_email}</code><br>
-                <strong>Nombre:</strong> <code>{admin_name}</code><br>
-                <strong>Contraseña temporal:</strong> <code>{admin_password}</code><br>
-                <br>
-                <small>⚠️ Guardá estas credenciales en un lugar seguro. Podrás cambiar la contraseña una vez que inicies sesión.</small>
-            </div>
-            """
+    # Sección de credenciales de admin
+    admin_section = ""
+    if admin_email and admin_password:
+        admin_section = f"""
+        <div class=\"alert alert-info\">
+            <strong>🔐 Credenciales de Acceso al Panel Admin</strong><br><br>
+            <strong>URL:</strong> <a href=\"https://clipcomparadorv2-production.up.railway.app/auth/login\" target=\"_blank\">
+                https://clipcomparadorv2-production.up.railway.app/auth/login
+            </a><br>
+            <strong>Email:</strong> <code>{admin_email}</code><br>
+            <strong>Nombre:</strong> <code>{admin_name}</code><br>
+            <strong>Contraseña temporal:</strong> <code>{admin_password}</code><br>
+            <br>
+            <small>⚠️ Guardá estas credenciales en un lugar seguro. Podrás cambiar la contraseña una vez que inicies sesión.</small>
+        </div>
+        """
 
     script_status = """
         <div class="info-item">
