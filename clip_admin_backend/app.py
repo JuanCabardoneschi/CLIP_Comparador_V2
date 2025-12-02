@@ -417,6 +417,16 @@ def register_blueprints(app):
     except Exception as e:
         print(f"✗ Error registrando search_text blueprint: {e}")
 
+    # Blueprint de OAuth Tiendanube
+    try:
+        from app.blueprints.tiendanube_oauth import bp as tiendanube_oauth_bp
+        app.register_blueprint(tiendanube_oauth_bp)
+        print("✓ Blueprint tiendanube_oauth registrado")
+    except ImportError as e:
+        print(f"✗ Error importando tiendanube_oauth blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando tiendanube_oauth blueprint: {e}")
+
     # 🆕 Registrar módulos personalizados de búsqueda por cliente
     try:
         from app.search_modules import register_client_module
