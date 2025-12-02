@@ -86,7 +86,9 @@ def oauth_callback():
         store_domain = store_info.get('original_domain', store_info.get('main_domain', ''))
 
         # 3. Verificar si ya existe integración (reinstalación)
-        existing_integration = TiendanubeIntegration.query.filter_by(store_id=str(user_id)).first()
+        existing_integration = db.session.query(TiendanubeIntegration).filter(
+            TiendanubeIntegration.store_id == str(user_id)
+        ).first()
 
         if existing_integration:
             # Reinstalación: actualizar token y reactivar
