@@ -63,7 +63,7 @@ class SystemConfig:
                 "system": {
                     "environment": "production",
                     "version": "2.0.0",
-                    "log_level": "REQUEST_LIFECYCLE"
+                    "log_level": "VERBOSE"
                 }
             }
             self._write_config(default_config)

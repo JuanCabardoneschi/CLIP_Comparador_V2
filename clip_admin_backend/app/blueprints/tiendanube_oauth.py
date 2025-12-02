@@ -152,7 +152,7 @@ def oauth_callback():
                     full_name=admin_full_name,
                     role='STORE_ADMIN',
                     client_id=client.id,
-                    is_active=True
+                    active=True
                 )
                 db.session.add(admin_user)
                 db.session.flush()
