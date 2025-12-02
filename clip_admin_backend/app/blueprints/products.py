@@ -45,6 +45,18 @@ def _get_client_attribute_config(client_id):
     ).order_by(ProductAttributeConfig.field_order).all()
 
 
+def _is_tiendanube_readonly():
+    """Verifica si el usuario actual es STORE_ADMIN de un cliente Tiendanube read-only"""
+    if current_user.is_super_admin:
+        return False
+    
+    client = Client.query.get(current_user.client_id)
+    if not client:
+        return False
+    
+    return client.integration_type == 'tiendanube' or client.is_read_only
+
+
 def _process_dynamic_attributes(request_form, attribute_configs):
     """Procesa los atributos dinámicos desde el formulario y los convierte a dict"""
     attributes = {}
@@ -278,6 +290,11 @@ def _generate_success_message(images_processed, errors):
 @login_required
 def create():
     """Crear nuevo producto desde colección de imágenes"""
+    # ⛔ STORE_ADMIN de Tiendanube NO puede crear productos
+    if _is_tiendanube_readonly():
+        flash("No puedes crear productos. Los productos se sincronizan automáticamente desde Tiendanube.", "error")
+        return redirect(url_for("products.index"))
+    
     categories = Category.query.filter_by(client_id=current_user.client_id).all()
     attribute_configs = _get_client_attribute_config(current_user.client_id)
 
@@ -469,6 +486,7 @@ def edit(product_id):
 
     categories = Category.query.filter_by(client_id=current_user.client_id).all()
     attribute_configs = _get_client_attribute_config(current_user.client_id)
+    is_tiendanube = _is_tiendanube_readonly()
 
     if request.method == "POST":
         try:
@@ -476,6 +494,22 @@ def edit(product_id):
             old_category_id = product.category_id
             old_category = product.category if old_category_id else None
 
+            # ✅ Si es Tiendanube: SOLO editar atributos dinámicos y tags
+            if is_tiendanube:
+                # Procesar atributos dinámicos
+                dynamic_attributes = _process_dynamic_attributes(request.form, attribute_configs)
+                _validate_attribute_options(dynamic_attributes, attribute_configs)
+                product.attributes = dynamic_attributes if dynamic_attributes else None
+                
+                # Actualizar tags
+                product.tags = request.form.get("tags", "").strip() or None
+                product.updated_at = datetime.utcnow()
+                
+                db.session.commit()
+                flash("Atributos y tags actualizados correctamente", "success")
+                return redirect(url_for("products.view", product_id=product.id))
+            
+            # ⚙️ Si NO es Tiendanube: edición completa (comportamiento original)
             # Actualizar datos del producto
             product.name = request.form.get("name", "").strip()
             product.description = request.form.get("description", "").strip()
@@ -557,13 +591,19 @@ def edit(product_id):
     return render_template("products/edit.html",
                          product=product,
                          categories=categories,
-                         attribute_configs=attribute_configs)
+                         attribute_configs=attribute_configs,
+                         is_tiendanube=is_tiendanube)
 
 
 @bp.route("/<product_id>/delete", methods=["POST"])
 @login_required
 def delete(product_id):
     """Eliminar producto y sus archivos de imagen"""
+    # ⛔ STORE_ADMIN de Tiendanube NO puede eliminar productos
+    if _is_tiendanube_readonly():
+        flash("No puedes eliminar productos. Los productos se sincronizan desde Tiendanube.", "error")
+        return redirect(url_for("products.index"))
+    
     product = Product.query.filter_by(
         id=product_id,
         client_id=current_user.client_id

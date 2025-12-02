@@ -68,9 +68,11 @@
             <h2><i class="bi bi-box-seam"></i> Productos</h2>
             <p class="text-muted mb-0">Gestión de productos del catálogo</p>
         </div>
+        {% if not (current_user.is_store_admin and current_user.client and (current_user.client.integration_type == 'tiendanube' or current_user.client.is_read_only)) %}
         <a href="{{ url_for('products.create') }}" class="btn btn-primary">
             <i class="bi bi-plus-circle"></i> Nuevo Producto
         </a>
+        {% endif %}
     </div>
 
     <!-- Estadísticas rápidas -->
@@ -199,13 +201,16 @@
                                     <i class="bi bi-eye"></i>
                                 </a>
                                 <a href="{{ url_for('products.edit', product_id=product.id) }}"
-                                   class="btn btn-outline-secondary btn-sm">
+                                   class="btn btn-outline-secondary btn-sm"
+                                   title="{% if current_user.is_store_admin and current_user.client and (current_user.client.integration_type == 'tiendanube' or current_user.client.is_read_only) %}Editar atributos{% else %}Editar producto{% endif %}">
                                     <i class="bi bi-pencil"></i>
                                 </a>
+                                {% if not (current_user.is_store_admin and current_user.client and (current_user.client.integration_type == 'tiendanube' or current_user.client.is_read_only)) %}
                                 <button class="btn btn-outline-danger btn-sm"
                                         onclick="confirmDelete('{{ product.id }}', '{{ product.name }}')">
                                     <i class="bi bi-trash"></i>
                                 </button>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
