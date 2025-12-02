@@ -13,27 +13,69 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #f5f5f5;
-        }
-        #clip-search-container {
-            width: 100%;
             min-height: 100vh;
-            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .fallback {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+            padding: 32px;
+            text-align: center;
+        }
+        .fallback h1 {
+            font-size: 20px;
+            color: #1f2937;
+            margin-bottom: 12px;
+        }
+        .fallback p {
+            color: #6b7280;
+            margin-bottom: 16px;
+        }
+        .btn-open {
+            appearance: none;
+            border: none;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
-    <div id="clip-search-container"></div>
+    <div class="fallback">
+        <h1>Búsqueda inteligente</h1>
+        <p>Si no se abre automáticamente, hacé clic en el botón:</p>
+        <button id="clip-open" class="btn-open">Abrir búsqueda con IA</button>
+    </div>
 
-    <!-- Widget CLIP -->
+    <!-- Widget CLIP V4 (Overlay) -->
     <script>
-        // Configuración del widget
-        window.CLIP_CONFIG = {
-            apiKey: 'eve-api-key-2024',  // API key de Eve (cliente demo)
-            apiUrl: 'https://clipcomparadorv2-production.up.railway.app/api/search',
-            containerId: 'clip-search-container',
-            mode: 'fullpage'  // Modo página completa
+        // Configuración requerida por clip-widget-embed-v4.js
+        window.CLIPWidget = {
+            apiKey: 'eve-api-key-2024',
+            serverUrl: 'https://clipcomparadorv2-production.up.railway.app'
         };
+        function openClipOverlay() {
+            if (window.CLIPV2 && window.CLIPV2.overlay && typeof window.CLIPV2.overlay.open === 'function') {
+                window.CLIPV2.overlay.open();
+            }
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            const btn = document.getElementById('clip-open');
+            if (btn) btn.addEventListener('click', openClipOverlay);
+        });
     </script>
     <script src="https://clipcomparadorv2-production.up.railway.app/static/js/clip-widget-embed-v4.js"></script>
+    <script>
+        // Intento de auto-apertura cuando el script terminó de cargar
+        window.addEventListener('load', function() {
+            setTimeout(openClipOverlay, 150);
+        });
+    </script>
 </body>
 </html>
