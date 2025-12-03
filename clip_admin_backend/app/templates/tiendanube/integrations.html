@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Integraciones Tiendanube{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h1 class="h3 mb-3">Integraciones Tiendanube</h1>
+  {% if integrations|length == 0 %}
+    <div class="alert alert-info">No hay integraciones disponibles.</div>
+  {% else %}
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Store ID</th>
+          <th>Client</th>
+          <th>Estado</th>
+          <th>Sync</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in integrations %}
+        <tr>
+          <td><code>{{ i.store_id }}</code></td>
+          <td><code>{{ i.client_id }}</code></td>
+          <td>
+            {% if i.is_active %}<span class="badge bg-success">Activa</span>{% else %}<span class="badge bg-secondary">Inactiva</span>{% endif %}
+          </td>
+          <td>
+            <span class="badge bg-info text-dark">{{ i.sync_status or 'n/a' }}</span>
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('tiendanube_admin.clean_duplicate_webhooks', integration_id=i.id) }}" class="d-inline">
+              <button type="submit" class="btn btn-sm btn-outline-primary">Limpiar webhooks</button>
+            </form>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('tiendanube_admin.get_integration', integration_id=i.id) }}">Detalle</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+{% endblock %}

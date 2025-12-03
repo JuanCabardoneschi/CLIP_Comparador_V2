@@ -41,6 +41,23 @@ def list_integrations():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@bp.route('/ui/integrations', methods=['GET'])
+@login_required
+def ui_list_integrations():
+    """Vista simple para gestionar integraciones Tiendanube con acciones."""
+    try:
+        if current_user.role == 'SUPER_ADMIN':
+            integrations = TiendanubeIntegration.query.order_by(TiendanubeIntegration.created_at.desc()).all()
+        else:
+            integrations = TiendanubeIntegration.query.filter_by(client_id=current_user.client_id).order_by(TiendanubeIntegration.created_at.desc()).all()
+
+        return render_template('tiendanube/integrations.html', integrations=integrations)
+    except Exception as e:
+        logger.error(f"Error renderizando UI de integraciones: {str(e)}")
+        flash(f"Error: {str(e)}", 'danger')
+        return redirect(url_for('tiendanube_admin.list_integrations'))
+
+
 
 @bp.route('/integrations/<integration_id>', methods=['GET', 'POST'])
 @login_required
