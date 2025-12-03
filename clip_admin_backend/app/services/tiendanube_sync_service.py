@@ -419,8 +419,8 @@ class TiendanubeSyncService:
             # Precio: usar promocional si existe, sino regular
             price = self._get_best_price(variants)
 
-            # Stock: sumar todas las variantes
-            stock = sum(v.get('stock', 0) for v in variants)
+            # Stock: sumar todas las variantes (manejar None como 0)
+            stock = sum(v.get('stock') or 0 for v in variants)
 
             # Extraer atributos desde variantes
             product_attributes = self._extract_product_attributes(variants)
