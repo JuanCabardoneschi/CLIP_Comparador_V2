@@ -237,18 +237,23 @@
                 <div class="sidebar-section">
                     <div class="sidebar-section-title">Configuración</div>
 
+                    {% if current_user.role == 'SUPER_ADMIN' or (current_user.client and current_user.client.integration_type == 'tiendanube') %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint and 'tiendanube_admin.ui_list_integrations' in request.endpoint %}active{% endif %}"
+                           href="{{ url_for('tiendanube_admin.ui_list_integrations') }}">
+                            <i class="bi bi-shop me-2"></i>
+                            Integraciones Tiendanube
+                        </a>
+                    </li>
+                    {% endif %}
+
                     {% if current_user.client and current_user.client.integration_type == 'tiendanube' %}
                     <li class="nav-item">
                         {% if current_user.client.tiendanube_integrations and current_user.client.tiendanube_integrations.first() %}
-                                <a class="nav-link {% if request.endpoint and 'tiendanube_admin' in request.endpoint %}active{% endif %}"
+                                <a class="nav-link {% if request.endpoint and 'tiendanube_admin.get_integration' in request.endpoint %}active{% endif %}"
                                     href="{{ url_for('tiendanube_admin.get_integration', integration_id=current_user.client.tiendanube_integrations.first().id) }}">
-                            <i class="bi bi-shop me-2"></i>
-                            Integración Tiendanube
-                        </a>
-                        {% else %}
-                                <a class="nav-link disabled" href="#">
-                            <i class="bi bi-shop me-2"></i>
-                            Integración Tiendanube (sin configurar)
+                            <i class="bi bi-gear me-2"></i>
+                            Mi Integración
                         </a>
                         {% endif %}
                     </li>

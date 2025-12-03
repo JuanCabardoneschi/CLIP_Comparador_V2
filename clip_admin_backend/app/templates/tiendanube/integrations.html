@@ -1,42 +1,172 @@
-{% extends 'base.html' %}
+{% extends 'layouts/base.html' %}
 {% block title %}Integraciones Tiendanube{% endblock %}
 {% block content %}
-<div class="container py-4">
-  <h1 class="h3 mb-3">Integraciones Tiendanube</h1>
+<div class="container-fluid py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">
+      <i class="bi bi-shop me-2"></i>Integraciones Tiendanube
+    </h1>
+  </div>
+
   {% if integrations|length == 0 %}
-    <div class="alert alert-info">No hay integraciones disponibles.</div>
+    <div class="alert alert-info">
+      <i class="bi bi-info-circle me-2"></i>No hay integraciones disponibles.
+    </div>
   {% else %}
-    <table class="table table-sm align-middle">
-      <thead>
-        <tr>
-          <th>Store ID</th>
-          <th>Client</th>
-          <th>Estado</th>
-          <th>Sync</th>
-          <th>Acciones</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for i in integrations %}
-        <tr>
-          <td><code>{{ i.store_id }}</code></td>
-          <td><code>{{ i.client_id }}</code></td>
-          <td>
-            {% if i.is_active %}<span class="badge bg-success">Activa</span>{% else %}<span class="badge bg-secondary">Inactiva</span>{% endif %}
-          </td>
-          <td>
-            <span class="badge bg-info text-dark">{{ i.sync_status or 'n/a' }}</span>
-          </td>
-          <td>
-            <form method="post" action="{{ url_for('tiendanube_admin.clean_duplicate_webhooks', integration_id=i.id) }}" class="d-inline">
-              <button type="submit" class="btn btn-sm btn-outline-primary">Limpiar webhooks</button>
-            </form>
-            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('tiendanube_admin.get_integration', integration_id=i.id) }}">Detalle</a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Tienda</th>
+              <th>Store ID</th>
+              <th>Email</th>
+              <th>Estado</th>
+              <th>Última Sync</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for i in integrations %}
+            <tr>
+              <td>
+                <strong>{{ i.store_name }}</strong><br>
+                <small class="text-muted">{{ i.store_domain }}</small>
+              </td>
+              <td><code>{{ i.store_id }}</code></td>
+              <td>{{ i.store_email }}</td>
+              <td>
+                {% if i.is_active %}
+                  <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Activa</span>
+                {% else %}
+                  <span class="badge bg-secondary"><i class="bi bi-x-circle me-1"></i>Inactiva</span>
+                {% endif %}
+                <br>
+                <small class="badge bg-info">{{ i.sync_status or 'n/a' }}</small>
+              </td>
+              <td>
+                {% if i.last_sync_at %}
+                  <small>{{ i.last_sync_at.strftime('%d/%m/%Y %H:%M') }}</small>
+                {% else %}
+                  <small class="text-muted">Nunca</small>
+                {% endif %}
+              </td>
+              <td>
+                <div class="btn-group btn-group-sm" role="group">
+                  <a class="btn btn-outline-primary"
+                     href="{{ url_for('tiendanube_admin.get_integration', integration_id=i.id) }}"
+                     title="Ver detalles">
+                    <i class="bi bi-eye"></i> Ver
+                  </a>
+                  <button type="button"
+                          class="btn btn-outline-warning"
+                          onclick="listWebhooks('{{ i.id }}')"
+                          title="Listar webhooks">
+                    <i class="bi bi-list-ul"></i> Webhooks
+                  </button>
+                  <button type="button"
+                          class="btn btn-outline-danger"
+                          onclick="cleanWebhooks('{{ i.id }}')"
+                          title="Limpiar webhooks duplicados">
+                    <i class="bi bi-trash"></i> Limpiar
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
   {% endif %}
 </div>
+
+<!-- Modal para mostrar webhooks -->
+<div class="modal fade" id="webhooksModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Webhooks de Tiendanube</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="webhooksContent">
+        <div class="text-center">
+          <div class="spinner-border" role="status">
+            <span class="visually-hidden">Cargando...</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function listWebhooks(integrationId) {
+  const modal = new bootstrap.Modal(document.getElementById('webhooksModal'));
+  const content = document.getElementById('webhooksContent');
+
+  content.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Cargando...</span></div></div>';
+  modal.show();
+
+  fetch(`/admin/tiendanube/integrations/${integrationId}/list-all-webhooks`)
+    .then(response => response.json())
+    .then(data => {
+      if (data.success && data.webhooks) {
+        let html = '<div class="table-responsive"><table class="table table-sm"><thead><tr><th>ID</th><th>Event</th><th>URL</th><th>Created</th></tr></thead><tbody>';
+        data.webhooks.forEach(wh => {
+          html += `<tr>
+            <td><code>${wh.id}</code></td>
+            <td><span class="badge bg-primary">${wh.event}</span></td>
+            <td><small>${wh.url}</small></td>
+            <td><small>${wh.created_at}</small></td>
+          </tr>`;
+        });
+        html += '</tbody></table></div>';
+        content.innerHTML = html;
+      } else {
+        content.innerHTML = `<div class="alert alert-warning">${data.message || 'No se pudieron cargar los webhooks'}</div>`;
+      }
+    })
+    .catch(error => {
+      content.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+    });
+}
+
+function cleanWebhooks(integrationId) {
+  if (!confirm('¿Estás seguro de que deseas limpiar los webhooks duplicados? Se eliminarán todos los webhooks con URLs incorrectas.')) {
+    return;
+  }
+
+  const btn = event.target.closest('button');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Limpiando...';
+
+  fetch(`/admin/tiendanube/integrations/${integrationId}/clean-webhooks`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      alert(`✓ Webhooks limpiados correctamente:\n- Eliminados: ${data.deleted_count}\n- Registrados: ${data.registered_count}`);
+      location.reload();
+    } else {
+      alert(`✗ Error al limpiar webhooks: ${data.error || 'Error desconocido'}`);
+    }
+  })
+  .catch(error => {
+    alert(`✗ Error: ${error.message}`);
+  })
+  .finally(() => {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  });
+}
+</script>
 {% endblock %}
