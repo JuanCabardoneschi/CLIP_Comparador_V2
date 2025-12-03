@@ -134,17 +134,22 @@ def webhook_product():
         # Procesar según evento
         if event == 'product/created' or event == 'product/updated':
             # Sincronizar producto específico
-            product = sync_service._sync_single_product(product_id)
-            if product:
-                logger.info(f"Producto {event.split('/')[1]}: {product.name} (id={product.id})")
-                return jsonify({
-                    "status": "success",
-                    "event": event,
-                    "product_id": str(product.id)
-                }), 200
-            else:
-                logger.error(f"Error sincronizando producto {product_id}")
-                return jsonify({"error": "Sync failed"}), 500
+            try:
+                product = sync_service._sync_single_product(product_id)
+                if product:
+                    logger.info(f"✅ Producto {event.split('/')[1]}: {product.name} (id={product.id})")
+                    return jsonify({
+                        "status": "success",
+                        "event": event,
+                        "product_id": str(product.id)
+                    }), 200
+                else:
+                    logger.error(f"❌ Error sincronizando producto {product_id}: _sync_single_product devolvió None")
+                    return jsonify({"error": "Sync failed"}), 500
+            except Exception as sync_err:
+                logger.error(f"❌ Excepción sincronizando producto {product_id}: {sync_err}")
+                logger.exception(sync_err)
+                return jsonify({"error": f"Sync exception: {str(sync_err)}"}), 500
 
         elif event == 'product/deleted':
             # Marcar producto como inactivo
