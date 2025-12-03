@@ -505,44 +505,38 @@ if __name__ == "__main__":
     print(f"🔧 Debug: {debug}")
     print(f"🗄️ Base de datos: {os.getenv('DATABASE_URL', 'No configurada')}")
 
-    # Precarga condicional de CLIP: en Railway/producción se precarga; en local queda lazy
+    # Precarga condicional de modelos (CLIP y LM) controlada por system_config
     try:
-        from app.config import is_production
-        preload_env = os.getenv("CLIP_PRELOAD", "auto").lower()  # 'auto' | 'true' | 'false'
-        should_preload = (
-            (preload_env == "true") or
-            (preload_env == "auto" and is_production())
-        )
+        # Leer configuración desde system_config.json
+        from app.utils.system_config import system_config
+        preload_clip = system_config.get('clip', 'preload', False)
+        preload_text = system_config.get('text', 'preload', False)
 
-        if should_preload:
-            print("⚡ Precargando modelos al iniciar (modo producción)")
+        if preload_clip:
             from app.blueprints.embeddings import get_clip_model
-            from app.utils.llm_query_normalizer import get_model as get_minilm_model
-
-            # Validar spaCy (OBLIGATORIO)
-            try:
-                import os
-                import spacy
-                model_name = os.getenv("SPACY_MODEL", "es_core_news_md")
-                nlp = spacy.load(model_name, disable=["parser", "ner", "textcat"])
-                print(f"✅ spaCy validado correctamente ({model_name})")
-            except Exception as spacy_err:
-                print(f"❌ CRITICAL: spaCy no disponible o modelo no instalado: {spacy_err}")
-                print("⚠️ El sistema NO puede funcionar sin spaCy. Abortando inicio.")
-                raise RuntimeError(f"spaCy es obligatorio para tokenización: {spacy_err}")
-
-            # Precargar CLIP (búsqueda visual)
+            print("⚡ Precargando CLIP al iniciar (configuración del sistema)")
             get_clip_model()
             print("✅ CLIP precargado correctamente")
+        else:
+            print("⚡ CLIP se cargará al primer uso (lazy loading configurado)")
 
-            # Precargar MiniLM (normalización de texto)
+        if preload_text:
+            from app.utils.llm_query_normalizer import get_model as get_minilm_model
+            print("⚡ Precargando MiniLM al iniciar (configuración del sistema)")
+            # Validar spaCy solo si se solicitó precarga de texto
+            try:
+                import spacy
+                model_name = os.getenv("SPACY_MODEL", "es_core_news_md")
+                _ = spacy.load(model_name, disable=["parser", "ner", "textcat"])
+                print(f"✅ spaCy validado correctamente ({model_name})")
+            except Exception as spacy_err:
+                print(f"⚠️ spaCy no disponible al inicio: {spacy_err} (se cargará on-demand)")
             get_minilm_model()
             print("✅ MiniLM precargado correctamente")
         else:
-            # Lazy load en desarrollo
-            print("⚡ Modelos se cargarán al primer uso (lazy loading)")
+            print("⚡ MiniLM se cargará al primer uso (lazy loading configurado)")
     except Exception as e:
-        # En caso de fallo de precarga, continuar para no bloquear el arranque
-        print(f"❌ Error precargando CLIP (continuando con lazy load): {e}")
+        # En caso de fallo de lectura de configuración, continuar en lazy
+        print(f"⚠️  Error en configuración de precarga, usando lazy loading: {e}")
 
     app.run(host="0.0.0.0", port=port, debug=debug)
