@@ -221,13 +221,13 @@ class TiendanubeSyncService:
 
         for idx, values_set in variant_attributes.items():
             attr_key = f'variant_{idx}'
-            
+
             # Usar nombre de Tiendanube si está disponible, sino fallback
             if attribute_names and idx in attribute_names:
                 attr_label = attribute_names[idx]
             else:
                 attr_label = fallback_names.get(idx, f'Atributo {idx + 1}')
-            
+
             values = sorted(list(values_set))
 
             # Verificar si ya existe
