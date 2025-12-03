@@ -200,7 +200,7 @@ def oauth_callback():
         logger.warning(f"🔔 PASO 6: Iniciando registro de webhooks para store_id={user_id}")
         webhook_ids = register_webhooks(user_id, access_token)
         logger.warning(f"🔔 PASO 6: register_webhooks() retornó: {webhook_ids}")
-        
+
         if webhook_ids:
             if existing_integration:
                 existing_integration.webhook_ids = webhook_ids
@@ -298,7 +298,7 @@ def register_webhooks(store_id, access_token):
     Retorna dict con IDs de webhooks creados.
     """
     logger.warning(f"🔔 INICIANDO REGISTRO DE WEBHOOKS para store_id={store_id}")
-    
+
     webhook_ids = {}
     headers = {
         'Authentication': f'bearer {access_token}',
@@ -325,7 +325,7 @@ def register_webhooks(store_id, access_token):
     for webhook in webhooks_to_create:
         try:
             logger.warning(f"🔔 Creando webhook: {webhook['event']} -> {webhook['url']}")
-            
+
             response = requests.post(
                 f'{TIENDANUBE_API_BASE}/{store_id}/webhooks',
                 json=webhook,
@@ -333,9 +333,9 @@ def register_webhooks(store_id, access_token):
                 timeout=10,
                 verify=False
             )
-            
+
             logger.warning(f"🔔 Respuesta para {webhook['event']}: HTTP {response.status_code}")
-            
+
             if response.status_code in [200, 201]:
                 data = response.json()
                 webhook_id = data.get('id')
@@ -348,7 +348,7 @@ def register_webhooks(store_id, access_token):
 
     logger.warning(f"🔔 REGISTRO COMPLETADO - Total webhooks creados: {len(webhook_ids)}/{len(webhooks_to_create)}")
     logger.warning(f"🔔 IDs registrados: {webhook_ids}")
-    
+
     return webhook_ids if webhook_ids else None
 
 

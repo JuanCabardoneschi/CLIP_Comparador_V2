@@ -204,13 +204,15 @@ class TiendanubeSyncService:
             logger.error(f"Error sincronizando categoría {cat_data.get('id')}: {str(e)}")
             self.stats['errors'].append(f"Categoría {cat_data.get('id')}: {str(e)}")
 
-    def _auto_create_attribute_configs(self, variant_attributes: Dict):
+    def _auto_create_attribute_configs(self, variant_attributes: Dict, attribute_names: Dict = None):
         """Auto-crea configuraciones de atributos basadas en variantes
 
         Args:
             variant_attributes: Dict con estructura {0: set(['Rojo', 'Azul']), 1: set(['S', 'M', 'L'])}
+            attribute_names: Dict con nombres reales de Tiendanube {0: 'Color', 1: 'Talle'}
         """
-        attribute_names = {
+        # Fallback a nombres genéricos si no se proporcionan
+        fallback_names = {
             0: 'Color',
             1: 'Talla',
             2: 'Material',
@@ -219,7 +221,13 @@ class TiendanubeSyncService:
 
         for idx, values_set in variant_attributes.items():
             attr_key = f'variant_{idx}'
-            attr_label = attribute_names.get(idx, f'Atributo {idx + 1}')
+            
+            # Usar nombre de Tiendanube si está disponible, sino fallback
+            if attribute_names and idx in attribute_names:
+                attr_label = attribute_names[idx]
+            else:
+                attr_label = fallback_names.get(idx, f'Atributo {idx + 1}')
+            
             values = sorted(list(values_set))
 
             # Verificar si ya existe
@@ -354,11 +362,24 @@ class TiendanubeSyncService:
 
             logger.info(f"📦 Encontrados {len(all_products)} productos")
 
-            # Paso 2: Analizar variantes para detectar atributos
+            # Paso 2: Analizar variantes para detectar atributos y extraer nombres desde products.attributes
             logger.info("🔎 Paso 2: Detectando atributos desde variantes...")
             all_variant_attributes = {}
+            attribute_names_from_tiendanube = {}
 
             for prod_data in all_products:
+                # Extraer nombres de atributos desde product.attributes
+                product_attributes = prod_data.get('attributes', [])
+                for idx, attr_name_obj in enumerate(product_attributes):
+                    if idx not in attribute_names_from_tiendanube:
+                        if isinstance(attr_name_obj, dict):
+                            name = attr_name_obj.get('es', attr_name_obj.get('pt', f'Atributo {idx + 1}'))
+                        else:
+                            name = str(attr_name_obj)
+                        attribute_names_from_tiendanube[idx] = name
+                        logger.info(f"📌 Detectado nombre de atributo {idx}: '{name}'")
+
+                # Extraer valores de variantes
                 variants = prod_data.get('variants', [])
                 if not variants:
                     continue
@@ -377,10 +398,10 @@ class TiendanubeSyncService:
                         if val:
                             all_variant_attributes[idx].add(val)
 
-            # Paso 3: Auto-crear configuraciones de atributos
+            # Paso 3: Auto-crear configuraciones de atributos con nombres reales
             if all_variant_attributes:
                 logger.info(f"✨ Detectados {len(all_variant_attributes)} tipos de atributos")
-                self._auto_create_attribute_configs(all_variant_attributes)
+                self._auto_create_attribute_configs(all_variant_attributes, attribute_names_from_tiendanube)
 
             # Paso 4: Sincronizar productos
             logger.info(f"💾 Paso 3: Sincronizando {len(all_products)} productos...")
