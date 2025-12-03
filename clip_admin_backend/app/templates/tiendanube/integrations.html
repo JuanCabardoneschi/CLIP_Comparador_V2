@@ -114,20 +114,50 @@ function listWebhooks(integrationId) {
   fetch(`/admin/tiendanube/integrations/${integrationId}/list-all-webhooks`)
     .then(response => response.json())
     .then(data => {
-      if (data.success && data.webhooks) {
-        let html = '<div class="table-responsive"><table class="table table-sm"><thead><tr><th>ID</th><th>Event</th><th>URL</th><th>Created</th></tr></thead><tbody>';
-        data.webhooks.forEach(wh => {
-          html += `<tr>
-            <td><code>${wh.id}</code></td>
-            <td><span class="badge bg-primary">${wh.event}</span></td>
-            <td><small>${wh.url}</small></td>
-            <td><small>${wh.created_at}</small></td>
-          </tr>`;
-        });
-        html += '</tbody></table></div>';
+      if (data.success && (data.correct_webhooks || data.incorrect_webhooks)) {
+        let html = `
+          <div class="mb-3">
+            <div class="alert alert-info">
+              <strong>Total:</strong> ${data.total} webhooks |
+              <span class="text-success">✓ ${data.correct} correctos</span> |
+              <span class="text-danger">✗ ${data.incorrect} incorrectos</span>
+            </div>
+          </div>
+        `;
+
+        // Webhooks correctos
+        if (data.correct_webhooks && data.correct_webhooks.length > 0) {
+          html += '<h6 class="text-success mt-3"><i class="bi bi-check-circle"></i> Webhooks Correctos</h6>';
+          html += '<div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>ID</th><th>Event</th><th>URL</th><th>Created</th></tr></thead><tbody>';
+          data.correct_webhooks.forEach(wh => {
+            html += `<tr class="table-success table-success-subtle">
+              <td><code>${wh.id}</code></td>
+              <td><span class="badge bg-success">${wh.event}</span></td>
+              <td><small class="text-break">${wh.url}</small></td>
+              <td><small>${wh.created_at}</small></td>
+            </tr>`;
+          });
+          html += '</tbody></table></div>';
+        }
+
+        // Webhooks incorrectos
+        if (data.incorrect_webhooks && data.incorrect_webhooks.length > 0) {
+          html += '<h6 class="text-danger mt-3"><i class="bi bi-exclamation-triangle"></i> Webhooks Incorrectos (URLs antiguas)</h6>';
+          html += '<div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>ID</th><th>Event</th><th>URL</th><th>Created</th></tr></thead><tbody>';
+          data.incorrect_webhooks.forEach(wh => {
+            html += `<tr class="table-danger table-danger-subtle">
+              <td><code>${wh.id}</code></td>
+              <td><span class="badge bg-danger">${wh.event}</span></td>
+              <td><small class="text-break">${wh.url}</small></td>
+              <td><small>${wh.created_at}</small></td>
+            </tr>`;
+          });
+          html += '</tbody></table></div>';
+        }
+
         content.innerHTML = html;
       } else {
-        content.innerHTML = `<div class="alert alert-warning">${data.message || 'No se pudieron cargar los webhooks'}</div>`;
+        content.innerHTML = `<div class="alert alert-warning">${data.error || 'No se pudieron cargar los webhooks'}</div>`;
       }
     })
     .catch(error => {
