@@ -42,7 +42,17 @@
                   <span class="badge bg-secondary"><i class="bi bi-x-circle me-1"></i>Inactiva</span>
                 {% endif %}
                 <br>
-                <small class="badge bg-info">{{ i.sync_status or 'n/a' }}</small>
+                {% if i.sync_status == 'completed' %}
+                  <small class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>Sincronizado</small>
+                {% elif i.sync_status == 'in_progress' %}
+                  <small class="badge bg-warning"><i class="bi bi-arrow-repeat me-1"></i>Sincronizando...</small>
+                {% elif i.sync_status == 'error' %}
+                  <small class="badge bg-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i>Error</small>
+                {% elif i.sync_status == 'pending' %}
+                  <small class="badge bg-info"><i class="bi bi-clock me-1"></i>Pendiente</small>
+                {% else %}
+                  <small class="badge bg-secondary">{{ i.sync_status or 'Sin estado' }}</small>
+                {% endif %}
               </td>
               <td>
                 {% if i.last_sync_at %}
