@@ -95,19 +95,23 @@ def webhook_product():
     }
     """
     try:
-        # Obtener store_id del header
+        # Obtener payload primero
+        payload = request.get_json()
+
+        # Obtener store_id del header o del payload (fallback)
         store_id = request.headers.get('X-Linked-Nube-Info-Id', '')
         if not store_id:
-            logger.warning("Webhook sin X-Linked-Nube-Info-Id header")
-            return jsonify({"error": "Missing store_id"}), 400
+            store_id = str(payload.get('store_id', ''))
+            if not store_id:
+                logger.warning("Webhook sin X-Linked-Nube-Info-Id header ni store_id en payload")
+                return jsonify({"error": "Missing store_id"}), 400
+            logger.info(f"📋 store_id obtenido del payload: {store_id}")
 
         # Verificar HMAC
         if not verify_hmac(store_id, request.data):
             logger.warning(f"HMAC inválido para store_id={store_id}")
             return jsonify({"error": "Invalid signature"}), 401
 
-        # Obtener payload
-        payload = request.get_json()
         event = payload.get('event', '')
         product_id = str(payload.get('id', ''))
 
@@ -176,19 +180,23 @@ def webhook_category():
     }
     """
     try:
-        # Obtener store_id del header
+        # Obtener payload primero
+        payload = request.get_json()
+
+        # Obtener store_id del header o del payload (fallback)
         store_id = request.headers.get('X-Linked-Nube-Info-Id', '')
         if not store_id:
-            logger.warning("Webhook sin X-Linked-Nube-Info-Id header")
-            return jsonify({"error": "Missing store_id"}), 400
+            store_id = str(payload.get('store_id', ''))
+            if not store_id:
+                logger.warning("Webhook sin X-Linked-Nube-Info-Id header ni store_id en payload")
+                return jsonify({"error": "Missing store_id"}), 400
+            logger.info(f"📋 store_id obtenido del payload: {store_id}")
 
         # Verificar HMAC
         if not verify_hmac(store_id, request.data):
             logger.warning(f"HMAC inválido para store_id={store_id}")
             return jsonify({"error": "Invalid signature"}), 401
 
-        # Obtener payload
-        payload = request.get_json()
         event = payload.get('event', '')
         category_id = str(payload.get('id', ''))
 
@@ -256,19 +264,23 @@ def webhook_app():
     }
     """
     try:
-        # Obtener store_id del header
+        # Obtener payload primero
+        payload = request.get_json()
+
+        # Obtener store_id del header o del payload (fallback)
         store_id = request.headers.get('X-Linked-Nube-Info-Id', '')
         if not store_id:
-            logger.warning("Webhook sin X-Linked-Nube-Info-Id header")
-            return jsonify({"error": "Missing store_id"}), 400
+            store_id = str(payload.get('store_id', ''))
+            if not store_id:
+                logger.warning("Webhook sin X-Linked-Nube-Info-Id header ni store_id en payload")
+                return jsonify({"error": "Missing store_id"}), 400
+            logger.info(f"📋 store_id obtenido del payload: {store_id}")
 
         # Verificar HMAC
         if not verify_hmac(store_id, request.data):
             logger.warning(f"HMAC inválido para store_id={store_id}")
             return jsonify({"error": "Invalid signature"}), 401
 
-        # Obtener payload
-        payload = request.get_json()
         event = payload.get('event', '')
 
         logger.info(f"Webhook recibido: {event} para store_id={store_id}")
