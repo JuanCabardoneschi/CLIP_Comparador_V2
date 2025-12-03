@@ -14,7 +14,8 @@ COPY requirements.txt .
 
 # Instalar dependencias Python (incluyendo spaCy y el modelo vía pip) y verificar instalación
 RUN pip install --no-cache-dir -r requirements.txt && \
-    python -c "import spacy; spacy.load('es_core_news_sm'); print('✅ spaCy instalado correctamente')"
+    python -c "import spacy; spacy.load('es_core_news_sm'); print('✅ spaCy instalado correctamente')" && \
+    python -c "from transformers import CLIPModel, CLIPProcessor; CLIPModel.from_pretrained('openai/clip-vit-base-patch16'); CLIPProcessor.from_pretrained('openai/clip-vit-base-patch16'); print('✅ CLIP precargado en imagen Docker')"
 
 # Copiar código fuente
 COPY clip_admin_backend/ ./clip_admin_backend/
