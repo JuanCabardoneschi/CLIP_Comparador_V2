@@ -144,8 +144,15 @@ def webhook_product():
                         "product_id": str(product.id)
                     }), 200
                 else:
+                    # No lanzar 500 para evitar reintentos de Tiendanube cuando la API no devuelve datos
+                    # Mantener logging para diagnóstico
                     logger.error(f"❌ Error sincronizando producto {product_id}: _sync_single_product devolvió None")
-                    return jsonify({"error": "Sync failed"}), 500
+                    return jsonify({
+                        "status": "no-content",
+                        "message": "Sync returned None; likely rate limit or product not available",
+                        "event": event,
+                        "product_id": product_id
+                    }), 204
             except Exception as sync_err:
                 logger.error(f"❌ Excepción sincronizando producto {product_id}: {sync_err}")
                 logger.exception(sync_err)
