@@ -14,11 +14,15 @@ logger = logging.getLogger(__name__)
 
 bp = Blueprint('tiendanube_admin', __name__, url_prefix='/admin/tiendanube')
 
+logger.info("🔧 [tiendanube_admin] Blueprint inicializado con url_prefix='/admin/tiendanube'")
+
 
 @bp.route('/integrations', methods=['GET'])
 @login_required
 def list_integrations():
     """Lista todas las integraciones de Tiendanube"""
+    logger.info(f"📋 [tiendanube_admin] GET /integrations - User: {current_user.email if current_user.is_authenticated else 'anonymous'}, Role: {current_user.role if current_user.is_authenticated else 'N/A'}")
+
     try:
         # Si es SUPER_ADMIN, ver todas; si no, solo su cliente
         if current_user.role == 'SUPER_ADMIN':
@@ -42,9 +46,14 @@ def list_integrations():
 @login_required
 def get_integration(integration_id):
     """Detalle de integración Tiendanube y formulario de sync manual."""
+    logger.info(f"🔍 [tiendanube_admin] GET /integrations/{integration_id} - User: {current_user.email if current_user.is_authenticated else 'anonymous'}")
+
     integration = TiendanubeIntegration.query.get(integration_id)
     if not integration:
+        logger.warning(f"❌ [tiendanube_admin] Integración {integration_id} no encontrada en BD")
         return render_template("errors/404.html", message="Integración no encontrada"), 404
+
+    logger.info(f"✅ [tiendanube_admin] Integración encontrada: Store {integration.store_id}, Client: {integration.client_id}")
 
     # Verificar permisos
     if current_user.role != 'SUPER_ADMIN' and integration.client_id != current_user.client_id:
