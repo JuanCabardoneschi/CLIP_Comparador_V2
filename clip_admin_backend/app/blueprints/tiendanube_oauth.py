@@ -197,16 +197,22 @@ def oauth_callback():
             logger.info(f"Integración creada: {integration.id}")
 
         # 6. Registrar webhooks (asíncrono recomendado, pero por ahora inline)
+        logger.warning(f"🔔 PASO 6: Iniciando registro de webhooks para store_id={user_id}")
         webhook_ids = register_webhooks(user_id, access_token)
+        logger.warning(f"🔔 PASO 6: register_webhooks() retornó: {webhook_ids}")
+        
         if webhook_ids:
             if existing_integration:
                 existing_integration.webhook_ids = webhook_ids
             else:
                 integration.webhook_ids = webhook_ids
             db.session.commit()
-            logger.info(f"Webhooks registrados: {webhook_ids}")
+            logger.warning(f"🔔 Webhooks guardados en DB: {webhook_ids}")
+        else:
+            logger.warning(f"⚠️ No se registraron webhooks (webhook_ids es None o vacío)")
 
         # 7. Intentar inyectar widget script
+        logger.warning(f"🔔 PASO 7: Intentando inyectar widget script")
         script_id = inject_widget_script(user_id, access_token, client.api_key)
         if script_id:
             if existing_integration:
@@ -291,6 +297,8 @@ def register_webhooks(store_id, access_token):
     Registra webhooks para productos, categorías y app lifecycle.
     Retorna dict con IDs de webhooks creados.
     """
+    logger.warning(f"🔔 INICIANDO REGISTRO DE WEBHOOKS para store_id={store_id}")
+    
     webhook_ids = {}
     headers = {
         'Authentication': f'bearer {access_token}',
@@ -299,6 +307,7 @@ def register_webhooks(store_id, access_token):
     }
 
     webhook_url_base = 'https://clipcomparadorv2-production.up.railway.app/api/webhooks/tiendanube'
+    logger.warning(f"🔔 URL BASE para webhooks: {webhook_url_base}")
 
     webhooks_to_create = [
         {'event': 'product/created', 'url': f'{webhook_url_base}/product'},
@@ -311,8 +320,12 @@ def register_webhooks(store_id, access_token):
         {'event': 'store/redact', 'url': f'{webhook_url_base}/app'},
     ]
 
+    logger.warning(f"🔔 Se intentarán crear {len(webhooks_to_create)} webhooks")
+
     for webhook in webhooks_to_create:
         try:
+            logger.warning(f"🔔 Creando webhook: {webhook['event']} -> {webhook['url']}")
+            
             response = requests.post(
                 f'{TIENDANUBE_API_BASE}/{store_id}/webhooks',
                 json=webhook,
@@ -320,15 +333,22 @@ def register_webhooks(store_id, access_token):
                 timeout=10,
                 verify=False
             )
+            
+            logger.warning(f"🔔 Respuesta para {webhook['event']}: HTTP {response.status_code}")
+            
             if response.status_code in [200, 201]:
                 data = response.json()
-                webhook_ids[webhook['event']] = data.get('id')
-                logger.info(f"Webhook {webhook['event']} registrado: {data.get('id')}")
+                webhook_id = data.get('id')
+                webhook_ids[webhook['event']] = webhook_id
+                logger.warning(f"✅ Webhook {webhook['event']} REGISTRADO exitosamente - ID: {webhook_id} - URL: {webhook['url']}")
             else:
-                logger.warning(f"No se pudo crear webhook {webhook['event']}: {response.status_code}")
+                logger.warning(f"❌ No se pudo crear webhook {webhook['event']}: HTTP {response.status_code} - Response: {response.text[:200]}")
         except Exception as e:
-            logger.error(f"Error creando webhook {webhook['event']}: {str(e)}")
+            logger.error(f"💥 EXCEPCIÓN creando webhook {webhook['event']}: {str(e)}")
 
+    logger.warning(f"🔔 REGISTRO COMPLETADO - Total webhooks creados: {len(webhook_ids)}/{len(webhooks_to_create)}")
+    logger.warning(f"🔔 IDs registrados: {webhook_ids}")
+    
     return webhook_ids if webhook_ids else None
 
 
