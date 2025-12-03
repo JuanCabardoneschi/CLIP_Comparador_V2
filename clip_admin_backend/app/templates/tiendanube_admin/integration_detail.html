@@ -3,6 +3,34 @@
 {% block content %}
 <div class="container">
     <h2 class="mb-3">Integración Tiendanube</h2>
+
+    {# Mensajes de resultado amigables #}
+    {% if error %}
+    <div class="alert alert-warning" role="alert">
+        {{ error }}
+    </div>
+    {% endif %}
+    {% if result %}
+    {% set ok = result.get('success') %}
+    <div class="alert {{ 'alert-success' if ok else 'alert-danger' }}" role="alert">
+        {% if ok %}
+            <strong>Sincronización completada.</strong>
+            <span>
+                Tiempo: {{ '%.1f'|format(result.get('duration_seconds', 0)) }}s.
+                {% set stats = result.get('stats', {}) %}
+                {% if stats %}
+                    
+                    Categorías: {{ stats.get('categories_created', 0) }} nuevas, {{ stats.get('categories_updated', 0) }} actualizadas. 
+                    Productos: {{ stats.get('products_created', 0) }} nuevos, {{ stats.get('products_updated', 0) }} actualizados. 
+                    Imágenes procesadas: {{ stats.get('images_processed', 0) }}. 
+                    Errores: {{ (stats.get('errors') or [])|length }}.
+                {% endif %}
+            </span>
+        {% else %}
+            <strong>Error de sincronización:</strong> {{ result.get('error') or 'Error desconocido' }}
+        {% endif %}
+    </div>
+    {% endif %}
     <div class="card mb-4">
         <div class="card-body">
             <h5 class="card-title">{{ integration.store_name or 'Tienda' }}</h5>
@@ -15,7 +43,7 @@
             {% endif %}
         </div>
     </div>
-    <form id="sync-form" method="post" action="{{ url_for('tiendanube_admin.trigger_sync', integration_id=integration.id) }}">
+    <form id="sync-form" method="post" action="{{ url_for('tiendanube_admin.get_integration', integration_id=integration.id) }}">
         <div class="card mb-4">
             <div class="card-body">
                 <h5 class="card-title">¿Qué deseas sincronizar?</h5>
