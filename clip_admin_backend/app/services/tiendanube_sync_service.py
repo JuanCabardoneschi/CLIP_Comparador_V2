@@ -19,6 +19,7 @@ from app.models.tiendanube_integration import TiendanubeIntegration
 from app.models.category import Category
 from app.models.product import Product
 from app.models.image import Image
+from app.models.product_attribute_config import ProductAttributeConfig
 
 logger = logging.getLogger(__name__)
 
@@ -203,9 +204,137 @@ class TiendanubeSyncService:
             logger.error(f"Error sincronizando categoría {cat_data.get('id')}: {str(e)}")
             self.stats['errors'].append(f"Categoría {cat_data.get('id')}: {str(e)}")
 
+    def _auto_create_attribute_configs(self, variant_attributes: Dict):
+        """Auto-crea configuraciones de atributos basadas en variantes
+        
+        Args:
+            variant_attributes: Dict con estructura {0: set(['Rojo', 'Azul']), 1: set(['S', 'M', 'L'])}
+        """
+        attribute_names = {
+            0: 'Color',
+            1: 'Talla',
+            2: 'Material',
+            3: 'Estilo'
+        }
+        
+        for idx, values_set in variant_attributes.items():
+            attr_key = f'variant_{idx}'
+            attr_label = attribute_names.get(idx, f'Atributo {idx + 1}')
+            values = sorted(list(values_set))
+            
+            # Verificar si ya existe
+            existing = ProductAttributeConfig.query.filter_by(
+                client_id=self.client.id,
+                key=attr_key
+            ).first()
+            
+            if not existing:
+                config = ProductAttributeConfig(
+                    client_id=self.client.id,
+                    key=attr_key,
+                    label=attr_label,
+                    type='list',
+                    required=False,
+                    options={
+                        'multiple': False,
+                        'values': values
+                    },
+                    field_order=idx,
+                    expose_in_search=True
+                )
+                db.session.add(config)
+                logger.info(f"✨ Auto-creado atributo '{attr_label}' con valores: {values}")
+            else:
+                # Actualizar opciones si hay nuevos valores
+                current_values = set(existing.options.get('values', []) if existing.options else [])
+                new_values = set(values)
+                
+                if new_values - current_values:
+                    existing.options = {
+                        'multiple': False,
+                        'values': sorted(list(current_values | new_values))
+                    }
+                    logger.info(f"📝 Actualizado atributo '{attr_label}' con nuevos valores")
+        
+        db.session.commit()
+
+    def _clean_description(self, description: str) -> str:
+        """Limpia la descripción eliminando la sección **Características** generada por Tiendanube"""
+        if not description:
+            return ''
+
+        # Buscar y remover todo desde "**Características**" o "**Caracteristicas**" hasta el final
+        import re
+        cleaned = re.split(r'\*\*Caracter[ií]sticas\*\*', description, flags=re.IGNORECASE)[0]
+        return cleaned.strip()
+
+    def _get_best_price(self, variants: List[Dict]) -> Optional[float]:
+        """Obtiene el mejor precio: promocional si existe, sino el precio regular
+
+        Prioridad:
+        1. Precio promocional más bajo
+        2. Precio regular más bajo
+        """
+        if not variants:
+            return None
+
+        promo_prices = []
+        regular_prices = []
+
+        for variant in variants:
+            promo = variant.get('promotional_price')
+            regular = variant.get('price')
+
+            if promo:
+                try:
+                    promo_prices.append(float(promo))
+                except (ValueError, TypeError):
+                    pass
+
+            if regular:
+                try:
+                    regular_prices.append(float(regular))
+                except (ValueError, TypeError):
+                    pass
+
+        # Devolver el menor precio promocional, o el menor regular
+        if promo_prices:
+            return min(promo_prices)
+        elif regular_prices:
+            return min(regular_prices)
+
+        return None
+
+    def _extract_product_attributes(self, variants: List[Dict]) -> Dict:
+        """Extrae los valores de atributos del primer variante (producto simple) o agrega todos"""
+        if not variants:
+            return {}
+
+        # Tomar valores del primer variante como representativos
+        first_variant = variants[0]
+        values = first_variant.get('values', [])
+
+        attributes = {}
+        for idx, value_obj in enumerate(values):
+            attr_key = f'variant_{idx}'
+
+            if isinstance(value_obj, dict):
+                val = value_obj.get('es', value_obj.get('pt', ''))
+            else:
+                val = str(value_obj)
+
+            if val:
+                attributes[attr_key] = val
+
+        return attributes
+
     def sync_products(self):
         """Sincroniza productos con sus imágenes desde Tiendanube"""
         try:
+            logger.info("🔍 Paso 1: Recolectando productos y analizando variantes...")
+
+            # Paso 1: Recolectar todos los productos para análisis
+            all_products = []
             page = 1
             per_page = 50
 
@@ -221,14 +350,52 @@ class TiendanubeSyncService:
                 if not products:
                     break
 
-                for prod_data in products:
-                    self._sync_product(prod_data)
+                all_products.extend(products)
 
                 if len(products) < per_page:
                     break
 
                 page += 1
                 time.sleep(0.5)  # Rate limiting
+
+            if not all_products:
+                logger.warning("No se obtuvieron productos de Tiendanube")
+                return
+
+            logger.info(f"📦 Encontrados {len(all_products)} productos")
+
+            # Paso 2: Analizar variantes para detectar atributos
+            logger.info("🔎 Paso 2: Detectando atributos desde variantes...")
+            all_variant_attributes = {}
+
+            for prod_data in all_products:
+                variants = prod_data.get('variants', [])
+                if not variants:
+                    continue
+
+                for variant in variants:
+                    values = variant.get('values', [])
+                    for idx, value_obj in enumerate(values):
+                        if idx not in all_variant_attributes:
+                            all_variant_attributes[idx] = set()
+
+                        if isinstance(value_obj, dict):
+                            val = value_obj.get('es', value_obj.get('pt', ''))
+                        else:
+                            val = str(value_obj)
+
+                        if val:
+                            all_variant_attributes[idx].add(val)
+
+            # Paso 3: Auto-crear configuraciones de atributos
+            if all_variant_attributes:
+                logger.info(f"✨ Detectados {len(all_variant_attributes)} tipos de atributos")
+                self._auto_create_attribute_configs(all_variant_attributes)
+
+            # Paso 4: Sincronizar productos
+            logger.info(f"💾 Paso 3: Sincronizando {len(all_products)} productos...")
+            for prod_data in all_products:
+                self._sync_product(prod_data)
 
         except Exception as e:
             logger.error(f"Error sincronizando productos: {str(e)}")
@@ -252,18 +419,22 @@ class TiendanubeSyncService:
             ).first()
 
             name = prod_data.get('name', {}).get('es', f'Producto {external_id}')
-            description = prod_data.get('description', {}).get('es', '')
+            raw_description = prod_data.get('description', {}).get('es', '')
+            description = self._clean_description(raw_description)  # Limpiar "Características"
             brand = prod_data.get('brand', '')
             sku = prod_data.get('sku', '')
 
-            # Precio: tomar el de la primer variante o default
-            price = None
+            # Obtener variantes
             variants = prod_data.get('variants', [])
-            if variants and len(variants) > 0:
-                price = variants[0].get('price')
+
+            # Precio: usar promocional si existe, sino regular
+            price = self._get_best_price(variants)
 
             # Stock: sumar todas las variantes
             stock = sum(v.get('stock', 0) for v in variants)
+
+            # Extraer atributos desde variantes
+            product_attributes = self._extract_product_attributes(variants)
 
             # Construir external_url correctamente
             handle_data = prod_data.get('handle', {})
@@ -285,6 +456,7 @@ class TiendanubeSyncService:
                 product.stock = stock
                 product.category_id = category.id
                 product.external_url = external_url
+                product.attributes = product_attributes if product_attributes else None
                 product.last_sync_at = datetime.utcnow()
                 product.sync_status = 'synced'
                 self.stats['products_updated'] += 1
@@ -299,6 +471,7 @@ class TiendanubeSyncService:
                     sku=sku,
                     price=price,
                     stock=stock,
+                    attributes=product_attributes if product_attributes else None,
                     external_id=external_id,
                     external_url=external_url,
                     last_sync_at=datetime.utcnow(),
