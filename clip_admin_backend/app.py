@@ -219,6 +219,30 @@ def create_app(config_name=None):
             return "N/A"
         return f"${value:,.2f}"
 
+    # Catch-all temporal para webhooks viejos de Tiendanube
+    @app.route('/webhooks/tiendanube/<path:subpath>', methods=['POST', 'GET'])
+    def catch_old_webhooks(subpath):
+        """Intercepta webhooks viejos para debug"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        store_id = request.headers.get('X-Linked-Nube-Info-Id', 'UNKNOWN')
+        logger.warning(f"⚠️ WEBHOOK VIEJO detectado: /webhooks/tiendanube/{subpath}")
+        logger.warning(f"   Store ID: {store_id}")
+        logger.warning(f"   Headers: {dict(request.headers)}")
+        
+        try:
+            payload = request.get_json()
+            logger.warning(f"   Payload: {payload}")
+        except:
+            logger.warning(f"   Body: {request.data[:200]}")
+        
+        return jsonify({
+            "error": "Esta URL de webhook está obsoleta",
+            "message": "Los webhooks deben usar /api/webhooks/tiendanube/",
+            "store_id": store_id
+        }), 410  # 410 Gone - recurso ya no disponible
+    
     # Error handlers
     @app.errorhandler(404)
     def not_found_error(error):
