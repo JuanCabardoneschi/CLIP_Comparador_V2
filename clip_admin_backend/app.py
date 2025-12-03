@@ -241,9 +241,7 @@ def create_app(config_name=None):
             "error": "Esta URL de webhook está obsoleta",
             "message": "Los webhooks deben usar /api/webhooks/tiendanube/",
             "store_id": store_id
-        }), 410  # 410 Gone - recurso ya no disponible
-
-    # Error handlers
+        }), 410  # 410 Gone - recurso ya no disponible    # Error handlers
     @app.errorhandler(404)
     def not_found_error(error):
         return render_template("errors/404.html"), 404
