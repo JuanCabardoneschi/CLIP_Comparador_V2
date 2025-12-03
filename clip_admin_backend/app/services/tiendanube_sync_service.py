@@ -206,7 +206,7 @@ class TiendanubeSyncService:
 
     def _auto_create_attribute_configs(self, variant_attributes: Dict):
         """Auto-crea configuraciones de atributos basadas en variantes
-        
+
         Args:
             variant_attributes: Dict con estructura {0: set(['Rojo', 'Azul']), 1: set(['S', 'M', 'L'])}
         """
@@ -216,18 +216,18 @@ class TiendanubeSyncService:
             2: 'Material',
             3: 'Estilo'
         }
-        
+
         for idx, values_set in variant_attributes.items():
             attr_key = f'variant_{idx}'
             attr_label = attribute_names.get(idx, f'Atributo {idx + 1}')
             values = sorted(list(values_set))
-            
+
             # Verificar si ya existe
             existing = ProductAttributeConfig.query.filter_by(
                 client_id=self.client.id,
                 key=attr_key
             ).first()
-            
+
             if not existing:
                 config = ProductAttributeConfig(
                     client_id=self.client.id,
@@ -248,25 +248,15 @@ class TiendanubeSyncService:
                 # Actualizar opciones si hay nuevos valores
                 current_values = set(existing.options.get('values', []) if existing.options else [])
                 new_values = set(values)
-                
+
                 if new_values - current_values:
                     existing.options = {
                         'multiple': False,
                         'values': sorted(list(current_values | new_values))
                     }
                     logger.info(f"📝 Actualizado atributo '{attr_label}' con nuevos valores")
-        
+
         db.session.commit()
-
-    def _clean_description(self, description: str) -> str:
-        """Limpia la descripción eliminando la sección **Características** generada por Tiendanube"""
-        if not description:
-            return ''
-
-        # Buscar y remover todo desde "**Características**" o "**Caracteristicas**" hasta el final
-        import re
-        cleaned = re.split(r'\*\*Caracter[ií]sticas\*\*', description, flags=re.IGNORECASE)[0]
-        return cleaned.strip()
 
     def _get_best_price(self, variants: List[Dict]) -> Optional[float]:
         """Obtiene el mejor precio: promocional si existe, sino el precio regular
@@ -419,8 +409,7 @@ class TiendanubeSyncService:
             ).first()
 
             name = prod_data.get('name', {}).get('es', f'Producto {external_id}')
-            raw_description = prod_data.get('description', {}).get('es', '')
-            description = self._clean_description(raw_description)  # Limpiar "Características"
+            description = prod_data.get('description', {}).get('es', '')
             brand = prod_data.get('brand', '')
             sku = prod_data.get('sku', '')
 
