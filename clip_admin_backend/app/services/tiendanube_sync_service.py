@@ -498,10 +498,14 @@ class TiendanubeSyncService:
             if images:
                 self._sync_product_images(product, images)
 
+            # Devolver el producto sincronizado para consumidores (webhooks)
+            return product
+
         except Exception as e:
             logger.error(f"Error sincronizando producto {prod_data.get('id')}: {str(e)}")
             self.stats['errors'].append(f"Producto {prod_data.get('id')}: {str(e)}")
             db.session.rollback()
+            return None
 
     def _sync_product_images(self, product: Product, images_data: List[Dict]):
         """Sincroniza imágenes de un producto con pipeline Base64"""
