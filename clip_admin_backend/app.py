@@ -14,7 +14,7 @@ sys.path.insert(0, parent_dir)
 
 import redis
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, flash
+from flask import Flask, render_template, request, flash, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_login import LoginManager, current_user
