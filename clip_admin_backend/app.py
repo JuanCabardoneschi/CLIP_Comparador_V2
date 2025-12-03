@@ -67,6 +67,11 @@ def create_app(config_name=None):
     config = Config()
     app.config.from_object(config)
 
+    # Inyectar credenciales Tiendanube en app.config desde variables de entorno
+    # para que los blueprints las lean de forma consistente
+    app.config['TIENDANUBE_CLIENT_ID'] = os.getenv('TIENDANUBE_CLIENT_ID', app.config.get('TIENDANUBE_CLIENT_ID'))
+    app.config['TIENDANUBE_CLIENT_SECRET'] = os.getenv('TIENDANUBE_CLIENT_SECRET', app.config.get('TIENDANUBE_CLIENT_SECRET'))
+
     # PostgreSQL es obligatorio - no se permiten otras bases de datos
     app.config["JWT_SECRET_KEY"] = os.getenv(
         "JWT_SECRET_KEY", "jwt-secret-key"
