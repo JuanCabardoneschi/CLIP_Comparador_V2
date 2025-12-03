@@ -48,21 +48,27 @@ def verify_hmac(store_id: str, request_body: bytes) -> bool:
             logger.error("TIENDANUBE_CLIENT_SECRET no configurado")
             return False
 
-        # Construir mensaje: store_id + body + secret
-        message = store_id + request_body.decode('utf-8') + client_secret
+        # Obtener firma del header (nombre correcto según docs de Tiendanube)
+        received_signature = request.headers.get('X-Linkedstore-Hmac-Sha256', '')
 
-        # Calcular HMAC-SHA256
+        # Calcular HMAC-SHA256 según docs: HMAC(client_secret, request_body)
         expected_signature = hmac.new(
             client_secret.encode('utf-8'),
-            message.encode('utf-8'),
+            request_body,
             hashlib.sha256
         ).hexdigest()
 
-        # Obtener firma del header
-        received_signature = request.headers.get('X-Linkedstore-Webhook-Signature', '')
+        # Log para debug (quitar después de confirmar funcionamiento)
+        logger.info(f"🔐 HMAC Debug - Store: {store_id}")
+        logger.info(f"   Body length: {len(request_body)} bytes")
+        logger.info(f"   Expected: {expected_signature[:16]}...")
+        logger.info(f"   Received: {received_signature[:16]}...")
 
         # Comparación segura
-        return hmac.compare_digest(expected_signature, received_signature)
+        is_valid = hmac.compare_digest(expected_signature, received_signature)
+        if not is_valid:
+            logger.warning(f"❌ HMAC mismatch for store {store_id}")
+        return is_valid
 
     except Exception as e:
         logger.error(f"Error verificando HMAC: {str(e)}")
