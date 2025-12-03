@@ -348,19 +348,23 @@ def webhook_gdpr():
     Nota: Implementación básica. Puede requerir proceso manual según GDPR.
     """
     try:
-        # Obtener store_id del header
+        # Obtener payload primero
+        payload = request.get_json()
+
+        # Obtener store_id del header o del payload (fallback)
         store_id = request.headers.get('X-Linked-Nube-Info-Id', '')
         if not store_id:
-            logger.warning("Webhook GDPR sin X-Linked-Nube-Info-Id header")
-            return jsonify({"error": "Missing store_id"}), 400
+            store_id = str(payload.get('store_id', ''))
+            if not store_id:
+                logger.warning("Webhook GDPR sin X-Linked-Nube-Info-Id header ni store_id en payload")
+                return jsonify({"error": "Missing store_id"}), 400
+            logger.info(f"📋 store_id obtenido del payload: {store_id}")
 
         # Verificar HMAC
         if not verify_hmac(store_id, request.data):
             logger.warning(f"HMAC inválido para GDPR webhook, store_id={store_id}")
             return jsonify({"error": "Invalid signature"}), 401
 
-        # Obtener payload
-        payload = request.get_json()
         event = payload.get('event', '')
         customer_id = payload.get('customer_id', '')
 
