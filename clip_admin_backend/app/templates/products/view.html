@@ -416,9 +416,15 @@
                     <h5>
                         <i class="bi bi-images"></i> Galería de Imágenes ({{ images|length }})
                     </h5>
+                    {% if not (current_user.is_store_admin and current_user.client and (current_user.client.integration_type == 'tiendanube' or current_user.client.is_read_only)) %}
                     <button class="btn btn-outline-primary btn-sm" onclick="showAddImagesModal()">
                         <i class="bi bi-plus-circle"></i> Agregar Imágenes
                     </button>
+                    {% else %}
+                    <span class="text-muted small">
+                        <i class="bi bi-info-circle"></i> Imágenes sincronizadas desde Tiendanube
+                    </span>
+                    {% endif %}
                 </div>
                                                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                                                     <div id="qaScorePanel" class="small" style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;padding:6px 10px;min-width:320px;">

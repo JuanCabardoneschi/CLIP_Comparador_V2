@@ -49,6 +49,12 @@ def index():
 @login_required
 def create():
     """Crear nueva categoría para el cliente actual"""
+    # ⛔ STORE_ADMIN de Tiendanube NO puede crear categorías
+    if current_user.is_store_admin and current_user.client:
+        if current_user.client.integration_type == 'tiendanube' or current_user.client.is_read_only:
+            flash("No puedes crear categorías. Las categorías se sincronizan automáticamente desde Tiendanube.", "error")
+            return redirect(url_for("categories.index"))
+
     print(f"🏷️ CATEGORIES CREATE: Método {request.method}")
     print(f"🏷️ CATEGORIES CREATE: Usuario autenticado: {current_user.is_authenticated}")
     print(f"🏷️ CATEGORIES CREATE: Usuario email: {current_user.email if current_user.is_authenticated else 'N/A'}")
@@ -157,14 +163,37 @@ def edit(category_id):
         color = request.form.get("color", "#007bff")
         is_active = request.form.get("is_active") == "on"
 
+        # ✅ Si es Tiendanube: SOLO editar campos permitidos
+        if is_tiendanube:
+            # Solo actualizar: name_en, alternative_terms, description, vision_hint
+            if not name_en:
+                flash("El nombre en inglés es obligatorio", "error")
+                return render_template("categories/edit.html",
+                                     category=category,
+                                     is_tiendanube=is_tiendanube)
+
+            category.name_en = name_en
+            category.alternative_terms = alternative_terms if alternative_terms else None
+            category.description = description if description else None
+            category.vision_hint = vision_hint if vision_hint else None
+
+            db.session.commit()
+            flash(f"Campos editables actualizados exitosamente", "success")
+            return redirect(url_for("categories.view", category_id=category.id))
+
+        # ⚙️ Si NO es Tiendanube: edición completa (comportamiento original)
         # Validaciones
         if not name:
             flash("El nombre de la categoría es obligatorio", "error")
-            return render_template("categories/edit.html", category=category)
+            return render_template("categories/edit.html",
+                                 category=category,
+                                 is_tiendanube=is_tiendanube)
 
         if not name_en:
             flash("El nombre en inglés es obligatorio", "error")
-            return render_template("categories/edit.html", category=category)
+            return render_template("categories/edit.html",
+                                 category=category,
+                                 is_tiendanube=is_tiendanube)
 
         # Actualizar slug si cambió el nombre
         if name != category.name:
@@ -176,7 +205,9 @@ def edit(category_id):
 
             if existing and existing.id != category.id:
                 flash("Ya existe una categoría con ese nombre", "error")
-                return render_template("categories/edit.html", category=category)
+                return render_template("categories/edit.html",
+                                     category=category,
+                                     is_tiendanube=is_tiendanube)
 
             category.slug = new_slug
 
@@ -193,7 +224,9 @@ def edit(category_id):
         flash(f"Categoría '{name}' actualizada exitosamente", "success")
         return redirect(url_for("categories.view", category_id=category.id))
 
-    return render_template("categories/edit.html", category=category)
+    return render_template("categories/edit.html",
+                         category=category,
+                         is_tiendanube=is_tiendanube)
 
 
 @bp.route("/<category_id>/delete", methods=["POST"])

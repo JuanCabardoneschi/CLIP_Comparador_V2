@@ -197,6 +197,7 @@
                         </a>
                     </li>
 
+                    {% if not (current_user.is_store_admin and current_user.client and (current_user.client.integration_type == 'tiendanube' or current_user.client.is_read_only)) %}
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint and 'inventory' in request.endpoint %}active{% endif %}"
                            href="{{ url_for('inventory.index') }}">
@@ -204,7 +205,9 @@
                             Inventario
                         </a>
                     </li>
+                    {% endif %}
 
+                    {% if not (current_user.is_store_admin and current_user.client and (current_user.client.integration_type == 'tiendanube' or current_user.client.is_read_only)) %}
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint and 'attributes' in request.endpoint %}active{% endif %}"
                            href="{{ url_for('attributes.index') }}">
@@ -212,9 +215,9 @@
                             Atributos
                         </a>
                     </li>
+                    {% endif %}
 
-
-
+                    {% if not (current_user.is_store_admin and current_user.client and (current_user.client.integration_type == 'tiendanube' or current_user.client.is_read_only)) %}
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint and 'embeddings' in request.endpoint %}active{% endif %}"
                            href="{{ url_for('embeddings.index') }}">
@@ -222,6 +225,7 @@
                             Mis Embeddings CLIP
                         </a>
                     </li>
+                    {% endif %}
 
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint and 'analytics' in request.endpoint %}active{% endif %}"

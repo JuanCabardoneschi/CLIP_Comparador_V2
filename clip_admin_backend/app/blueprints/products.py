@@ -722,6 +722,17 @@ def autofill_attributes(product_id):
 @login_required
 def add_images(product_id):
     """Agregar más imágenes a un producto existente usando ImageManager"""
+    # ⛔ Bloquear subida de imágenes para clientes Tiendanube (read-only)
+    try:
+        if _is_tiendanube_readonly():
+            return jsonify({
+                "success": False,
+                "message": "Este cliente sincroniza imágenes desde Tiendanube. La subida manual está deshabilitada."
+            }), 403
+    except Exception:
+        # Si algo falla en la detección, seguir flujo normal para no romper
+        pass
+
     product = Product.query.filter_by(
         id=product_id,
         client_id=current_user.client_id
