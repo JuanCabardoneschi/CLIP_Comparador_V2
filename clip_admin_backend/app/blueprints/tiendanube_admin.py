@@ -91,7 +91,7 @@ def get_integration(integration_id):
         }
         # Llama al servicio de sync con las opciones
         from app.services.tiendanube_sync_service import start_full_sync
-        result = start_full_sync(integration.client_id, sync_options)
+        result = start_full_sync(str(integration.client_id), sync_options)
         # Recarga el objeto por si cambió el estado
         db.session.refresh(integration)
         return render_template("tiendanube_admin/integration_detail.html", integration=integration, result=result)
@@ -125,7 +125,7 @@ def trigger_sync(integration_id):
         # TODO: En producción, ejecutar en background task
         logger.info(f"Iniciando sincronización manual para integración {integration_id}")
 
-        result = start_full_sync(integration.client_id)
+        result = start_full_sync(str(integration.client_id))
 
         return jsonify({
             'success': result.get('success'),

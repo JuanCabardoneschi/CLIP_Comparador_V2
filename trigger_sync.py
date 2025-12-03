@@ -11,7 +11,7 @@ CLIENT_ID = '2cb75338-f232-4f8e-88be-bfc0a06b2516'
 
 if __name__ == '__main__':
     print("🚀 Iniciando sincronización de Test Clip...")
-    result = start_full_sync(CLIENT_ID)
+    result = start_full_sync(str(CLIENT_ID))
 
     if result.get('success'):
         print("\n✅ Sincronización completada!")
