@@ -74,37 +74,59 @@ class TiendanubeSyncService:
             'errors': []
         }
 
-    def full_sync(self) -> Dict:
+    def full_sync(self, sync_options: Dict = None) -> Dict:
         """
-        Sincronización completa inicial:
-        1. Sincronizar categorías
-        2. Sincronizar productos con imágenes
-        3. Generar embeddings CLIP
-        4. Calcular centroides de categorías
+        Sincronización completa o selectiva según sync_options.
+
+        Args:
+            sync_options: Dict con flags de qué sincronizar. Si es None, sincroniza todo.
         """
         try:
-            logger.info(f"Iniciando sincronización completa para store_id={self.store_id}")
+            # Opciones por defecto: sincronizar todo
+            if sync_options is None:
+                sync_options = {
+                    'categories': True,
+                    'products': True,
+                    'images': True,
+                    'stock': True,
+                    'attributes': True,
+                    'embeddings': True
+                }
+
+            logger.info(f"Iniciando sincronización para store_id={self.store_id}")
+            logger.info(f"Opciones: {sync_options}")
             self.integration.sync_status = 'in_progress'
             self.integration.sync_error = None
             db.session.commit()
 
             start_time = time.time()
+            steps_completed = []
 
             # 1. Sincronizar categorías
-            logger.info("Paso 1/4: Sincronizando categorías...")
-            self.sync_categories()
+            if sync_options.get('categories', True):
+                logger.info("Paso 1: Sincronizando categorías...")
+                self.sync_categories()
+                steps_completed.append('categories')
 
-            # 2. Sincronizar productos con imágenes
-            logger.info("Paso 2/4: Sincronizando productos e imágenes...")
-            self.sync_products()
+            # 2. Sincronizar productos (con imágenes si está habilitado)
+            if sync_options.get('products', True) or sync_options.get('attributes', False):
+                logger.info("Paso 2: Sincronizando productos...")
+                # Si solo queremos atributos, podemos optimizar para no re-descargar imágenes
+                sync_images = sync_options.get('images', True)
+                self.sync_products(sync_images=sync_images, update_attributes_only=sync_options.get('attributes', False) and not sync_options.get('products', False))
+                steps_completed.append('products')
 
             # 3. Generar embeddings CLIP (si no existen)
-            logger.info("Paso 3/4: Generando embeddings CLIP...")
-            self.generate_embeddings()
+            if sync_options.get('embeddings', True):
+                logger.info("Paso 3: Generando embeddings CLIP...")
+                self.generate_embeddings()
+                steps_completed.append('embeddings')
 
             # 4. Calcular centroides de categorías
-            logger.info("Paso 4/4: Calculando centroides de categorías...")
-            self.calculate_category_centroids()
+            if sync_options.get('embeddings', True):  # Solo si generamos embeddings
+                logger.info("Paso 4: Calculando centroides de categorías...")
+                self.calculate_category_centroids()
+                steps_completed.append('centroids')
 
             duration = time.time() - start_time
 
@@ -351,8 +373,13 @@ class TiendanubeSyncService:
 
         return attributes
 
-    def sync_products(self):
-        """Sincroniza productos con sus imágenes desde Tiendanube"""
+    def sync_products(self, sync_images: bool = True, update_attributes_only: bool = False):
+        """Sincroniza productos con sus imágenes desde Tiendanube
+
+        Args:
+            sync_images: Si True, sincroniza imágenes. Si False, solo metadatos.
+            update_attributes_only: Si True, solo actualiza atributos dinámicos sin tocar otros campos.
+        """
         try:
             logger.info("🔍 Paso 1: Recolectando productos y analizando variantes...")
 
@@ -431,18 +458,20 @@ class TiendanubeSyncService:
             # Paso 4: Sincronizar productos
             logger.info(f"💾 Paso 3: Sincronizando {len(all_products)} productos...")
             for prod_data in all_products:
-                self._sync_product(prod_data, attribute_names_from_tiendanube)
+                self._sync_product(prod_data, attribute_names_from_tiendanube, sync_images=sync_images, update_attributes_only=update_attributes_only)
 
         except Exception as e:
             logger.error(f"Error sincronizando productos: {str(e)}")
             self.stats['errors'].append(f"Productos: {str(e)}")
 
-    def _sync_product(self, prod_data: Dict, attribute_names: Dict = None):
+    def _sync_product(self, prod_data: Dict, attribute_names: Dict = None, sync_images: bool = True, update_attributes_only: bool = False):
         """Sincroniza un producto individual con sus imágenes
 
         Args:
             prod_data: Datos del producto desde Tiendanube
             attribute_names: Dict con nombres reales de atributos {0: 'Color', 1: 'Talle'}
+            sync_images: Si True, sincroniza imágenes
+            update_attributes_only: Si True, solo actualiza attributes sin tocar otros campos
         """
         try:
             external_id = str(prod_data['id'])
@@ -488,17 +517,24 @@ class TiendanubeSyncService:
 
             if product:
                 # Actualizar existente
-                product.name = name
-                product.description = description
-                product.brand = brand
-                product.sku = sku
-                product.price = price
-                product.stock = stock
-                product.category_id = category.id
-                product.external_url = external_url
-                product.attributes = product_attributes if product_attributes else None
-                product.last_sync_at = datetime.utcnow()
-                product.sync_status = 'synced'
+                if update_attributes_only:
+                    # Solo actualizar atributos dinámicos
+                    logger.info(f"📝 Actualizando solo atributos de '{name}'")
+                    product.attributes = product_attributes if product_attributes else None
+                    product.last_sync_at = datetime.utcnow()
+                else:
+                    # Actualización completa
+                    product.name = name
+                    product.description = description
+                    product.brand = brand
+                    product.sku = sku
+                    product.price = price
+                    product.stock = stock
+                    product.category_id = category.id
+                    product.external_url = external_url
+                    product.attributes = product_attributes if product_attributes else None
+                    product.last_sync_at = datetime.utcnow()
+                    product.sync_status = 'synced'
                 self.stats['products_updated'] += 1
             else:
                 # Crear nuevo
@@ -523,10 +559,11 @@ class TiendanubeSyncService:
 
             db.session.commit()
 
-            # Sincronizar imágenes
-            images = prod_data.get('images', [])
-            if images:
-                self._sync_product_images(product, images)
+            # Sincronizar imágenes solo si está habilitado
+            if sync_images:
+                images = prod_data.get('images', [])
+                if images:
+                    self._sync_product_images(product, images)
 
             # Devolver el producto sincronizado para consumidores (webhooks)
             return product
@@ -963,14 +1000,24 @@ class TiendanubeSyncService:
             logger.error(f"Error calculando centroide para categoría {category.id}: {str(e)}")
 
 
-def start_full_sync(client_id: str) -> Dict:
+def start_full_sync(client_id: str, sync_options: Dict = None) -> Dict:
     """
-    Función auxiliar para iniciar sincronización completa.
+    Función auxiliar para iniciar sincronización completa o selectiva.
     Puede ser llamada desde un task asíncrono o endpoint.
+
+    Args:
+        client_id: ID del cliente
+        sync_options: Dict con opciones de sincronización:
+            - products: bool (sincronizar productos)
+            - categories: bool (sincronizar categorías)
+            - images: bool (sincronizar imágenes)
+            - stock: bool (actualizar stock)
+            - attributes: bool (sincronizar atributos dinámicos)
+            - embeddings: bool (generar embeddings)
     """
     try:
         service = TiendanubeSyncService(client_id)
-        return service.full_sync()
+        return service.full_sync(sync_options)
     except Exception as e:
         logger.error(f"Error iniciando sincronización para cliente {client_id}: {str(e)}")
         return {
