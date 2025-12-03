@@ -257,6 +257,152 @@ def clean_duplicate_webhooks(integration_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@bp.route('/integrations/<integration_id>/list-all-webhooks', methods=['GET'])
+@login_required
+def list_all_webhooks(integration_id):
+    """Lista TODOS los webhooks del store sin filtrar"""
+    import requests
+
+    try:
+        integration = TiendanubeIntegration.query.get(integration_id)
+        if not integration:
+            return jsonify({'success': False, 'error': 'Integración no encontrada'}), 404
+
+        # Verificar permisos
+        if current_user.role != 'SUPER_ADMIN' and integration.client_id != current_user.client_id:
+            return jsonify({'success': False, 'error': 'Sin permisos'}), 403
+
+        access_token = integration.get_access_token()
+        headers = {
+            'Authentication': f'bearer {access_token}',
+            'User-Agent': 'CLIP Comparador V2',
+            'Content-Type': 'application/json'
+        }
+
+        # Listar TODOS los webhooks
+        logger.info(f"🔍 Listando TODOS los webhooks para store {integration.store_id}")
+        response = requests.get(
+            f'https://api.tiendanube.com/v1/{integration.store_id}/webhooks',
+            headers=headers,
+            timeout=10,
+            verify=False
+        )
+
+        if response.status_code != 200:
+            logger.error(f"❌ Error listando webhooks: {response.status_code} - {response.text}")
+            return jsonify({'success': False, 'error': f'Error listando webhooks: {response.status_code}'}), 500
+
+        all_webhooks = response.json()
+
+        # Clasificar webhooks
+        correct_webhooks = []
+        incorrect_webhooks = []
+
+        for wh in all_webhooks:
+            wh_info = {
+                'id': wh.get('id'),
+                'event': wh.get('event'),
+                'url': wh.get('url', ''),
+                'created_at': wh.get('created_at', ''),
+                'updated_at': wh.get('updated_at', '')
+            }
+
+            if '/api/webhooks/tiendanube/' in wh_info['url']:
+                correct_webhooks.append(wh_info)
+            else:
+                incorrect_webhooks.append(wh_info)
+
+        logger.info(f"📋 Total: {len(all_webhooks)} webhooks ({len(correct_webhooks)} correctos, {len(incorrect_webhooks)} incorrectos)")
+
+        return jsonify({
+            'success': True,
+            'total': len(all_webhooks),
+            'correct': len(correct_webhooks),
+            'incorrect': len(incorrect_webhooks),
+            'correct_webhooks': correct_webhooks,
+            'incorrect_webhooks': incorrect_webhooks
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Error listando webhooks: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@bp.route('/integrations/<integration_id>/delete-all-incorrect-webhooks', methods=['POST'])
+@login_required
+def delete_all_incorrect_webhooks(integration_id):
+    """Elimina TODOS los webhooks sin /api/ sin importar cuándo se crearon"""
+    import requests
+
+    try:
+        integration = TiendanubeIntegration.query.get(integration_id)
+        if not integration:
+            return jsonify({'success': False, 'error': 'Integración no encontrada'}), 404
+
+        # Solo SUPER_ADMIN
+        if current_user.role != 'SUPER_ADMIN':
+            return jsonify({'success': False, 'error': 'Solo SUPER_ADMIN'}), 403
+
+        access_token = integration.get_access_token()
+        headers = {
+            'Authentication': f'bearer {access_token}',
+            'User-Agent': 'CLIP Comparador V2',
+            'Content-Type': 'application/json'
+        }
+
+        # Listar TODOS
+        response = requests.get(
+            f'https://api.tiendanube.com/v1/{integration.store_id}/webhooks',
+            headers=headers,
+            timeout=10,
+            verify=False
+        )
+
+        if response.status_code != 200:
+            return jsonify({'success': False, 'error': f'Error listando: {response.status_code}'}), 500
+
+        all_webhooks = response.json()
+        deleted = []
+        errors = []
+
+        for wh in all_webhooks:
+            wh_id = wh.get('id')
+            url = wh.get('url', '')
+            event = wh.get('event')
+
+            # Eliminar si NO tiene /api/
+            if '/api/webhooks/tiendanube/' not in url:
+                logger.warning(f"🗑️ ELIMINANDO webhook incorrecto: {event} (ID: {wh_id}) - {url}")
+
+                del_resp = requests.delete(
+                    f'https://api.tiendanube.com/v1/{integration.store_id}/webhooks/{wh_id}',
+                    headers=headers,
+                    timeout=10,
+                    verify=False
+                )
+
+                if del_resp.status_code == 200:
+                    deleted.append({'id': wh_id, 'event': event, 'url': url})
+                    logger.info(f"✅ Eliminado: {event} (ID: {wh_id})")
+                else:
+                    error = f"Error eliminando {wh_id}: {del_resp.status_code}"
+                    errors.append(error)
+                    logger.error(f"❌ {error}")
+
+        logger.warning(f"🎉 LIMPIEZA TOTAL: {len(deleted)} eliminados, {len(errors)} errores")
+
+        return jsonify({
+            'success': True,
+            'deleted': len(deleted),
+            'deleted_webhooks': deleted,
+            'errors': errors
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @bp.route('/stats', methods=['GET'])
 @login_required
 def get_tiendanube_stats():
