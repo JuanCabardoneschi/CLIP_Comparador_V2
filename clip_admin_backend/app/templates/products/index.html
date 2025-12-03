@@ -174,7 +174,7 @@
 
                         {% if product.description %}
                             <p class="card-text small text-muted">
-                                {{ product.description[:80] }}{% if product.description|length > 80 %}...{% endif %}
+                                {{ product.description[:80]|striptags }}{% if product.description|length > 80 %}...{% endif %}
                             </p>
                         {% endif %}
 

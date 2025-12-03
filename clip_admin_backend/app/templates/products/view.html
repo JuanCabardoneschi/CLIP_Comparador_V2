@@ -297,7 +297,7 @@
                     <span class="info-label">Descripción:</span>
                 </div>
                 <div class="mt-2 mb-3">
-                    <p class="text-muted">{{ product.description }}</p>
+                    <div class="text-muted">{{ product.description|safe }}</div>
                 </div>
                 {% endif %}
 
