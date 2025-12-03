@@ -224,6 +224,35 @@ def create_app(config_name=None):
             return "N/A"
         return f"${value:,.2f}"
 
+    @app.template_filter("attribute_label")
+    def attribute_label(key, client_id=None):
+        """Obtiene el label de un atributo desde ProductAttributeConfig
+
+        Args:
+            key: El key del atributo (ej: 'color', 'talla')
+            client_id: ID del cliente (opcional, si no se pasa usa current_user.client_id)
+
+        Returns:
+            El label configurado o el key capitalizado si no existe config
+        """
+        from app.models.product_attribute_config import ProductAttributeConfig
+        from flask_login import current_user
+
+        if not client_id and current_user and current_user.is_authenticated:
+            client_id = current_user.client_id
+
+        if client_id:
+            config = ProductAttributeConfig.query.filter_by(
+                client_id=client_id,
+                key=key
+            ).first()
+
+            if config:
+                return config.label
+
+        # Fallback: capitalizar el key
+        return key.replace('_', ' ').title()
+
     # Catch-all temporal para webhooks viejos de Tiendanube
     @app.route('/webhooks/tiendanube/<path:subpath>', methods=['POST', 'GET'])
     def catch_old_webhooks(subpath):

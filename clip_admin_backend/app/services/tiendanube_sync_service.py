@@ -220,13 +220,17 @@ class TiendanubeSyncService:
         }
 
         for idx, values_set in variant_attributes.items():
-            attr_key = f'variant_{idx}'
-
             # Usar nombre de Tiendanube si está disponible, sino fallback
             if attribute_names and idx in attribute_names:
                 attr_label = attribute_names[idx]
             else:
                 attr_label = fallback_names.get(idx, f'Atributo {idx + 1}')
+
+            # Convertir el label a formato snake_case para usar como key
+            # Ejemplo: "Color" -> "color", "Talla especial" -> "talla_especial"
+            attr_key = attr_label.lower().strip().replace(' ', '_').replace('-', '_')
+            # Remover caracteres especiales
+            attr_key = ''.join(c for c in attr_key if c.isalnum() or c == '_')
 
             values = sorted(list(values_set))
 
@@ -303,10 +307,23 @@ class TiendanubeSyncService:
 
         return None
 
-    def _extract_product_attributes(self, variants: List[Dict]) -> Dict:
-        """Extrae los valores de atributos del primer variante (producto simple) o agrega todos"""
+    def _extract_product_attributes(self, variants: List[Dict], attribute_names: Dict = None) -> Dict:
+        """Extrae los valores de atributos del primer variante (producto simple) o agrega todos
+
+        Args:
+            variants: Lista de variantes del producto
+            attribute_names: Dict con nombres reales de Tiendanube {0: 'Color', 1: 'Talle'}
+        """
         if not variants:
             return {}
+
+        # Fallback a nombres genéricos
+        fallback_names = {
+            0: 'Color',
+            1: 'Talla',
+            2: 'Material',
+            3: 'Estilo'
+        }
 
         # Tomar valores del primer variante como representativos
         first_variant = variants[0]
@@ -314,7 +331,15 @@ class TiendanubeSyncService:
 
         attributes = {}
         for idx, value_obj in enumerate(values):
-            attr_key = f'variant_{idx}'
+            # Determinar el nombre del atributo
+            if attribute_names and idx in attribute_names:
+                attr_label = attribute_names[idx]
+            else:
+                attr_label = fallback_names.get(idx, f'Atributo {idx + 1}')
+
+            # Convertir a snake_case para usar como key (igual que en _auto_create_attribute_configs)
+            attr_key = attr_label.lower().strip().replace(' ', '_').replace('-', '_')
+            attr_key = ''.join(c for c in attr_key if c.isalnum() or c == '_')
 
             if isinstance(value_obj, dict):
                 val = value_obj.get('es', value_obj.get('pt', ''))
@@ -406,14 +431,19 @@ class TiendanubeSyncService:
             # Paso 4: Sincronizar productos
             logger.info(f"💾 Paso 3: Sincronizando {len(all_products)} productos...")
             for prod_data in all_products:
-                self._sync_product(prod_data)
+                self._sync_product(prod_data, attribute_names_from_tiendanube)
 
         except Exception as e:
             logger.error(f"Error sincronizando productos: {str(e)}")
             self.stats['errors'].append(f"Productos: {str(e)}")
 
-    def _sync_product(self, prod_data: Dict):
-        """Sincroniza un producto individual con sus imágenes"""
+    def _sync_product(self, prod_data: Dict, attribute_names: Dict = None):
+        """Sincroniza un producto individual con sus imágenes
+
+        Args:
+            prod_data: Datos del producto desde Tiendanube
+            attribute_names: Dict con nombres reales de atributos {0: 'Color', 1: 'Talle'}
+        """
         try:
             external_id = str(prod_data['id'])
 
@@ -443,8 +473,8 @@ class TiendanubeSyncService:
             # Stock: sumar todas las variantes (manejar None como 0)
             stock = sum(v.get('stock') or 0 for v in variants)
 
-            # Extraer atributos desde variantes
-            product_attributes = self._extract_product_attributes(variants)
+            # Extraer atributos desde variantes con nombres reales
+            product_attributes = self._extract_product_attributes(variants, attribute_names)
 
             # Construir external_url correctamente
             handle_data = prod_data.get('handle', {})
@@ -805,8 +835,18 @@ class TiendanubeSyncService:
 
             prod_data = response.json()
 
+            # Extraer nombres de atributos desde product.attributes
+            attribute_names_from_tiendanube = {}
+            product_attributes = prod_data.get('attributes', [])
+            for idx, attr_name_obj in enumerate(product_attributes):
+                if isinstance(attr_name_obj, dict):
+                    name = attr_name_obj.get('es', attr_name_obj.get('pt', f'Atributo {idx + 1}'))
+                else:
+                    name = str(attr_name_obj)
+                attribute_names_from_tiendanube[idx] = name
+
             # Sincronizar usando método existente
-            product = self._sync_product(prod_data)
+            product = self._sync_product(prod_data, attribute_names_from_tiendanube)
 
             # Generar embeddings si hay imágenes nuevas
             if product:

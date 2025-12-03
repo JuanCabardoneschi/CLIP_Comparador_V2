@@ -365,7 +365,7 @@
                 {% for key, value in product.attributes.items() %}
                     {% if key not in ['is_active', 'created_at', 'updated_at', 'tags'] %}
                     <div class="info-item">
-                        <span class="info-label text-muted">{{ key }}:</span>
+                        <span class="info-label text-muted">{{ key|attribute_label }}:</span>
                         <span class="info-value">
                             {% if value is string and value.startswith('http') %}
                                 <a href="{{ value }}" target="_blank" class="text-primary">
