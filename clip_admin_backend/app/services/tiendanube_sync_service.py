@@ -893,15 +893,46 @@ class TiendanubeSyncService:
                 ).all()
 
                 if images:
-                    from app.services.clip_service import CLIPService
-                    clip_service = CLIPService()
+                    # Importar funciones de embeddings
+                    from app.blueprints.embeddings import get_clip_model, load_image_from_source
+                    import torch
+                    import numpy as np
+
+                    # Cargar modelo CLIP
+                    clip_model, clip_processor = get_clip_model()
 
                     for image in images:
-                        if image.base64_data:
-                            embedding = clip_service.generate_embedding_from_base64(image.base64_data)
-                            if embedding:
+                        try:
+                            if image.base64_thumb:
+                                # Decodificar Base64 a bytes
+                                image_bytes = base64.b64decode(image.base64_thumb)
+
+                                # Cargar imagen
+                                pil_image = load_image_from_source(image_bytes)
+
+                                # Procesar con CLIP
+                                inputs = clip_processor(images=pil_image, return_tensors="pt")
+
+                                # Mover a GPU si está disponible
+                                if torch.cuda.is_available():
+                                    inputs = {k: v.cuda() for k, v in inputs.items()}
+
+                                # Generar embedding
+                                with torch.no_grad():
+                                    image_features = clip_model.get_image_features(**inputs)
+                                    # Normalizar
+                                    image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+                                    embedding = image_features.cpu().numpy().flatten()
+
+                                # Serializar y guardar
                                 image.clip_embedding = json.dumps(embedding.tolist())
                                 image.is_processed = True
+                                image.upload_status = 'completed'
+
+                        except Exception as e:
+                            logger.error(f"Error generando embedding para imagen {image.id}: {str(e)}")
+                            image.upload_status = 'failed'
+                            image.error_message = str(e)
 
                     db.session.commit()
 
