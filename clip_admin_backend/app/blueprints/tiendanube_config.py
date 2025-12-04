@@ -199,7 +199,7 @@ def config():
 
                     <div class="step">
                         <h3>URL del comparador</h3>
-                        <div class="code-block" style="word-break: break-all;">{widget_url}</div>
+                        <div class="code-block" style="word-break: break-all;">{widget_url_api}</div>
                         <p style="margin-top: 10px;">El enlace abrirá el buscador visual en una nueva pestaña</p>
                     </div>
 
