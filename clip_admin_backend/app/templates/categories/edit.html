@@ -48,16 +48,20 @@
                                 <label for="name" class="form-label">
                                     Nombre de la Categoría <span class="text-danger">*</span>
                                 </label>
-                                <input type="text"
-                                       class="form-control"
-                                       id="name"
-                                       name="name"
-                                       value="{{ category.name }}"
-                                       required
-                                       placeholder="Ej: Camisetas, Pantalones, Zapatos..."
-                                       maxlength="100"
-                                       {% if is_tiendanube %}disabled{% endif %}>
-                                <div class="form-text">{% if is_tiendanube %}Se sincroniza desde Tiendanube{% else %}Nombre descriptivo para la categoría (máximo 100 caracteres){% endif %}</div>
+                                    <input type="text"
+                                        class="form-control"
+                                        id="name"
+                                        name="name"
+                                        value="{{ category.name }}"
+                                        required
+                                        placeholder="Ej: Camisetas, Pantalones, Zapatos..."
+                                        maxlength="100"
+                                        {% if is_tiendanube %}disabled{% endif %}>
+                                    {% if is_tiendanube %}
+                                    <div class="form-text text-muted">Se sincroniza desde Tiendanube</div>
+                                    {% else %}
+                                    <div class="form-text">Nombre descriptivo para la categoría (máximo 100 caracteres)</div>
+                                    {% endif %}
                             </div>
 
                             <div class="mb-3">
@@ -105,15 +109,21 @@
                                            id="color"
                                            name="color"
                                            value="{{ category.color }}"
-                                           style="width: 50px; height: 38px;">
+                                           style="width: 50px; height: 38px;"
+                                           {% if is_tiendanube %}disabled{% endif %}>
                                     <input type="text"
                                            class="form-control"
                                            id="colorHex"
                                            value="{{ category.color }}"
                                            placeholder="#007bff"
-                                           pattern="^#[0-9A-Fa-f]{6}$">
+                                           pattern="^#[0-9A-Fa-f]{6}$"
+                                           {% if is_tiendanube %}disabled{% endif %}>
                                 </div>
+                                {% if is_tiendanube %}
+                                <div class="form-text text-muted">El color se sincroniza desde Tiendanube</div>
+                                {% else %}
                                 <div class="form-text">Color para identificar visualmente la categoría</div>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -156,13 +166,16 @@
                                    type="checkbox"
                                    id="is_active"
                                    name="is_active"
-                                   {% if category.is_active %}checked{% endif %}>
+                                   {% if category.is_active %}checked{% endif %}
+                                   {% if is_tiendanube %}disabled{% endif %}>
                             <label class="form-check-label" for="is_active">
                                 <strong>Categoría activa</strong>
                             </label>
-                            <div class="form-text">
-                                Las categorías activas aparecen disponibles para asignar a productos
-                            </div>
+                            {% if is_tiendanube %}
+                            <div class="form-text text-muted">El estado activo se sincroniza desde Tiendanube</div>
+                            {% else %}
+                            <div class="form-text">Las categorías activas aparecen disponibles para asignar a productos</div>
+                            {% endif %}
                         </div>
                     </div>
 
