@@ -96,6 +96,13 @@ def create_app(config_name=None):
     login_manager.init_app(app)
     jwt.init_app(app)
 
+    # Silenciar logs verbosos de SQLAlchemy y psycopg2
+    import logging
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+    logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
+    logging.getLogger('sqlalchemy.dialects').setLevel(logging.WARNING)
+    logging.getLogger('sqlalchemy.orm').setLevel(logging.WARNING)
+
     # Configurar CORS para permitir requests desde el widget
     CORS(app, origins=["*"],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
