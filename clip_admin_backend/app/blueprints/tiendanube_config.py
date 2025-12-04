@@ -32,6 +32,19 @@ def config():
     Página de configuración de la app (para el panel de Tiendanube)
     Instala automáticamente el botón flotante en la tienda
     """
+    # LOG DETALLADO: Ver qué información manda TiendaNube
+    logger.info("=" * 80)
+    logger.info("TIENDANUBE CONFIG REQUEST RECEIVED")
+    logger.info("=" * 80)
+    logger.info(f"URL: {request.url}")
+    logger.info(f"Query Parameters: {request.args.to_dict()}")
+    logger.info(f"Headers:")
+    for header, value in request.headers:
+        logger.info(f"  {header}: {value}")
+    logger.info(f"Cookies: {request.cookies}")
+    logger.info(f"Remote Address: {request.remote_addr}")
+    logger.info("=" * 80)
+
     store_id = request.args.get('store_id', '')
     access_token = request.args.get('access_token', '')
 
