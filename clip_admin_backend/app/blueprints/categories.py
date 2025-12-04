@@ -138,12 +138,20 @@ def view(category_id):
 @login_required
 def edit(category_id):
     """Editar categoría"""
+    from app.models.tiendanube_integration import TiendanubeIntegration
+
     category = Category.query.get_or_404(category_id)
 
     # Verificar que la categoría pertenece al cliente del usuario actual
     if category.client_id != current_user.client_id:
         flash("No tienes permisos para editar esta categoría", "error")
         return redirect(url_for("categories.index"))
+
+    # Determinar si la categoría viene de TiendaNube
+    is_tiendanube = TiendanubeIntegration.query.filter_by(
+        client_id=category.client_id,
+        is_active=True
+    ).first() is not None
 
     if request.method == "GET":
         print(f"🏷️ CATEGORIES EDIT GET: Category: {category.name}")
