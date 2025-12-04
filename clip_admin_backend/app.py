@@ -5,6 +5,16 @@ Aplicación Flask para gestión de clientes y catálogos
 
 import os
 import sys
+import logging
+
+# Configurar logging ANTES de cualquier otra cosa
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(asctime)s] %(levelname)s in %(name)s: %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 # Añadir el directorio padre al path para las importaciones
 current_dir = os.path.dirname(os.path.abspath(__file__))
