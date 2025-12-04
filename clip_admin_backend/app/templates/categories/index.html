@@ -198,6 +198,7 @@
                                        class="btn btn-sm btn-outline-primary" title="Editar">
                                         <i class="bi bi-pencil"></i>
                                     </a>
+                                    {% if not category.external_id %}
                                     <button type="button"
                                             class="btn btn-sm btn-outline-danger"
                                             title="Eliminar"
@@ -207,6 +208,7 @@
                                             data-category-name="{{ category.name }}">
                                         <i class="bi bi-trash"></i>
                                     </button>
+                                    {% endif %}
                                 </div>
                             </td>
                         </tr>
