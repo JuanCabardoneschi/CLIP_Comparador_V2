@@ -317,7 +317,9 @@ def register_webhooks(store_id, access_token):
         {'event': 'category/updated', 'url': f'{webhook_url_base}/category'},
         {'event': 'category/deleted', 'url': f'{webhook_url_base}/category'},
         {'event': 'app/uninstalled', 'url': f'{webhook_url_base}/app'},
-        {'event': 'store/redact', 'url': f'{webhook_url_base}/app'},
+        {'event': 'store/redact', 'url': f'{webhook_url_base}/gdpr'},
+        {'event': 'customer/redact', 'url': f'{webhook_url_base}/gdpr'},
+        {'event': 'customer/data_request', 'url': f'{webhook_url_base}/gdpr'},
     ]
 
     logger.warning(f"🔔 Se intentarán crear {len(webhooks_to_create)} webhooks")
