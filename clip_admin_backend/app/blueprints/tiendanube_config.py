@@ -3,6 +3,8 @@ Blueprint para configuración de app Tiendanube
 """
 from flask import Blueprint, render_template, request, jsonify
 from app.models.client import Client
+from app.models.tiendanube_integration import TiendanubeIntegration
+from urllib.parse import urlparse
 import logging
 import requests
 
@@ -30,7 +32,7 @@ def widget():
 def config():
     """
     Página de configuración de la app (para el panel de Tiendanube)
-    Instala automáticamente el botón flotante en la tienda
+    Identifica la tienda desde el Referer y carga sus datos de BD
     """
     # LOG DETALLADO: Ver qué información manda TiendaNube
     logger.info("=" * 80)
@@ -38,25 +40,103 @@ def config():
     logger.info("=" * 80)
     logger.info(f"URL: {request.url}")
     logger.info(f"Query Parameters: {request.args.to_dict()}")
-    logger.info(f"Headers:")
-    for header, value in request.headers:
-        logger.info(f"  {header}: {value}")
-    logger.info(f"Cookies: {request.cookies}")
-    logger.info(f"Remote Address: {request.remote_addr}")
+    
+    # Extraer información
+    referer = request.headers.get('Referer', '')
+    logger.info(f"Referer: {referer}")
+    
+    # Intentar extraer store_subdomain del Referer
+    store_subdomain = None
+    store_id = None
+    integration = None
+    client = None
+    
+    if referer:
+        try:
+            parsed = urlparse(referer)
+            # Ej: "testclip.mitiendanube.com" -> "testclip"
+            store_subdomain = parsed.netloc.split('.')[0]
+            logger.info(f"Store subdomain extraído del Referer: {store_subdomain}")
+            
+            # Buscar integración en BD por store_domain
+            integration = TiendanubeIntegration.query.filter(
+                TiendanubeIntegration.store_domain.ilike(f'%{store_subdomain}%')
+            ).first()
+            
+            if integration:
+                store_id = integration.store_id
+                client = integration.client
+                logger.info(f"✅ Integración encontrada: store_id={store_id}, client_id={client.id}")
+            else:
+                logger.warning(f"⚠️ No se encontró integración para store_domain '%{store_subdomain}%'")
+        except Exception as e:
+            logger.error(f"Error extrayendo info del Referer: {str(e)}")
+    else:
+        logger.warning("⚠️ No se recibió Referer en la solicitud")
+    
     logger.info("=" * 80)
-
-    store_id = request.args.get('store_id', '')
-    access_token = request.args.get('access_token', '')
-
-    # Si tenemos store_id y access_token, intentar instalar el script automáticamente
-    script_installed = False
-    if store_id and access_token:
-        script_installed = install_floating_button(store_id, access_token)
-
-    # Sugerir URL con placeholder de API Key para que cada tienda use su clave
-    # URL con api_key (única forma soportada)
-    widget_url_api = 'https://clipcomparadorv2-production.up.railway.app/tiendanube/widget?api_key=TU_API_KEY'
-
+    
+    # Si no encontramos integración, mostrar página de error
+    if not integration or not client:
+        error_html = """
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Error - CLIP Comparador</title>
+            <style>
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    padding: 40px 20px;
+                    min-height: 100vh;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                }
+                .container {
+                    max-width: 600px;
+                    background: white;
+                    border-radius: 20px;
+                    padding: 40px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                    text-align: center;
+                }
+                .error-icon { font-size: 64px; margin-bottom: 20px; }
+                h1 { color: #1f2937; margin-bottom: 20px; }
+                p { color: #6b7280; line-height: 1.6; }
+                .code { 
+                    background: #f3f4f6; 
+                    padding: 15px; 
+                    border-radius: 8px; 
+                    margin: 20px 0;
+                    word-break: break-all;
+                    font-family: monospace;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="error-icon">❌</div>
+                <h1>No se pudo identificar tu tienda</h1>
+                <p>Parece que accediste desde una URL no registrada en nuestro sistema.</p>
+                <p>Por favor, asegúrate de estar accediendo desde el panel de administración de tu tienda en TiendaNube.</p>
+                <div class="code">Subdomain detectado: """ + (store_subdomain or "No disponible") + """</div>
+                <p style="color: #9ca3af; font-size: 14px; margin-top: 20px;">
+                    Si creés que esto es un error, contactá a soporte.
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        return error_html, 400
+    
+    # Obtener API Key del cliente
+    api_key = client.api_key
+    widget_url_api = f'https://clipcomparadorv2-production.up.railway.app/tiendanube/widget?api_key={api_key}'
+    
+    # HTML de configuración (con datos de la tienda identificada)
     html = f"""
     <!DOCTYPE html>
     <html lang="es">
@@ -125,6 +205,7 @@ def config():
                 font-size: 14px;
                 overflow-x: auto;
                 margin: 15px 0;
+                word-break: break-all;
             }}
             .button {{
                 display: inline-block;
@@ -177,6 +258,15 @@ def config():
                 color: #1f2937;
                 margin-bottom: 10px;
             }}
+            .status-badge {{
+                display: inline-block;
+                background: #d1fae5;
+                color: #065f46;
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-size: 14px;
+                margin: 10px 0;
+            }}
         </style>
     </head>
     <body>
@@ -185,10 +275,11 @@ def config():
             <h1>¡App instalada correctamente!</h1>
             <p class="subtitle">Tu tienda ahora tiene búsqueda visual con inteligencia artificial</p>
 
-            {f'<div class="section" style="background: #d1fae5; border-left-color: #10b981;"><h2>🎉 ¡Botón flotante activado!</h2><p>El botón de búsqueda con IA ya está visible en tu tienda. Tus clientes lo verán en la esquina inferior derecha.</p></div>' if script_installed else ''}
-
             <div class="store-info">
-                <strong>Store ID:</strong> {store_id or 'No detectado'}
+                <strong>Tienda:</strong> {client.name}<br>
+                <strong>Store ID:</strong> {store_id}<br>
+                <strong>Dominio:</strong> {integration.store_domain}<br>
+                <span class="status-badge">✅ Conectada</span>
             </div>
 
             <div class="section">
@@ -212,13 +303,13 @@ def config():
 
                     <div class="step">
                         <h3>URL del comparador</h3>
-                        <div class="code-block" style="word-break: break-all;">{widget_url_api}</div>
+                        <div class="code-block">{widget_url_api}</div>
                         <p style="margin-top: 10px;">El enlace abrirá el buscador visual en una nueva pestaña</p>
                     </div>
 
                     <div class="step">
                         <h3>Alternativa: Botón flotante</h3>
-                        <p>Si tenés un plan pago de Tiendanube, podés editar el código del tema y agregar:</p>
+                        <p>Si tenés un plan pago de TiendaNube, podés editar el código del tema y agregar:</p>
                         <div class="code-block">&lt;script src="https://clipcomparadorv2-production.up.railway.app/static/tiendanube-floating-button.js"&gt;&lt;/script&gt;</div>
                         <p style="margin-top: 10px;">Esto agregará un botón morado flotante en todas las páginas</p>
                     </div>
@@ -233,7 +324,7 @@ def config():
             <div class="section">
                 <h2>🔗 URL del Widget</h2>
                 <div class="code-block">{widget_url_api}</div>
-                <p>Copiá esta URL y reemplazá <strong>TU_API_KEY</strong> por tu clave.</p>
+                <p>Esta es tu URL única de acceso al widget de búsqueda.</p>
             </div>
 
             <a href="{widget_url_api}" target="_blank" class="button">Ver Demo del Widget</a>
@@ -243,8 +334,6 @@ def config():
     """
 
     return html
-
-
 def install_floating_button(store_id, access_token):
     """
     Instala automáticamente el botón flotante en la tienda Tiendanube
