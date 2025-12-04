@@ -150,8 +150,8 @@ def index():
     # Obtener todas las categorías del cliente actual
     categories = Category.query.filter_by(client_id=current_user.client_id).all()
 
-    # Construir query base
-    query = Product.query.filter_by(client_id=current_user.client_id)
+    # Construir query base - solo productos activos
+    query = Product.query.filter_by(client_id=current_user.client_id, is_active=True)
 
     # Filtro por categoría
     if category_id:
@@ -173,14 +173,14 @@ def index():
         page=page, per_page=12, error_out=False
     )
 
-    # Calcular estadísticas totales
-    total_products = Product.query.filter_by(client_id=current_user.client_id).count()
+    # Calcular estadísticas totales (solo activos)
+    total_products = Product.query.filter_by(client_id=current_user.client_id, is_active=True).count()
     total_categories = Category.query.filter_by(client_id=current_user.client_id).count()
 
-    # Calcular total de imágenes
+    # Calcular total de imágenes (solo de productos activos)
     total_images = db.session.query(db.func.count(Image.id))\
         .join(Product, Image.product_id == Product.id)\
-        .filter(Product.client_id == current_user.client_id).scalar()
+        .filter(Product.client_id == current_user.client_id, Product.is_active == True).scalar()
 
     return render_template("products/index.html",
                            products=products,
