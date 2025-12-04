@@ -159,7 +159,7 @@ def config():
         store_admin_user = User.query.filter_by(
             client_id=client.id,
             role='STORE_ADMIN',
-            is_active=True
+            active=True
         ).first()
 
         if not store_admin_user:
