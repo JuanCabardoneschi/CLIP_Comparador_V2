@@ -19,10 +19,10 @@
                 Tiempo: {{ '%.1f'|format(result.get('duration_seconds', 0)) }}s.
                 {% set stats = result.get('stats', {}) %}
                 {% if stats %}
-                    
-                    Categorías: {{ stats.get('categories_created', 0) }} nuevas, {{ stats.get('categories_updated', 0) }} actualizadas. 
-                    Productos: {{ stats.get('products_created', 0) }} nuevos, {{ stats.get('products_updated', 0) }} actualizados. 
-                    Imágenes procesadas: {{ stats.get('images_processed', 0) }}. 
+
+                    Categorías: {{ stats.get('categories_created', 0) }} nuevas, {{ stats.get('categories_updated', 0) }} actualizadas.
+                    Productos: {{ stats.get('products_created', 0) }} nuevos, {{ stats.get('products_updated', 0) }} actualizados.
+                    Imágenes procesadas: {{ stats.get('images_processed', 0) }}.
                     Errores: {{ (stats.get('errors') or [])|length }}.
                 {% endif %}
             </span>

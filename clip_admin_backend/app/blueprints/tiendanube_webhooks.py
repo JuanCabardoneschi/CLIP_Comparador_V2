@@ -313,27 +313,27 @@ def webhook_app():
             # No desactivar automáticamente en 'suspended'.
             # Algunos planes/envíos generan este evento temporalmente.
             # Mantener la integración activa y solo registrar el estado.
-            integration.integration_status = 'suspended'
+            integration.sync_status = 'suspended'
             db.session.commit()
             logger.info(f"Integración marcada como suspended (sin desactivar): store_id={store_id}")
             return jsonify({"status": "suspended", "active": integration.is_active}), 200
 
         elif event == 'app/uninstalled':
-            # Desactivar integración y datos asociados
+            # Desactivar solo la integración, NO el cliente
+            # El cliente debe mantenerse activo para:
+            # - Permitir acceso al widget desde otros canales
+            # - Mantener la API key funcional
+            # - Evitar pérdida de configuración y datos
             integration.is_active = False
-            integration.integration_status = 'uninstalled'
-
-            # Desactivar cliente (no eliminar, por política GDPR)
-            client = integration.client
-            client.is_active = False
+            integration.sync_status = 'uninstalled'
 
             db.session.commit()
-            logger.info(f"Integración desinstalada: store_id={store_id}, client_id={integration.client_id}")
-            return jsonify({"status": "uninstalled"}), 200
+            logger.info(f"Integración desinstalada (cliente mantiene acceso): store_id={store_id}, client_id={integration.client_id}")
+            return jsonify({"status": "uninstalled", "client_active": True}), 200
 
         elif event == 'store/redact':
             # GDPR: marcar estado pero no desactivar automáticamente.
-            integration.integration_status = 'redacted'
+            integration.sync_status = 'redacted'
             db.session.commit()
             logger.warning(f"🔒 GDPR: store/redact recibido (sin desactivar automática) - store_id={store_id}, client_id={integration.client_id}")
             return jsonify({"status": "redacted", "active": integration.is_active}), 200
