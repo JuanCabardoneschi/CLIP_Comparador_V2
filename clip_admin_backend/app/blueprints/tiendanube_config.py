@@ -1,12 +1,13 @@
 """
 Blueprint para configuración de app Tiendanube
 """
-from flask import Blueprint, render_template, request, jsonify, session
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
 from app.models.client import Client
 from app.models.tiendanube_integration import TiendanubeIntegration
 from app.models.user import User
 from app import db
 from urllib.parse import urlparse
+from flask_login import login_user
 import logging
 import requests
 import hashlib
@@ -87,11 +88,19 @@ def widget():
 @bp.route('/config')
 def config():
     """
-    Página de configuración de la app (para el panel de Tiendanube)
-    Identifica la tienda desde el Referer, valida seguridad y crea sesión
+    Endpoint de configuración TiendaNube - Auto-login y redirección
+
+    Flujo:
+    1. Valida Referer sea desde .mitiendanube.com
+    2. Identifica tienda desde subdomain del Referer
+    3. Busca usuario STORE_ADMIN del cliente
+    4. Auto-login del usuario con Flask-Login
+    5. Redirección a dashboard
+
+    Usuario final: Click en "Configurar" en TiendaNube → Auto-login → Dashboard
     """
     logger.info("=" * 80)
-    logger.info("TIENDANUBE CONFIG REQUEST RECEIVED")
+    logger.info("TIENDANUBE CONFIG REQUEST - AUTO-LOGIN")
     logger.info("=" * 80)
 
     # Extraer información del request
@@ -102,12 +111,12 @@ def config():
     logger.info(f"Referer: {referer}")
     logger.info(f"Remote IP: {remote_ip}")
 
-    # ✅ PASO 1: VALIDAR REFERER
+    # ✅ PASO 1: VALIDAR REFERER - Solo desde .mitiendanube.com
     if not validate_tiendanube_referer(referer):
         logger.error(f"❌ SEGURIDAD: Intento de acceso desde Referer no autorizado")
         return render_unauthorized_page(), 403
 
-    # ✅ PASO 2: EXTRAER TIENDA DEL REFERER
+    # ✅ PASO 2: EXTRAER TIENDA DEL REFERER (ej: "testclip" de "https://testclip.mitiendanube.com/...")
     store_subdomain = None
     try:
         parsed = urlparse(referer)
@@ -144,459 +153,37 @@ def config():
         logger.error(f"❌ Error creando sesión: {str(e)}")
         return render_error_page("Error creando sesión"), 500
 
+    # ✅ PASO 5: ENCONTRAR Y AUTO-LOGIN DEL USUARIO STORE_ADMIN
+    try:
+        # Buscar usuario STORE_ADMIN del cliente
+        store_admin_user = User.query.filter_by(
+            client_id=client.id,
+            role='STORE_ADMIN',
+            is_active=True
+        ).first()
+
+        if not store_admin_user:
+            logger.error(f"❌ No se encontró usuario STORE_ADMIN activo para client_id={client.id}")
+            return render_error_page("No se encontró usuario administrativo para esta tienda"), 500
+
+        logger.info(f"✅ Usuario STORE_ADMIN encontrado: {store_admin_user.email}")
+
+        # Auto-login sin mostrar formulario de login tradicional
+        login_user(store_admin_user, remember=True)
+        logger.info(f"✅ Usuario auto-logueado: {store_admin_user.email}")
+
+    except Exception as e:
+        logger.error(f"❌ Error en auto-login: {str(e)}")
+        return render_error_page(f"Error en autenticación: {str(e)}"), 500
+
+    # ✅ PASO 6: REDIRECCIONAR A DASHBOARD
+    logger.info("=" * 80)
+    logger.info(f"✅ AUTO-LOGIN EXITOSO - Redirigiendo a dashboard")
     logger.info("=" * 80)
 
-    # ✅ PASO 5: RENDERIZAR PÁGINA DE CONFIGURACIÓN CON DATOS
-    api_key = client.api_key
-    widget_url_api = f'https://clipcomparadorv2-production.up.railway.app/tiendanube/widget?api_key={api_key}'
+    return redirect(url_for('dashboard.index'))
 
-    html = f"""
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>CLIP Comparador - Configuración</title>
-        <style>
-            * {{
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }}
-            body {{
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 40px 20px;
-                min-height: 100vh;
-            }}
-            .container {{
-                max-width: 800px;
-                margin: 0 auto;
-                background: white;
-                border-radius: 20px;
-                padding: 40px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            }}
-            h1 {{
-                color: #1f2937;
-                margin-bottom: 10px;
-                font-size: 32px;
-            }}
-            .subtitle {{
-                color: #6b7280;
-                margin-bottom: 30px;
-                font-size: 18px;
-            }}
-            .success-icon {{
-                font-size: 64px;
-                text-align: center;
-                margin-bottom: 20px;
-            }}
-            .section {{
-                margin: 30px 0;
-                padding: 20px;
-                background: #f9fafb;
-                border-radius: 10px;
-                border-left: 4px solid #667eea;
-            }}
-            .section h2 {{
-                color: #374151;
-                margin-bottom: 15px;
-                font-size: 20px;
-            }}
-            .section p {{
-                color: #6b7280;
-                line-height: 1.6;
-                margin-bottom: 10px;
-            }}
-            .code-block {{
-                background: #1f2937;
-                color: #10b981;
-                padding: 15px;
-                border-radius: 8px;
-                font-family: 'Courier New', monospace;
-                font-size: 14px;
-                overflow-x: auto;
-                margin: 15px 0;
-                word-break: break-all;
-            }}
-            .button {{
-                display: inline-block;
-                background: #667eea;
-                color: white;
-                padding: 12px 30px;
-                border-radius: 8px;
-                text-decoration: none;
-                margin-top: 20px;
-                transition: background 0.3s;
-                text-align: center;
-            }}
-            .button:hover {{
-                background: #5568d3;
-            }}
-            .store-info {{
-                background: #dbeafe;
-                padding: 15px;
-                border-radius: 8px;
-                margin: 20px 0;
-                border: 2px solid #3b82f6;
-            }}
-            .store-info strong {{
-                color: #1e40af;
-            }}
-            .security-badge {{
-                display: inline-block;
-                background: #d1fae5;
-                color: #065f46;
-                padding: 8px 12px;
-                border-radius: 20px;
-                font-size: 12px;
-                margin-top: 10px;
-                font-weight: bold;
-            }}
-            .steps {{
-                counter-reset: step;
-            }}
-            .step {{
-                position: relative;
-                padding-left: 50px;
-                margin: 25px 0;
-            }}
-            .step:before {{
-                counter-increment: step;
-                content: counter(step);
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 35px;
-                height: 35px;
-                background: #667eea;
-                color: white;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-weight: bold;
-            }}
-            .step h3 {{
-                color: #1f2937;
-                margin-bottom: 10px;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="success-icon">✅</div>
-            <h1>¡App configurada correctamente!</h1>
-            <p class="subtitle">Tu tienda ya tiene búsqueda visual con inteligencia artificial</p>
 
-            <div class="store-info">
-                <strong>🏪 Tienda:</strong> {client.name}<br>
-                <strong>🔑 Store ID:</strong> {integration.store_id}<br>
-                <strong>🌐 Dominio:</strong> {integration.store_domain}<br>
-                <span class="security-badge">🔒 Conectada de forma segura</span>
-            </div>
-
-            <div class="section">
-                <h2>🎯 ¿Cómo funciona?</h2>
-                <p>CLIP Comparador permite a tus clientes buscar productos usando imágenes o texto.
-                La inteligencia artificial encuentra productos similares en tu catálogo automáticamente.</p>
-            </div>
-
-            <div class="section">
-                <h2>📋 Próximos Pasos</h2>
-                <div class="steps">
-                    <div class="step">
-                        <h3>Agregar enlace en tu menú</h3>
-                        <p>Ve a <strong>Tienda online → Navegación → Menú principal</strong></p>
-                        <p>Agregá un nuevo enlace con la URL de abajo</p>
-                    </div>
-
-                    <div class="step">
-                        <h3>URL del Buscador</h3>
-                        <div class="code-block">{widget_url_api}</div>
-                        <p style="margin-top: 10px;">Usá esta URL para enlazar el buscador visual en tu menú</p>
-                    </div>
-
-                    <div class="step">
-                        <h3>Botón Flotante (Opcional)</h3>
-                        <p>Si tenés un plan pago, podés agregar un botón flotante en tu tema:</p>
-                        <div class="code-block">&lt;script src="https://clipcomparadorv2-production.up.railway.app/static/tiendanube-floating-button.js"&gt;&lt;/script&gt;</div>
-                    </div>
-
-                    <div class="step">
-                        <h3>¡Listo! 🎉</h3>
-                        <p>Tus clientes ya pueden buscar por imágenes desde el menú de tu tienda</p>
-                    </div>
-                </div>
-            </div>
-
-            <a href="{widget_url_api}" target="_blank" class="button">Probar Buscador</a>
-        </div>
-    </body>
-    </html>
-    """
-
-    return html
-
-    # Si no encontramos integración, mostrar página de error
-    if not integration or not client:
-        error_html = """
-        <!DOCTYPE html>
-        <html lang="es">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Error - CLIP Comparador</title>
-            <style>
-                body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    padding: 40px 20px;
-                    min-height: 100vh;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                }
-                .container {
-                    max-width: 600px;
-                    background: white;
-                    border-radius: 20px;
-                    padding: 40px;
-                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                    text-align: center;
-                }
-                .error-icon { font-size: 64px; margin-bottom: 20px; }
-                h1 { color: #1f2937; margin-bottom: 20px; }
-                p { color: #6b7280; line-height: 1.6; }
-                .code {
-                    background: #f3f4f6;
-                    padding: 15px;
-                    border-radius: 8px;
-                    margin: 20px 0;
-                    word-break: break-all;
-                    font-family: monospace;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="error-icon">❌</div>
-                <h1>No se pudo identificar tu tienda</h1>
-                <p>Parece que accediste desde una URL no registrada en nuestro sistema.</p>
-                <p>Por favor, asegúrate de estar accediendo desde el panel de administración de tu tienda en TiendaNube.</p>
-                <div class="code">Subdomain detectado: """ + (store_subdomain or "No disponible") + """</div>
-                <p style="color: #9ca3af; font-size: 14px; margin-top: 20px;">
-                    Si creés que esto es un error, contactá a soporte.
-                </p>
-            </div>
-        </body>
-        </html>
-        """
-        return error_html, 400
-
-    # Obtener API Key del cliente
-    api_key = client.api_key
-    widget_url_api = f'https://clipcomparadorv2-production.up.railway.app/tiendanube/widget?api_key={api_key}'
-
-    # HTML de configuración (con datos de la tienda identificada)
-    html = f"""
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>CLIP Comparador - Configuración</title>
-        <style>
-            * {{
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-            }}
-            body {{
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 40px 20px;
-                min-height: 100vh;
-            }}
-            .container {{
-                max-width: 800px;
-                margin: 0 auto;
-                background: white;
-                border-radius: 20px;
-                padding: 40px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            }}
-            h1 {{
-                color: #1f2937;
-                margin-bottom: 10px;
-                font-size: 32px;
-            }}
-            .subtitle {{
-                color: #6b7280;
-                margin-bottom: 30px;
-                font-size: 18px;
-            }}
-            .success-icon {{
-                font-size: 64px;
-                text-align: center;
-                margin-bottom: 20px;
-            }}
-            .section {{
-                margin: 30px 0;
-                padding: 20px;
-                background: #f9fafb;
-                border-radius: 10px;
-                border-left: 4px solid #667eea;
-            }}
-            .section h2 {{
-                color: #374151;
-                margin-bottom: 15px;
-                font-size: 20px;
-            }}
-            .section p {{
-                color: #6b7280;
-                line-height: 1.6;
-                margin-bottom: 10px;
-            }}
-            .code-block {{
-                background: #1f2937;
-                color: #10b981;
-                padding: 15px;
-                border-radius: 8px;
-                font-family: 'Courier New', monospace;
-                font-size: 14px;
-                overflow-x: auto;
-                margin: 15px 0;
-                word-break: break-all;
-            }}
-            .button {{
-                display: inline-block;
-                background: #667eea;
-                color: white;
-                padding: 12px 30px;
-                border-radius: 8px;
-                text-decoration: none;
-                margin-top: 20px;
-                transition: background 0.3s;
-                text-align: center;
-            }}
-            .button:hover {{
-                background: #5568d3;
-            }}
-            .store-info {{
-                background: #dbeafe;
-                padding: 15px;
-                border-radius: 8px;
-                margin: 20px 0;
-            }}
-            .store-info strong {{
-                color: #1e40af;
-            }}
-            .steps {{
-                counter-reset: step;
-            }}
-            .step {{
-                position: relative;
-                padding-left: 50px;
-                margin: 25px 0;
-            }}
-            .step:before {{
-                counter-increment: step;
-                content: counter(step);
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 35px;
-                height: 35px;
-                background: #667eea;
-                color: white;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-weight: bold;
-            }}
-            .step h3 {{
-                color: #1f2937;
-                margin-bottom: 10px;
-            }}
-            .status-badge {{
-                display: inline-block;
-                background: #d1fae5;
-                color: #065f46;
-                padding: 8px 16px;
-                border-radius: 20px;
-                font-size: 14px;
-                margin: 10px 0;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="success-icon">✅</div>
-            <h1>¡App instalada correctamente!</h1>
-            <p class="subtitle">Tu tienda ahora tiene búsqueda visual con inteligencia artificial</p>
-
-            <div class="store-info">
-                <strong>Tienda:</strong> {client.name}<br>
-                <strong>Store ID:</strong> {store_id}<br>
-                <strong>Dominio:</strong> {integration.store_domain}<br>
-                <span class="status-badge">✅ Conectada</span>
-            </div>
-
-            <div class="section">
-                <h2>🎯 ¿Cómo funciona?</h2>
-                <p>CLIP Comparador permite a tus clientes buscar productos usando imágenes o texto.
-                La inteligencia artificial encuentra productos similares en tu catálogo.</p>
-            </div>
-
-            <div class="section">
-                <h2>📋 Cómo agregar la búsqueda a tu tienda</h2>
-                <div class="steps">
-                    <div class="step">
-                        <h3>Agregar enlace en el menú</h3>
-                        <p>Ve a <strong>Tienda online → Navegación → Menú principal</strong></p>
-                        <p>Agregá un nuevo enlace:</p>
-                        <ul style="margin-top: 10px; padding-left: 20px;">
-                            <li><strong>Texto:</strong> Búsqueda con IA</li>
-                            <li><strong>URL:</strong> Copiá la URL de abajo</li>
-                        </ul>
-                    </div>
-
-                    <div class="step">
-                        <h3>URL del comparador</h3>
-                        <div class="code-block">{widget_url_api}</div>
-                        <p style="margin-top: 10px;">El enlace abrirá el buscador visual en una nueva pestaña</p>
-                    </div>
-
-                    <div class="step">
-                        <h3>Alternativa: Botón flotante</h3>
-                        <p>Si tenés un plan pago de TiendaNube, podés editar el código del tema y agregar:</p>
-                        <div class="code-block">&lt;script src="https://clipcomparadorv2-production.up.railway.app/static/tiendanube-floating-button.js"&gt;&lt;/script&gt;</div>
-                        <p style="margin-top: 10px;">Esto agregará un botón morado flotante en todas las páginas</p>
-                    </div>
-
-                    <div class="step">
-                        <h3>¡Listo!</h3>
-                        <p>Tus clientes ya pueden buscar productos con imágenes desde el menú de tu tienda</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>🔗 URL del Widget</h2>
-                <div class="code-block">{widget_url_api}</div>
-                <p>Esta es tu URL única de acceso al widget de búsqueda.</p>
-            </div>
-
-            <a href="{widget_url_api}" target="_blank" class="button">Ver Demo del Widget</a>
-        </div>
-    </body>
-    </html>
-    """
-
-    return html
 def install_floating_button(store_id, access_token):
     """
     Instala automáticamente el botón flotante en la tienda Tiendanube
