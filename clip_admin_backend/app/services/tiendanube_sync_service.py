@@ -14,6 +14,7 @@ import json
 import time
 
 from app import db
+from sqlalchemy.orm.attributes import flag_modified
 from app.models.client import Client
 from app.models.tiendanube_integration import TiendanubeIntegration
 from app.models.category import Category
@@ -545,7 +546,9 @@ class TiendanubeSyncService:
                     if added_any:
                         options['values'] = sorted(values_list)
                         config.options = options
+                        flag_modified(config, 'options')  # Marcar JSONB como modificado
                         db.session.commit()
+                        logger.info(f"💾 Guardados valores actualizados para '{key}': {options['values']}")
 
                     normalized[key] = normalized_value
                 else:
