@@ -4,9 +4,9 @@
 
 ---
 
-### Pre-Deploy: Estado Actual en Railway (2 Nov 2025)
-**Versión en Producción**: `v2.2.0-stable`
-**Última actualización**: 31 Octubre 2025
+### Pre-Deploy: Estado Actual en Railway (4 Dic 2025)
+**Versión en Producción**: `v2.3.2-tiendanube.1`
+**Última actualización**: 4 Diciembre 2025
 **Commit Hash Railway**: (por determinar - verificar en Railway dashboard)
 **Endpoint**: https://clip-comparador-v2-production.up.railway.app
 
@@ -74,7 +74,20 @@
 
 ## 📋 Historial de Deployments
 
-### v2.3.0-pre.1 (2 Nov 2025) 🆕
+### v2.3.2-tiendanube.1 (4 Dic 2025) 🆕
+- Auto-login para TiendaNube (/tiendanube/config endpoint)
+- Sincronización de productos via webhooks
+- Generación de embeddings CLIP en webhooks
+- Filtrado de productos inactivos en UI
+- **Status**: ✅ DEPLOYADO A RAILWAY
+- **Commits**:
+  - c0e1af3: feat: Implement auto-login at `/tiendanube/config`
+  - 70ed69c: fix: Correct User query (active vs is_active)
+  - 23816c8: fix: Fix embedding generation in webhooks (remove CLIPService import)
+  - 36ac3b4: fix: Filtrar productos inactivos en la lista
+- **Rollback**: v2.3.0-pre.1 disponible
+
+### v2.3.0-pre.1 (2 Nov 2025)
 - Mejoras diversity filter multi-categoría
 - Tool de sincronización Railway→Local
 - Análisis pesos optimizer

@@ -21,6 +21,7 @@ from app.models.category import Category
 from app.models.product import Product
 from app.models.image import Image
 from app.models.product_attribute_config import ProductAttributeConfig
+from app.services.alternative_terms_generator import generate_alternative_terms
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +218,15 @@ class TiendanubeSyncService:
 
                 # Auto-generar CLIP prompt
                 clip_prompt = Category.generate_clip_prompt(name_en)
+                
+                # Auto-generar alternative_terms
+                alternative_terms = None
+                try:
+                    alternative_terms = generate_alternative_terms(name)
+                    if alternative_terms:
+                        logger.info(f"✨ Alternative terms generados: '{name}' → '{alternative_terms}'")
+                except Exception as e:
+                    logger.warning(f"No se pudieron generar alternative_terms para '{name}': {e}")
 
                 logger.info(f"✨ Auto-generando campos CLIP: '{name}' → name_en='{name_en}', clip_prompt='{clip_prompt}'")
 
@@ -226,6 +236,7 @@ class TiendanubeSyncService:
                     name_en=name_en,
                     description=description,
                     clip_prompt=clip_prompt,
+                    alternative_terms=alternative_terms,
                     external_id=external_id,
                     last_sync_at=datetime.utcnow(),
                     sync_status='synced'

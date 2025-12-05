@@ -312,3 +312,39 @@ La integración está completa cuando:
 - **Rate Limiting**: Tiendanube tiene límite de 2 req/s, el código ya maneja esto
 - **Fallback**: Si el plan no soporta scripts, se crea enlace en menú automáticamente
 - **Reinstalación**: Cada desinstalación/reinstalación crea un NUEVO cliente
+
+---
+
+## 🔍 Investigaciones Pendientes
+
+### [PENDIENTE] Estrategia de Eliminación de Productos en TiendaNube
+**Commit que marcó esta investigación**: `36ac3b4` (4 Dic 2025)
+**Descripción**:
+Cuando un producto se elimina en TiendaNube, nuestro webhook marca el producto como `is_active=FALSE` (soft delete). Necesitamos confirmar con TiendaNube si esta es la estrategia correcta.
+
+**Preguntas a investigar**:
+1. ¿En TiendaNube un producto eliminado desaparece completamente o se marca como inactivo?
+2. ¿Si se crea un producto con el mismo ID después, tenemos la capacidad de recuperarlo?
+3. ¿Hay un endpoint para obtener productos eliminados?
+
+**Información contexto actual**:
+- **Implementación actual**: Soft delete (`is_active = FALSE`)
+- **Ventajas**:
+  - Mantiene historial completo (auditoría)
+  - Reversible si TiendaNube envía `product/updated` posteriormente
+  - Preserva embeddings ya calculados
+  - Estándar en SaaS
+- **Desventajas potenciales**:
+  - Si TiendaNube elimina productos permanentemente, podemos tener datos fantasma
+  - Consume espacio si hay muchas eliminaciones
+
+**Archivos involucrados**:
+- `clip_admin_backend/app/blueprints/tiendanube_webhooks.py` (líneas 161-175) - handler del webhook `product/deleted`
+- `clip_admin_backend/app/blueprints/products.py` (líneas 144-189) - filtra `is_active=TRUE` en UI
+
+**Acción requerida**:
+- [ ] Contactar al equipo de TiendaNube para aclarar comportamiento de eliminación
+- [ ] Actualizar documentación con decisión final
+- [ ] Si se requiere hard delete, modificar webhook handler para usar `db.session.delete(product)`
+
+**Status**: Esperando respuesta del equipo de TiendaNube (4 Dic 2025)

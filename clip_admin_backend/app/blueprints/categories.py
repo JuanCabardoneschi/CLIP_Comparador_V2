@@ -147,11 +147,8 @@ def edit(category_id):
         flash("No tienes permisos para editar esta categoría", "error")
         return redirect(url_for("categories.index"))
 
-    # Determinar si la categoría viene de TiendaNube
-    is_tiendanube = TiendanubeIntegration.query.filter_by(
-        client_id=category.client_id,
-        is_active=True
-    ).first() is not None
+    # Determinar si la categoría viene de TiendaNube (tiene external_id)
+    is_tiendanube = bool(category.external_id)
 
     if request.method == "GET":
         print(f"🏷️ CATEGORIES EDIT GET: Category: {category.name}")
@@ -171,26 +168,27 @@ def edit(category_id):
         color = request.form.get("color", "#007bff")
         is_active = request.form.get("is_active") == "on"
 
-        # ✅ Si es Tiendanube: SOLO editar campos permitidos
         if is_tiendanube:
-            # Solo actualizar: name_en, alternative_terms, description, vision_hint
+            # Solo permitir edición de campos propios
             if not name_en:
                 flash("El nombre en inglés es obligatorio", "error")
                 return render_template("categories/edit.html",
                                      category=category,
                                      is_tiendanube=is_tiendanube)
 
+            # No permitir modificar name ni color ni is_active ni slug
             category.name_en = name_en
             category.alternative_terms = alternative_terms if alternative_terms else None
-            category.description = description if description else None
             category.vision_hint = vision_hint if vision_hint else None
+            # description editable solo si no viene de TiendaNube (por compatibilidad)
+            # Si quieres permitir editar description, déjalo así:
+            category.description = description if description else None
 
             db.session.commit()
-            flash(f"Campos editables actualizados exitosamente", "success")
+            flash(f"Solo los campos propios fueron actualizados exitosamente", "success")
             return redirect(url_for("categories.view", category_id=category.id))
 
-        # ⚙️ Si NO es Tiendanube: edición completa (comportamiento original)
-        # Validaciones
+        # Si NO es Tiendanube: edición completa
         if not name:
             flash("El nombre de la categoría es obligatorio", "error")
             return render_template("categories/edit.html",
@@ -255,6 +253,11 @@ def delete(category_id):
     # Verificar permisos del cliente
     if category.client_id != current_user.client_id:
         flash("No tienes permisos para eliminar esta categoría", "error")
+        return redirect(url_for("categories.index"))
+
+    # Bloquear eliminación si es Tiendanube
+    if category.external_id:
+        flash("No puedes eliminar una categoría sincronizada desde TiendaNube.", "error")
         return redirect(url_for("categories.index"))
 
     try:
