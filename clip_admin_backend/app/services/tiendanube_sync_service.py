@@ -464,6 +464,89 @@ class TiendanubeSyncService:
             logger.error(f"Error sincronizando productos: {str(e)}")
             self.stats['errors'].append(f"Productos: {str(e)}")
 
+    def _normalize_and_sync_attribute_values(self, product_attributes: Dict) -> Dict:
+        """
+        Normaliza valores de atributos y agrega nuevos valores a la configuración de atributos.
+
+        Para cada atributo de tipo 'list' que viene del producto:
+        1. Normaliza el valor (mayúscula primera letra)
+        2. Si el valor no está en product_attribute_config.options.values, lo agrega
+
+        Args:
+            product_attributes: Dict con atributos del producto {key: valor}
+
+        Returns:
+            Dict normalizado con los mismos atributos
+        """
+        if not product_attributes:
+            return product_attributes
+
+        try:
+            normalized = {}
+
+            for key, value in product_attributes.items():
+                if not value:
+                    normalized[key] = value
+                    continue
+
+                # Obtener configuración del atributo
+                config = ProductAttributeConfig.query.filter_by(
+                    client_id=self.client.id,
+                    key=key
+                ).first()
+
+                if not config:
+                    # Sin configuración, devolver valor sin cambios
+                    normalized[key] = value
+                    continue
+
+                # Si es tipo lista, normalizar y agregar si no existe
+                if config.type == 'list':
+                    # Normalizar valor: capitalizar la primera letra
+                    if isinstance(value, str):
+                        normalized_value = value.strip().capitalize()
+                    elif isinstance(value, list):
+                        # Si es lista, normalizar cada elemento
+                        normalized_value = [
+                            v.strip().capitalize() if isinstance(v, str) else v
+                            for v in value
+                        ]
+                    else:
+                        normalized_value = value
+
+                    # Obtener opciones actuales
+                    options = config.options or {}
+                    values_list = options.get('values', [])
+
+                    # Valores a procesar (puede ser string o lista)
+                    values_to_check = normalized_value if isinstance(normalized_value, list) else [normalized_value]
+
+                    # Agregar valores faltantes
+                    added_any = False
+                    for val in values_to_check:
+                        if val and val not in values_list:
+                            values_list.append(val)
+                            added_any = True
+                            logger.info(f"➕ Agregado valor '{val}' a atributo '{key}' para cliente {self.client.id}")
+
+                    # Actualizar configuración si se agregaron valores
+                    if added_any:
+                        options['values'] = sorted(values_list)
+                        config.options = options
+                        db.session.commit()
+
+                    normalized[key] = normalized_value
+                else:
+                    # Para otros tipos, devolver sin cambios
+                    normalized[key] = value
+
+            return normalized
+
+        except Exception as e:
+            logger.error(f"Error normalizando atributos: {str(e)}")
+            # En caso de error, devolver los atributos originales
+            return product_attributes
+
     def _sync_product(self, prod_data: Dict, attribute_names: Dict = None, sync_images: bool = True, update_attributes_only: bool = False):
         """Sincroniza un producto individual con sus imágenes
 
@@ -504,6 +587,9 @@ class TiendanubeSyncService:
 
             # Extraer atributos desde variantes con nombres reales
             product_attributes = self._extract_product_attributes(variants, attribute_names)
+
+            # Normalizar atributos y agregar nuevos valores a la configuración
+            product_attributes = self._normalize_and_sync_attribute_values(product_attributes)
 
             # Construir external_url correctamente
             handle_data = prod_data.get('handle', {})
