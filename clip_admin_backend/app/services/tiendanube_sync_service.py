@@ -201,18 +201,30 @@ class TiendanubeSyncService:
             description = cat_data.get('description', {}).get('es', '')
 
             if category:
-                # Actualizar existente
+                # Actualizar existente - NO tocar campos propietarios (name_en, clip_prompt, etc)
                 category.name = name
                 category.description = description
                 category.last_sync_at = datetime.utcnow()
                 category.sync_status = 'synced'
                 self.stats['categories_updated'] += 1
             else:
-                # Crear nueva
+                # Crear nueva - auto-generar campos propietarios
+                client_industry = self.client.industry if hasattr(self.client, 'industry') else 'general'
+
+                # Auto-traducir nombre a inglés
+                name_en = Category.auto_translate_to_english(name, client_industry)
+
+                # Auto-generar CLIP prompt
+                clip_prompt = Category.generate_clip_prompt(name_en)
+
+                logger.info(f"✨ Auto-generando campos CLIP: '{name}' → name_en='{name_en}', clip_prompt='{clip_prompt}'")
+
                 category = Category(
                     client_id=self.client.id,
                     name=name,
+                    name_en=name_en,
                     description=description,
+                    clip_prompt=clip_prompt,
                     external_id=external_id,
                     last_sync_at=datetime.utcnow(),
                     sync_status='synced'
