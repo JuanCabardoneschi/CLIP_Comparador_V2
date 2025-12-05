@@ -218,7 +218,7 @@ class TiendanubeSyncService:
 
                 # Auto-generar CLIP prompt
                 clip_prompt = Category.generate_clip_prompt(name_en)
-                
+
                 # Auto-generar alternative_terms
                 alternative_terms = None
                 try:
