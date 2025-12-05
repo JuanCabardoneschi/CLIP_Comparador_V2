@@ -41,8 +41,9 @@
         .clip-overlay-backdrop {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(4px);
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             z-index: 99998;
             display: none;
             animation: clipFadeIn 0.3s ease;
@@ -58,9 +59,10 @@
             width: 90%;
             max-width: 1000px;
             max-height: 90vh;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            background: rgba(255, 255, 255, 0.98);
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            border: 1px solid rgba(0, 0, 0, 0.08);
             z-index: 99999;
             display: none;
             overflow: hidden;
@@ -75,8 +77,9 @@
             justify-content: space-between;
             align-items: center;
             padding: 1.5rem 2rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: rgba(248, 250, 252, 0.95);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            color: #1e293b;
         }
         .clip-overlay-title {
             font-size: 1.5rem;
@@ -91,9 +94,9 @@
             font-weight: 400;
         }
         .clip-overlay-close {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(30, 41, 59, 0.1);
             border: none;
-            color: white;
+            color: #475569;
             width: 36px;
             height: 36px;
             border-radius: 50%;
@@ -102,10 +105,11 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: background 0.2s;
+            transition: all 0.2s;
         }
         .clip-overlay-close:hover {
-            background: rgba(255, 255, 255, 0.3);
+            background: rgba(30, 41, 59, 0.15);
+            color: #1e293b;
         }
         .clip-overlay-content {
             flex: 1;
