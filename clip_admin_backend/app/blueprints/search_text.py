@@ -1627,8 +1627,8 @@ def text_search():
                             primary_image = Image.query.filter_by(product_id=p.id, is_primary=True).first()
                             if not primary_image:
                                 primary_image = Image.query.filter_by(product_id=p.id).first()
-                            if primary_image and getattr(primary_image, 'base64_data', None):
-                                image_url = primary_image.base64_data  # NUNCA Cloudinary
+                            if primary_image:
+                                image_url = primary_image.display_url  # TiendaNube source_url o Cloudinary
                         except Exception:
                             image_url = None
 
@@ -2007,8 +2007,8 @@ def text_search():
                             primary_image = Image.query.filter_by(product_id=p.id, is_primary=True).first()
                             if not primary_image:
                                 primary_image = Image.query.filter_by(product_id=p.id).first()
-                            if primary_image and getattr(primary_image, 'base64_data', None):
-                                image_url = primary_image.base64_data  # NUNCA Cloudinary
+                            if primary_image:
+                                image_url = primary_image.display_url  # TiendaNube source_url o Cloudinary
                         except Exception:
                             image_url = None
 
@@ -2409,8 +2409,8 @@ def text_search():
                 # Ordenamiento: primero por atributos cumplidos, luego por similitud
                 # El widget usa final_score para badge. Mantenemos similitud y exponemos match_ratio aparte
                 "final_score": round(result['similarity'], 3),
-                "image": primary_image.base64_data if primary_image and primary_image.base64_data else '/static/images/placeholder.svg',
-                "image_url": primary_image.base64_data if primary_image and primary_image.base64_data else '/static/images/placeholder.svg',
+                "image": primary_image.display_url if primary_image else '/static/images/placeholder.svg',
+                "image_url": primary_image.display_url if primary_image else '/static/images/placeholder.svg',
                 "category": product.category.name if product.category else None,
                 "attributes": prod_attrs,
                 "attributes_matched": matched,
