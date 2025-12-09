@@ -815,7 +815,7 @@ def set_primary_image(product_id, image_id):
 
     try:
         # ✅ USAR IMAGEMANAGER - Método centralizado
-        if image_manager.set_primary_image(image_id, product_id):
+        if image_manager.set_primary_image(image_id, product_id, client_id=current_user.client_id):
             return jsonify({"success": True, "message": "Imagen principal actualizada"})
         else:
             return jsonify({"success": False, "message": "Imagen no encontrada"})

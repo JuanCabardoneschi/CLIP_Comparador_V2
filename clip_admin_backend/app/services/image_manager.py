@@ -415,7 +415,7 @@ class ImageManager:
             Image.display_order, Image.created_at
         ).first()
 
-    def set_primary_image(self, image_id: int, product_id: int) -> bool:
+    def set_primary_image(self, image_id: str, product_id: str, client_id: Optional[str] = None) -> bool:
         """
         Establece una imagen como principal para un producto
 
@@ -429,22 +429,25 @@ class ImageManager:
         try:
             from app import db
 
+            # Buscar la imagen por id y producto, y opcionalmente cliente para mayor seguridad
+            query = Image.query.filter_by(id=image_id, product_id=product_id)
+            if client_id:
+                query = query.filter_by(client_id=client_id)
+
+            image = query.first()
+            if not image:
+                return False
+
             # Desmarcar todas las imágenes del producto como principales
-            Image.query.filter_by(
-                product_id=product_id,
-                is_primary=True
-            ).update({"is_primary": False})
+            Image.query.filter_by(product_id=product_id, is_primary=True).update({"is_primary": False})
 
             # Marcar la nueva imagen como principal
-            image = Image.query.get(image_id)
-            if image and image.product_id == product_id:
-                image.is_primary = True
-                db.session.commit()
-                return True
-
-            return False
+            image.is_primary = True
+            db.session.commit()
+            return True
 
         except Exception:
+            db.session.rollback()
             return False
 
     def cleanup_orphaned_files(self, client_slug: str = "demo_fashion_store") -> int:
