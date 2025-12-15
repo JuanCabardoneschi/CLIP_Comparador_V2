@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Perfiles de Búsqueda{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1 class="mb-4">
+        <i class="fas fa-cogs"></i> Perfiles de Búsqueda por Industria
+    </h1>
+
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <p class="lead text-muted">
+                Gestiona las reglas de normalización, sinónimos y detección de categorías para cada cliente.
+            </p>
+        </div>
+        <div class="col-md-4 text-end">
+            <span class="badge bg-info">
+                <i class="fas fa-info-circle"></i>
+                Los perfiles se heredan por industria y pueden customizarse por cliente
+            </span>
+        </div>
+    </div>
+
+    <!-- Tabla de clientes y sus perfiles -->
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Clientes y Perfiles Asignados</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Slug</th>
+                        <th>Industria</th>
+                        <th>Perfil</th>
+                        <th>Overrides</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for profile in profiles %}
+                    <tr>
+                        <td>
+                            <strong>{{ profile.client_name }}</strong>
+                        </td>
+                        <td>
+                            <code>{{ profile.slug }}</code>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ profile.industry or 'generic' }}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-success">{{ profile.profile_name }}</span>
+                        </td>
+                        <td>
+                            {% if profile.has_overrides %}
+                                <span class="badge bg-warning text-dark" title="Este cliente tiene customizaciones">
+                                    <i class="fas fa-star"></i> Customizado
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">Estándar</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('search_profiles_admin.edit_client_profile', client_id=profile.client_id) }}"
+                               class="btn btn-sm btn-primary">
+                                <i class="fas fa-edit"></i> Editar
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted">
+                            No hay clientes disponibles
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Información de perfiles disponibles -->
+    <div class="row mt-5">
+        <div class="col-md-12">
+            <h5>
+                <i class="fas fa-book"></i> Perfiles Base Disponibles
+            </h5>
+        </div>
+    </div>
+    <div class="row">
+        {% for slug, profile in available_profiles.items() %}
+        <div class="col-md-4 mb-3">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title">
+                        <span class="badge" style="background-color:
+                            {% if slug == 'fashion' %}#28a745{% elif slug == 'uniforms' %}#fd7e14{% else %}#6c757d{% endif %}">
+                            {{ profile.name }}
+                        </span>
+                    </h6>
+                    <p class="card-text small text-muted">
+                        {{ profile.description }}
+                    </p>
+                    <small class="text-secondary">
+                        <em>Slug: <code>{{ slug }}</code></em>
+                    </small>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+
+<style>
+    .card {
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
+    .table-hover tbody tr:hover {
+        background-color: rgba(0, 123, 255, 0.05);
+    }
+</style>
+
+{% endblock %}

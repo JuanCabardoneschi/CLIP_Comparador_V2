@@ -1,103 +1,32 @@
 #!/usr/bin/env python3
 """
 TEST: Generador automático de alternative_terms usando MiniLM.
-Versión standalone sin dependencias de Flask/SQLAlchemy.
+Versión actualizada con filtrado por grupos de categorías.
 """
 
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
+import sys
+import os
+import importlib.util
 
 print("=" * 80)
-print("🧪 TEST: Generador de Alternative Terms con MiniLM")
+print("🧪 TEST: Generador de Alternative Terms con MiniLM + Filtrado por Grupos")
 print("=" * 80)
 
-# Vocabulario fashion genérico
-FASHION_VOCABULARY_ES = [
-    # Tops
-    'remera', 'camiseta', 't-shirt', 'playera', 'polera',
-    'musculosa', 'tank top', 'sin mangas', 'camiseta sin mangas', 'remera sin mangas',
-    'top', 'crop top', 'remera corta', 'camisa corta',
-    'blusa', 'camisa',
+# Importar el servicio directamente sin inicializar Flask
+service_path = os.path.join(
+    os.path.dirname(__file__),
+    'clip_admin_backend',
+    'app',
+    'services',
+    'alternative_terms_generator.py'
+)
 
-    # Bottoms
-    'pantalón', 'pantalones', 'jean', 'jeans', 'vaquero', 'denim',
-    'short', 'shorts', 'shores', 'bermuda', 'bermudas', 'pantalón corto', 'short tiro alto', 'short tiro bajo',
-    'pollera', 'falda', 'skirt',
+spec = importlib.util.spec_from_file_location("alt_terms_gen", service_path)
+alt_terms_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(alt_terms_module)
 
-    # Swimwear
-    'bikini', 'malla', 'traje de baño', 'bañador', 'swimsuit',
-
-    # Outerwear
-    'campera', 'chaqueta', 'jacket', 'saco', 'blazer',
-
-    # Descriptores
-    'manga corta', 'manga larga',
-    'tiro alto', 'tiro bajo', 'cintura alta', 'cintura baja',
-    'boca ancha', 'recto', 'chupin', 'skinny',
-]
-
-print("\n🔄 Cargando modelo MiniLM...")
-model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-print("✅ Modelo cargado exitosamente\n")
-
-
-def generate_alternative_terms_minilm(
-    category_name: str,
-    max_terms: int = 5,
-    similarity_threshold: float = 0.35
-):
-    """
-    Genera alternative_terms usando similitud semántica con MiniLM.
-    """
-    print(f"{'='*80}")
-    print(f"📝 Generando alternative_terms para: '{category_name}'")
-    print(f"{'='*80}")
-
-    # Embedding de la categoría
-    print(f"  🔍 Generando embedding para '{category_name}'...")
-    cat_embedding = model.encode([category_name.lower()])[0]
-
-    # Filtrar vocabulario: remover términos que ya están en category_name
-    category_tokens = set(category_name.lower().split())
-    filtered_vocab = [
-        term for term in FASHION_VOCABULARY_ES
-        if term not in category_name.lower()  # No incluir si ya está completo
-    ]
-
-    print(f"  📚 Vocabulario candidato: {len(filtered_vocab)} términos")
-
-    # Embeddings del vocabulario
-    print(f"  🔍 Generando embeddings para vocabulario...")
-    vocab_embeddings = model.encode(filtered_vocab)
-
-    # Calcular similitudes
-    print(f"  🧮 Calculando similitudes semánticas...")
-    similarities = cosine_similarity([cat_embedding], vocab_embeddings)[0]
-
-    # Crear pares (término, similitud) y filtrar por umbral
-    candidates = [
-        (term, sim)
-        for term, sim in zip(filtered_vocab, similarities)
-        if sim >= similarity_threshold
-    ]
-
-    # Ordenar por similitud descendente
-    candidates.sort(key=lambda x: x[1], reverse=True)
-
-    print(f"\n  📊 Top 10 términos más similares:")
-    for i, (term, sim) in enumerate(candidates[:10], 1):
-        print(f"     {i:2d}. '{term}' → {sim:.3f}")
-
-    # Tomar top N
-    top_candidates = candidates[:max_terms]
-    result = ', '.join([term for term, _ in top_candidates])
-
-    print(f"\n  🎯 RESULTADO ({len(top_candidates)} términos):")
-    print(f"     {result}")
-    print(f"{'='*80}\n")
-
-    return result
+generate_alternative_terms = alt_terms_module.generate_alternative_terms
+detect_category_group = alt_terms_module.detect_category_group
 
 
 def run_tests():
@@ -121,10 +50,27 @@ def run_tests():
     results = []
 
     for category_name in test_cases:
-        alternative_terms = generate_alternative_terms_minilm(category_name)
+        print(f"{'='*80}")
+        print(f"📝 Generando alternative_terms para: '{category_name}'")
+        print(f"{'='*80}")
+
+        # Detectar grupo
+        group = detect_category_group(category_name)
+        if group:
+            print(f"  🎯 Grupo detectado: '{group}'")
+        else:
+            print(f"  ⚠️ Grupo no detectado → usando vocabulario completo")
+
+        alternative_terms = generate_alternative_terms(category_name)
+
+        print(f"\n  ✅ RESULTADO:")
+        print(f"     {alternative_terms if alternative_terms else '(vacío)'}")
+        print(f"{'='*80}\n")
+
         results.append({
             'category': category_name,
-            'alternative_terms': alternative_terms
+            'alternative_terms': alternative_terms,
+            'group': group
         })
 
     # Resumen final
@@ -164,12 +110,42 @@ def run_tests():
         missing = manual_set - auto_set
         extra = auto_set - manual_set
 
-        if overlap:
-            print(f"    ✅ Coincidencias: {overlap}")
-        if missing:
-            print(f"    ⚠️  Faltantes: {missing}")
-        if extra:
-            print(f"    ℹ️  Extras: {extra}")
+    for r in results:
+        print(f"\n  📂 {r['category']} (grupo: {r['group'] or 'desconocido'})")
+        print(f"     → {r['alternative_terms']}")
+
+    # Comparar con valores manuales de Eve's Store
+    print("\n" + "="*80)
+    print("🔍 COMPARACIÓN CON VALORES MANUALES (Eve's Store)")
+    print("="*80)
+
+    manual_values = {
+        "remera musculosas": "remera sin mangas, camiseta sin mangas",
+        "top": "remera corta, camisa corta",
+        "shores tiro alto": "short tiro alto",
+        "shores tiro bajo": "short tiro bajo",
+        "bikinis": "traje de baño",
+    }
+
+    for r in results:
+        cat = r['category']
+        if cat in manual_values:
+            manual = set(t.strip() for t in manual_values[cat].split(','))
+            auto = set(t.strip() for t in (r['alternative_terms'] or '').split(',') if t.strip())
+
+            overlap = manual & auto
+            missing = manual - auto
+            extra = auto - manual
+
+            print(f"\n  {cat}:")
+            print(f"    Manual:      {', '.join(manual)}")
+            print(f"    Auto-gen:    {', '.join(auto) if auto else '(vacío)'}")
+            if overlap:
+                print(f"    ✅ Coincidencias: {overlap}")
+            if missing:
+                print(f"    ⚠️  Faltantes: {missing}")
+            if extra:
+                print(f"    ℹ️  Extras: {extra}")
 
     print("\n" + "="*80)
     print("✅ Pruebas completadas")

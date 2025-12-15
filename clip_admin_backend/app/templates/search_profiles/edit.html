@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Perfil de Búsqueda - {{ client.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1 class="mb-4">
+        <i class="fas fa-cogs"></i>
+        Perfil de Búsqueda: <strong>{{ client.name }}</strong>
+    </h1>
+
+    <div class="row">
+        <div class="col-md-3">
+            <!-- Info Panel -->
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0">Información del Cliente</h6>
+                </div>
+                <div class="card-body">
+                    <p><strong>Industria:</strong> <span class="badge bg-secondary">{{ client.industry }}</span></p>
+                    <p><strong>Perfil Base:</strong> <span class="badge bg-success">{{ profile.name }}</span></p>
+                    <p><strong>Estrategia:</strong> <code>{{ profile.filter_strategy }}</code></p>
+                    <hr>
+                    <small class="text-muted">
+                        <i class="fas fa-lightbulb"></i>
+                        Este cliente hereda del perfil <strong>{{ profile.name }}</strong>. Usa los campos de abajo para customizar.
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-9">
+            <!-- Editor de Reglas -->
+            <form id="profileForm" method="POST" action="{{ url_for('search_profiles_admin.edit_client_profile', client_id=client.id) }}">
+
+                <!-- Variantes (Variants Map) -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-exchange-alt"></i> Mapeo de Variantes
+                            <small class="text-muted">(opcional)</small>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="small text-muted mb-3">
+                            Agregar/editar variaciones ortográficas que deben normalizarse a una forma canónica.
+                            <br>
+                            Ej: <code>shores → short</code>, <code>remeras → remera</code>
+                        </p>
+                        <div id="variantsContainer">
+                            <!-- Dinámicamente llenado por JS -->
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addVariant()">
+                            <i class="fas fa-plus"></i> Agregar Variante
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Sinónimos (Category Synonyms) -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-link"></i> Sinónimos de Categoría
+                            <small class="text-muted">(opcional)</small>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="small text-muted mb-3">
+                            Términos relacionados que expanden búsquedas.
+                            <br>
+                            Ej: <code>jean | jeans | pant</code> → todos expandirán la búsqueda de "pantalón"
+                        </p>
+                        <div id="synonymsContainer">
+                            <!-- Dinámicamente llenado por JS -->
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addSynonym()">
+                            <i class="fas fa-plus"></i> Agregar Sinónimo
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Colores -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-palette"></i> Tokens de Color
+                            <small class="text-muted">(opcional)</small>
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="small text-muted mb-3">
+                            Palabras que representan colores. Se excluyen del análisis de categoría para evitar falsos matches.
+                        </p>
+                        <textarea id="colorTokens" class="form-control" rows="3" placeholder="rojo, verde, azul, negro, etc."></textarea>
+                    </div>
+                </div>
+
+                <!-- Estrategia de Filtro -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-filter"></i> Estrategia de Filtrado de Categoría
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="filterStrategy" id="rootUnique"
+                                   value="root-unique" {% if profile.filter_strategy == 'root-unique' %}checked{% endif %}>
+                            <label class="form-check-label" for="rootUnique">
+                                <strong>Root Única (Recomendado para Moda)</strong>
+                                <br>
+                                <small class="text-muted">
+                                    Solo filtra si el query menciona UNA única categoría raíz.
+                                    <br>Ej: "short rojo" → filtra shorts | "short remera" → búsqueda amplia
+                                </small>
+                            </label>
+                        </div>
+                        <hr>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="filterStrategy" id="broad"
+                                   value="broad" {% if profile.filter_strategy == 'broad' %}checked{% endif %}>
+                            <label class="form-check-label" for="broad">
+                                <strong>Amplio</strong>
+                                <br>
+                                <small class="text-muted">
+                                    Filtra por todas las categorías mencionadas.
+                                    <br>Ej: "short remera" → filtra shorts + remeras
+                                </small>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preview de Query -->
+                <div class="card mb-4">
+                    <div class="card-header bg-warning text-dark">
+                        <h6 class="mb-0">
+                            <i class="fas fa-eye"></i> Preview de Búsqueda
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="small text-muted mb-2">Prueba cómo se normalizan y expanden tus queries:</p>
+                        <div class="input-group mb-3">
+                            <input type="text" id="previewQuery" class="form-control"
+                                   placeholder="Ej: short rojo, remera negra, pantalón azul">
+                            <button class="btn btn-warning" type="button" onclick="previewSearch()">
+                                <i class="fas fa-search"></i> Probar
+                            </button>
+                        </div>
+                        <div id="previewResult" class="alert alert-light" style="display:none;">
+                            <h6>Resultado del Preview:</h6>
+                            <div id="previewContent"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Botones de Acción -->
+                <div class="card">
+                    <div class="card-body">
+                        <button type="submit" class="btn btn-success btn-lg">
+                            <i class="fas fa-save"></i> Guardar Cambios
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-lg" onclick="resetForm()">
+                            <i class="fas fa-undo"></i> Revertir a Perfil Base
+                        </button>
+                        <a href="{{ url_for('search_profiles_admin.list_profiles') }}" class="btn btn-outline-secondary btn-lg">
+                            <i class="fas fa-arrow-left"></i> Volver
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+</div>
+
+<script>
+const overrides = {{ overrides|tojson }};
+const baseProfile = {{ profile|tojson }};
+const clientId = '{{ client.id }}';
+
+// Cargar UI al iniciar
+document.addEventListener('DOMContentLoaded', function() {
+    loadVariants();
+    loadSynonyms();
+    loadColors();
+});
+
+// Cargar variantes en la UI
+function loadVariants() {
+    const variantsMap = overrides.variants_map || baseProfile.variants_map || {};
+    const container = document.getElementById('variantsContainer');
+    container.innerHTML = '';
+
+    for (const [variant, canonical] of Object.entries(variantsMap)) {
+        const row = document.createElement('div');
+        row.className = 'input-group mb-2';
+        row.innerHTML = `
+            <input type="text" class="form-control" value="${variant}" placeholder="Variante" readonly>
+            <span class="input-group-text">→</span>
+            <input type="text" class="form-control variant-canonical" value="${canonical}" data-variant="${variant}">
+            <button class="btn btn-outline-danger" type="button" onclick="removeVariant(this, '${variant}')">
+                <i class="fas fa-trash"></i>
+            </button>
+        `;
+        container.appendChild(row);
+    }
+}
+
+function addVariant() {
+    const container = document.getElementById('variantsContainer');
+    const row = document.createElement('div');
+    row.className = 'input-group mb-2';
+    row.innerHTML = `
+        <input type="text" class="form-control" placeholder="Variante (ej: shores)">
+        <span class="input-group-text">→</span>
+        <input type="text" class="form-control variant-canonical" placeholder="Canónica (ej: short)">
+        <button class="btn btn-outline-danger" type="button" onclick="this.parentElement.remove()">
+            <i class="fas fa-trash"></i>
+        </button>
+    `;
+    container.appendChild(row);
+}
+
+function removeVariant(btn, variant) {
+    btn.parentElement.remove();
+}
+
+// Cargar sinónimos
+function loadSynonyms() {
+    const synonyms = overrides.category_synonyms || baseProfile.category_synonyms || {};
+    const container = document.getElementById('synonymsContainer');
+    container.innerHTML = '';
+
+    for (const [root, syns] of Object.entries(synonyms)) {
+        const row = document.createElement('div');
+        row.className = 'input-group mb-2';
+        row.innerHTML = `
+            <input type="text" class="form-control" value="${root}" placeholder="Raíz" readonly>
+            <input type="text" class="form-control synonym-list" value="${syns.join(', ')}"
+                   placeholder="Sinónimos (separados por coma)" data-root="${root}">
+            <button class="btn btn-outline-danger" type="button" onclick="removeSynonym(this, '${root}')">
+                <i class="fas fa-trash"></i>
+            </button>
+        `;
+        container.appendChild(row);
+    }
+}
+
+function addSynonym() {
+    const container = document.getElementById('synonymsContainer');
+    const row = document.createElement('div');
+    row.className = 'input-group mb-2';
+    row.innerHTML = `
+        <input type="text" class="form-control" placeholder="Raíz (ej: remera)">
+        <input type="text" class="form-control synonym-list" placeholder="Sinónimos (camiseta, polera, top)">
+        <button class="btn btn-outline-danger" type="button" onclick="this.parentElement.remove()">
+            <i class="fas fa-trash"></i>
+        </button>
+    `;
+    container.appendChild(row);
+}
+
+function removeSynonym(btn, root) {
+    btn.parentElement.remove();
+}
+
+// Cargar colores
+function loadColors() {
+    const colors = overrides.color_tokens || baseProfile.color_tokens || [];
+    document.getElementById('colorTokens').value = Array.isArray(colors) ? colors.join(', ') : colors;
+}
+
+// Preview de búsqueda
+function previewSearch() {
+    const query = document.getElementById('previewQuery').value.trim();
+    if (!query) {
+        alert('Ingresa un query para probar');
+        return;
+    }
+
+    // Enviar al endpoint de preview
+    fetch(`/search-profiles-admin/client/${clientId}/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const result = `
+                <strong>Query:</strong> <code>${data.query}</code><br>
+                <strong>Tokens Normalizados:</strong> ${data.normalized_tokens.join(', ') || 'ninguno'}<br>
+                <strong>Términos Expandidos:</strong> ${data.expanded_terms.join(', ') || 'ninguno'}<br>
+                <strong>Filtro de Categoría:</strong> ${data.category_filter.applies ?
+                    `Sí (${data.category_filter.category_names.join(', ')})` : 'No'}
+            `;
+            document.getElementById('previewContent').innerHTML = result;
+            document.getElementById('previewResult').style.display = 'block';
+        } else {
+            alert('Error en preview: ' + data.error);
+        }
+    });
+}
+
+// Revertir a perfil base
+function resetForm() {
+    if (confirm('¿Estás seguro? Se eliminarán todas las customizaciones.')) {
+        fetch(`/search-profiles-admin/client/${clientId}/reset-overrides`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('Perfil reseteado al estándar');
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        });
+    }
+}
+
+// Guardar formulario
+document.getElementById('profileForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    // Construir overrides
+    const searchRules = {};
+
+    // Variants
+    const variantRows = document.querySelectorAll('#variantsContainer .input-group');
+    if (variantRows.length > 0) {
+        const variants = {};
+        variantRows.forEach(row => {
+            const inputs = row.querySelectorAll('input');
+            const variant = inputs[0].value.trim();
+            const canonical = inputs[1].value.trim();
+            if (variant && canonical) {
+                variants[variant] = canonical;
+            }
+        });
+        if (Object.keys(variants).length > 0) searchRules.variants_map = variants;
+    }
+
+    // Synonyms
+    const synonymRows = document.querySelectorAll('#synonymsContainer .input-group');
+    if (synonymRows.length > 0) {
+        const synonyms = {};
+        synonymRows.forEach(row => {
+            const inputs = row.querySelectorAll('input');
+            const root = inputs[0].value.trim();
+            const syns = inputs[1].value.split(',').map(s => s.trim()).filter(s => s);
+            if (root && syns.length > 0) {
+                synonyms[root] = syns;
+            }
+        });
+        if (Object.keys(synonyms).length > 0) searchRules.category_synonyms = synonyms;
+    }
+
+    // Colors
+    const colors = document.getElementById('colorTokens').value
+        .split(',')
+        .map(c => c.trim())
+        .filter(c => c);
+    if (colors.length > 0) searchRules.color_tokens = colors;
+
+    // Strategy
+    const strategy = document.querySelector('input[name="filterStrategy"]:checked').value;
+    searchRules.filter_strategy = strategy;
+
+    // POST
+    fetch(`/search-profiles-admin/client/${clientId}/edit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ search_rules: searchRules })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ Perfil guardado correctamente');
+            location.href = '/search-profiles-admin/profiles';
+        } else {
+            alert('❌ Error: ' + data.error);
+        }
+    });
+});
+</script>
+
+<style>
+    .card {
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
+    .card-header {
+        border-bottom: 2px solid #f0f0f0;
+    }
+    .input-group {
+        align-items: center;
+    }
+    .form-check {
+        padding: 0.5rem;
+        background-color: #f8f9fa;
+        border-radius: 0.25rem;
+        margin-bottom: 0.5rem;
+    }
+</style>
+
+{% endblock %}

@@ -25,6 +25,9 @@ from app.blueprints.embeddings import get_clip_model
 from typing import List, Set
 import os
 
+# 🆕 Importar proveedor de perfiles de búsqueda
+from app.services.search_profiles_service import SearchProfilesService
+
 # Reutilizar normalizador spaCy del blueprint API (sin duplicar lógica)
 try:
     from app.blueprints.api import _get_spacy_nlp  # type: ignore
@@ -568,52 +571,66 @@ def verify_api_key():
 
 
 def expand_query_with_synonyms(query_text: str, client_id: str, client_slug: str = None):
-    # Expande query con sinónimos de categorías del cliente (módulo custom si existe)
-    # Intentar usar módulo personalizado
+    """
+    Expande query con sinónimos usando el nuevo proveedor de perfiles de búsqueda.
+
+    Prioridad:
+    1. Perfil del cliente (por industria + overrides)
+    2. Módulo custom si existe (para compatibilidad)
+    3. Fallback genérico
+    """
+    try:
+        # 🆕 Intentar usar proveedor de perfiles
+        profile = SearchProfilesService.get_profile(client_id)
+        categories = Category.query.filter_by(client_id=client_id).all()
+        result = SearchProfilesService.expand_query(query_text, categories, profile)
+        log_verbose(LogCategory.SEARCH, f"[Perfil de Búsqueda] Expansión: {len(result)} términos")
+        return result
+    except Exception as e:
+        log_verbose(LogCategory.SEARCH, f"[Perfil] Error, intentando fallback: {e}")
+
+    # Fallback: módulo custom si existe
     if client_slug and has_custom_module(client_slug):
         module = get_client_module(client_slug)
         try:
             categories = Category.query.filter_by(client_id=client_id).all()
         except Exception as e:
-            # Rollback y fallback a expansión mínima si la transacción está abortada
             try:
                 db.session.rollback()
             except Exception:
                 pass
-            log_error(f"[Módulo Custom] Error consultando categorías para expansión: {e}")
+            log_error(f"[Módulo Custom] Error consultando categorías: {e}")
             return query_text.lower().split()
         result = module.expand_query(query_text, categories)
-        log_verbose(LogCategory.SEARCH, f"[Módulo Custom] Expansión personalizada: {len(result)} términos")
+        log_verbose(LogCategory.SEARCH, f"[Módulo Custom] Expansión: {len(result)} términos")
         return result
 
-    # Fallback genérico (original)
+    # Fallback genérico
     tokens = query_text.lower().split()
     expanded = set(tokens)
 
-    # Buscar en alternative_terms de categorías
     try:
         categories = Category.query.filter_by(client_id=client_id).all()
     except Exception as e:
-        # Si la transacción está abortada, hacer rollback y fallback sin sinónimos
         try:
             db.session.rollback()
         except Exception:
             pass
-        log_error(f"[Genérico] Error obteniendo categorías para sinónimos: {e}. Usando tokens básicos.")
+        log_error(f"[Genérico] Error obteniendo categorías: {e}")
         return list(expanded)
 
     for cat in categories:
         if not cat.alternative_terms:
             continue
-
         cat_synonyms = [s.strip() for s in cat.alternative_terms.split(',')]
-
-        # Si algún token del query coincide con sinónimos, agregar todos
         for token in tokens:
             if token in cat_synonyms:
                 expanded.update(cat_synonyms)
-                log_verbose(LogCategory.NLP, f"🔍 Token '{token}' expandido con sinónimos de '{cat.name}': {cat_synonyms[:5]}...")
                 break
+
+    result = list(expanded)
+    log_verbose(LogCategory.NLP, f"[Genérico] Query expandido: {len(result)} términos")
+    return result
 
     result = list(expanded)
     log_verbose(LogCategory.NLP, f"[Genérico] Query expandido: '{query_text}' → {len(result)} términos: {result[:10]}...")
@@ -686,59 +703,67 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
     # STAGE 1: Broad Recall - PostgreSQL SIMILAR TO (sin docstring multiline para evitar errores)
     start_time = time.time()
 
-    # 1️⃣ Expandir query con sinónimos (delega a módulo custom si existe)
+    # 1️⃣ Expandir query con sinónimos (ahora usa proveedor de perfiles)
     expanded_tokens = expand_query_with_synonyms(query_text, client_id, client_slug)
 
-    # 1.1 Detectar categorías para filtrar (delega a módulo custom si existe)
+    # 1.1 Detectar categorías para filtrar (usa proveedor de perfiles)
     categories = Category.query.filter_by(client_id=client_id).all()
     category_filter_ids = []
-    detection_metadata = None  # Capturar metadata de detección
+    detection_metadata = None
 
-    # Intentar usar módulo personalizado para detección de filtro
-    if client_slug and has_custom_module(client_slug):
-        module = get_client_module(client_slug)
-        # Normalizar tokens del query usando el módulo
-        query_tokens = module.normalize_tokens(query_text)
-        # Detectar filtro de categoría (puede retornar tupla con metadata)
-        result = module.detect_category_filter(query_tokens, categories)
+    try:
+        # 🆕 Usar proveedor de perfiles de búsqueda
+        client = Client.query.get(client_id)
+        profile = SearchProfilesService.get_profile(client_id, client.industry if client else None)
 
-        # Manejar ambos casos: (ids, metadata) o solo ids
-        if isinstance(result, tuple):
-            category_filter_ids, detection_metadata = result
-        else:
-            category_filter_ids = result
-            detection_metadata = None
+        # Normalizar tokens usando el perfil
+        query_tokens = SearchProfilesService.normalize_tokens(query_text, profile)
+
+        # Detectar filtro de categoría
+        category_filter_ids, detection_metadata = SearchProfilesService.detect_category_filter(
+            query_tokens, categories, profile
+        )
 
         if category_filter_ids:
-            log_verbose(LogCategory.SEARCH, f"[Módulo Custom] Filtro de categoría aplicado: {len(category_filter_ids)} categorías")
+            log_verbose(LogCategory.SEARCH, f"[Perfil de Búsqueda] Filtro de categoría: {len(category_filter_ids)} categorías")
         else:
-            log_verbose(LogCategory.SEARCH, f"[Módulo Custom] Sin filtro de categoría (búsqueda amplia)")
-    else:
-        # Fallback genérico (lógica original con normalización básica)
-        original_tokens = _normalize_tokens_es(query_text)
-        color_tokens = {"rojo", "verde", "azul", "negro", "blanco", "marron", "gris", "beige", "rosa", "amarillo", "violeta"}
-        filtered_query_tokens = [t for t in original_tokens if t not in color_tokens]
+            log_verbose(LogCategory.SEARCH, f"[Perfil de Búsqueda] Sin filtro de categoría (búsqueda amplia)")
+    except Exception as e:
+        log_verbose(LogCategory.SEARCH, f"[Perfil] Error detectando categoría, intentando fallback: {e}")
 
-        matched_by_name = []  # [(cat_id, root_token)]
-        for cat in categories:
-            tokens_cat = _category_tokens(cat)
-            for qt in filtered_query_tokens:
-                if qt in tokens_cat:
-                    matched_by_name.append((cat.id, qt))
-                    break
-
-        root_to_cats = {}
-        for cid, root in matched_by_name:
-            root_to_cats.setdefault(root, []).append(cid)
-
-        if len(root_to_cats) == 1:
-            sole_root = next(iter(root_to_cats.keys()))
-            category_filter_ids = root_to_cats[sole_root]
-            log_verbose(LogCategory.SEARCH, f"[Genérico] Filtro de categoría aplicado: root='{sole_root}' ids={category_filter_ids}")
+        # Fallback: módulo custom si existe
+        if client_slug and has_custom_module(client_slug):
+            module = get_client_module(client_slug)
+            query_tokens = module.normalize_tokens(query_text)
+            result = module.detect_category_filter(query_tokens, categories)
+            if isinstance(result, tuple):
+                category_filter_ids, detection_metadata = result
+            else:
+                category_filter_ids = result
+                detection_metadata = None
         else:
-            category_filter_ids = []
+            # Fallback genérico
+            original_tokens = _normalize_tokens_es(query_text)
+            color_tokens = {"rojo", "verde", "azul", "negro", "blanco", "marron", "gris", "beige", "rosa", "amarillo", "violeta"}
+            filtered_query_tokens = [t for t in original_tokens if t not in color_tokens]
 
-    # Normalizar category_filter_ids para SQL (None si vacío)
+            matched_by_name = []
+            for cat in categories:
+                tokens_cat = _category_tokens(cat)
+                for qt in filtered_query_tokens:
+                    if qt in tokens_cat:
+                        matched_by_name.append((cat.id, qt))
+                        break
+
+            root_to_cats = {}
+            for cid, root in matched_by_name:
+                root_to_cats.setdefault(root, []).append(cid)
+
+            if len(root_to_cats) == 1:
+                sole_root = next(iter(root_to_cats.keys()))
+                category_filter_ids = root_to_cats[sole_root]
+
+    # Normalizar category_filter_ids para SQL
     if not category_filter_ids:
         category_filter_ids = []
 
