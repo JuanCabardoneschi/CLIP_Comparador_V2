@@ -1633,11 +1633,12 @@ def text_search():
                         needs_clip = True
                         # Agregar modificadores de atributos encontrados que no estén ya
                         for attr in atributos_encontrados:
-                            mod_detected = attr.get('modificador')  # El modificador original (ej: "negro")
+                            mod_detected = attr.get('modificador_original')  # El modificador original (ej: "negro")
                             if mod_detected and mod_detected not in modifiers_for_clip:
                                 modifiers_for_clip.append(mod_detected)
-                except Exception:
-                    pass
+                                print(f"      🔍 Agregando '{mod_detected}' para inferencia CLIP en Tier 2")
+                except Exception as e:
+                    log_error(f"Error construyendo modifiers_for_clip: {e}")
 
                 # Si NO hay filtrado CLIP pero SÍ hay scoring por atributos, ya están ordenados
                 # (de mayor a menor coincidencia) desde el paso anterior
