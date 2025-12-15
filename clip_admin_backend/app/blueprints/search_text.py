@@ -3073,13 +3073,32 @@ def text_search():
 
             # 3️⃣ TOP-UP: Completar categorías con < MIN_CATEGORY_RESULTS desde candidatos sin filtrar
             try:
-                # Mapa de candidatos originales por categoría
+                # IMPORTANTE: Obtener TODOS los productos de las categorías detectadas
+                # (no solo los que pasaron filtrado), para rellenar hasta 3 por categoría
+                all_matched_cat_ids = []
+                if detection_metadata and detection_metadata.get('matched_categories'):
+                    for matched_cat in detection_metadata.get('matched_categories'):
+                        cat = Category.query.filter_by(
+                            client_id=client.id,
+                            name=matched_cat
+                        ).first()
+                        if cat:
+                            all_matched_cat_ids.append(cat.id)
+                
+                # Mapa de TODOS los productos disponibles en las categorías detectadas
                 candidates_by_cat = {}
-                for cand in candidates:
-                    cat = cand.category.name if cand.category else 'Sin categoría'
-                    if cat not in candidates_by_cat:
-                        candidates_by_cat[cat] = []
-                    candidates_by_cat[cat].append(cand)
+                if all_matched_cat_ids:
+                    all_available = Product.query.filter(
+                        Product.client_id == client.id,
+                        Product.category_id.in_(all_matched_cat_ids),
+                        Product.is_active == True
+                    ).all()
+                    
+                    for prod in all_available:
+                        cat = prod.category.name if prod.category else 'Sin categoría'
+                        if cat not in candidates_by_cat:
+                            candidates_by_cat[cat] = []
+                        candidates_by_cat[cat].append(prod)
 
                 # Para cada categoría detectada, si tiene < MIN_CATEGORY_RESULTS, rellenar
                 for cat_name, items in results_by_category.items():
