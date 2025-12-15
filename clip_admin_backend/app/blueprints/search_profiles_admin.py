@@ -9,6 +9,7 @@ from functools import wraps
 import json
 import logging
 
+from flask_login import current_user
 from app.models.client import Client
 from app.models.category import Category
 from app.services.search_profiles_service import SearchProfilesService
@@ -22,10 +23,20 @@ def admin_required(f):
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if "user_id" not in session or "role" not in session:
+        # Usar Flask-Login como fuente de verdad
+        if not current_user or not current_user.is_authenticated:
             return redirect(url_for("auth.login"))
-        if session.get("role") not in ("SUPER_ADMIN", "STORE_ADMIN"):
+
+        # Sólo super admin o store admin
+        if current_user.role not in ("SUPER_ADMIN", "STORE_ADMIN"):
             return jsonify({"error": "Acceso denegado"}), 403
+
+        # Sincronizar variables mínimas en session para compatibilidad con código existente
+        session.setdefault("user_id", str(current_user.id))
+        session.setdefault("role", current_user.role)
+        if current_user.client_id:
+            session.setdefault("client_id", str(current_user.client_id))
+
         return f(*args, **kwargs)
 
     return decorated_function
