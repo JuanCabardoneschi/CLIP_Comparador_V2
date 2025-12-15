@@ -137,9 +137,7 @@ def create_app(config_name=None):
     )
     login_manager.login_message_category = "info"
 
-    # Sin Redis: exportar referencia nula para compatibilidad con imports legacy
-    import app
-    app.redis_cache = None
+    # Sin Redis: las caches están en memoria dentro de los servicios
 
     # User loader para Flask-Login
     @login_manager.user_loader
