@@ -3050,11 +3050,12 @@ def text_search():
             pass
 
         # ⭐ AGRUPACIÓN POR CATEGORÍAS HERMANAS CON TOP-UP
-        # Estrategia: si múltiples categorías, devolver hasta N por categoría
-        # Si una categoría queda con < N, completar desde candidatos originales
+        # Estrategia: si múltiples categorías, devolver hasta 3 (MIN_CATEGORY_RESULTS) por categoría
+        # Si una categoría queda con < 3, completar desde candidatos originales
 
         results_by_category = {}
         group_by_category = False
+        MIN_CATEGORY_RESULTS = 3  # TOP 3 de cada categoría
 
         if detection_metadata and len(detection_metadata.get('matched_categories', [])) > 1:
             group_by_category = True
@@ -3066,11 +3067,11 @@ def text_search():
                     results_by_category[cat_name] = []
                 results_by_category[cat_name].append(result)
 
-            # 2️⃣ Recortar a `limit` por categoría (tomar los mejores)
+            # 2️⃣ Recortar a MIN_CATEGORY_RESULTS (3) por categoría (tomar los mejores)
             for cat_name in results_by_category.keys():
-                results_by_category[cat_name] = results_by_category[cat_name][:limit]
+                results_by_category[cat_name] = results_by_category[cat_name][:MIN_CATEGORY_RESULTS]
 
-            # 3️⃣ TOP-UP: Completar categorías con < limit desde candidatos sin filtrar
+            # 3️⃣ TOP-UP: Completar categorías con < MIN_CATEGORY_RESULTS desde candidatos sin filtrar
             try:
                 # Mapa de candidatos originales por categoría
                 candidates_by_cat = {}
@@ -3080,14 +3081,14 @@ def text_search():
                         candidates_by_cat[cat] = []
                     candidates_by_cat[cat].append(cand)
 
-                # Para cada categoría detectada, si tiene < limit, rellenar
+                # Para cada categoría detectada, si tiene < MIN_CATEGORY_RESULTS, rellenar
                 for cat_name, items in results_by_category.items():
-                    if len(items) < limit and cat_name in candidates_by_cat:
+                    if len(items) < MIN_CATEGORY_RESULTS and cat_name in candidates_by_cat:
                         existing_ids = {r.get('id') for r in items}
                         available = [c for c in candidates_by_cat[cat_name] if c.id not in existing_ids]
 
-                        # Agregar mejores candidatos hasta llegar a limit
-                        for cand in available[:(limit - len(items))]:
+                        # Agregar mejores candidatos hasta llegar a MIN_CATEGORY_RESULTS
+                        for cand in available[:(MIN_CATEGORY_RESULTS - len(items))]:
                             pimg = cand.primary_image if hasattr(cand, 'primary_image') else (
                                 Image.query.filter_by(product_id=cand.id, is_primary=True).first() or
                                 Image.query.filter_by(product_id=cand.id).first()
