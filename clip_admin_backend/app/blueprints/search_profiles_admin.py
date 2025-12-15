@@ -18,6 +18,17 @@ bp = Blueprint("search_profiles_admin", __name__, url_prefix="/search-profiles-a
 logger = logging.getLogger(__name__)
 
 
+def _json_safe(obj):
+    """Convierte sets en listas recursivamente para serializar a JSON/Jinja."""
+    if isinstance(obj, set):
+        return sorted(obj)
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_json_safe(v) for v in obj]
+    return obj
+
+
 def admin_required(f):
     """Verifica que el usuario sea admin."""
 
@@ -124,9 +135,9 @@ def edit_client_profile(client_id):
         return render_template(
             "search_profiles/edit.html",
             client=client,
-            profile=profile,
+            profile=_json_safe(profile),
             categories=[{"id": c.id, "name": c.name, "alternative_terms": c.alternative_terms} for c in categories],
-            overrides=overrides,
+            overrides=_json_safe(overrides),
         )
 
     except Exception as e:
