@@ -30,6 +30,7 @@ ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
 ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
 ENV HF_HOME=/app/.cache/huggingface
+ENV TRANSFORMERS_OFFLINE=1
 ENV PYTHONPATH=/app
 ENV PORT=5000
 
