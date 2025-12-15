@@ -12,6 +12,7 @@ Estructura:
 
 import json
 import hashlib
+import os
 from typing import Dict, List, Optional, Set, Tuple
 from app import db
 import logging
@@ -21,6 +22,25 @@ logger = logging.getLogger(__name__)
 # Cache en memoria simple (sin Redis)
 _profile_cache = {}  # client_id -> profile
 _cache_timestamps = {}  # client_id -> timestamp
+
+# spaCy (lemmatización española) - carga perezosa para evitar overhead si falta el modelo
+_spacy_nlp = None
+_SPACY_MODEL = os.getenv("SPACY_MODEL", "es_core_news_sm")
+
+
+def _load_spacy_model():
+    global _spacy_nlp
+    if _spacy_nlp is not None:
+        return _spacy_nlp
+    try:
+        import spacy
+
+        _spacy_nlp = spacy.load(_SPACY_MODEL, disable=["ner", "textcat"])
+        logger.info(f"spaCy cargado para perfiles de búsqueda: {_SPACY_MODEL}")
+    except Exception as e:
+        logger.warning(f"No se pudo cargar spaCy ({_SPACY_MODEL}). Se usará fallback simple. Detalle: {e}")
+        _spacy_nlp = None
+    return _spacy_nlp
 
 
 # ============================================================================
@@ -280,21 +300,34 @@ class SearchProfilesService:
 
     @staticmethod
     def normalize_tokens(text: str, profile: Dict) -> List[str]:
-        """Normaliza tokens usando el mapa de variantes del perfil."""
+        """Normaliza tokens usando spaCy (si está disponible) + variantes del perfil."""
         if not text:
             return []
 
         variants_map = profile.get("variants_map", {})
-        raw_tokens = text.lower().replace("-", " ").replace("_", " ").split()
+        stop_tokens = {"de", "del", "la", "el", "y", "con", "sin", "en", "un", "una", "unos", "unas", "lo", "al"}
+
+        tokens: List[str] = []
+        nlp = _load_spacy_model()
+        if nlp:
+            try:
+                doc = nlp(text.lower())
+                tokens = [t.lemma_.lower() if t.lemma_ else t.text.lower() for t in doc if t.is_alpha]
+            except Exception as e:
+                logger.warning(f"Fallo spaCy en normalize_tokens, usando fallback simple: {e}")
+                tokens = []
+
+        if not tokens:
+            tokens = text.lower().replace("-", " ").replace("_", " ").split()
 
         normalized = []
-        for token in raw_tokens:
+        for token in tokens:
             clean_token = "".join(c for c in token if c.isalpha())
             if not clean_token:
                 continue
 
             mapped_token = variants_map.get(clean_token, clean_token)
-            if mapped_token not in {"de", "del", "la", "el", "y", "con", "sin", "en"}:
+            if mapped_token not in stop_tokens:
                 normalized.append(mapped_token)
 
         return normalized
