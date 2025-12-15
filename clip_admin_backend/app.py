@@ -516,16 +516,6 @@ def register_blueprints(app):
     except Exception as e:
         print(f"✗ Error registrando tiendanube_webhooks blueprint: {e}")
 
-    # 🆕 Blueprint de administración de Perfiles de Búsqueda por Industria
-    try:
-        from app.blueprints.search_profiles_admin import bp as search_profiles_admin_bp
-        app.register_blueprint(search_profiles_admin_bp)
-        print("✓ Blueprint search_profiles_admin registrado")
-    except ImportError as e:
-        print(f"✗ Error importando search_profiles_admin blueprint: {e}")
-    except Exception as e:
-        print(f"✗ Error registrando search_profiles_admin blueprint: {e}")
-
     # 🆕 Registrar módulos personalizados de búsqueda por cliente
     try:
         from app.search_modules import register_client_module
