@@ -1686,6 +1686,11 @@ def text_search():
                                 import json
                                 image_embedding = json.loads(primary_image.clip_embedding)
                                 image_vec = np.array(image_embedding, dtype=np.float32)
+                                
+                                # 🔧 CRÍTICO: Normalizar el vector de imagen (debe tener norma 1)
+                                norm = np.linalg.norm(image_vec)
+                                if norm > 0:
+                                    image_vec = image_vec / norm
 
                                 # Para cada modificador, inferir si está presente
                                 for mod in modifiers_for_clip:
@@ -1693,7 +1698,7 @@ def text_search():
                                         image_vec,
                                         mod,
                                         categoria=categoria_extraida,
-                                        threshold=0.55
+                                        threshold=0.35  # Ajustado de 0.55 a 0.35 (más realista para CLIP)
                                     )
                                     clip_inference_scores[product.id][mod] = inference
 
