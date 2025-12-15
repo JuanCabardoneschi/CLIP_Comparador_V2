@@ -11,7 +11,6 @@ Werkzeug==3.0.1                 # WSGI utilities (password hashing)
 # ============================================================================
 SQLAlchemy==2.0.23              # ORM core
 psycopg2-binary==2.9.9          # PostgreSQL driver (OBLIGATORIO - NO SQLite)
-redis==5.0.1                    # Cache y sesiones
 
 # ============================================================================
 # AUTHENTICATION & SECURITY

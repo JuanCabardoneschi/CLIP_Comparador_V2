@@ -7,7 +7,7 @@ Cada perfil es un conjunto de reglas que se aplican por `client.industry`, con p
 Estructura:
 - Perfil base (industry): variants_map, category_synonyms, color_tokens, name_en_ignore, filter_strategy
 - Overrides por cliente: Guardados en Client.integration_config.search_rules
-- Cache: Redis con clave por client_id y versionado por timestamp
+- Cache: En memoria con TTL de 1 hora
 """
 
 import json
@@ -241,7 +241,7 @@ class SearchProfilesService:
             Dict con reglas de búsqueda (variants_map, category_synonyms, etc.)
         """
         import time
-        
+
         # Intentar obtener del cache en memoria
         cache_key = client_id
         if not force_reload and cache_key in _profile_cache:
@@ -282,10 +282,6 @@ class SearchProfilesService:
         # Cachear resultado en memoria
         _profile_cache[cache_key] = base_profile
         _cache_timestamps[cache_key] = time.time()
-            try:
-                redis_cache.setex(cache_key, SearchProfilesService.CACHE_TTL, json.dumps(base_profile))
-            except Exception as e:
-                logger.warning(f"Error cacheando perfil para {client_id}: {e}")
 
         return base_profile
 

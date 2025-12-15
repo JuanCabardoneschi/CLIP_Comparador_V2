@@ -15,7 +15,7 @@ Reemplazo escalable del sistema de módulos personalizados por cliente. Permite 
 1. **SearchProfilesService** (`app/services/search_profiles_service.py`)
    - Carga perfiles predefinidos por industria
    - Soporta overrides por cliente (almacenados en `Client.integration_config.search_rules`)
-   - Caché con Redis (TTL 1 hora)
+   - Caché en memoria (TTL 1 hora)
    - Métodos: `normalize_tokens()`, `expand_query()`, `detect_category_filter()`
 
 2. **Admin UI** (`app/blueprints/search_profiles_admin.py` + templates)
@@ -175,8 +175,8 @@ python test_profiles_unit.py
 
 ## Performance
 
-- **Caché:** Perfil cacheado en Redis (TTL 1h) por cliente_id
-- **Invalidación:** Al guardar overrides, se limpia el caché
+- **Caché:** Perfil cacheado en memoria (TTL 1h) por cliente_id
+- **Invalidación:** Al guardar overrides, se limpia el caché en memoria
 - **Lookup:** O(1) en memoria (dict lookups para variants_map, category_synonyms)
 - **Normalización:** ~5ms para típico query de 3-5 palabras
 

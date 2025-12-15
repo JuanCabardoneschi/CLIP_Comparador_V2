@@ -90,11 +90,7 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 1. Editar overrides para cliente fashion:
    - Agregar variante custom: "pollerita" → "falda"
 2. Guardar (POST `/search-profiles-admin/client/{id}/edit`)
-3. Verificar en Redis:
-   ```bash
-   redis-cli GET "profile:{client_id}:fashion"
-   # Debe estar vacío (invalidado)
-   ```
+3. Verificar en memory cache (automático)
 4. Hacer preview nuevamente:
    - Nuevo perfil cacheado
    - Variante custom visible
@@ -135,18 +131,14 @@ Si hay problemas:
 
 ### Métricas a monitorear (primeras 24h):
 
-1. **Redis Hit Rate** (Dashboard → Redis)
-   - Esperado: >90% para profiles (caché 1h)
-   - Si <80%: Aumentar TTL o revisar invalidación
+1. **Cache Hit Rate** (Memory cache)
+   - Esperado: >90% para profiles (TTL 1h)
+   - Si <80%: TTL muy corto o caché invalidándose constantemente
 
 2. **Query Response Time** (Search API)
    - Antes: ~800ms
    - Esperado con profiles: ~750-800ms (sin degradación)
    - Si >900ms: Revisar normalization/expansion performance
-
-3. **Memory Usage** (Railway Metrics)
-   - Pequeño incremento (~50MB) por caché de perfiles
-   - Si >500MB: Revisar leak en SearchProfilesService
 
 4. **Error Logs**
    - Buscar: `Exception`, `KeyError`, `AttributeError`
@@ -167,7 +159,7 @@ WHERE integration_config->'search_rules' IS NOT NULL;
 ## Post-Deployment Validation
 
 - [ ] All 5 endpoints responding
-- [ ] Cache working (Redis logs show hits)
+- [ ] Cache working (memory cache with TTL)
 - [ ] Fallback chain functional
 - [ ] Search API returning results with profile optimization
 - [ ] No errors in application logs (24h)

@@ -26,7 +26,7 @@
 - ✅ 20+ colores configurables
 - ✅ 5 endpoints REST con autenticación
 - ✅ Admin UI con preview en tiempo real
-- ✅ Sistema de caché Redis (TTL 1h)
+- ✅ Sistema de caché en memoria (TTL 1h)
 - ✅ Overrides por cliente (sin código)
 
 ### Documentación
@@ -61,8 +61,8 @@ Después:
 └────────────────────────────────────────────┘
          ↓
 ┌────────────────────────────────────────────┐
-│   Redis Cache (TTL 1h)                     │
-│   Clave: profile:{client_id}:{industry}    │
+│   Memory Cache (TTL 1h)                    │
+│   Clave: {client_id}                       │
 └────────────────────────────────────────────┘
          ↓
 ┌────────────────────────────────────────────┐
@@ -118,7 +118,7 @@ Sistema infiere: industry = 'fashion'
     ↓
 SearchProfilesService.get_profile(client_id, 'fashion')
     ↓
-Perfil cacheado en Redis
+Perfil cacheado en memoria
     ↓
 Listo para búsquedas optimizadas
 ```
@@ -238,7 +238,7 @@ c45e100 - Estado final
 → Documentación técnica en `docs/SEARCH_PROFILES_SYSTEM.md`
 
 ### DevOps
-→ Monitorear Redis (caché)
+→ Monitorear cache (memoria)
 → Revisar logs para errores
 → Usar checklist post-deploy
 

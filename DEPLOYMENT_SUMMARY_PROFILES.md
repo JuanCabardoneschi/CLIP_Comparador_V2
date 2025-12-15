@@ -22,7 +22,7 @@ Sistema escalable de perfiles de búsqueda por industria que reemplaza módulos 
 ### Archivos Nuevos
 1. **`app/services/search_profiles_service.py`** (450 líneas)
    - Core: Cargar perfiles, normalizar, expandir, filtrar
-   - Caché: Redis (TTL 1h)
+   - Caché: En memoria (TTL 1h)
    - Métodos públicos: `get_profile()`, `normalize_tokens()`, `expand_query()`, `detect_category_filter()`, `save_client_overrides()`
 
 2. **`app/blueprints/search_profiles_admin.py`** (250 líneas)
@@ -156,7 +156,7 @@ Si hay problema:
 - **Expansión:** ~5ms
 - **Total overhead:** ~8ms vs. antes
 - **Caché hit rate:** >90% (TTL 1h)
-- **Memory:** ~50MB (profiles en Redis)
+- **Caché:** ~50MB (profiles en memoria local)
 
 ---
 
@@ -176,7 +176,7 @@ Si hay problema:
 → Verificar que blueprint está registrado en `app.py`
 
 ### Síntoma: Profile no carga
-→ Verificar Redis está accesible
+→ Verificar que el servicio está corriendo
 → Verificar `Client.industry` está seteado
 
 ### Síntoma: Búsquedas lentas
@@ -204,7 +204,7 @@ Client.integration_config.search_rules = {
 
 **Caché:**
 ```
-Redis key: profile:{client_id}:{industry}
+Memory cache (diccionario Python)
 TTL: 3600 segundos (1 hora)
 Invalidado automáticamente al guardar overrides
 ```

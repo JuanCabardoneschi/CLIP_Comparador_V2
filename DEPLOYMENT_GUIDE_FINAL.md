@@ -102,7 +102,7 @@ curl -X POST https://your-railway-app.up.railway.app/api/search \
 
 **Paso 2: Auto-inicialización**
 - `SearchProfilesService.get_profile(client_id, 'fashion')`
-- Perfil fashion cargado en Redis
+- Perfil fashion cacheado en memoria
 - Cache listo
 
 **Paso 3: Admin Verifica**
@@ -177,7 +177,7 @@ with app.app_context():
 ## 📊 Monitoreo (Primeras 24h)
 
 ### Métricas Clave
-1. **Redis Hit Rate**: Dashboard → Redis → Hit Rate
+1. **Memory Cache Performance**: Memory cache hits vs misses
    - Esperado: >85%
    - Si <70%: TTL muy corto o caché invalidándose constantemente
 
@@ -193,7 +193,7 @@ with app.app_context():
 ### Alertas Automáticas (Considerar)
 - Si error rate >1% en 5 min → Notificar
 - Si response time >1.5s p95 → Investigar
-- Si Redis down → Fallback a búsqueda sin caché (más lenta pero funcional)
+- Fallback a búsqueda sin caché si hay problemas de memoria
 
 ---
 
@@ -227,15 +227,8 @@ SearchProfilesService.save_client_overrides(client_id, {"filter_strategy": "broa
 ```
 
 ### Problema: "Cache no invalida después de guardar"
-**Causa:** Redis no conectada
+**Causa:** Cache en memoria - revisar si está limpiándose
 **Solución:**
-```bash
-# Verificar Redis
-redis-cli PING  # Debe retornar PONG
-
-# Si Railway: Check Redis service status
-Railway Dashboard → Redis service → Logs
-```
 
 ---
 

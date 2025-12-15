@@ -1,443 +1,238 @@
-﻿# CLIP Comparador V2 - Sistema SaaS de Búsqueda Visual# CLIP Comparador V2 - Sistema SaaS de B├║squeda Visual
+# CLIP Comparador V2 - Sistema SaaS de Búsqueda Visual
 
+## 📋 Descripción
 
+Sistema SaaS moderno de búsqueda visual inteligente con arquitectura unificada Flask, optimizado para Railway Hobby Plan ($5/mes).
 
-## 📋 Descripción## ­ƒÄ» Descripci├│n
+## 🏗️ Arquitectura Unificada
 
-Sistema SaaS moderno de búsqueda visual inteligente con arquitectura unificada Flask, optimizado para Railway Hobby Plan ($5/mes).Sistema SaaS moderno de b├║squeda visual inteligente con arquitectura dual optimizada para Railway Hobby Plan ($5/mes).
+### Backend Flask Completo
 
-
-
-## 🏗️ Arquitectura Unificada## ­ƒÅù´©Å Arquitectura Dual
-
-
-
-### Backend Flask Completo### M├│dulo 1: Backend Admin (Flask)
-
-- **Puerto:** 5000- **Puerto:** 5000
-
-- **Funciones:**- **Funci├│n:** Gesti├│n de clientes, productos, categor├¡as e im├ígenes
-
-  - Panel de administración (clientes, productos, categorías, imágenes)- **Stack:** Flask 3.x + PostgreSQL + Redis + Bootstrap 5 + Cloudinary
-
-  - API de búsqueda visual con CLIP (`/api/search`)- **URL:** admin.clip-comparador.railway.app
-
+- **Puerto:** 5000
+- **Funciones:**
+  - Panel de administración (clientes, productos, categorías, imágenes)
+  - API de búsqueda visual con CLIP (`/api/search`)
   - API externa de inventario (`/api/external/inventory`)
+  - Gestión de stock y productos
+- **Stack:** Flask 3.x + PostgreSQL + Bootstrap 5 + Cloudinary + CLIP (ViT-B/16)
+- **URL Producción:** https://clip-comparador-v2.railway.app
 
-  - Gestión de stock y productos### M├│dulo 2: Search API (FastAPI)
-
-- **Stack:** Flask 3.x + PostgreSQL + Redis + Bootstrap 5 + Cloudinary + CLIP (ViT-B/16)- **Puerto:** 8000
-
-- **URL Producción:** https://clip-comparador-v2.railway.app- **Funci├│n:** API de b├║squeda visual con CLIP
-
-- **Stack:** FastAPI + CLIP (ViT-B/16) + PostgreSQL (readonly) + Redis
-
-## 📁 Estructura del Proyecto- **URL:** api.clip-comparador.railway.app
-
-
-
-```## ­ƒôü Estructura del Proyecto
-
-clip_admin_backend/           # Aplicación Flask Unificada
-
-├── app/```
-
-│   ├── models/              # Modelos SQLAlchemy (Client, Product, Category, Image)clip_admin_backend/           # M├│dulo Backend Admin
-
-│   ├── blueprints/          # Rutas organizadas por funcionalidadÔö£ÔöÇÔöÇ app/
-
-│   │   ├── api.py           # API de búsqueda visual (/api/search)Ôöé   Ôö£ÔöÇÔöÇ models/              # Modelos SQLAlchemy
-
-│   │   ├── products.py      # CRUD de productos con atributos dinámicosÔöé   Ôö£ÔöÇÔöÇ blueprints/          # Rutas organizadas por funcionalidad
-
-│   │   ├── inventory.py     # Panel admin de stock (nuevo oct 2025)Ôöé   Ôö£ÔöÇÔöÇ static/              # CSS, JS, im├ígenes
-
-│   │   ├── external_inventory.py  # API externa inventario (nuevo oct 2025)Ôöé   Ôö£ÔöÇÔöÇ templates/           # Templates Jinja2
-
-│   │   ├── images.py        # Gestión de imágenesÔöé   ÔööÔöÇÔöÇ utils/               # Utilidades
-
-│   │   ├── categories.py    # Gestión de categorías
-
-│   │   └── ...              # Otros módulosÔö£ÔöÇÔöÇ requirements.txt         # Dependencias específicas
-
-│   ├── utils/               ÔööÔöÇÔöÇ app.py                   # Aplicaci├│n principal Flask
-
-│   │   ├── api_auth.py      # Decorador @require_api_key (nuevo oct 2025)
-
-│   │   └── ...              # Utilidadesclip_search_api/             # M├│dulo Search API
-
-│   ├── templates/           # Templates Jinja2 + Bootstrap 5Ôö£ÔöÇÔöÇ app/
-
-│   ├── static/              # CSS, JS, imágenes, widgetÔöé   Ôö£ÔöÇÔöÇ core/               # CLIP Engine + Search Engine
-
-│   └── services/            # Cloudinary, Image ManagerÔöé   Ôö£ÔöÇÔöÇ middleware/         # Autenticación + Rate Limiting
-
-├── requirements.txt         # Dependencias PythonÔöé   ÔööÔöÇÔöÇ utils/              # Database + Utilidades
-
-└── app.py                   # Aplicación principal FlaskÔö£ÔöÇÔöÇ requirements.txt        # Dependencias espec├¡ficas
-
-ÔööÔöÇÔöÇ main.py                 # Aplicaci├│n principal FastAPI
-
-shared/                      # Recursos compartidos
-
-├── database/                # Scripts de inicializaciónshared/                      # Recursos compartidos
-
-└── docker/                  # DockerfilesÔö£ÔöÇÔöÇ database/               # Scripts de inicializaci├│n
-
-Ôö£ÔöÇÔöÇ docker/                 # Dockerfiles
-
-docs/                        # DocumentaciónÔööÔöÇÔöÇ config/                 # Configuraciones comunes
-
-├── API_INVENTARIO_EXTERNA.md  # API de stock (nuevo oct 2025)
-
-├── TOOLS_REFERENCE.md       # Referencia de herramientasdocs/                       # Documentaci├│n
-
-├── SETUP_POSTGRES_LOCAL.md  # Setup PostgreSQL localÔö£ÔöÇÔöÇ api/                    # Documentaci├│n de API
-
-└── ...                      # Más documentaciónÔööÔöÇÔöÇ deployment/             # Gu├¡as de despliegue
+## 📁 Estructura del Proyecto
 
 ```
+clip_admin_backend/           # Aplicación Flask Unificada
+├── app/
+│   ├── models/              # Modelos SQLAlchemy
+│   ├── blueprints/          # Rutas organizadas por funcionalidad
+│   │   ├── api.py           # API de búsqueda visual
+│   │   ├── products.py      # CRUD de productos
+│   │   ├── inventory.py     # Panel admin de stock
+│   │   ├── external_inventory.py  # API externa inventario
+│   │   ├── images.py        # Gestión de imágenes
+│   │   ├── categories.py    # Gestión de categorías
+│   │   └── ...              # Otros módulos
+│   ├── utils/               # Utilidades
+│   ├── templates/           # Templates Jinja2
+│   ├── static/              # CSS, JS, imágenes, widget
+│   └── services/            # Cloudinary, Image Manager
+├── requirements.txt         # Dependencias Python
+└── app.py                   # Aplicación principal Flask
+
+shared/                      # Recursos compartidos
+├── database/                # Scripts de inicialización
+└── docker/                  # Dockerfiles
+
+docs/                        # Documentación
+├── API_INVENTARIO_EXTERNA.md
+├── TOOLS_REFERENCE.md
+├── SETUP_POSTGRES_LOCAL.md
+└── ...                      # Más documentación
 
 tools/                       # Herramientas de mantenimiento
-
-├── diagnostics/             # Scripts de diagnóstico## ­ƒÜÇ Tecnolog├¡as Principales
-
+├── diagnostics/             # Scripts de diagnóstico
 ├── maintenance/             # Scripts de limpieza
+├── migrations/              # Migraciones manuales
+└── sync/                    # Sincronización Railway ↔ Local
+```
 
-├── migrations/              # Migraciones manuales### Backend Admin
+## 🚀 Tecnologías Principales
 
-└── sync/                    # Sincronización Railway ↔ Local- **Framework:** Flask 3.x con factory pattern
-
-```- **Base de Datos:** PostgreSQL con SQLAlchemy ORM
-
-- **Autenticaci├│n:** Flask-Login + JWT
-
-## 🚀 Tecnologías Principales- **Frontend:** Bootstrap 5 + Jinja2 templates
-
-- **Storage:** Cloudinary para im├ígenes
-
-### Backend- **Cache:** Redis para sesiones y cache
+### Backend Admin
 
 - **Framework:** Flask 3.x con blueprint architecture
-
-- **Base de Datos:** PostgreSQL 15+ con SQLAlchemy ORM### Search API
-
-- **Extensiones DB:** pgvector (búsqueda vectorial), uuid-ossp- **Framework:** FastAPI con async/await
-
-- **Autenticación:** Flask-Login (admin) + API Keys (externa)- **IA:** CLIP (ViT-B/16) optimizado para CPU
-
-- **Frontend:** Bootstrap 5 + Jinja2 templates- **Base de Datos:** PostgreSQL (acceso readonly)
-
-- **Storage:** Cloudinary para imágenes- **Autenticaci├│n:** API Keys con rate limiting
-
-- **Cache:** Redis para sesiones y embeddings- **Cache:** Redis para resultados y embeddings
-
-- **Vectores:** pgvector para b├║squeda eficiente
+- **Base de Datos:** PostgreSQL 15+ con SQLAlchemy ORM
+- **Extensiones DB:** pgvector (búsqueda vectorial), uuid-ossp
+- **Autenticación:** Flask-Login (admin) + API Keys (externa)
+- **Frontend:** Bootstrap 5 + Jinja2 templates
+- **Storage:** Cloudinary para imágenes
+- **Cache:** Cache en memoria con TTL (no requiere Redis)
 
 ### IA/ML
 
-- **Modelo:** CLIP (ViT-B/16) optimizado para CPU## ­ƒôª Instalaci├│n y Configuraci├│n
-
+- **Modelo:** CLIP (ViT-B/16) optimizado para CPU
 - **Función:** Embeddings visuales para búsqueda por similitud
+- **Vectores:** pgvector para búsqueda eficiente de similitud coseno
+- **Centroides:** Detección automática de categoría por centroide
 
-- **Vectores:** pgvector para búsqueda eficiente de similitud coseno### Prerrequisitos
+### Atributos Dinámicos
 
-- **Centroides:** Detección automática de categoría por centroide- Python 3.11+
-
-- PostgreSQL 15+ con extensi├│n pgvector
-
-### Atributos Dinámicos- Redis 7+
-
-- **Sistema JSONB:** Metadata flexible de productos sin schema fijo- Cuenta Cloudinary (tier gratuito)
-
+- **Sistema JSONB:** Metadata flexible de productos sin schema fijo
 - **Tipos soportados:** text, number, list (multi-select), date, boolean
+- **Configuración:** Por cliente, con validación y ordenamiento
 
-- **Configuración:** Por cliente, con validación y ordenamiento### Variables de Entorno
+## 🔧 Instalación y Configuración
 
-```bash
-
-## 🔧 Instalación y Configuración# Base de datos compartida
-
-DATABASE_URL=postgresql://user:password@localhost/clip_comparador_v2
-
-### PrerrequisitosREDIS_URL=redis://localhost:6379
+### Prerrequisitos
 
 - Python 3.10+
+- PostgreSQL 15+ con extensión pgvector (REQUERIDO - no usar SQLite)
+- Cuenta Cloudinary (tier gratuito suficiente)
 
-- PostgreSQL 15+ con extensión pgvector (REQUERIDO - no usar SQLite)# Backend Admin
-
-- Redis 7+FLASK_SECRET_KEY=your_secret_key
-
-- Cuenta Cloudinary (tier gratuito suficiente)JWT_SECRET_KEY=your_jwt_secret
-
-CLOUDINARY_CLOUD_NAME=your_cloud_name
-
-### Setup LocalCLOUDINARY_API_KEY=your_api_key
-
-CLOUDINARY_API_SECRET=your_api_secret
+### Setup Local
 
 #### 1. Instalar PostgreSQL
 
-```bash# Search API
+```bash
+# Windows: Descargar de https://www.postgresql.org/download/
+# Verificar instalación:
+psql --version
 
-# Windows: Descargar de https://www.postgresql.org/download/API_TITLE=CLIP Search API
-
-# Verificar instalación:API_VERSION=2.0.0
-
-psql --versionCORS_ORIGINS=*
-
-MAX_UPLOAD_SIZE=10485760
-
-# Ejecutar script de setupENABLE_REDIS_CACHE=true
-
-.\setup_postgres.ps1```
-
+# Ejecutar script de setup:
+.\setup_postgres.ps1
 ```
 
-### Instalaci├│n
+#### 2. Configurar Entorno
 
-#### 2. Configurar Entorno```bash
-
-```bash# Clonar e instalar dependencias
-
-# Copiar template de configuraciónpip install -r requirements.txt
-
+```bash
+# Copiar template de configuración
 cp .env.local.example .env.local
 
-# Inicializar base de datos
-
-# Editar .env.local con tus credenciales:python shared/database/init_db.py
-
+# Editar .env.local con tus credenciales:
 # - DATABASE_URL (PostgreSQL local)
-
-# - CLOUDINARY_* (credenciales de Cloudinary)# Ejecutar Backend Admin
-
-# - FLASK_SECRET_KEYcd clip_admin_backend && python app.py
-
+# - CLOUDINARY_* (credenciales de Cloudinary)
+# - FLASK_SECRET_KEY
 ```
 
-# Ejecutar Search API (en otra terminal)
+#### 3. Instalar Dependencias
 
-#### 3. Instalar Dependenciascd clip_search_api && python main.py
-
-```bash```
-
+```bash
 pip install -r requirements.txt
+```
 
-```## ­ƒîÉ Deployment en Railway
+#### 4. Inicializar Base de Datos
 
-
-
-#### 4. Inicializar Base de Datos### Configuraci├│n Railway
-
-```bash- **Plan:** Hobby ($5/mes)
-
-python setup_local_postgres.py- **Base de datos:** PostgreSQL compartida
-
-```- **Redis:** Instancia compartida
-
-- **Servicios:** 2 independientes
+```bash
+python setup_local_postgres.py
+```
 
 #### 5. Ejecutar Aplicación
 
-```bash### URLs de Producci├│n
+```bash
+# Opción 1: Script rápido
+.\start.ps1
 
-# Opción 1: Script rápido- **Admin Panel:** https://admin.clip-comparador.railway.app
-
-.\start.ps1- **Search API:** https://api.clip-comparador.railway.app
-
-- **API Docs:** https://api.clip-comparador.railway.app/docs
-
-# Opción 2: Con validaciones
-
-.\start_local.ps1## ­ƒöæ Caracter├¡sticas Principales
-
-
-
-# Opción 3: Manual### Multi-tenancy
-
-cd clip_admin_backend- Aislamiento completo por cliente
-
-python app.py- API keys ├║nicas por cliente
-
-```- Rate limiting personalizable
-
-- Analytics individuales
+# Opción 2: Manual
+cd clip_admin_backend
+python app.py
+```
 
 Acceso: http://localhost:5000
 
-### Optimizaci├│n Railway
+### Variables de Entorno
 
-### Variables de Entorno- Uso m├¡nimo de memoria (512MB)
-
-- CPU only (sin GPU)
-
-```bash- Cache inteligente
-
-# Base de datos (REQUERIDO)- Conexiones optimizadas
-
+```bash
+# Base de datos (REQUERIDO)
 DATABASE_URL=postgresql://postgres:password@localhost:5432/clip_comparador_v2
 
-### Seguridad
-
-# Redis (REQUERIDO)- Autenticaci├│n JWT
-
-REDIS_URL=redis://localhost:6379- API keys con hash SHA-256
-
-- Rate limiting global e individual
-
-# Flask (REQUERIDO)- Whitelist de IPs
-
-FLASK_SECRET_KEY=tu_clave_secreta_muy_larga_y_segura- Validaci├│n de archivos
-
+# Flask (REQUERIDO)
+FLASK_SECRET_KEY=tu_clave_secreta_muy_larga_y_segura
 JWT_SECRET_KEY=otra_clave_secreta_para_jwt
 
-## ­ƒôè Modelo de Negocio SaaS
-
 # Cloudinary (REQUERIDO para imágenes)
-
-CLOUDINARY_CLOUD_NAME=tu_cloud_name### Planes
-
-CLOUDINARY_API_KEY=tu_api_key- **Starter:** 1000 b├║squedas/mes - Gratis
-
-CLOUDINARY_API_SECRET=tu_api_secret- **Professional:** 10,000 b├║squedas/mes - $29/mes
-
-- **Enterprise:** Ilimitado - $99/mes
+CLOUDINARY_CLOUD_NAME=tu_cloud_name
+CLOUDINARY_API_KEY=tu_api_key
+CLOUDINARY_API_SECRET=tu_api_secret
 
 # Opcional
+FLASK_ENV=development
+FLASK_DEBUG=1
+```
 
-FLASK_ENV=development### Monetizaci├│n
+## 🎯 Características Principales
 
-FLASK_DEBUG=1- API keys por suscripci├│n
-
-```- Rate limiting autom├ítico
-
-- Analytics detallados
-
-## 🎯 Características Principales- Soporte t├®cnico
-
-
-
-### ✅ Multi-tenancy SaaS## ­ƒôê Escalabilidad
+### ✅ Multi-tenancy SaaS
 
 - Aislamiento completo por cliente con UUID
-
-- API keys únicas por cliente (`clip_xxxx...`)### Horizontal
-
-- Rate limiting personalizable- M├║ltiples instancias de Search API
-
-- Analytics individuales por cliente- Load balancer autom├ítico
-
-- Cache distribuido
+- API keys únicas por cliente (`clip_xxxx...`)
+- Rate limiting personalizable
+- Analytics individuales por cliente
 
 ### ✅ Búsqueda Visual con CLIP
 
-- Embeddings de 512 dimensiones (ViT-B/16)### Vertical
-
-- Búsqueda por similitud coseno con pgvector- Upgrade autom├ítico de Railway
-
-- Detección automática de categoría por centroide- Optimizaci├│n de embeddings
-
-- Optimización configurable (sensitivity sliders)- ├ìndices de base de datos
-
-- Cache de embeddings en Redis
-
-## ­ƒöº Desarrollo
+- Embeddings de 512 dimensiones (ViT-B/16)
+- Búsqueda por similitud coseno con pgvector
+- Detección automática de categoría por centroide
+- Optimización configurable
 
 ### ✅ Atributos Dinámicos de Productos
 
-- Sistema JSONB flexible sin schema fijo### Testing
-
-- Configuración por cliente```bash
-
-- Tipos: text, number, list, date, boolean# Tests Backend Admin
-
-- Multi-select para atributos tipo listacd clip_admin_backend && python -m pytest
-
+- Sistema JSONB flexible sin schema fijo
+- Configuración por cliente
+- Tipos: text, number, list, date, boolean
+- Multi-select para atributos tipo lista
 - Validación y ordenamiento
 
-# Tests Search API
-
-### ✅ Gestión de Inventario (Nuevo - Octubre 2025)cd clip_search_api && python -m pytest
-
-```
+### ✅ Gestión de Inventario (Nuevo - Octubre 2025)
 
 #### Panel de Administración de Stock
 
-- **Ruta:** `/inventory/`### Linting
-
-- **Características:**```bash
-
-  - Dashboard con estadísticas (total, sin stock, bajo stock, disponible)# Formatear c├│digo
-
-  - Filtros por categoría, búsqueda, nivel de stockblack .
-
-  - Ajuste inline con botones +/-isort .
-
-  - Establecer stock absolutoflake8 .
-
-  - Indicadores visuales (🔴 sin stock, 🟡 ≤10, 🟢 >10)```
-
+- **Ruta:** `/inventory/`
+- **Características:**
+  - Dashboard con estadísticas (total, sin stock, bajo stock, disponible)
+  - Filtros por categoría, búsqueda, nivel de stock
+  - Ajuste inline con botones +/-
+  - Establecer stock absoluto
+  - Indicadores visuales (🔴 sin stock, 🟡 ≤10, 🟢 >10)
   - Updates en tiempo real con AJAX
-
-## ­ƒôÜ Documentaci├│n T├®cnica
 
 #### API Externa de Inventario
 
-- **Autenticación:** API Key vía header `X-API-Key`- [Especificaci├│n Completa](./CLIP_COMPARADOR_V2_SPECIFICATION.md)
-
-- **Endpoints:**- [API Reference](./docs/api/)
-
-  - `POST /api/external/inventory/reduce-stock` - Reducir stock (post-venta)- [Deployment Guide](./docs/deployment/)
-
+- **Autenticación:** API Key vía header `X-API-Key`
+- **Endpoints:**
+  - `POST /api/external/inventory/reduce-stock` - Reducir stock (post-venta)
   - `GET /api/external/inventory/check-stock` - Consultar disponibilidad
+  - `POST /api/external/inventory/bulk-check-stock` - Consultas masivas
 
-  - `POST /api/external/inventory/bulk-check-stock` - Consultas masivas---
+**Documentación completa:** [docs/API_INVENTARIO_EXTERNA.md](docs/API_INVENTARIO_EXTERNA.md)
 
+**Ejemplo de uso:**
 
+```python
+import requests
 
-**Documentación completa:** [docs/API_INVENTARIO_EXTERNA.md](docs/API_INVENTARIO_EXTERNA.md)## ­ƒåÜ Comparaci├│n V1 vs V2
-
-
-
-**Ejemplo de uso:**| Caracter├¡stica | V1 | V2 |
-
-```python|---------------|----|----|
-
-import requests| Arquitectura | Monol├¡tica | Dual (Admin + API) |
-
-| Tenancy | Single | Multi-tenant |
-
-headers = {| Autenticaci├│n | B├ísica | JWT + API Keys |
-
-    "X-API-Key": "clip_tu_api_key_aqui",| Escalabilidad | Limitada | Horizontal |
-
-    "Content-Type": "application/json"| Deployment | Manual | Railway autom├ítico |
-
-}| Costo | Variable | $5/mes fijo |
-
-| Performance | B├ísica | Optimizada + Cache |
+headers = {
+    "X-API-Key": "clip_tu_api_key_aqui",
+    "Content-Type": "application/json"
+}
 
 # Reducir stock después de una venta
-
-response = requests.post(---
-
+response = requests.post(
     "https://tu-dominio.railway.app/api/external/inventory/reduce-stock",
-
-    headers=headers,> ­ƒÆí **Nota:** Este es el sistema V2 completamente nuevo. La V1 est├í disponible en el workspace original para referencia.
-
+    headers=headers,
     json={"sku": "PROD-001", "quantity": 1, "reason": "Venta POS"}
 )
 ```
 
 ### ✅ Optimización Railway Hobby Plan
+
 - Uso mínimo de memoria (<512MB)
 - CPU only (sin GPU necesaria)
-- Cache inteligente en Redis
+- Cache inteligente en memoria
 - Conexiones optimizadas a PostgreSQL
 - Auto-deploy desde GitHub
 
 ### ✅ Seguridad
+
 - Flask-Login para panel admin
 - API Keys con decorador `@require_api_key`
 - Rate limiting por cliente
@@ -447,6 +242,7 @@ response = requests.post(---
 ## 🛠️ Herramientas de Desarrollo
 
 ### Scripts Principales (Raíz)
+
 - `railway_db_tool.py` - Gestión completa de BD Railway
 - `backup_local_db.py` - Backup de BD local
 - `restore_from_railway.ps1` - Restaurar desde Railway
@@ -457,6 +253,7 @@ response = requests.post(---
 **Ver referencia completa:** [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md)
 
 ### Testing
+
 ```bash
 # Ejecutar tests locales
 cd clip_admin_backend
@@ -469,24 +266,27 @@ python -m flake8 app/
 ## 🚢 Deployment en Railway
 
 ### Configuración
+
 - **Plan:** Hobby ($5/mes)
-- **Servicios:** 1 Flask app + PostgreSQL + Redis
+- **Servicios:** 1 Flask app + PostgreSQL
 - **Deployment:** Auto desde push a GitHub main
 - **URL:** https://clip-comparador-v2.railway.app
 
 ### Variables en Railway
+
 Configurar en Railway Dashboard:
 - `DATABASE_URL` (auto-generada por PostgreSQL plugin)
-- `REDIS_URL` (auto-generada por Redis plugin)
 - `FLASK_SECRET_KEY`
 - `CLOUDINARY_*` (3 variables)
 
 ### Scripts de Deploy Disponibles
 
 #### Deploy Interactivo (Recomendado)
+
 ```powershell
 .\deploy_to_railway.ps1
 ```
+
 **Características:**
 - Guía paso a paso con validaciones
 - Selector de tipo de commit (feat/fix/refactor/etc.)
@@ -496,6 +296,7 @@ Configurar en Railway Dashboard:
 - Información post-deploy y rollback
 
 #### Deploy Rápido
+
 ```powershell
 # Con mensaje directo
 .\quick_deploy.ps1 -Type "fix" -Message "corregir búsqueda de colores"
@@ -505,6 +306,7 @@ Configurar en Railway Dashboard:
 ```
 
 ### Comandos Railway CLI
+
 ```bash
 # Deploy manual (alternativa)
 railway up
@@ -517,6 +319,7 @@ railway connect postgresql
 ```
 
 ### Proceso de Deploy
+
 1. **Local:** Hacer cambios y testear
 2. **Deploy:** Ejecutar `.\deploy_to_railway.ps1`
 3. **Railway:** Auto-build y deploy (2-5 min)
@@ -526,6 +329,7 @@ railway connect postgresql
 ## 📊 Roadmap
 
 ### ✅ Completado (Octubre 2025)
+
 - [x] Arquitectura unificada Flask
 - [x] Multi-tenant SaaS
 - [x] CLIP visual search con centroides
@@ -535,7 +339,8 @@ railway connect postgresql
 - [x] Deployment Railway con auto-deploy
 
 ### 🔜 Próximos Pasos
-- [ ] Detección multi-producto con CLIP (zero-shot multi-categoría)
+
+- [ ] Detección multi-producto con CLIP
 - [ ] Historial de cambios de stock (audit log)
 - [ ] Notificaciones de stock crítico
 - [ ] Analytics avanzados por cliente
@@ -561,13 +366,14 @@ railway connect postgresql
 | Deployment | Manual | Railway auto-deploy |
 | Costo | Variable | $5/mes fijo |
 | Centroides | Manual | Auto-recálculo |
-| Performance | Básica | Cache Redis + optimizaciones |
+| Performance | Básica | Cache inteligente + optimizaciones |
 
 ---
 
 ## 📞 Soporte
 
 Para dudas o problemas:
+
 1. Ver [docs/TOOLS_REFERENCE.md](docs/TOOLS_REFERENCE.md) primero
 2. Revisar [BACKLOG_MEJORAS.md](BACKLOG_MEJORAS.md)
 3. Consultar documentación en `docs/`
@@ -576,4 +382,4 @@ Para dudas o problemas:
 
 > 💡 **Nota:** Este es el sistema V2 completamente refactorizado. La V1 está disponible en el workspace original para referencia.
 
-**Fecha última actualización:** 24 de Octubre, 2025
+**Fecha última actualización:** 15 de Diciembre, 2025

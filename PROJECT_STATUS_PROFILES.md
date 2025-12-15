@@ -27,8 +27,8 @@ Antes se requería crear un módulo custom para cada cliente. Ahora los clientes
 │  └──────────────────────────────────────────┘  │
 │           ↓                                     │
 │  ┌──────────────────────────────────────────┐  │
-│  │  Redis Cache (TTL 1h)                    │  │
-│  │  Key: profile:{client_id}:{industry}     │  │
+│  │  Memory Cache (TTL 1h)                   │  │
+│  │  Key: {client_id}                        │  │
 │  └──────────────────────────────────────────┘  │
 │           ↓                                     │
 │  ┌──────────────────────────────────────────┐  │
@@ -108,7 +108,7 @@ client.industry = 'fashion'
     ↓
 SearchProfilesService.get_profile(client_id, 'fashion')
     ↓
-Perfil cacheado en Redis
+Perfil cacheado en memoria
     ↓
 Listo para búsquedas
 ```
@@ -163,12 +163,12 @@ Guardar → DB + Caché invalida
 - [x] Analizar limitaciones de módulos custom
 - [x] Diseñar estructura de perfiles (variants_map, category_synonyms, etc.)
 - [x] Definir estrategia de fallback (profile → module → generic)
-- [x] Evaluar opciones de caché (Redis con TTL)
+- [x] Evaluar opciones de caché (en memoria con TTL)
 
 ### Backend Service
 - [x] Crear `SearchProfilesService` con métodos core
 - [x] Implementar `DEFAULT_PROFILES` (fashion, uniforms, generic)
-- [x] Caché en Redis con invalidación
+- [x] Caché en memoria con invalidación
 - [x] Overrides por cliente en `Client.integration_config`
 
 ### Admin UI
@@ -268,7 +268,7 @@ Guardar → DB + Caché invalida
 → Debugging via `SearchProfilesService` en app shell
 
 ### Para DevOps/SysAdmin
-→ Monitorear Redis (caché) y response times
+→ Monitorear cache (memoria) y response times
 → Revisar logs en Railway para errores
 → Seguir checklist de validación post-deploy
 
