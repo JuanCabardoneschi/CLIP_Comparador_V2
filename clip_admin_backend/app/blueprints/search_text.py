@@ -3073,18 +3073,35 @@ def text_search():
 
             # 3️⃣ TOP-UP: Completar categorías con < MIN_CATEGORY_RESULTS desde candidatos sin filtrar
             try:
+                print(f"\n🔄 TOP-UP: Iniciando completado de categorías hasta {MIN_CATEGORY_RESULTS}")
+                print(f"   Categorías actuales en results_by_category: {list(results_by_category.keys())}")
+                print(f"   Cantidad por categoría: {[(k, len(v)) for k, v in results_by_category.items()]}")
+                
                 # IMPORTANTE: Obtener TODOS los productos de las categorías detectadas
                 # (no solo los que pasaron filtrado), para rellenar hasta 3 por categoría
                 all_matched_cat_ids = []
                 if detection_metadata and detection_metadata.get('matched_categories'):
+                    print(f"   Categorías detectadas en metadata: {detection_metadata.get('matched_categories')}")
                     for matched_cat in detection_metadata.get('matched_categories'):
-                        cat = Category.query.filter_by(
-                            client_id=client.id,
-                            name=matched_cat
-                        ).first()
-                        if cat:
-                            all_matched_cat_ids.append(cat.id)
-                
+                        # Buscar categoría - matched_cat son objetos dict con 'name', 'id', etc
+                        if isinstance(matched_cat, dict):
+                            cat_id = matched_cat.get('id')
+                            cat_name = matched_cat.get('name')
+                            if cat_id:
+                                all_matched_cat_ids.append(cat_id)
+                                print(f"      ✅ Categoría '{cat_name}' (ID: {cat_id}) agregada")
+                        else:
+                            # Si es string, buscar por nombre
+                            cat = Category.query.filter_by(
+                                client_id=client.id,
+                                name=matched_cat
+                            ).first()
+                            if cat:
+                                all_matched_cat_ids.append(cat.id)
+                                print(f"      ✅ Categoría '{cat.name}' (ID: {cat.id}) agregada")
+                            else:
+                                print(f"      ⚠️ No se encontró categoría '{matched_cat}' en BD")
+
                 # Mapa de TODOS los productos disponibles en las categorías detectadas
                 candidates_by_cat = {}
                 if all_matched_cat_ids:
@@ -3094,20 +3111,29 @@ def text_search():
                         Product.is_active == True
                     ).all()
                     
+                    print(f"   Total productos disponibles en categorías detectadas: {len(all_available)}")
+
                     for prod in all_available:
                         cat = prod.category.name if prod.category else 'Sin categoría'
                         if cat not in candidates_by_cat:
                             candidates_by_cat[cat] = []
                         candidates_by_cat[cat].append(prod)
+                    
+                    print(f"   Productos por categoría disponibles: {[(k, len(v)) for k, v in candidates_by_cat.items()]}")
 
                 # Para cada categoría detectada, si tiene < MIN_CATEGORY_RESULTS, rellenar
                 for cat_name, items in results_by_category.items():
+                    initial_count = len(items)
                     if len(items) < MIN_CATEGORY_RESULTS and cat_name in candidates_by_cat:
                         existing_ids = {r.get('id') for r in items}
                         available = [c for c in candidates_by_cat[cat_name] if c.id not in existing_ids]
+                        
+                        needed = MIN_CATEGORY_RESULTS - len(items)
+                        print(f"   📦 {cat_name}: tiene {initial_count}, necesita {needed} más")
+                        print(f"      Disponibles para agregar: {len(available)}")
 
                         # Agregar mejores candidatos hasta llegar a MIN_CATEGORY_RESULTS
-                        for cand in available[:(MIN_CATEGORY_RESULTS - len(items))]:
+                        for cand in available[:needed]:
                             pimg = cand.primary_image if hasattr(cand, 'primary_image') else (
                                 Image.query.filter_by(product_id=cand.id, is_primary=True).first() or
                                 Image.query.filter_by(product_id=cand.id).first()
@@ -3141,9 +3167,18 @@ def text_search():
                                 'attributes_match_ratio': 0.0,
                                 'product_url': cand_url  # URL para Tiendanube (prioriza external_url)
                             })
-                        print(f"📦 {cat_name}: completadas a {len(results_by_category[cat_name])} productos")
+                        
+                        final_count = len(results_by_category[cat_name])
+                        print(f"      ✅ {cat_name}: completada de {initial_count} a {final_count} productos")
+                    elif len(items) < MIN_CATEGORY_RESULTS:
+                        print(f"      ⚠️ {cat_name}: tiene {len(items)} pero no hay candidatos disponibles para rellenar")
+                    else:
+                        print(f"      ✓ {cat_name}: ya tiene {len(items)} productos (suficiente)")
+                        
             except Exception as e:
+                import traceback
                 print(f"⚠️ Top-up de categorías falló: {e}")
+                print(f"   Traceback: {traceback.format_exc()}")
 
         # Construir respuesta
         response_data = {
