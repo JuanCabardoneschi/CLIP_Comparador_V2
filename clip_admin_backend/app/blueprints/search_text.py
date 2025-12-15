@@ -2990,6 +2990,12 @@ def text_search():
 
         # Respuesta final
         elapsed = time.time() - start_time
+        
+        # MARCADOR TEMPRANO: Confirmar que el código llega aquí
+        log_error(f"\n✅✅✅ BÚSQUEDA COMPLETADA - Punto A (ANTES de agrupación) ✅✅✅")
+        log_error(f"   elapsed={elapsed:.3f}s")
+        log_error(f"   formatted_results count: {len(formatted_results)}")
+        log_error(f"   detection_metadata: {bool(detection_metadata)}")
 
         print(f"✅ Búsqueda completada: {len(formatted_results)} resultados en {elapsed:.3f}s")
         log_verbose(LogCategory.NLP, "="*60 + "\n")
