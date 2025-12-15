@@ -1514,71 +1514,101 @@ def text_search():
                         scored_by_attrs = []
                         total_criteria = len(attr_value_filters)
 
+                        # 🎯 3 NIVELES DE SCORING:
+                        # 1. SQL match (tiene atributo Y coincide)
+                        # 2. Sin atributo (pasa a CLIP para inferencia)
+                        # 3. Tiene atributo pero NO coincide (fallback)
+
+                        sql_matches = []      # Tier 1: Coincidencia SQL exacta
+                        for_clip_inference = []  # Tier 2: Sin atributo → CLIP decide
+                        no_matches = []       # Tier 3: Tiene atributo diferente
+
                         for prod in filtered_products:
                             attrs = prod.attributes or {}
                             matches = 0
                             match_details = {}
+                            has_any_requested_attr = False  # Tiene alguno de los atributos solicitados en BD
 
                             # Contar cuántos atributos coinciden
                             for k, accepted in attr_value_filters.items():
                                 raw_val = attrs.get(k)
                                 if raw_val is not None:
+                                    has_any_requested_attr = True
                                     norm_val = _norm_val_filter(raw_val)
                                     if norm_val in accepted:
                                         matches += 1
                                         match_details[k] = norm_val
 
-                            # Guardar producto con su score de coincidencias
-                            scored_by_attrs.append({
+                            item = {
                                 'product': prod,
                                 'attr_matches': matches,
                                 'attr_total': total_criteria,
                                 'attr_score': matches / total_criteria if total_criteria > 0 else 0,
                                 'match_details': match_details
-                            })
+                            }
 
-                        # 🎯 CAMBIO: Filtrar estrictamente productos que cumplan AL MENOS 1 criterio
-                        # (en lugar de mantener todos y solo puntuar)
-                        scored_by_attrs_filtered = [x for x in scored_by_attrs if x['attr_matches'] > 0]
+                            if matches > 0:
+                                # Tier 1: Coincidencia SQL
+                                sql_matches.append(item)
+                            elif not has_any_requested_attr:
+                                # Tier 2: No tiene el atributo en BD → CLIP inferirá
+                                for_clip_inference.append(item)
+                            else:
+                                # Tier 3: Tiene atributo pero no coincide
+                                no_matches.append(item)
 
-                        # Ordenar por cantidad de coincidencias (mayor a menor)
-                        scored_by_attrs_filtered.sort(key=lambda x: x['attr_matches'], reverse=True)
+                        # Ordenar cada tier
+                        sql_matches.sort(key=lambda x: x['attr_matches'], reverse=True)
 
-                        print(f"   ✅ Filtrado estricto por atributos aplicado: {attr_value_filters}")
-                        print(f"   📊 Distribución de coincidencias:")
-                        for i in range(total_criteria, 0, -1):  # Solo mostrar >= 1
-                            count = sum(1 for x in scored_by_attrs_filtered if x['attr_matches'] == i)
-                            if count > 0:
-                                log_verbose(LogCategory.NLP, f"      {i}/{total_criteria} criterios: {count} productos")
+                        print(f"   ✅ Filtrado por atributos aplicado: {attr_value_filters}")
+                        print(f"   📊 Distribución:")
+                        print(f"      🎯 Tier 1 (SQL match): {len(sql_matches)} productos")
+                        print(f"      🔍 Tier 2 (sin atributo, evaluar con CLIP): {len(for_clip_inference)} productos")
+                        print(f"      ⚪ Tier 3 (otro valor): {len(no_matches)} productos")
 
-                        # Mantener referencia al scoring para usar después
-                        product_attr_scores = {item['product'].id: item for item in scored_by_attrs_filtered}
-                        filtered_products = [item['product'] for item in scored_by_attrs_filtered]
+                        # Inicializar producto_attr_scores y filtered_products
+                        product_attr_scores = {}
+                        filtered_products = []
 
-                        # 🔄 FALLBACK: Si resultados < mínimo de categoría, agregar productos similares
+                        # Agregar Tier 1 (SQL matches)
+                        for item in sql_matches:
+                            product_attr_scores[item['product'].id] = {**item, 'tier': 1}
+                            filtered_products.append(item['product'])
+
+                        # Agregar Tier 2 (para CLIP) - marcar para que CLIP los evalúe después
+                        clip_candidates_ids = set()
+                        for item in for_clip_inference:
+                            product_attr_scores[item['product'].id] = {**item, 'tier': 2, 'needs_clip': True}
+                            filtered_products.append(item['product'])
+                            clip_candidates_ids.add(item['product'].id)
+
+                        # Tier 3 se mantendrá como fallback potencial
+                        fallback_products = no_matches
+
+                        # Tier 3 se mantendrá como fallback potencial
+                        fallback_products = no_matches
+
+                        # 🔄 FALLBACK: Si resultados < mínimo de categoría, agregar productos Tier 3
                         MIN_CATEGORY_RESULTS = 3
                         fallback_product_ids = set()  # IDs de productos agregados como fallback
 
-                        if len(filtered_products) < MIN_CATEGORY_RESULTS:
-                            # Productos que NO pasaron el filtro (tienen 0 coincidencias)
-                            fallback_products = [x for x in scored_by_attrs if x['attr_matches'] == 0]
+                        if len(filtered_products) < MIN_CATEGORY_RESULTS and fallback_products:
                             needed = MIN_CATEGORY_RESULTS - len(filtered_products)
+                            print(f"   🔄 Fallback: Solo {len(filtered_products)} productos, agregando hasta {needed} de Tier 3")
 
-                            if fallback_products and needed > 0:
-                                print(f"   🔄 Fallback: Solo {len(filtered_products)} coincidencias, agregando hasta {needed} productos similares")
-                                # Tomar los primeros N del fallback (orden original de categoría)
-                                fallback_to_add = fallback_products[:needed]
+                            # Tomar los primeros N del fallback
+                            fallback_to_add = fallback_products[:needed]
 
-                                # Agregar al dict de scores con marca especial
-                                for item in fallback_to_add:
-                                    fallback_product_ids.add(item['product'].id)  # Marcar como fallback
-                                    product_attr_scores[item['product'].id] = {
-                                        **item,
-                                        'is_fallback': True
-                                    }
-                                    filtered_products.append(item['product'])
+                            for item in fallback_to_add:
+                                fallback_product_ids.add(item['product'].id)
+                                product_attr_scores[item['product'].id] = {
+                                    **item,
+                                    'tier': 3,
+                                    'is_fallback': True
+                                }
+                                filtered_products.append(item['product'])
 
-                                print(f"      ✅ Agregados {len(fallback_to_add)} productos fallback")
+                            print(f"      ✅ Agregados {len(fallback_to_add)} productos fallback")
                     else:
                         print("   ℹ️  Sin restricciones de valor específicas (solo presencia de atributos)")
                         product_attr_scores = {}
@@ -1586,13 +1616,39 @@ def text_search():
 
                 print(f"   📦 Productos después de filtrado fuerte: {len(filtered_products)}")
 
+                # Determinar si necesitamos CLIP:
+                # 1. Hay modificadores no configurados → siempre usar CLIP
+                # 2. Hay productos Tier 2 (sin atributo) → usar CLIP para inferir atributos configurados
+                needs_clip = False
+                modifiers_for_clip = []
+
+                if modificadores_no_configurados:
+                    needs_clip = True
+                    modifiers_for_clip = list(modificadores_no_configurados)
+
+                # Verificar si hay productos Tier 2 (sin atributo que necesita CLIP)
+                try:
+                    tier2_products = [p for p in filtered_products if product_attr_scores.get(p.id, {}).get('tier') == 2]
+                    if tier2_products and atributos_encontrados:
+                        needs_clip = True
+                        # Agregar modificadores de atributos encontrados que no estén ya
+                        for attr in atributos_encontrados:
+                            mod_detected = attr.get('modificador')  # El modificador original (ej: "negro")
+                            if mod_detected and mod_detected not in modifiers_for_clip:
+                                modifiers_for_clip.append(mod_detected)
+                except Exception:
+                    pass
+
                 # Si NO hay filtrado CLIP pero SÍ hay scoring por atributos, ya están ordenados
                 # (de mayor a menor coincidencia) desde el paso anterior
 
-                # 3.3: Aplicar FILTRADO DÉBIL (CLIP) para modificadores no configurados
-                if modificadores_no_configurados and filtered_products:
-                    print(f"\n🎯 Aplicando inferencia de ATRIBUTOS (CLIP) para modificadores no configurados:")
-                    print(f"   Modificadores: {modificadores_no_configurados}")
+                # 3.3: Aplicar INFERENCIA CLIP para modificadores no configurados O productos Tier 2
+                if needs_clip and filtered_products:
+                    if modificadores_no_configurados:
+                        print(f"\n🎯 Aplicando inferencia de ATRIBUTOS (CLIP) para modificadores no configurados:")
+                    else:
+                        print(f"\n🎯 Aplicando inferencia de ATRIBUTOS (CLIP) para productos sin atributo en BD:")
+                    print(f"   Modificadores a evaluar: {modifiers_for_clip}")
 
                     # Obtener categoría extraída para contexto
                     categoria_extraida = extraction_result.get('category', '')
@@ -1616,7 +1672,7 @@ def text_search():
 
                             if not primary_image or not primary_image.clip_embedding:
                                 # Sin imagen/embedding, no puede inferir
-                                for mod in modificadores_no_configurados:
+                                for mod in modifiers_for_clip:
                                     clip_inference_scores[product.id][mod] = {
                                         'has_attribute': False,
                                         'max_similarity': 0.0,
@@ -1631,7 +1687,7 @@ def text_search():
                                 image_vec = np.array(image_embedding, dtype=np.float32)
 
                                 # Para cada modificador, inferir si está presente
-                                for mod in modificadores_no_configurados:
+                                for mod in modifiers_for_clip:
                                     inference = _infer_attribute_from_clip(
                                         image_vec,
                                         mod,
@@ -1642,7 +1698,7 @@ def text_search():
 
                             except Exception as e:
                                 log_error(f"Error parseando embedding de producto {product.id}: {e}")
-                                for mod in modificadores_no_configurados:
+                                for mod in modifiers_for_clip:
                                     clip_inference_scores[product.id][mod] = {
                                         'has_attribute': False,
                                         'max_similarity': 0.0,
@@ -1653,7 +1709,7 @@ def text_search():
                         clip_product_scores = {}
                         for prod_id, mod_inferences in clip_inference_scores.items():
                             has_attr_count = sum(1 for inf in mod_inferences.values() if inf.get('has_attribute'))
-                            total_mods = len(modificadores_no_configurados)
+                            total_mods = len(modifiers_for_clip)
                             match_ratio = has_attr_count / total_mods if total_mods > 0 else 0
 
                             # Score máx similaridad entre todos los modificadores
@@ -1667,12 +1723,27 @@ def text_search():
 
                         print(f"   ✅ Inferencia CLIP completada para {len(filtered_products)} productos")
 
+                        # 🎯 Actualizar tier de productos según resultados CLIP
+                        # Productos Tier 2 con CLIP positivo → mantienen Tier 2 (prioridad media)
+                        # Productos Tier 2 con CLIP negativo → bajan a Tier 3 (fallback)
+                        for prod_id, clip_score in clip_product_scores.items():
+                            if prod_id in product_attr_scores and product_attr_scores[prod_id].get('tier') == 2:
+                                if clip_score.get('match_ratio', 0) > 0:
+                                    # CLIP detectó el atributo → mantener Tier 2
+                                    product_attr_scores[prod_id]['clip_confirmed'] = True
+                                    product_attr_scores[prod_id]['clip_score'] = clip_score
+                                else:
+                                    # CLIP NO detectó → bajar a Tier 3
+                                    product_attr_scores[prod_id]['tier'] = 3
+                                    product_attr_scores[prod_id]['clip_rejected'] = True
+                                    fallback_product_ids.add(prod_id)
+
                     except Exception as e_clip:
                         log_error(f"Error en inferencia CLIP: {e_clip}")
                         clip_product_scores = {prod.id: {'match_ratio': 0, 'max_similarity': 0} for prod in filtered_products}
 
                 else:
-                    print(f"\n📝 Sin modificadores no configurados, no se aplica filtrado CLIP")
+                    print(f"\n📝 Sin necesidad de inferencia CLIP")
                     clip_product_scores = {}
 
                 # 🛑 BREAKPOINT: Retornar resultados de prueba
@@ -2657,7 +2728,7 @@ def text_search():
                 fallback_ids_set = fallback_product_ids  # Definido en el filtrado fuerte
             except NameError:
                 fallback_ids_set = set()
-            
+
             formatted_results.sort(
                 key=lambda r: (
                     0 if r.get("id") in fallback_ids_set else 1,  # No-fallback=1 (primero), Fallback=0 (después)
