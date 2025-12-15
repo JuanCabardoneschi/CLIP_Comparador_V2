@@ -92,8 +92,10 @@ def get_integration(integration_id):
         # Llama al servicio de sync con las opciones
         from app.services.tiendanube_sync_service import start_full_sync
         result = start_full_sync(str(integration.client_id), sync_options)
-        # Recarga el objeto por si cambió el estado
-        db.session.refresh(integration)
+        # Recarga el objeto desde la BD para obtener estado actualizado
+        db.session.expire(integration)
+        integration = TiendanubeIntegration.query.get(integration_id)
+        logger.info(f"POST sync completado - Estado actual en BD: {integration.sync_status}")
         return render_template("tiendanube_admin/integration_detail.html", integration=integration, result=result)
 
     return render_template("tiendanube_admin/integration_detail.html", integration=integration)

@@ -154,10 +154,13 @@ class TiendanubeSyncService:
 
             # Actualizar estado de integración
             self.integration.sync_status = 'completed'
+            self.integration.sync_error = None
             self.integration.last_sync_at = datetime.utcnow()
             db.session.commit()
+            db.session.refresh(self.integration)
 
             logger.info(f"Sincronización completa exitosa en {duration:.2f}s")
+            logger.info(f"Estado guardado en BD: sync_status={self.integration.sync_status}, last_sync_at={self.integration.last_sync_at}")
 
             return {
                 'success': True,
@@ -170,6 +173,8 @@ class TiendanubeSyncService:
             self.integration.sync_status = 'error'
             self.integration.sync_error = str(e)
             db.session.commit()
+            db.session.refresh(self.integration)
+            logger.error(f"Estado de error guardado en BD: {self.integration.sync_status}, error: {self.integration.sync_error}")
 
             return {
                 'success': False,
