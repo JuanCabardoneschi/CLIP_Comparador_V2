@@ -75,7 +75,7 @@ def list_profiles():
         )
     except Exception as e:
         logger.error(f"Error listando perfiles: {e}")
-        return render_template("error.html", error=str(e)), 500
+        return f"Error listando perfiles: {e}", 500
 
 
 @bp.route("/client/<client_id>/edit", methods=["GET", "POST"])
@@ -131,7 +131,7 @@ def edit_client_profile(client_id):
 
     except Exception as e:
         logger.error(f"Error editando perfil para {client_id}: {e}")
-        return render_template("error.html", error=str(e)), 500
+        return f"Error editando perfil: {e}", 500
 
 
 @bp.route("/client/<client_id>/preview", methods=["POST"])
