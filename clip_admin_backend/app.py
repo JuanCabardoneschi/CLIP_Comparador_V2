@@ -390,13 +390,13 @@ def register_blueprints(app):
     except ImportError as e:
         print(f"✗ Error importando embeddings blueprint: {e}")
 
-    # Blueprint de monitoreo del sistema
-    try:
-        from app.blueprints.system_monitor import bp as system_monitor_bp
-        app.register_blueprint(system_monitor_bp)
-        print("✓ Blueprint system_monitor registrado")
-    except ImportError as e:
-        print(f"✗ Error importando system_monitor blueprint: {e}")
+    # Blueprint de monitoreo del sistema (desactivado; métricas se ven en Railway)
+    # try:
+    #     from app.blueprints.system_monitor import bp as system_monitor_bp
+    #     app.register_blueprint(system_monitor_bp)
+    #     print("✓ Blueprint system_monitor registrado")
+    # except ImportError as e:
+    #     print(f"✗ Error importando system_monitor blueprint: {e}")
 
     # Blueprint de atributos de productos
     try:
