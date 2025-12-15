@@ -22,7 +22,6 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, current_dir)
 sys.path.insert(0, parent_dir)
 
-import redis
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, flash, jsonify
 from flask_cors import CORS
@@ -46,8 +45,7 @@ else:
     load_dotenv()
     print("📄 Cargando configuración desde variables de entorno")
 
-# Cliente Redis global
-redis_client = None
+# Sin Redis: la caché es solo en memoria (ver services)
 
 # Importar extensiones y modelos del paquete app
 from app import db, login_manager, jwt
@@ -139,23 +137,9 @@ def create_app(config_name=None):
     )
     login_manager.login_message_category = "info"
 
-    # Configurar Redis (opcional en desarrollo)
-    global redis_client
-    redis_url = os.getenv("REDIS_URL")
-    if redis_url:
-        try:
-            redis_client = redis.from_url(redis_url, decode_responses=True)
-            print("✅ Redis conectado correctamente")
-        except Exception as e:
-            print(f"⚠️  Error conectando a Redis: {e}")
-            redis_client = None
-    else:
-        redis_client = None
-        print("ℹ️  Redis no configurado (usando cache en memoria)")
-
-    # Exportar redis_cache desde el paquete app para que los blueprints lo puedan importar
+    # Sin Redis: exportar referencia nula para compatibilidad con imports legacy
     import app
-    app.redis_cache = redis_client
+    app.redis_cache = None
 
     # User loader para Flask-Login
     @login_manager.user_loader

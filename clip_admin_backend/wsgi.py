@@ -13,7 +13,6 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, current_dir)
 sys.path.insert(0, parent_dir)
 
-import redis
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, flash
 from flask_cors import CORS
@@ -34,8 +33,7 @@ elif os.path.exists(env_path):
 else:
     load_dotenv()
 
-# Cliente Redis global
-redis_client = None
+# Sin Redis: las caches son en memoria dentro de servicios
 
 def create_app(config_name=None):
     """Factory pattern para crear la aplicación Flask"""
@@ -116,17 +114,7 @@ def create_app(config_name=None):
     )
     login_manager.login_message_category = "info"
 
-    # Configurar Redis (opcional en desarrollo)
-    global redis_client
-    redis_url = os.getenv("REDIS_URL")
-    if redis_url:
-        try:
-            redis_client = redis.from_url(redis_url, decode_responses=True)
-        except Exception as e:
-            print(f"⚠️  Error conectando a Redis: {e}")
-            redis_client = None
-    else:
-        redis_client = None
+    # Sin Redis: cache en memoria manejada por los servicios
 
     # User loader para Flask-Login
     @login_manager.user_loader
