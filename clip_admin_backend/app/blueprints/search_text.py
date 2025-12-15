@@ -1750,15 +1750,64 @@ def text_search():
                                 if norm > 0:
                                     image_vec = image_vec / norm
 
-                                # Para cada modificador, inferir si está presente
+                                # Para cada modificador, inferir si está presente usando embeddings de BD
                                 for mod in modifiers_for_clip:
-                                    inference = _infer_attribute_from_clip(
-                                        image_vec,
-                                        mod,
-                                        categoria=categoria_extraida,
-                                        threshold=0.28  # Umbral 0.28 para captar similitudes válidas (ej: negro=0.285)
-                                    )
-                                    clip_inference_scores[product.id][mod] = inference
+                                    # Intentar obtener embedding precomputado de la tabla embeddings
+                                    try:
+                                        from app.models.embedding import Embedding
+                                        # Buscar embedding en BD (vocab:X, color:X, o key directa)
+                                        emb_record = (
+                                            Embedding.query.filter_by(key=f"vocab:{mod}", type='vocabulary').first() or
+                                            Embedding.query.filter_by(key=f"color:{mod}", type='color').first() or
+                                            Embedding.query.filter(Embedding.key.ilike(f"%{mod}%")).first()
+                                        )
+
+                                        if emb_record:
+                                            # Usar embedding precalculado
+                                            mod_vec = np.array(json.loads(emb_record.embedding), dtype=np.float32)
+                                            # Normalizar
+                                            norm_m = np.linalg.norm(mod_vec)
+                                            if norm_m > 0:
+                                                mod_vec = mod_vec / norm_m
+
+                                            # Similitud directa
+                                            similarity = float(np.dot(image_vec, mod_vec))
+
+                                            # Clasificar confianza
+                                            if similarity >= 0.65:
+                                                confidence = 'high'
+                                                has_attr = True
+                                            elif similarity >= 0.28:
+                                                confidence = 'medium'
+                                                has_attr = True
+                                            else:
+                                                confidence = 'low'
+                                                has_attr = False
+
+                                            clip_inference_scores[product.id][mod] = {
+                                                'has_attribute': has_attr,
+                                                'max_similarity': similarity,
+                                                'confidence': confidence
+                                            }
+                                        else:
+                                            # Fallback: usar función con prompts si no hay embedding en BD
+                                            inference = _infer_attribute_from_clip_cached(
+                                                image_vec,
+                                                mod,
+                                                categoria=categoria_extraida,
+                                                threshold=0.28
+                                            )
+                                            clip_inference_scores[product.id][mod] = inference
+                                    except Exception as e_emb:
+                                        log_error(f"Error obteniendo embedding de '{mod}': {e_emb}")
+                                        # Fallback
+                                        inference = _infer_attribute_from_clip_cached(
+                                            image_vec,
+                                            mod,
+                                            categoria=categoria_extraida,
+                                            threshold=0.28
+                                        )
+                                        clip_inference_scores[product.id][mod] = inference
 
                             except Exception as e:
                                 log_error(f"Error parseando embedding de producto {product.id}: {e}")
@@ -2973,24 +3022,24 @@ def text_search():
         # ⭐ AGRUPACIÓN POR CATEGORÍAS HERMANAS CON TOP-UP
         # Estrategia: si múltiples categorías, devolver hasta N por categoría
         # Si una categoría queda con < N, completar desde candidatos originales
-        
+
         results_by_category = {}
         group_by_category = False
 
         if detection_metadata and len(detection_metadata.get('matched_categories', [])) > 1:
             group_by_category = True
-            
+
             # 1️⃣ Agrupar resultados filtrados por categoría
             for result in formatted_results:
                 cat_name = result.get('category', 'Sin categoría')
                 if cat_name not in results_by_category:
                     results_by_category[cat_name] = []
                 results_by_category[cat_name].append(result)
-            
+
             # 2️⃣ Recortar a `limit` por categoría (tomar los mejores)
             for cat_name in results_by_category.keys():
                 results_by_category[cat_name] = results_by_category[cat_name][:limit]
-            
+
             # 3️⃣ TOP-UP: Completar categorías con < limit desde candidatos sin filtrar
             try:
                 # Mapa de candidatos originales por categoría
@@ -3000,13 +3049,13 @@ def text_search():
                     if cat not in candidates_by_cat:
                         candidates_by_cat[cat] = []
                     candidates_by_cat[cat].append(cand)
-                
+
                 # Para cada categoría detectada, si tiene < limit, rellenar
                 for cat_name, items in results_by_category.items():
                     if len(items) < limit and cat_name in candidates_by_cat:
                         existing_ids = {r.get('id') for r in items}
                         available = [c for c in candidates_by_cat[cat_name] if c.id not in existing_ids]
-                        
+
                         # Agregar mejores candidatos hasta llegar a limit
                         for cand in available[:(limit - len(items))]:
                             pimg = cand.primary_image if hasattr(cand, 'primary_image') else (
@@ -3032,7 +3081,7 @@ def text_search():
                         print(f"📦 {cat_name}: completadas a {len(results_by_category[cat_name])} productos")
             except Exception as e:
                 print(f"⚠️ Top-up de categorías falló: {e}")
-        
+
         # Construir respuesta
         response_data = {
             "success": True,
