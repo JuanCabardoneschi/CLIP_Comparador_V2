@@ -1727,22 +1727,41 @@ def text_search():
                         # 🎯 Actualizar tier de productos según resultados CLIP
                         # Productos Tier 2 con CLIP positivo → mantienen Tier 2 (prioridad media)
                         # Productos Tier 2 con CLIP negativo → bajan a Tier 3 (fallback)
+                        tier2_confirmed = []
+                        tier2_rejected = []
+
                         for prod_id, clip_score in clip_product_scores.items():
                             if prod_id in product_attr_scores and product_attr_scores[prod_id].get('tier') == 2:
-                                if clip_score.get('match_ratio', 0) > 0:
+                                product = product_attr_scores[prod_id]['product']
+                                match_ratio = clip_score.get('match_ratio', 0)
+                                max_sim = clip_score.get('max_similarity', 0)
+
+                                if match_ratio > 0:
                                     # CLIP detectó el atributo → mantener Tier 2
                                     product_attr_scores[prod_id]['clip_confirmed'] = True
                                     product_attr_scores[prod_id]['clip_score'] = clip_score
+                                    tier2_confirmed.append((product.name, match_ratio, max_sim))
                                 else:
                                     # CLIP NO detectó → bajar a Tier 3
                                     product_attr_scores[prod_id]['tier'] = 3
                                     product_attr_scores[prod_id]['clip_rejected'] = True
                                     fallback_product_ids.add(prod_id)
+                                    tier2_rejected.append((product.name, max_sim))
+
+                        # Mostrar resultados de inferencia CLIP
+                        print(f"\n   📊 Resultados inferencia CLIP Tier 2:")
+                        if tier2_confirmed:
+                            print(f"      ✅ Confirmados ({len(tier2_confirmed)}):")
+                            for name, ratio, sim in tier2_confirmed[:5]:  # Top 5
+                                print(f"         • {name}: match_ratio={ratio:.2f}, similarity={sim:.3f}")
+                        if tier2_rejected:
+                            print(f"      ❌ Rechazados ({len(tier2_rejected)}):")
+                            for name, sim in tier2_rejected[:5]:  # Top 5
+                                print(f"         • {name}: similarity={sim:.3f}")
 
                     except Exception as e_clip:
                         log_error(f"Error en inferencia CLIP: {e_clip}")
                         clip_product_scores = {prod.id: {'match_ratio': 0, 'max_similarity': 0} for prod in filtered_products}
-
                 else:
                     print(f"\n📝 Sin necesidad de inferencia CLIP")
                     clip_product_scores = {}
