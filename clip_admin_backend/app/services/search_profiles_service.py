@@ -52,68 +52,27 @@ DEFAULT_PROFILES = {
         "name": "Moda / Fashion",
         "description": "Perfil para tiendas de ropa, accesorios y textiles",
         "variants_map": {
-            # Shorts
-            "shorts": "short",
+            # Variaciones ortográficas
             "shore": "short",
             "shores": "short",
-            # Remeras
-            "remeras": "remera",
+            # Sinónimos de dominio
             "camiseta": "remera",
-            "camisetas": "remera",
             "polera": "remera",
-            "poleras": "remera",
             "top": "remera",
-            "tops": "remera",
-            # Pantalones
-            "pantalones": "pantalon",
             "jean": "pantalon",
             "jeans": "pantalon",
             "pant": "pantalon",
-            "pants": "pantalon",
-            # Bermudas
-            "bermudas": "bermuda",
-            # Faldas
-            "faldas": "falda",
-            # Vestidos
-            "vestidos": "vestido",
-            # Chaquetas
-            "chaquetas": "chaqueta",
             "saco": "chaqueta",
-            "sacos": "chaqueta",
             "blazer": "chaqueta",
-            "blazers": "chaqueta",
-            # Abrigos
-            "abrigos": "abrigo",
             "campera": "abrigo",
-            "camperas": "abrigo",
             "chamarra": "abrigo",
-            "chamarras": "abrigo",
-            # Sweaters
-            "sweaters": "sweater",
             "buzo": "sweater",
-            "buzos": "sweater",
-            # Gorras
-            "gorras": "gorra",
             "gorro": "gorra",
-            "gorros": "gorra",
             "cap": "gorra",
-            "caps": "gorra",
-            # Zapatos
-            "zapatos": "zapato",
             "bota": "zapato",
-            "botas": "zapato",
             "calzado": "zapato",
             "sandalia": "zapato",
-            "sandalias": "zapato",
-            # Accesorios
-            "cinturones": "cinturon",
-            "bolsos": "bolso",
             "cartera": "bolso",
-            "carteras": "bolso",
-            "collares": "collar",
-            "pulseras": "pulsera",
-            "aretes": "arete",
-            "anillos": "anillo",
         },
         "category_synonyms": {
             "short": ["shore", "shores", "shorts"],
@@ -145,32 +104,15 @@ DEFAULT_PROFILES = {
         "name": "Uniformes / Ropa de Trabajo",
         "description": "Perfil para uniformes corporativos y ropa de trabajo",
         "variants_map": {
-            "delantales": "delantal",
+            # Sinónimos de dominio
             "mandil": "delantal",
-            "mandiles": "delantal",
-            "ambos": "ambo",
             "uniforme": "ambo",
-            "uniformes": "ambo",
-            "camisas": "camisa",
-            "chaquetas": "chaqueta",
             "casaca": "chaqueta",
-            "casacas": "chaqueta",
             "chamarra": "chaqueta",
-            "chamarras": "chaqueta",
-            "buzos": "buzo",
             "sudadera": "buzo",
-            "sudaderas": "buzo",
-            "cardigans": "cardigan",
             "rebeca": "cardigan",
-            "rebecas": "cardigan",
-            "chalecos": "chaleco",
-            "gorros": "gorro",
             "gorra": "gorro",
-            "gorras": "gorro",
             "cap": "gorro",
-            "caps": "gorro",
-            "zapatos": "zapato",
-            "zuecos": "zueco",
             "calzado": "zapato",
         },
         "category_synonyms": {
