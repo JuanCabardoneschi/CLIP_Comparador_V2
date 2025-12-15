@@ -28,6 +28,8 @@ WORKDIR /app/clip_admin_backend
 # Variables de entorno por defecto
 ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
+ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
+ENV HF_HOME=/app/.cache/huggingface
 ENV PYTHONPATH=/app
 ENV PORT=5000
 
