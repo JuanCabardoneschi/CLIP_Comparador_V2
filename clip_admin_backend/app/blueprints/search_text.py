@@ -3057,8 +3057,14 @@ def text_search():
         group_by_category = False
         MIN_CATEGORY_RESULTS = 3  # TOP 3 de cada categoría
 
+        log_verbose(LogCategory.SEARCH, f"\n🎯 EVALUANDO AGRUPACIÓN: detection_metadata exists={bool(detection_metadata)}")
+        if detection_metadata:
+            matched_cats = detection_metadata.get('matched_categories', [])
+            log_verbose(LogCategory.SEARCH, f"   matched_categories count: {len(matched_cats)}, value: {matched_cats}")
+
         if detection_metadata and len(detection_metadata.get('matched_categories', [])) > 1:
             group_by_category = True
+            log_verbose(LogCategory.SEARCH, f"🎯 AGRUPACIÓN ACTIVADA: Múltiples categorías detectadas ({len(detection_metadata.get('matched_categories', []))})")
 
             # 1️⃣ Agrupar resultados filtrados por categoría
             for result in formatted_results:
