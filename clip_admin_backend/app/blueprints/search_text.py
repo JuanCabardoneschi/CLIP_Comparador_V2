@@ -2743,6 +2743,8 @@ def text_search():
                 color_filter_value = str(detected_color_normalized).lower()
 
             if color_filter_value:
+                # Mantener una copia de todos los resultados antes del filtro de color
+                pre_color_results = list(formatted_results)
                 # Usar el token ORIGINAL detectado si existe, sino el valor normalizado
                 color_search_token = detected_color_token if detected_color_token else color_filter_value
                 color_value_normalized = color_filter_value
@@ -2841,6 +2843,20 @@ def text_search():
                         r['attributes_matched'] = matched
                         r['attributes_match_count'] = matched_count
                         r['attributes_match_ratio'] = round(match_ratio, 3)
+
+                # Si el filtrado por color deja pocos resultados, completar con fallbacks
+                try:
+                    # Objetivo total aproximado para mantener buen recall antes de agrupar
+                    target_total = rerank_limit if 'rerank_limit' in locals() else limit
+                    target_total = min(target_total, len(pre_color_results))
+                except Exception:
+                    target_total = len(pre_color_results)
+
+                if len(filtered_results) < target_total:
+                    needed = target_total - len(filtered_results)
+                    # Mantener orden original, agregando productos que no pasaron el filtro de color
+                    fallback_candidates = [r for r in pre_color_results if r not in filtered_results]
+                    filtered_results.extend(fallback_candidates[:needed])
 
                 formatted_results = filtered_results
             else:
