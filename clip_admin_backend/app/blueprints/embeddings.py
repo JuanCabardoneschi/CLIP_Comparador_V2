@@ -406,9 +406,9 @@ def get_clip_model():
         if _clip_model is None:
             log_embedding(f"Cargando modelo CLIP {model_name} ({model_id})...")
             try:
-                _clip_model = CLIPModel.from_pretrained(model_id)
+                _clip_model = CLIPModel.from_pretrained(model_id, local_files_only=True)
                 _clip_model.loaded_at = time.time()
-                _clip_processor = CLIPProcessor.from_pretrained(model_id)
+                _clip_processor = CLIPProcessor.from_pretrained(model_id, local_files_only=True)
                 _clip_current_model_name = model_name
 
                 # Configurar para CPU/GPU

@@ -144,17 +144,20 @@ def _generate_attribute_prompts(modificador: str, categoria: str = None, variant
     mod_variants = list(set(mod_variants))  # Eliminar duplicados
 
     for mod in mod_variants:
-        # Prompts en español
+        # Prompts en español e inglés para cubrir descripciones libres
         prompts.append(f"{mod}")  # Solo el modificador
+        prompts.append(f"a {mod}")  # Inglés genérico
         if categoria:
             prompts.append(f"{categoria} {mod}")  # "remera negra"
             prompts.append(f"{mod} {categoria}")  # "negra remera"
+            prompts.append(f"a {mod} {categoria}")  # "a black t-shirt"
+            prompts.append(f"{categoria} with {mod}")  # "t-shirt with pockets"
 
     return prompts
 
 
 def _infer_attribute_from_clip(image_vec: np.ndarray, modificador: str, categoria: str = None,
-                               variants: list = None, threshold: float = 0.55) -> dict:
+                               variants: list = None, threshold: float = 0.30) -> dict:
     """Infiere si una imagen tiene un atributo usando CLIP y prompts dinámicos.
 
     Args:
@@ -1686,7 +1689,7 @@ def text_search():
                                 import json
                                 image_embedding = json.loads(primary_image.clip_embedding)
                                 image_vec = np.array(image_embedding, dtype=np.float32)
-                                
+
                                 # 🔧 CRÍTICO: Normalizar el vector de imagen (debe tener norma 1)
                                 norm = np.linalg.norm(image_vec)
                                 if norm > 0:
@@ -1698,7 +1701,7 @@ def text_search():
                                         image_vec,
                                         mod,
                                         categoria=categoria_extraida,
-                                        threshold=0.35  # Ajustado de 0.55 a 0.35 (más realista para CLIP)
+                                        threshold=0.30  # Umbral más permisivo para adjetivos libres
                                     )
                                     clip_inference_scores[product.id][mod] = inference
 
@@ -1770,6 +1773,36 @@ def text_search():
                 else:
                     print(f"\n📝 Sin necesidad de inferencia CLIP")
                     clip_product_scores = {}
+
+                # Reordenar productos combinando tier, coincidencias SQL y score CLIP
+                try:
+                    ranked_products = []
+                    for prod in filtered_products:
+                        meta = product_attr_scores.get(prod.id, {}) if 'product_attr_scores' in locals() else {}
+                        clip = clip_product_scores.get(prod.id, {}) if 'clip_product_scores' in locals() else {}
+
+                        tier = meta.get('tier', 3)
+                        attr_score = meta.get('attr_score', 0)
+                        match_ratio = clip.get('match_ratio', 0)
+                        max_sim = clip.get('max_similarity', 0)
+                        is_fallback = meta.get('is_fallback', False)
+
+                        # Tier 1: priorizar attr_score; Tier 2: priorizar match_ratio + max_sim; Tier 3: se queda al final
+                        primary_score = match_ratio if tier == 2 else attr_score
+
+                        ranked_products.append((
+                            tier,
+                            -primary_score,
+                            -max_sim,
+                            -attr_score,
+                            is_fallback,
+                            prod
+                        ))
+
+                    ranked_products.sort(key=lambda x: (x[0], x[1], x[2], x[3], x[4]))
+                    filtered_products = [item[-1] for item in ranked_products]
+                except Exception as e_sort:
+                    log_error(f"Error ordenando productos post-CLIP: {e_sort}")
 
                 # 🛑 BREAKPOINT: Retornar resultados de prueba
                 # Enriquecer top_5 con imagen y cobertura de atributos fuertes/débiles
