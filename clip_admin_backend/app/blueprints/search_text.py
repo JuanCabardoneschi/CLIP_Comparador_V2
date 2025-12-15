@@ -3057,14 +3057,25 @@ def text_search():
         group_by_category = False
         MIN_CATEGORY_RESULTS = 3  # TOP 3 de cada categoría
 
-        log_verbose(LogCategory.SEARCH, f"\n🎯 EVALUANDO AGRUPACIÓN: detection_metadata exists={bool(detection_metadata)}")
+        # LOG CRÍTICO: Diagnosticar por qué no se agrupa
+        import sys
+        sys.stderr.flush()
+        sys.stdout.flush()
+        
+        log_error(f"\n🎯🎯🎯 AGRUPACIÓN - DIAGNÓSTICO CRÍTICO 🎯🎯🎯")
+        log_error(f"   detection_metadata exists: {bool(detection_metadata)}")
+        log_error(f"   detection_metadata type: {type(detection_metadata)}")
         if detection_metadata:
+            log_error(f"   detection_metadata keys: {detection_metadata.keys() if isinstance(detection_metadata, dict) else 'N/A'}")
             matched_cats = detection_metadata.get('matched_categories', [])
-            log_verbose(LogCategory.SEARCH, f"   matched_categories count: {len(matched_cats)}, value: {matched_cats}")
-
+            log_error(f"   matched_categories count: {len(matched_cats)}")
+            log_error(f"   matched_categories: {matched_cats}")
+        log_error(f"   formatted_results count: {len(formatted_results)}")
+        log_error(f"   formatted_results sample: {formatted_results[:2] if formatted_results else 'EMPTY'}")
+        
         if detection_metadata and len(detection_metadata.get('matched_categories', [])) > 1:
             group_by_category = True
-            log_verbose(LogCategory.SEARCH, f"🎯 AGRUPACIÓN ACTIVADA: Múltiples categorías detectadas ({len(detection_metadata.get('matched_categories', []))})")
+            log_error(f"✅ AGRUPACIÓN ACTIVADA: {len(detection_metadata.get('matched_categories', []))} categorías")
 
             # 1️⃣ Agrupar resultados filtrados por categoría
             for result in formatted_results:
