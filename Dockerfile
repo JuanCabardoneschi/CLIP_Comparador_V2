@@ -2,6 +2,13 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
+# Configurar caché de HuggingFace para que los modelos descargados en build se usen en runtime
+ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
+ENV HF_HOME=/app/.cache/huggingface
+
+# Crear directorio de caché (persistirá en la imagen)
+RUN mkdir -p /app/.cache/huggingface
+
 # Instalar dependencias del sistema necesarias
 RUN apt-get update && apt-get install -y \
     gcc \
@@ -31,6 +38,7 @@ ENV FLASK_ENV=production
 ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
 ENV HF_HOME=/app/.cache/huggingface
 ENV TRANSFORMERS_OFFLINE=1
+ENV HF_HUB_OFFLINE=1
 ENV PYTHONPATH=/app
 ENV PORT=5000
 
