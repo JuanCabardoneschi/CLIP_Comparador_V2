@@ -3061,7 +3061,7 @@ def text_search():
         import sys
         sys.stderr.flush()
         sys.stdout.flush()
-        
+
         log_error(f"\n🎯🎯🎯 AGRUPACIÓN - DIAGNÓSTICO CRÍTICO 🎯🎯🎯")
         log_error(f"   detection_metadata exists: {bool(detection_metadata)}")
         log_error(f"   detection_metadata type: {type(detection_metadata)}")
@@ -3072,7 +3072,7 @@ def text_search():
             log_error(f"   matched_categories: {matched_cats}")
         log_error(f"   formatted_results count: {len(formatted_results)}")
         log_error(f"   formatted_results sample: {formatted_results[:2] if formatted_results else 'EMPTY'}")
-        
+
         if detection_metadata and len(detection_metadata.get('matched_categories', [])) > 1:
             group_by_category = True
             log_error(f"✅ AGRUPACIÓN ACTIVADA: {len(detection_metadata.get('matched_categories', []))} categorías")
