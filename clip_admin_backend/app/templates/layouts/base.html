@@ -167,6 +167,14 @@
                     </li>
 
                     <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint and 'search_profiles_admin' in request.endpoint %}active{% endif %}"
+                           href="{{ url_for('search_profiles_admin.list_profiles') }}">
+                            <i class="bi bi-person-lines-fill me-2"></i>
+                            Perfiles de Búsqueda
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
                         <a class="nav-link {% if request.endpoint and 'system_config' in request.endpoint %}active{% endif %}"
                            href="{{ url_for('system_config_admin.index') }}">
                             <i class="bi bi-gear me-2"></i>
