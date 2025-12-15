@@ -157,7 +157,7 @@ def _generate_attribute_prompts(modificador: str, categoria: str = None, variant
 
 
 def _infer_attribute_from_clip(image_vec: np.ndarray, modificador: str, categoria: str = None,
-                               variants: list = None, threshold: float = 0.30) -> dict:
+                               variants: list = None, threshold: float = 0.28) -> dict:
     """Infiere si una imagen tiene un atributo usando CLIP y prompts dinámicos.
 
     Args:
@@ -1701,7 +1701,7 @@ def text_search():
                                         image_vec,
                                         mod,
                                         categoria=categoria_extraida,
-                                        threshold=0.30  # Umbral más permisivo para adjetivos libres
+                                        threshold=0.28  # Umbral 0.28 para captar similitudes válidas (ej: negro=0.285)
                                     )
                                     clip_inference_scores[product.id][mod] = inference
 
