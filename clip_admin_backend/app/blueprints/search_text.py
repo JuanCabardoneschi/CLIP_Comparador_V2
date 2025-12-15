@@ -1475,6 +1475,9 @@ def text_search():
 
                 print(f"\n📦 Base de productos (categorías detectadas): {len(base_products)} productos")
 
+                # Inicializar set de fallback products (usado más adelante si es necesario)
+                fallback_product_ids = set()
+
                 # 3.2: Aplicar FILTRADO FUERTE (atributos configurados)
                 filtered_products = base_products
                 if atributos_encontrados:
@@ -1551,9 +1554,35 @@ def text_search():
                         # Mantener referencia al scoring para usar después
                         product_attr_scores = {item['product'].id: item for item in scored_by_attrs_filtered}
                         filtered_products = [item['product'] for item in scored_by_attrs_filtered]
+
+                        # 🔄 FALLBACK: Si resultados < mínimo de categoría, agregar productos similares
+                        MIN_CATEGORY_RESULTS = 3
+                        fallback_product_ids = set()  # IDs de productos agregados como fallback
+
+                        if len(filtered_products) < MIN_CATEGORY_RESULTS:
+                            # Productos que NO pasaron el filtro (tienen 0 coincidencias)
+                            fallback_products = [x for x in scored_by_attrs if x['attr_matches'] == 0]
+                            needed = MIN_CATEGORY_RESULTS - len(filtered_products)
+
+                            if fallback_products and needed > 0:
+                                print(f"   🔄 Fallback: Solo {len(filtered_products)} coincidencias, agregando hasta {needed} productos similares")
+                                # Tomar los primeros N del fallback (orden original de categoría)
+                                fallback_to_add = fallback_products[:needed]
+
+                                # Agregar al dict de scores con marca especial
+                                for item in fallback_to_add:
+                                    fallback_product_ids.add(item['product'].id)  # Marcar como fallback
+                                    product_attr_scores[item['product'].id] = {
+                                        **item,
+                                        'is_fallback': True
+                                    }
+                                    filtered_products.append(item['product'])
+
+                                print(f"      ✅ Agregados {len(fallback_to_add)} productos fallback")
                     else:
                         print("   ℹ️  Sin restricciones de valor específicas (solo presencia de atributos)")
                         product_attr_scores = {}
+                        fallback_product_ids = set()  # Inicializar vacío si no hay filtrado
 
                 print(f"   📦 Productos después de filtrado fuerte: {len(filtered_products)}")
 
@@ -2623,8 +2652,15 @@ def text_search():
                     formatted_results = filtered_results
 
             # Reordenar: por cantidad de atributos cumplidos, luego stock, luego similitud
+            # 🔄 PRIORIDAD: Productos no-fallback primero
+            try:
+                fallback_ids_set = fallback_product_ids  # Definido en el filtrado fuerte
+            except NameError:
+                fallback_ids_set = set()
+            
             formatted_results.sort(
                 key=lambda r: (
+                    0 if r.get("id") in fallback_ids_set else 1,  # No-fallback=1 (primero), Fallback=0 (después)
                     r.get("attributes_match_count", 0),
                     1 if (r.get("stock") or 0) > 0 else 0,
                     r.get("similarity", 0.0)
