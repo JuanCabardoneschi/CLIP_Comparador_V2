@@ -2,16 +2,16 @@
   "fashion_categories": [
     "remera", "remeras", "camiseta", "camisetas",
     "camisa", "camisas", "blusa", "blusas",
-    "buzo", "buzos", "sweater", "sweaters",
+    "buzo", "buzos", "sweater",
     "campera", "camperas", "chaqueta", "chaquetas",
-    "saco", "sacos", "blazer", "blazers",
-    "chaleco", "chalecos", "top", "tops",
-    "pantalón", "pantalones", "jean", "jeans",
-    "short", "shorts", "pollera", "polleras", "falda", "faldas",
+    "saco", "sacos", "blazer",
+    "chaleco", "chalecos", "top",
+    "pantalón", "pantalones", "jean",
+    "short", "pollera", "polleras", "falda", "faldas",
     "calza", "calzas", "leggins", "leggings",
     "jogger", "joggers",
     "vestido", "vestidos", "enterito", "enteritos",
-    "overall", "overalls", "mono", "monos", "jumpsuit", "jumpsuits",
+    "overall", "mono", "monos", "jumpsuit",
     "gorra", "gorras", "gorro", "gorros",
     "bufanda", "bufandas", "guante", "guantes",
     "medias", "soquete", "soquetes", "cinturón", "cinturones",
@@ -20,7 +20,7 @@
     "sandalia", "sandalias", "bota", "botas"
   ],
   "fashion_terms": [
-    "short", "shorts", "top", "crop", "leggins", "jeggings", "blazer"
+    "short", "top", "crop", "leggins", "jeggings", "blazer"
   ],
   "color_adjectives": [
     "chocolate", "turquesa", "coral", "lavanda", "mostaza", "fucsia", "oliva"

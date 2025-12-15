@@ -124,7 +124,13 @@ def _get_nlp_es():
         return None
 
 
-def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
+def _extract_key_terms_with_dependency_parsing(text: str, client_profile: dict = None) -> dict:
+    """Extrae términos clave con análisis de dependencias.
+
+    Args:
+        text: Query del usuario
+        client_profile: Perfil de búsqueda del cliente (opcional)
+    """
     # EXTRACTOR V2 - reglas de profundidad estrictas + ignora verbos
     nlp = _get_nlp_es()
     if nlp is None:
@@ -141,8 +147,19 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
     FASHION_TERMS = set(_NLP_CONFIG.get('fashion_terms', []))
     FASHION_CATEGORIES_SET = set(_NLP_CONFIG.get('fashion_categories', []))
 
-    def _to_singular(token):
+    # Obtener variants_map del perfil si existe
+    variants_map = client_profile.get('variants_map', {}) if client_profile else {}
+
+    def _to_singular(token, variants_map=None):
+        """Normaliza token usando lemma de spaCy + variants_map opcional del perfil."""
         txt = token.text.lower()
+        lemma = token.lemma_.lower()
+
+        # 1. Si está en variants_map del perfil, usar ese mapeo
+        if variants_map and txt in variants_map:
+            return variants_map[txt]
+
+        # 2. Fallback a lógica original
         if txt in FASHION_TERMS:
             if txt.endswith('s') and len(txt) > 3:
                 return txt[:-1]
@@ -161,7 +178,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
         is_noun_candidate = (token.pos_ in ('NOUN','PROPN')) or (tl in FASHION_TERMS)
 
         if is_noun_candidate:
-            term = _to_singular(token)
+            term = _to_singular(token, variants_map)
             if term and len(term) >= 3:
                 in_categories = term in FASHION_CATEGORIES_SET
                 # Prioridad: dep relevante = 0, otros = 1
@@ -211,7 +228,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
         # CASO 0: Sustantivo hermano del principal (obl, nmod directo) → CAPTURAR como nivel 1
         # Ejemplo: "muestrame delantales con cierre" → cierre es obl de muestrame (hermano de delantales)
         if child.dep_ in ('obl', 'nmod') and child.pos_ in ('NOUN', 'PROPN'):
-            term = _to_singular(child)
+            term = _to_singular(child, variants_map)
             if term and len(term) >= 3:
                 elementos_extraidos.add(term)
                 modificadores.append(term)
@@ -225,7 +242,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                     for child_node in node.children:
                         # Coordinación encontrada: capturar como nivel 1
                         if child_node.dep_ == 'conj' and child_node.pos_ in ('NOUN', 'PROPN'):
-                            coord_term = _to_singular(child_node)
+                            coord_term = _to_singular(child_node, variants_map)
                             if coord_term and len(coord_term) >= 3:
                                 elementos_extraidos.add(coord_term)
                                 modificadores.append(coord_term)
@@ -234,7 +251,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                                 # Marcar SUS hijos como descartados
                                 for gcc in child_node.children:
                                     if gcc.is_alpha and not gcc.is_stop and gcc.dep_ not in ('case', 'cc', 'conj'):
-                                        coord_child_term = _to_singular(gcc)
+                                        coord_child_term = _to_singular(gcc, variants_map)
                                         nivel2_discarded.add(coord_child_term)
 
                                 # Continuar buscando coordinaciones más profundas
@@ -256,7 +273,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                     if gc.dep_ in ('case', 'cc', 'conj'):
                         continue
 
-                    nivel2_term = _to_singular(gc)
+                    nivel2_term = _to_singular(gc, variants_map)
                     nivel2_discarded.add(nivel2_term)
                     nivel2_terms.append(gc.text)
 
@@ -264,7 +281,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                     def discard_chain(node):
                         for ggc in node.children:
                             if ggc.is_alpha and not ggc.is_stop and ggc.dep_ not in ('case', 'cc', 'conj'):
-                                chain_term = _to_singular(ggc)
+                                chain_term = _to_singular(ggc, variants_map)
                                 nivel2_discarded.add(chain_term)
                                 nivel2_terms.append(ggc.text)
                                 discard_chain(ggc)  # Continuar recursivamente
@@ -277,7 +294,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
 
         # CASO 1: Adjetivo directo (amod) → CAPTURAR
         if child.dep_ == 'amod' and child.pos_ == 'ADJ':
-            term = _to_singular(child)
+            term = _to_singular(child, variants_map)
             if term and len(term) >= 3:
                 elementos_extraidos.add(term)
                 modificadores.append(term)
@@ -285,7 +302,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
 
         # CASO 2: Sustantivo relacionado directo (nmod, pobj, compound) → CAPTURAR
         elif child.dep_ in ('nmod', 'pobj', 'compound') and child.pos_ in ('NOUN', 'PROPN'):
-            term = _to_singular(child)
+            term = _to_singular(child, variants_map)
             if term and len(term) >= 3:
                 elementos_extraidos.add(term)
                 modificadores.append(term)
@@ -297,7 +314,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                     # Marcar como descartados para evitar fallback
                     for gc in child.children:
                         if gc.is_alpha and not gc.is_stop:
-                            nivel2_term = _to_singular(gc)
+                            nivel2_term = _to_singular(gc, variants_map)
                             nivel2_discarded.add(nivel2_term)
                     log_verbose(LogCategory.NLP, f"    ⛔ Descartando {len(nivel2_terms)} modificadores nivel 2 de '{term}': {nivel2_terms}")        # CASO 3: Preposiciones (prep) → buscar pobj dentro
         elif child.dep_ == 'prep':
@@ -305,7 +322,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                 if not prep_child.is_alpha or prep_child.is_stop or prep_child.pos_ == 'VERB':
                     continue
                 if prep_child.dep_ == 'pobj' and prep_child.pos_ in ('NOUN', 'PROPN'):
-                    term = _to_singular(prep_child)
+                    term = _to_singular(prep_child, variants_map)
                     if term and len(term) >= 3:
                         elementos_extraidos.add(term)
                         modificadores.append(term)
@@ -317,14 +334,14 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
                             # Marcar como descartados para evitar fallback
                             for gc in prep_child.children:
                                 if gc.is_alpha and not gc.is_stop:
-                                    nivel2_term = _to_singular(gc)
+                                    nivel2_term = _to_singular(gc, variants_map)
                                     nivel2_discarded.add(nivel2_term)
 
                                 # CRÍTICO: Si el hijo es otra preposición, descartar TODA la cadena
                                 if gc.dep_ == 'prep':
                                     for prep_grandchild in gc.children:
                                         if prep_grandchild.is_alpha and not prep_grandchild.is_stop:
-                                            nivel2_gc_term = _to_singular(prep_grandchild)
+                                            nivel2_gc_term = _to_singular(prep_grandchild, variants_map)
                                             nivel2_discarded.add(nivel2_gc_term)
 
                             log_verbose(LogCategory.NLP, f"    ⛔ Descartando {len(nivel2_terms)} modificadores nivel 2 de '{term}': {nivel2_terms}")
@@ -340,7 +357,7 @@ def _extract_key_terms_with_dependency_parsing(text: str) -> dict:
         if token.pos_ not in ('NOUN', 'PROPN') and token.text.lower() not in FASHION_TERMS:
             continue
 
-        term = _to_singular(token)
+        term = _to_singular(token, variants_map)
         if term and len(term) >= 3 and term not in processed_lemmas:
             elementos_extraidos.add(term)
             modificadores.append(term)
@@ -939,9 +956,17 @@ def text_search():
 
         log_search(f"[TEXT_SEARCH] Query original recibida: '{query_text}'")
 
+        # 🆕 Cargar perfil de búsqueda del cliente
+        try:
+            client_profile = SearchProfilesService.get_profile(str(client.id), client.industry)
+            log_verbose(LogCategory.NLP, f"[PROFILE] Perfil cargado: {client_profile.get('name', 'unknown')} (industry: {client.industry})")
+        except Exception as e:
+            log_error(f"Error cargando perfil de búsqueda: {e}")
+            client_profile = None
+
         # Paso 0: Normalización semántica de la frase (spaCy)
         log_verbose(LogCategory.SEARCH, f"[TEXT_SEARCH] Llamando a extractor...")
-        extraction_result = _extract_key_terms_with_dependency_parsing(query_text)
+        extraction_result = _extract_key_terms_with_dependency_parsing(query_text, client_profile)
         log_verbose(LogCategory.SEARCH, f"[TEXT_SEARCH] Extractor devolvió: {extraction_result}")
 
         cleaned_query = extraction_result.get('text', '')
@@ -1006,6 +1031,32 @@ def text_search():
 
                 modificadores = extraction_result.get('modifiers', [])
                 print(f"Modificadores detectados: {modificadores if modificadores else '(ninguno)'}")
+
+                # === COLOR TOKENS DEL PERFIL (DETECCIÓN DIRECTA EN LA QUERY) ===
+                try:
+                    profile_colors = set()
+                    if client_profile and isinstance(client_profile.get('color_tokens'), (list, set, tuple)):
+                        profile_colors = {str(c).strip().lower() for c in client_profile.get('color_tokens', []) if c}
+                    if profile_colors:
+                        nlp_colors_direct = _get_nlp_es()
+                        if nlp_colors_direct is not None:
+                            doc_colors_direct = nlp_colors_direct(query_text)
+                            added = []
+                            for tok in doc_colors_direct:
+                                tl = tok.text.lower()
+                                if tl in profile_colors and tl not in modificadores:
+                                    modificadores.append(tl)
+                                    added.append(tl)
+                            if added:
+                                print(f"🎨 [PROFILE COLOR] Añadidos por perfil: {added}")
+                        else:
+                            # Fallback simple sin spaCy: split básico
+                            for tl in (t.strip().lower() for t in query_text.split()):
+                                if tl in profile_colors and tl not in modificadores:
+                                    modificadores.append(tl)
+                            print("🎨 [PROFILE COLOR] Añadidos (fallback split) colores del perfil si estaban en query")
+                except Exception as e_prof_col:
+                    print(f"[PROFILE COLOR] ⚠️ Error integrando color_tokens del perfil: {e_prof_col}")
 
                 # === MAPE0 SEMÁNTICO DE COLORES SISTÉMICOS (ANTES DE CLASIFICAR ATRIBUTOS) ===
                 try:
