@@ -2970,56 +2970,89 @@ def text_search():
         except Exception:
             pass
 
-        # ⭐ AGRUPACIÓN POR CATEGORÍAS HERMANAS
-        # Si detection_metadata indica múltiples categorías hermanas, agrupar resultados
+        # ⭐ AGRUPACIÓN POR CATEGORÍAS HERMANAS CON TOP-UP
+        # Estrategia: si múltiples categorías, devolver hasta N por categoría
+        # Si una categoría queda con < N, completar desde candidatos originales
+        
         results_by_category = {}
         group_by_category = False
 
         if detection_metadata and len(detection_metadata.get('matched_categories', [])) > 1:
-            # Hay múltiples categorías hermanas detectadas
             group_by_category = True
+            
+            # 1️⃣ Agrupar resultados filtrados por categoría
             for result in formatted_results:
                 cat_name = result.get('category', 'Sin categoría')
                 if cat_name not in results_by_category:
                     results_by_category[cat_name] = []
                 results_by_category[cat_name].append(result)
-
-        # Ajuste final: si agrupamos por categoría, recortar a `limit` por categoría;
-        # si no agrupamos, asegurar que el total no supere `limit`.
+            
+            # 2️⃣ Recortar a `limit` por categoría (tomar los mejores)
+            for cat_name in results_by_category.keys():
+                results_by_category[cat_name] = results_by_category[cat_name][:limit]
+            
+            # 3️⃣ TOP-UP: Completar categorías con < limit desde candidatos sin filtrar
+            try:
+                # Mapa de candidatos originales por categoría
+                candidates_by_cat = {}
+                for cand in candidates:
+                    cat = cand.category.name if cand.category else 'Sin categoría'
+                    if cat not in candidates_by_cat:
+                        candidates_by_cat[cat] = []
+                    candidates_by_cat[cat].append(cand)
+                
+                # Para cada categoría detectada, si tiene < limit, rellenar
+                for cat_name, items in results_by_category.items():
+                    if len(items) < limit and cat_name in candidates_by_cat:
+                        existing_ids = {r.get('id') for r in items}
+                        available = [c for c in candidates_by_cat[cat_name] if c.id not in existing_ids]
+                        
+                        # Agregar mejores candidatos hasta llegar a limit
+                        for cand in available[:(limit - len(items))]:
+                            pimg = cand.primary_image if hasattr(cand, 'primary_image') else (
+                                Image.query.filter_by(product_id=cand.id, is_primary=True).first() or
+                                Image.query.filter_by(product_id=cand.id).first()
+                            )
+                            results_by_category[cat_name].append({
+                                'id': cand.id,
+                                'name': cand.name,
+                                'price': float(cand.price) if cand.price else None,
+                                'category': cat_name,
+                                'stock': cand.stock,
+                                'similarity': 0.0,
+                                'final_score': 0.0,
+                                'image': pimg.display_url if pimg else '/static/images/placeholder.svg',
+                                'image_url': pimg.display_url if pimg else '/static/images/placeholder.svg',
+                                'sku': cand.sku,
+                                'attributes': cand.attributes or {},
+                                'attributes_matched': {},
+                                'attributes_match_count': 0,
+                                'attributes_match_ratio': 0.0
+                            })
+                        print(f"📦 {cat_name}: completadas a {len(results_by_category[cat_name])} productos")
+            except Exception as e:
+                print(f"⚠️ Top-up de categorías falló: {e}")
+        
+        # Construir respuesta
         response_data = {
             "success": True,
             "query": query_text,
             "expanded_terms": expanded_terms_cache,
             "stage1_candidates": len(candidates),
-            "total_results": len(formatted_results),
+            "total_results": 0,  # Se actualiza abajo
             "processing_time": round(elapsed, 3),
             "search_module": "custom" if (client_slug and has_custom_module(client_slug)) else "generic",
             "user_feedback": user_feedback,
             "group_by_category": group_by_category,
-            "exposed_attribute_keys": exposed_attribute_keys,  # 🆕 Lista de atributos visibles
-            "exposed_attribute_labels": exposed_attribute_labels  # 🆕 Mapa key->etiqueta
+            "exposed_attribute_keys": exposed_attribute_keys,
+            "exposed_attribute_labels": exposed_attribute_labels
         }
 
         if group_by_category:
-            # Enviar resultados agrupados por categoría
-            # Recortar a `limit` por categoría si es posible
-            try:
-                trimmed = {}
-                for cat_name, items in results_by_category.items():
-                    trimmed[cat_name] = items[:limit]
-                results_by_category = trimmed
-            except Exception:
-                pass
-
             response_data["results_by_category"] = results_by_category
-            # Actualizar total_results como suma por categoría
-            try:
-                response_data["total_results"] = sum(len(v) for v in results_by_category.values())
-            except Exception:
-                response_data["total_results"] = sum(len(v) for v in results_by_category.values()) if results_by_category else 0
-            response_data["results"] = []  # Vacío cuando se agrupa
+            response_data["total_results"] = sum(len(v) for v in results_by_category.values())
+            response_data["results"] = []
         else:
-            # Enviar resultados en lista plana (comportamiento original)
             response_data["results"] = formatted_results[:limit]
             response_data["total_results"] = len(response_data["results"])
 
