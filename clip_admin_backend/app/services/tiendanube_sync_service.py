@@ -1,4 +1,4 @@
-"""
+﻿"""
 Servicio de sincronización con Tiendanube
 Pipeline completo: Categorías → Productos → Imágenes Base64 → Embeddings → Centroides
 """
@@ -21,6 +21,7 @@ from app.models.category import Category
 from app.models.product import Product
 from app.models.image import Image
 from app.models.product_attribute_config import ProductAttributeConfig
+from app.models.embedding import Embedding
 from app.services.alternative_terms_generator import generate_alternative_terms
 from app.services.alternative_terms_generator import (
     FASHION_VOCABULARY_ES,
@@ -139,6 +140,15 @@ class TiendanubeSyncService:
                 logger.info("Paso 4: Calculando centroides de categorías...")
                 self.calculate_category_centroids()
                 steps_completed.append('centroids')
+
+            # 5. Regenerar embeddings de TEXTO a 512D
+            if sync_options.get('embeddings', True):
+                logger.info("Paso 5: Regenerando embeddings de TEXTO a 512D...")
+                try:
+                    self._regenerate_text_embeddings_clip512()
+                    steps_completed.append('text_embeddings')
+                except Exception as e:
+                    logger.warning(f"Aviso: Error regenerando embeddings de texto: {e}")
 
             duration = time.time() - start_time
 
@@ -1223,6 +1233,65 @@ class TiendanubeSyncService:
 
         except Exception as e:
             logger.error(f"Error calculando centroide para categoría {category.id}: {str(e)}")
+
+
+    def _regenerate_text_embeddings_clip512(self):
+        """Regenera embeddings de texto (vocab:X, color:X) a 512D usando CLIP."""
+        try:
+            from app.blueprints.embeddings import get_clip_model
+            import torch
+            import numpy as np
+
+            logger.info(f"🔄 Regenerando embeddings de TEXTO a 512D para cliente {self.client.id}...")
+
+            # Cargar modelo CLIP
+            clip_model, clip_processor = get_clip_model()
+
+            # Obtener todos los embeddings de texto del cliente
+            old_embeddings = Embedding.query.filter_by(client_id=self.client.id).all()
+            if not old_embeddings:
+                logger.info("   Sin embeddings de texto para regenerar")
+                return
+
+            count_updated = 0
+            for emb in old_embeddings:
+                try:
+                    # Extraer texto del key
+                    parts = emb.key.split(':')
+                    text_value = ':'.join(parts[1:]) if len(parts) >= 2 else emb.key
+
+                    # Prompt contextual según tipo
+                    if emb.type == 'color':
+                        prompt = f"A product that is {text_value}"
+                    elif emb.type == 'vocabulary':
+                        prompt = f"A {text_value} product"
+                    else:
+                        prompt = text_value
+
+                    # Procesar con CLIP
+                    inputs = clip_processor(text=[prompt], return_tensors="pt")
+                    if torch.cuda.is_available():
+                        inputs = {k: v.cuda() for k, v in inputs.items()}
+
+                    with torch.no_grad():
+                        text_features = clip_model.get_text_features(**inputs)
+                        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+                        embedding_vec = text_features.cpu().numpy().flatten()
+
+                    # Guardar embedding 512D
+                    emb.embedding = json.dumps(embedding_vec.tolist())
+                    emb.updated_at = datetime.utcnow()
+                    db.session.commit()
+                    count_updated += 1
+
+                except Exception as e:
+                    logger.warning(f"   ⚠️ Error en {emb.key}: {e}")
+
+            logger.info(f"   ✅ {count_updated} embeddings de texto regenerados a 512D")
+
+        except Exception as e:
+            logger.error(f"Error regenerando embeddings de texto: {str(e)}")
+            self.stats['errors'].append(f"Embeddings texto: {str(e)}")
 
 
 def start_full_sync(client_id: str, sync_options: Dict = None) -> Dict:
