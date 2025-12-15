@@ -1534,19 +1534,23 @@ def text_search():
                                 'match_details': match_details
                             })
 
-                        # Ordenar por cantidad de coincidencias (mayor a menor)
-                        scored_by_attrs.sort(key=lambda x: x['attr_matches'], reverse=True)
+                        # 🎯 CAMBIO: Filtrar estrictamente productos que cumplan AL MENOS 1 criterio
+                        # (en lugar de mantener todos y solo puntuar)
+                        scored_by_attrs_filtered = [x for x in scored_by_attrs if x['attr_matches'] > 0]
 
-                        print(f"   ✅ Scoring por atributos aplicado: {attr_value_filters}")
+                        # Ordenar por cantidad de coincidencias (mayor a menor)
+                        scored_by_attrs_filtered.sort(key=lambda x: x['attr_matches'], reverse=True)
+
+                        print(f"   ✅ Filtrado estricto por atributos aplicado: {attr_value_filters}")
                         print(f"   📊 Distribución de coincidencias:")
-                        for i in range(total_criteria, -1, -1):
-                            count = sum(1 for x in scored_by_attrs if x['attr_matches'] == i)
+                        for i in range(total_criteria, 0, -1):  # Solo mostrar >= 1
+                            count = sum(1 for x in scored_by_attrs_filtered if x['attr_matches'] == i)
                             if count > 0:
                                 log_verbose(LogCategory.NLP, f"      {i}/{total_criteria} criterios: {count} productos")
 
                         # Mantener referencia al scoring para usar después
-                        product_attr_scores = {item['product'].id: item for item in scored_by_attrs}
-                        filtered_products = [item['product'] for item in scored_by_attrs]
+                        product_attr_scores = {item['product'].id: item for item in scored_by_attrs_filtered}
+                        filtered_products = [item['product'] for item in scored_by_attrs_filtered]
                     else:
                         print("   ℹ️  Sin restricciones de valor específicas (solo presencia de atributos)")
                         product_attr_scores = {}
