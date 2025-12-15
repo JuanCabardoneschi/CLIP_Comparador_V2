@@ -990,6 +990,23 @@ def text_search():
                 matched_categories = []
                 matched_category_ids = []
 
+                # 🆕 Expandir categoría con sinónimos del perfil
+                category_variants = {categoria_extraida}  # Incluir la original
+                if client_profile and isinstance(client_profile.get('category_synonyms'), dict):
+                    profile_synonyms = client_profile.get('category_synonyms', {})
+                    # Si la categoría está en el mapa de sinónimos, agregar sus variantes
+                    if categoria_extraida in profile_synonyms:
+                        variants = profile_synonyms[categoria_extraida]
+                        if isinstance(variants, (list, set, tuple)):
+                            category_variants.update(variants)
+                    # También buscar si la categoría es sinónimo de alguna otra
+                    for base_cat, syns in profile_synonyms.items():
+                        if isinstance(syns, (list, set, tuple)) and categoria_extraida in syns:
+                            category_variants.add(base_cat)
+                
+                if len(category_variants) > 1:
+                    log_verbose(LogCategory.NLP, f"[PROFILE SYNONYMS] Expandidas variantes de '{categoria_extraida}': {category_variants}")
+
                 for cat in client_categories:
                     # Tokenizar nombre de categoría (igual que hace el módulo custom)
                     cat_tokens = set()
@@ -1004,8 +1021,14 @@ def text_search():
                             if term:
                                 cat_tokens.update(_normalize_tokens_es(term))
 
-                    # Verificar si la categoría extraída está en algún token de la categoría
-                    if categoria_extraida and categoria_extraida.lower() in cat_tokens:
+                    # Verificar si la categoría extraída O sus sinónimos están en tokens de la categoría
+                    matched_variant = None
+                    for variant in category_variants:
+                        if variant and variant.lower() in cat_tokens:
+                            matched_variant = variant
+                            break
+                    
+                    if matched_variant:
                         matched_categories.append({
                             'id': cat.id,
                             'name': cat.name,
@@ -1013,7 +1036,7 @@ def text_search():
                             'slug': cat.slug
                         })
                         matched_category_ids.append(cat.id)
-                        log_verbose(LogCategory.CATEGORY_DETECTION, f"✅ Match encontrado: '{cat.name}' (id: {cat.id}) - tokens: {cat_tokens}")
+                        log_verbose(LogCategory.CATEGORY_DETECTION, f"✅ Match encontrado: '{cat.name}' (id: {cat.id}) via '{matched_variant}' - tokens: {cat_tokens}")
 
                 print(f"\n📊 RESUMEN DE DETECCIÓN:")
                 log_verbose(LogCategory.CATEGORY_DETECTION, f"   Categoría en query: '{categoria_extraida}'")
