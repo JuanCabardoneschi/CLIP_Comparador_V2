@@ -130,8 +130,8 @@ class TiendanubeSyncService:
 
             # 3. Generar embeddings CLIP (si no existen)
             if sync_options.get('embeddings', True):
-                logger.info("Paso 3: Generando embeddings CLIP...")
-                self.generate_embeddings()
+                logger.info("Paso 3: Generando embeddings CLIP (regenerando todos)...")
+                self.generate_embeddings(force_regenerate=True)  # Siempre regenerar TODO cuando se solicita desde UI
                 steps_completed.append('embeddings')
 
             # 4. Calcular centroides de categorías
@@ -854,8 +854,14 @@ class TiendanubeSyncService:
             logger.error(f"Error descargando/convirtiendo imagen {url}: {str(e)}")
             return None, None, '', 0, 0, 0
 
-    def generate_embeddings(self):
-        """Genera embeddings CLIP para imágenes sin procesar"""
+    def generate_embeddings(self, force_regenerate: bool = True):
+        """
+        Genera embeddings CLIP para imágenes.
+
+        Args:
+            force_regenerate: Si True, regenera TODOS los embeddings (borra antiguos).
+                             Si False, solo genera para imágenes sin procesar (is_processed=False).
+        """
         try:
             # Importar funciones de embeddings
             from app.blueprints.embeddings import get_clip_model, load_image_from_source
@@ -865,13 +871,24 @@ class TiendanubeSyncService:
             # Cargar modelo CLIP
             clip_model, clip_processor = get_clip_model()
 
-            # Obtener imágenes sin procesar
-            unprocessed_images = Image.query.filter_by(
-                client_id=self.client.id,
-                is_processed=False
-            ).filter(
-                Image.base64_thumb.isnot(None)
-            ).all()
+            # Si force_regenerate=True, resetear TODOS los embeddings del cliente
+            if force_regenerate:
+                logger.info(f"🔄 REGENERANDO: Borrando todos los embeddings previos del cliente {self.client.id}...")
+                all_images = Image.query.filter_by(client_id=self.client.id).all()
+                for img in all_images:
+                    img.clip_embedding = None
+                    img.is_processed = False
+                db.session.commit()
+                logger.info(f"   ✅ {len(all_images)} imágenes marcadas para regenerar")
+                unprocessed_images = all_images
+            else:
+                # Solo obtener imágenes sin procesar
+                unprocessed_images = Image.query.filter_by(
+                    client_id=self.client.id,
+                    is_processed=False
+                ).filter(
+                    Image.base64_thumb.isnot(None)
+                ).all()
 
             logger.info(f"Generando embeddings para {len(unprocessed_images)} imágenes...")
 
