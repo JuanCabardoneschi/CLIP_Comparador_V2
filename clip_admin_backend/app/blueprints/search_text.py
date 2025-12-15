@@ -2990,7 +2990,7 @@ def text_search():
 
         # Respuesta final
         elapsed = time.time() - start_time
-        
+
         # MARCADOR TEMPRANO: Confirmar que el código llega aquí
         log_error(f"\n✅✅✅ BÚSQUEDA COMPLETADA - Punto A (ANTES de agrupación) ✅✅✅")
         log_error(f"   elapsed={elapsed:.3f}s")
