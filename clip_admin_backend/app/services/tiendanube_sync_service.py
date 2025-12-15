@@ -22,6 +22,10 @@ from app.models.product import Product
 from app.models.image import Image
 from app.models.product_attribute_config import ProductAttributeConfig
 from app.services.alternative_terms_generator import generate_alternative_terms
+from app.services.alternative_terms_generator import (
+    FASHION_VOCABULARY_ES,
+    FASHION_CATEGORY_GROUPS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +113,12 @@ class TiendanubeSyncService:
                 logger.info("Paso 1: Sincronizando categorías...")
                 self.sync_categories()
                 steps_completed.append('categories')
+
+                # Heurística: inferir industria por categorías iniciales sólo si aún es genérica
+                try:
+                    self._maybe_assign_industry_from_categories()
+                except Exception as _e:
+                    logger.warning(f"No se pudo inferir industria por categorías: {_e}")
 
             # 2. Sincronizar productos (con imágenes si está habilitado)
             if sync_options.get('products', True) or sync_options.get('attributes', False):
@@ -249,6 +259,53 @@ class TiendanubeSyncService:
         except Exception as e:
             logger.error(f"Error sincronizando categoría {cat_data.get('id')}: {str(e)}")
             self.stats['errors'].append(f"Categoría {cat_data.get('id')}: {str(e)}")
+
+    # ------------------------------------------------------------
+    # Heurística de rubro por categorías iniciales (moda/fashion)
+    # ------------------------------------------------------------
+    def _maybe_assign_industry_from_categories(self) -> None:
+        """Si el cliente aún no tiene una industria específica, infiere 'fashion'
+        cuando las categorías sincronizadas coinciden con vocabulario de moda.
+
+        Criterio simple: si al menos 3 categorías contienen términos del
+        vocabulario/grupos de moda, asignar 'fashion'.
+        """
+        try:
+            current = (self.client.industry or '').lower().strip()
+            specific_industries = {"fashion", "electronics", "automotive", "home"}
+            if current in specific_industries:
+                return  # Ya está específica, no tocar
+
+            # Cargar categorías actuales del cliente
+            categories = Category.query.filter_by(client_id=self.client.id).all()
+            if not categories:
+                return
+
+            vocab_set = set(FASHION_VOCABULARY_ES)
+            # Incluir términos de grupos (tops/bottoms/swimwear)
+            for terms in FASHION_CATEGORY_GROUPS.values():
+                vocab_set.update(terms)
+
+            matches = 0
+            for c in categories:
+                name = (c.name or '').lower()
+                if not name:
+                    continue
+                # Coincidencia por substring para soportar multi-palabra (p.ej. "traje de baño")
+                if any(term in name for term in vocab_set):
+                    matches += 1
+
+            if matches >= 3:
+                logger.info(f"🎯 Industria inferida como 'fashion' por categorías (matches={matches})")
+                self.client.industry = 'fashion'
+                # Marcar fuente de inferencia en integration_config
+                if not self.client.integration_config:
+                    self.client.integration_config = {}
+                self.client.integration_config['industry_inferred'] = 'fashion_from_categories'
+                flag_modified(self.client, 'integration_config')
+                db.session.commit()
+        except Exception as e:
+            logger.warning(f"Heurística de industria falló: {e}")
 
     def _auto_create_attribute_configs(self, variant_attributes: Dict, attribute_names: Dict = None):
         """Auto-crea configuraciones de atributos basadas en variantes
