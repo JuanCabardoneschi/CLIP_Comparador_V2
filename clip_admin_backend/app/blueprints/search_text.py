@@ -2611,7 +2611,17 @@ def text_search():
             print(f"⚠️ Inferencia semántica de color falló: {_e}")
 
         # STAGE 2: Precise Reranking (CLIP)
-        scored_results = stage2_precise_rerank(query_text, candidates, limit=limit)
+        # Si hay múltiples categorías hermanas detectadas, ampliamos el límite de rerank
+        # para poder luego devolver hasta `limit` por categoría sin quedarnos cortos.
+        try:
+            detected_cats = 0
+            if detection_metadata and isinstance(detection_metadata.get('matched_categories'), list):
+                detected_cats = len(detection_metadata.get('matched_categories'))
+            rerank_limit = limit * detected_cats if detected_cats and detected_cats > 1 else limit
+        except Exception:
+            rerank_limit = limit
+
+        scored_results = stage2_precise_rerank(query_text, candidates, limit=rerank_limit)
 
         # Calcular cumplimiento de atributos por producto
         requested_attrs = attr_info.get('attributes', {})
@@ -2942,6 +2952,8 @@ def text_search():
                     results_by_category[cat_name] = []
                 results_by_category[cat_name].append(result)
 
+        # Ajuste final: si agrupamos por categoría, recortar a `limit` por categoría;
+        # si no agrupamos, asegurar que el total no supere `limit`.
         response_data = {
             "success": True,
             "query": query_text,
@@ -2958,11 +2970,26 @@ def text_search():
 
         if group_by_category:
             # Enviar resultados agrupados por categoría
+            # Recortar a `limit` por categoría si es posible
+            try:
+                trimmed = {}
+                for cat_name, items in results_by_category.items():
+                    trimmed[cat_name] = items[:limit]
+                results_by_category = trimmed
+            except Exception:
+                pass
+
             response_data["results_by_category"] = results_by_category
+            # Actualizar total_results como suma por categoría
+            try:
+                response_data["total_results"] = sum(len(v) for v in results_by_category.values())
+            except Exception:
+                response_data["total_results"] = sum(len(v) for v in results_by_category.values()) if results_by_category else 0
             response_data["results"] = []  # Vacío cuando se agrupa
         else:
             # Enviar resultados en lista plana (comportamiento original)
-            response_data["results"] = formatted_results
+            response_data["results"] = formatted_results[:limit]
+            response_data["total_results"] = len(response_data["results"])
 
         # 📊 ANALYTICS: Registrar búsqueda (async)
         try:
