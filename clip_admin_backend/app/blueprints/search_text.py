@@ -2754,6 +2754,18 @@ def text_search():
             except Exception:
                 pass
 
+            # Priorizar external_url (Tiendanube/externo) sobre url_producto (atributo custom)
+            final_product_url = None
+            if hasattr(product, 'external_url') and product.external_url:
+                final_product_url = product.external_url
+            elif prod_attrs.get('url_producto'):
+                # Extraer de atributo JSONB si existe
+                raw_url = prod_attrs.get('url_producto')
+                if isinstance(raw_url, dict):
+                    final_product_url = raw_url.get('value') or raw_url.get('url') or None
+                else:
+                    final_product_url = raw_url
+
             formatted_results.append({
                 "id": product.id,
                 "name": product.name,
@@ -2770,7 +2782,8 @@ def text_search():
                 "attributes_match_count": matched_count,
                 "attributes_match_ratio": round(match_ratio, 3),
                 "sku": product.sku,
-                "stock": product.stock
+                "stock": product.stock,
+                "product_url": final_product_url  # URL para Tiendanube (prioriza external_url)
             })
 
         # 🔍 FILTRADO POR ATRIBUTOS SOLICITADOS
@@ -3062,6 +3075,18 @@ def text_search():
                                 Image.query.filter_by(product_id=cand.id, is_primary=True).first() or
                                 Image.query.filter_by(product_id=cand.id).first()
                             )
+                            
+                            # Priorizar external_url (Tiendanube) sobre url_producto (atributo)
+                            cand_url = None
+                            if hasattr(cand, 'external_url') and cand.external_url:
+                                cand_url = cand.external_url
+                            elif cand.attributes and cand.attributes.get('url_producto'):
+                                raw = cand.attributes.get('url_producto')
+                                if isinstance(raw, dict):
+                                    cand_url = raw.get('value') or raw.get('url') or None
+                                else:
+                                    cand_url = raw
+                            
                             results_by_category[cat_name].append({
                                 'id': cand.id,
                                 'name': cand.name,
@@ -3076,7 +3101,8 @@ def text_search():
                                 'attributes': cand.attributes or {},
                                 'attributes_matched': {},
                                 'attributes_match_count': 0,
-                                'attributes_match_ratio': 0.0
+                                'attributes_match_ratio': 0.0,
+                                'product_url': cand_url  # URL para Tiendanube (prioriza external_url)
                             })
                         print(f"📦 {cat_name}: completadas a {len(results_by_category[cat_name])} productos")
             except Exception as e:
