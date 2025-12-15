@@ -1877,7 +1877,10 @@ def text_search():
                                 print(f"         • {name}: sim={sim:.3f}, score={comp_score:.2f}")
 
                     except Exception as e_clip:
-                        log_error(f"Error en inferencia CLIP: {e_clip}")
+                        import traceback
+                        print(f"\n❌ ERROR en inferencia CLIP: {e_clip}")
+                        print(f"   Traceback: {traceback.format_exc()}")
+                        log_error(f"Error en inferencia CLIP: {e_clip}\n{traceback.format_exc()}")
                         clip_product_scores = {prod.id: {'match_ratio': 0, 'max_similarity': 0} for prod in filtered_products}
                 else:
                     print(f"\n📝 Sin necesidad de inferencia CLIP")
@@ -3075,7 +3078,7 @@ def text_search():
                                 Image.query.filter_by(product_id=cand.id, is_primary=True).first() or
                                 Image.query.filter_by(product_id=cand.id).first()
                             )
-                            
+
                             # Priorizar external_url (Tiendanube) sobre url_producto (atributo)
                             cand_url = None
                             if hasattr(cand, 'external_url') and cand.external_url:
@@ -3086,7 +3089,7 @@ def text_search():
                                     cand_url = raw.get('value') or raw.get('url') or None
                                 else:
                                     cand_url = raw
-                            
+
                             results_by_category[cat_name].append({
                                 'id': cand.id,
                                 'name': cand.name,
