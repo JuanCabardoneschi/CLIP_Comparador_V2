@@ -2360,6 +2360,22 @@ def text_search():
                 except Exception:
                     pass
 
+                # Definir helper local para normalizar categorías antes de usarlo en response_data
+                def _cat_to_dict(cat):
+                    if isinstance(cat, dict):
+                        return {
+                            "id": cat.get("id"),
+                            "name": cat.get("name"),
+                            "name_en": cat.get("name_en"),
+                            "slug": cat.get("slug")
+                        }
+                    return {
+                        "id": getattr(cat, "id", None),
+                        "name": getattr(cat, "name", None),
+                        "name_en": getattr(cat, "name_en", None),
+                        "slug": getattr(cat, "slug", None)
+                    }
+
                 response_data = {
                     "success": True,
                     "query_original": data.get('query', ''),
