@@ -152,7 +152,7 @@ def create_app(config_name=None):
     else:
         redis_client = None
         print("ℹ️  Redis no configurado (usando cache en memoria)")
-    
+
     # Exportar redis_cache desde el paquete app para que los blueprints lo puedan importar
     import app
     app.redis_cache = redis_client

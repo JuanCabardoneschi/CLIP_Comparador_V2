@@ -13,10 +13,14 @@ Estructura:
 import json
 import hashlib
 from typing import Dict, List, Optional, Set, Tuple
-from app import db, redis_cache
+from app import db
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Cache en memoria simple (sin Redis)
+_profile_cache = {}  # client_id -> profile
+_cache_timestamps = {}  # client_id -> timestamp
 
 
 # ============================================================================
@@ -236,15 +240,18 @@ class SearchProfilesService:
         Returns:
             Dict con reglas de búsqueda (variants_map, category_synonyms, etc.)
         """
-        # Intentar obtener del cache
-        cache_key = f"search_profile:{client_id}"
-        if not force_reload:
-            cached = redis_cache.get(cache_key) if redis_cache else None
-            if cached:
-                try:
-                    return json.loads(cached)
-                except Exception as e:
-                    logger.warning(f"Error deserializando perfil cacheado para {client_id}: {e}")
+        import time
+        
+        # Intentar obtener del cache en memoria
+        cache_key = client_id
+        if not force_reload and cache_key in _profile_cache:
+            # Verificar TTL (CACHE_TTL = 3600 segundos)
+            if time.time() - _cache_timestamps.get(cache_key, 0) < SearchProfilesService.CACHE_TTL:
+                return _profile_cache[cache_key]
+            else:
+                # Cache expirado, eliminarlo
+                del _profile_cache[cache_key]
+                del _cache_timestamps[cache_key]
 
         # Si no tenemos industry, obtenerla de BD
         if not client_industry:
@@ -272,8 +279,9 @@ class SearchProfilesService:
         except Exception as e:
             logger.warning(f"Error cargando overrides para {client_id}: {e}")
 
-        # Cachear resultado
-        if redis_cache:
+        # Cachear resultado en memoria
+        _profile_cache[cache_key] = base_profile
+        _cache_timestamps[cache_key] = time.time()
             try:
                 redis_cache.setex(cache_key, SearchProfilesService.CACHE_TTL, json.dumps(base_profile))
             except Exception as e:
@@ -473,10 +481,11 @@ class SearchProfilesService:
             db.session.add(client)
             db.session.commit()
 
-            # Invalidar cache
-            cache_key = f"search_profile:{client_id}"
-            if redis_cache:
-                redis_cache.delete(cache_key)
+            # Invalidar cache en memoria
+            if client_id in _profile_cache:
+                del _profile_cache[client_id]
+            if client_id in _cache_timestamps:
+                del _cache_timestamps[client_id]
 
             logger.info(f"Overrides guardados para {client_id}")
             return True
@@ -484,7 +493,6 @@ class SearchProfilesService:
             logger.error(f"Error guardando overrides para {client_id}: {e}")
             db.session.rollback()
             return False
-
     @staticmethod
     def get_all_profiles() -> Dict:
         """Retorna todos los perfiles disponibles (metadatos sin reglas completas)."""

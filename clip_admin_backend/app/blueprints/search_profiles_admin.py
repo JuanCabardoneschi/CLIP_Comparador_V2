@@ -217,13 +217,7 @@ def reset_client_overrides(client_id):
             db.session.add(client)
             db.session.commit()
 
-        # Invalidar cache
-        from app import redis_cache
-
-        cache_key = f"search_profile:{client_id}"
-        if redis_cache:
-            redis_cache.delete(cache_key)
-
+        # Invalidar cache (en memory cache se maneja automáticamente)
         return jsonify({"success": True, "message": "Overrides reseteados"}), 200
 
     except Exception as e:
