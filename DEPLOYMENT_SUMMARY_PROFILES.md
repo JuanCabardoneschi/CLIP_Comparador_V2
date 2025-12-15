@@ -4,7 +4,7 @@
 
 ### ¿Qué se implementó?
 
-Sistema escalable de perfiles de búsqueda por industria que reemplaza módulos personalizados por cliente. 
+Sistema escalable de perfiles de búsqueda por industria que reemplaza módulos personalizados por cliente.
 
 **Antes:**
 - Cada cliente (Eve, Demo, futuros) → módulo personalizado en código
@@ -64,13 +64,13 @@ Query: "short rojo" (cliente TiendaNube con industria=fashion)
 
 1. Fetch Profile: SearchProfilesService.get_profile(client_id, 'fashion')
    → short: short, rojo: rojo  (variants_map)
-   
+
 2. Normalize: ["short", "rojo"]
 
 3. Expand: ["short", "rojo", "shore", "shores", ...]
    → Desde synonyms + alternative_terms en BD
 
-4. Detect Category Filter: 
+4. Detect Category Filter:
    - "short" → IDs de categorías con "short"
    - Si único: filtrar por esa categoría
    - Si múltiple: búsqueda amplia

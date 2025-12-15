@@ -137,17 +137,17 @@ curl -X POST https://your-railway-app.up.railway.app/api/search \
 ### Para Sysadmins (Monitoreo)
 ```sql
 -- Ver clientes con industria asignada
-SELECT name, email, industry FROM clients 
+SELECT name, email, industry FROM clients
 WHERE industry IS NOT NULL;
 
 -- Ver clientes con overrides personalizados
-SELECT name, industry, 
+SELECT name, industry,
   integration_config->>'search_rules' AS custom_rules
-FROM clients 
+FROM clients
 WHERE integration_config->'search_rules' IS NOT NULL;
 
 -- Ver cambios recientes
-SELECT updated_at, industry FROM clients 
+SELECT updated_at, industry FROM clients
 ORDER BY updated_at DESC LIMIT 10;
 ```
 
@@ -162,11 +162,11 @@ with app.app_context():
     # Obtener perfil de cliente
     profile = SearchProfilesService.get_profile(client_id, 'fashion')
     print("Profile:", profile)
-    
+
     # Probar normalización
     tokens = SearchProfilesService.normalize_tokens("short rojo", profile)
     print("Normalized:", tokens)
-    
+
     # Probar expansión
     expanded = SearchProfilesService.expand_query("short rojo", [], profile)
     print("Expanded:", expanded)

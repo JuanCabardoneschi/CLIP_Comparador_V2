@@ -152,6 +152,10 @@ def create_app(config_name=None):
     else:
         redis_client = None
         print("ℹ️  Redis no configurado (usando cache en memoria)")
+    
+    # Exportar redis_cache desde el paquete app para que los blueprints lo puedan importar
+    import app
+    app.redis_cache = redis_client
 
     # User loader para Flask-Login
     @login_manager.user_loader
@@ -479,6 +483,14 @@ def register_blueprints(app):
         print("✓ Blueprint search_text V2 registrado (🆕 NUEVO)")
     except ImportError as e:
         print(f"✗ Error importando search_text blueprint: {e}")
+
+    # 🆕 Blueprint de administración de perfiles de búsqueda
+    try:
+        from app.blueprints.search_profiles_admin import bp as search_profiles_admin_bp
+        app.register_blueprint(search_profiles_admin_bp)
+        print("✓ Blueprint search_profiles_admin registrado (🆕 NUEVO)")
+    except ImportError as e:
+        print(f"✗ Error importando search_profiles_admin blueprint: {e}")
     except Exception as e:
         print(f"✗ Error registrando search_text blueprint: {e}")
 

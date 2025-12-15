@@ -11,6 +11,9 @@ db = SQLAlchemy()
 login_manager = LoginManager()
 jwt = JWTManager()
 
+# Redis cache (se inicializa en app.py)
+redis_cache = None
+
 # Importar modelos para que SQLAlchemy los reconozca
 from .models.client import Client
 from .models.user import User

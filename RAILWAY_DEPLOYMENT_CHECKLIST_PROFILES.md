@@ -105,7 +105,7 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 - **Razón:** Se usa campo existente `Client.integration_config` (JSON)
 - **Validación:** Ejecutar en Railway DB:
   ```sql
-  SELECT id, integration_config->>'search_rules' AS rules 
+  SELECT id, integration_config->>'search_rules' AS rules
   FROM clients LIMIT 5;
   ```
   **Expected:** `rules` es NULL (sin overrides) o JSON válido
@@ -156,11 +156,11 @@ Si hay problemas:
 
 ```sql
 -- Clientes con industry asignado
-SELECT industry, COUNT(*) FROM clients 
+SELECT industry, COUNT(*) FROM clients
 WHERE industry IS NOT NULL GROUP BY industry;
 
 -- Clientes con overrides (customizaciones)
-SELECT COUNT(*) FROM clients 
+SELECT COUNT(*) FROM clients
 WHERE integration_config->'search_rules' IS NOT NULL;
 ```
 

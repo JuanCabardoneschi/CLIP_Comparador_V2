@@ -7,7 +7,7 @@ from app.services.search_profiles_service import SearchProfilesService
 
 def test_profile_service():
     """Test unitario del servicio sin BD."""
-    
+
     print("\n" + "="*70)
     print("🧪 TEST: Servicio de Perfiles de Búsqueda (Sin BD)")
     print("="*70)
