@@ -1714,6 +1714,9 @@ def text_search():
 
                     # Almacenar scores de CLIP por modificador y producto
                     clip_inference_scores = {}  # product_id -> {mod -> inference_result}
+                        import json
+                        from app.utils.logging_config import log_error as log_clip_error
+                        
 
                     try:
                         for product in filtered_products:
@@ -1741,7 +1744,6 @@ def text_search():
 
                             # Parsear embedding de imagen
                             try:
-                                import json
                                 image_embedding = json.loads(primary_image.clip_embedding)
                                 image_vec = np.array(image_embedding, dtype=np.float32)
 
@@ -1765,6 +1767,20 @@ def text_search():
                                         if emb_record:
                                             # Usar embedding precalculado
                                             mod_vec = np.array(json.loads(emb_record.embedding), dtype=np.float32)
+                                            
+                                                                                        # ⚠️ CRÍTICO: Verificar dimensiones antes de comparar
+                                                                                        if mod_vec.shape[0] != image_vec.shape[0]:
+                                                                                            print(f"      ⚠️ Dimensiones incompatibles para '{mod}': imagen={image_vec.shape[0]}, texto={mod_vec.shape[0]} - usando fallback")
+                                                                                            # Fallback a CLIP con prompts
+                                                                                            inference = _infer_attribute_from_clip_cached(
+                                                                                                image_vec,
+                                                                                                mod,
+                                                                                                categoria=categoria_extraida,
+                                                                                                threshold=0.28
+                                                                                            )
+                                                                                            clip_inference_scores[product.id][mod] = inference
+                                                                                            continue
+                                            
                                             # Normalizar
                                             norm_m = np.linalg.norm(mod_vec)
                                             if norm_m > 0:
@@ -1799,7 +1815,7 @@ def text_search():
                                             )
                                             clip_inference_scores[product.id][mod] = inference
                                     except Exception as e_emb:
-                                        log_error(f"Error obteniendo embedding de '{mod}': {e_emb}")
+                                        print(f"      ⚠️ Error obteniendo embedding de '{mod}': {e_emb}")
                                         # Fallback
                                         inference = _infer_attribute_from_clip_cached(
                                             image_vec,
@@ -1810,7 +1826,7 @@ def text_search():
                                         clip_inference_scores[product.id][mod] = inference
 
                             except Exception as e:
-                                log_error(f"Error parseando embedding de producto {product.id}: {e}")
+                                print(f"      ⚠️ Error parseando embedding de producto {product.id}: {e}")
                                 for mod in modifiers_for_clip:
                                     clip_inference_scores[product.id][mod] = {
                                         'has_attribute': False,
