@@ -1247,8 +1247,8 @@ class TiendanubeSyncService:
             # Cargar modelo CLIP
             clip_model, clip_processor = get_clip_model()
 
-            # Obtener todos los embeddings de texto del cliente
-            old_embeddings = Embedding.query.filter_by(client_id=self.client.id).all()
+            # Obtener todos los embeddings de texto (colores y vocabulario)
+            old_embeddings = Embedding.query.filter(Embedding.type.in_(['color', 'vocabulary'])).all()
             if not old_embeddings:
                 logger.info("   Sin embeddings de texto para regenerar")
                 return
@@ -1280,7 +1280,6 @@ class TiendanubeSyncService:
 
                     # Guardar embedding 512D
                     emb.embedding = json.dumps(embedding_vec.tolist())
-                    emb.updated_at = datetime.utcnow()
                     db.session.commit()
                     count_updated += 1
 
