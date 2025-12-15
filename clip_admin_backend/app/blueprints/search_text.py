@@ -124,6 +124,98 @@ def _get_nlp_es():
         return None
 
 
+def _generate_attribute_prompts(modificador: str, categoria: str = None, variants: list = None) -> list:
+    """Genera prompts dinámicos para inferir un atributo desde CLIP.
+
+    Args:
+        modificador: El atributo a buscar (ej: "negra", "brillante", "algodón")
+        categoria: Categoría del producto (ej: "remera", "pantalón")
+        variants: Variantes del modificador (ej: ["negro", "dark"])
+
+    Returns:
+        Lista de prompts en español e inglés
+    """
+    prompts = []
+
+    # Variantes del modificador a probar
+    mod_variants = [modificador]
+    if variants:
+        mod_variants.extend(variants)
+    mod_variants = list(set(mod_variants))  # Eliminar duplicados
+
+    for mod in mod_variants:
+        # Prompts en español
+        prompts.append(f"{mod}")  # Solo el modificador
+        if categoria:
+            prompts.append(f"{categoria} {mod}")  # "remera negra"
+            prompts.append(f"{mod} {categoria}")  # "negra remera"
+
+    return prompts
+
+
+def _infer_attribute_from_clip(image_vec: np.ndarray, modificador: str, categoria: str = None,
+                               variants: list = None, threshold: float = 0.55) -> dict:
+    """Infiere si una imagen tiene un atributo usando CLIP y prompts dinámicos.
+
+    Args:
+        image_vec: Vector embedding de la imagen
+        modificador: Atributo a buscar
+        categoria: Categoría del producto (mejora contexto)
+        variants: Variantes del modificador
+        threshold: Umbral de similitud para considerar que tiene el atributo
+
+    Returns:
+        Dict con: {
+            'has_attribute': bool,
+            'max_similarity': float,
+            'confidence': str  # 'high', 'medium', 'low'
+        }
+    """
+    try:
+        clip_model, clip_processor = get_clip_model()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Generar prompts
+        prompts = _generate_attribute_prompts(modificador, categoria, variants)
+
+        # Generar embeddings de prompts
+        with torch.no_grad():
+            text_inputs = clip_processor(
+                text=prompts,
+                return_tensors="pt",
+                padding=True
+            ).to(device)
+            prompt_embeddings = clip_model.get_text_features(**text_inputs)
+            prompt_embeddings = prompt_embeddings / prompt_embeddings.norm(dim=-1, keepdim=True)
+
+        # Comparar contra imagen
+        prompt_vecs = prompt_embeddings.cpu().numpy()
+        similarities = [float(np.dot(image_vec, pv)) for pv in prompt_vecs]
+        max_sim = max(similarities)
+
+        # Determinar confianza
+        if max_sim >= threshold:
+            confidence = 'high' if max_sim >= 0.65 else 'medium'
+            has_attr = True
+        else:
+            confidence = 'low'
+            has_attr = False
+
+        return {
+            'has_attribute': has_attr,
+            'max_similarity': max_sim,
+            'confidence': confidence,
+            'all_similarities': similarities
+        }
+    except Exception as e:
+        log_error(f"Error inferring attribute '{modificador}' from CLIP: {e}")
+        return {
+            'has_attribute': False,
+            'max_similarity': 0.0,
+            'confidence': 'error'
+        }
+
+
 def _extract_key_terms_with_dependency_parsing(text: str, client_profile: dict = None) -> dict:
     """Extrae términos clave con análisis de dependencias.
 
@@ -1003,7 +1095,7 @@ def text_search():
                     for base_cat, syns in profile_synonyms.items():
                         if isinstance(syns, (list, set, tuple)) and categoria_extraida in syns:
                             category_variants.add(base_cat)
-                
+
                 if len(category_variants) > 1:
                     log_verbose(LogCategory.NLP, f"[PROFILE SYNONYMS] Expandidas variantes de '{categoria_extraida}': {category_variants}")
 
@@ -1027,7 +1119,7 @@ def text_search():
                         if variant and variant.lower() in cat_tokens:
                             matched_variant = variant
                             break
-                    
+
                     if matched_variant:
                         matched_categories.append({
                             'id': cat.id,
@@ -1466,224 +1558,89 @@ def text_search():
 
                 # 3.3: Aplicar FILTRADO DÉBIL (CLIP) para modificadores no configurados
                 if modificadores_no_configurados and filtered_products:
-                    print(f"\n🎯 Aplicando filtrado DÉBIL (CLIP) para modificadores no configurados:")
+                    print(f"\n🎯 Aplicando inferencia de ATRIBUTOS (CLIP) para modificadores no configurados:")
                     print(f"   Modificadores: {modificadores_no_configurados}")
 
-                    # Generar embedding de texto para modificadores
-                    query_text = " ".join(modificadores_no_configurados)
-                    print(f"   📝 Texto para embedding: '{query_text}'")
+                    # Obtener categoría extraída para contexto
+                    categoria_extraida = extraction_result.get('category', '')
+
+                    # Almacenar scores de CLIP por modificador y producto
+                    clip_inference_scores = {}  # product_id -> {mod -> inference_result}
 
                     try:
-                        clip_model, clip_processor = get_clip_model()
-                        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-                        # Generar embedding del texto (modificadores no configurados)
-                        with torch.no_grad():
-                            text_inputs = clip_processor(
-                                text=[query_text],
-                                return_tensors="pt",
-                                padding=True
-                            ).to(device)
-                            query_embedding = clip_model.get_text_features(**text_inputs)
-                            query_embedding = query_embedding / query_embedding.norm(dim=-1, keepdim=True)
-                            query_vec = query_embedding.cpu().numpy()[0]
-
-                        print(f"   ✅ Embedding generado: vector de {len(query_vec)} dimensiones")
-
-                        # Comparar contra embeddings de imágenes de productos
-                        scored_products = []
                         for product in filtered_products:
-                            # Obtener imagen primaria del producto
+                            clip_inference_scores[product.id] = {}
+
+                            # Obtener imagen primaria
                             primary_image = None
                             if product.images:
-                                # Buscar imagen primaria
                                 for img in product.images:
                                     if img.is_primary:
                                         primary_image = img
                                         break
-                                # Si no hay primaria, usar la primera
                                 if not primary_image:
                                     primary_image = product.images[0]
 
                             if not primary_image or not primary_image.clip_embedding:
-                                # Sin imagen o sin embedding, score = 0
-                                scored_products.append({
-                                    'product': product,
-                                    'similarity': 0.0,
-                                    'has_embedding': False
-                                })
+                                # Sin imagen/embedding, no puede inferir
+                                for mod in modificadores_no_configurados:
+                                    clip_inference_scores[product.id][mod] = {
+                                        'has_attribute': False,
+                                        'max_similarity': 0.0,
+                                        'confidence': 'no_embedding'
+                                    }
                                 continue
 
-                            # Parsear embedding de imagen (está guardado como texto JSON)
+                            # Parsear embedding de imagen
                             try:
                                 import json
                                 image_embedding = json.loads(primary_image.clip_embedding)
                                 image_vec = np.array(image_embedding, dtype=np.float32)
 
-                                # Calcular similitud coseno
-                                similarity = float(np.dot(query_vec, image_vec))
+                                # Para cada modificador, inferir si está presente
+                                for mod in modificadores_no_configurados:
+                                    inference = _infer_attribute_from_clip(
+                                        image_vec,
+                                        mod,
+                                        categoria=categoria_extraida,
+                                        threshold=0.55
+                                    )
+                                    clip_inference_scores[product.id][mod] = inference
 
-                                scored_products.append({
-                                    'product': product,
-                                    'similarity': similarity,
-                                    'has_embedding': True,
-                                    'image_id': primary_image.id
-                                })
                             except Exception as e:
-                                print(f"   ⚠️ Error parseando embedding de producto {product.id}: {e}")
-                                scored_products.append({
-                                    'product': product,
-                                    'similarity': 0.0,
-                                    'has_embedding': False
-                                })
+                                log_error(f"Error parseando embedding de producto {product.id}: {e}")
+                                for mod in modificadores_no_configurados:
+                                    clip_inference_scores[product.id][mod] = {
+                                        'has_attribute': False,
+                                        'max_similarity': 0.0,
+                                        'confidence': 'error'
+                                    }
 
-                        # Combinar score de atributos con similitud CLIP
-                        for item in scored_products:
-                            prod_id = item['product'].id
-                            # Asegurar estructura de scores de atributos aunque no se haya construido previamente
-                            if 'product_attr_scores' not in locals() or product_attr_scores is None:
-                                product_attr_scores = {}
-                            attr_score_data = product_attr_scores.get(prod_id, {})
-                            attr_matches = attr_score_data.get('attr_matches', 0)
-                            attr_total = attr_score_data.get('attr_total', 0)
+                        # Calcular score CLIP por producto: qué % de modificadores detecta
+                        clip_product_scores = {}
+                        for prod_id, mod_inferences in clip_inference_scores.items():
+                            has_attr_count = sum(1 for inf in mod_inferences.values() if inf.get('has_attribute'))
+                            total_mods = len(modificadores_no_configurados)
+                            match_ratio = has_attr_count / total_mods if total_mods > 0 else 0
 
-                            # Score híbrido: priorizar atributos, usar CLIP como desempate
-                            # Peso: 70% atributos, 30% CLIP
-                            attr_component = (attr_matches / attr_total * 0.7) if attr_total > 0 else 0
-                            clip_component = item['similarity'] * 0.3
-                            item['hybrid_score'] = attr_component + clip_component
-                            item['attr_matches'] = attr_matches
-                            item['attr_total'] = attr_total
+                            # Score máx similaridad entre todos los modificadores
+                            max_sim = max((inf.get('max_similarity', 0) for inf in mod_inferences.values()), default=0.0)
 
-                        # Boost por TAGS: si la query coincide con tags del producto, sumar componente
-                        try:
-                            import unicodedata as _ud
-                            import re as _re
+                            clip_product_scores[prod_id] = {
+                                'match_ratio': match_ratio,  # % de atributos detectados
+                                'max_similarity': max_sim,    # Similitud máxima
+                                'mod_details': mod_inferences
+                            }
 
-                            def _norm_txt(s: str) -> str:
-                                txt = str(s or '').strip().lower()
-                                return ''.join(ch for ch in _ud.normalize('NFD', txt) if _ud.category(ch) != 'Mn')
+                        print(f"   ✅ Inferencia CLIP completada para {len(filtered_products)} productos")
 
-                            query_terms = {_norm_txt(w) for w in (cleaned_query or '').split() if len(w.strip()) > 1}
-                            tag_matches_map = {}
-
-                            for item in scored_products:
-                                p = item['product']
-                                matched = []
-                                if hasattr(p, 'tags') and p.tags:
-                                    tokens = [t.strip() for t in _re.split(r'[;,|]', p.tags) if t.strip()]
-                                    for t in tokens:
-                                        if _norm_txt(t) in query_terms:
-                                            matched.append(t)
-                                # Pequeño boost: 0.10 por tag coincidente, máx 0.20
-                                tag_component = min(0.20, 0.10 * len(matched)) if matched else 0.0
-                                item['hybrid_score'] = float(item.get('hybrid_score', 0.0)) + tag_component
-                                item['tags_matched'] = matched
-                                tag_matches_map[p.id] = matched
-                        except Exception:
-                            # Si algo falla, continuar sin boost por tags
-                            tag_matches_map = {}
-
-                        # Ordenar por score híbrido (mayor a menor)
-                        scored_products.sort(key=lambda x: x.get('hybrid_score', 0.0), reverse=True)
-
-                        print(f"\n📊 RESULTADOS HÍBRIDOS (Atributos + CLIP):")
-                        print(f"   Total productos evaluados: {len(scored_products)}")
-                        print(f"   Productos con embedding: {sum(1 for p in scored_products if p['has_embedding'])}")
-                        print(f"\n   🏆 Top productos por score híbrido:")
-                        for i, item in enumerate(scored_products[:10], 1):
-                            prod = item['product']
-                            attr_m = item.get('attr_matches', 0)
-                            attr_t = item.get('attr_total', 0)
-                            sim = item['similarity']
-                            has_emb = "✅" if item['has_embedding'] else "❌"
-                            log_verbose(LogCategory.NLP, f"      {i}. [{attr_m}/{attr_t}] {prod.name[:40]:40s} | CLIP: {sim:.3f} {has_emb}")
-
-                        # Actualizar lista de productos con los rankeados
-                        filtered_products = [item['product'] for item in scored_products]
-
-                        # 🧩 Reporte unificado: FUERTE (atributos) + DÉBIL (CLIP) + AMBOS
-                        log_verbose(LogCategory.SEARCH, "="*60)
-                        print(f"🧩 COBERTURA POR PRODUCTO (FUERTE + DÉBIL)")
-                        log_verbose(LogCategory.NLP, "="*60)
-
-                        def _attr_exists(val):
-                            if val is None:
-                                return False
-                            if isinstance(val, bool):
-                                return bool(val)
-                            if isinstance(val, (list, tuple, set, dict)):
-                                return len(val) > 0
-                            s = str(val).strip().lower()
-                            return s not in ('', 'no', 'false', '0', 'none', 'null')
-
-                        # Crear mapa de similitudes CLIP por producto_id
-                        clip_scores = {item['product'].id: item['similarity'] for item in scored_products}
-
-                        # Top productos para mostrar (máximo 20 para no saturar consola)
-                        productos_a_mostrar = filtered_products[:20] if filtered_products else []
-
-                        for p in productos_a_mostrar:
-                            attrs = p.attributes or {}
-                            sim_score = clip_scores.get(p.id, 0.0)
-
-                            # Determinar tipo de match
-                            tiene_fuertes = False
-                            tiene_debiles = modificadores_no_configurados and sim_score > 0.50  # Umbral elevado para máxima precisión
-
-                            if atributos_encontrados:
-                                # Verificar si tiene algún atributo configurado
-                                for attr_match in atributos_encontrados:
-                                    key = attr_match.get('atributo_key') or ''
-                                    val = attrs.get(key)
-                                    if _attr_exists(val):
-                                        tiene_fuertes = True
-                                        break
-
-                            # Clasificar tipo de match
-                            if tiene_fuertes and tiene_debiles:
-                                match_type = "🌟 AMBOS"
-                            elif tiene_fuertes:
-                                match_type = "✅ FUERTE"
-                            elif tiene_debiles:
-                                match_type = "🎯 DÉBIL"
-                            else:
-                                match_type = "⚪ BASE"  # Solo categoría
-
-                            print(f"\n{match_type} | {p.name}")
-
-                            # Mostrar atributos configurados (FUERTE)
-                            if atributos_encontrados:
-                                attrs_mostrados = []
-                                for attr_match in atributos_encontrados:
-                                    key = attr_match.get('atributo_key') or ''
-                                    label = attr_match.get('atributo_label') or key
-                                    val = attrs.get(key)
-                                    existe = _attr_exists(val)
-                                    existe_txt = 'SÍ' if existe else 'NO'
-                                    val_txt = f" = {val}" if val is not None else ''
-                                    attrs_mostrados.append(f"{label}: {existe_txt}{val_txt}")
-                                if attrs_mostrados:
-                                    print(f"   └─ Atributos: {' | '.join(attrs_mostrados)}")
-
-                            # Mostrar score CLIP (DÉBIL)
-                            if modificadores_no_configurados:
-                                mods_txt = ', '.join(modificadores_no_configurados)
-                                print(f"   └─ CLIP similarity: {sim_score:.3f} (mods: {mods_txt})")
-
-                        print(f"\n📊 Leyenda:")
-                        print(f"   🌟 AMBOS   = Tiene atributos configurados Y buena similitud CLIP")
-                        print(f"   ✅ FUERTE  = Solo atributos configurados")
-                        print(f"   🎯 DÉBIL   = Solo similitud CLIP (sin atributos)")
-                        print(f"   ⚪ BASE    = Solo categoría (sin filtros)")
-
-                    except Exception as e:
-                        print(f"   ❌ Error en filtrado CLIP: {e}")
-                        import traceback
-                        traceback.print_exc()
+                    except Exception as e_clip:
+                        log_error(f"Error en inferencia CLIP: {e_clip}")
+                        clip_product_scores = {prod.id: {'match_ratio': 0, 'max_similarity': 0} for prod in filtered_products}
 
                 else:
                     print(f"\n📝 Sin modificadores no configurados, no se aplica filtrado CLIP")
+                    clip_product_scores = {}
 
                 # 🛑 BREAKPOINT: Retornar resultados de prueba
                 # Enriquecer top_5 con imagen y cobertura de atributos fuertes/débiles
