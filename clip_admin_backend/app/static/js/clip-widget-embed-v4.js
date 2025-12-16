@@ -1353,7 +1353,7 @@
             }).join(' ');
 
             // Mostrar también los atributos visibles NO requeridos para la búsqueda
-            const visibleExtraBadges = exposedKeys
+            let visibleExtraBadges = exposedKeys
                 .filter(k => !requiredStrongKeys.includes(k))
                 .map(k => {
                     const attrVal = (prod.attributes || {})[k];
@@ -1367,6 +1367,27 @@
                 })
                 .filter(Boolean)
                 .join(' ');
+
+            // Fallback visual: si no hay claves expuestas (o no generaron badges), usar attributes_coverage para mostrar atributos presentes (p.ej., Color: Negro)
+            if (!visibleExtraBadges) {
+                const coverageBadges = coverageAttrs
+                    .filter(a => a && (a.value !== undefined && a.value !== null))
+                    .map(a => {
+                        const label = a.label || a.key || '';
+                        if (!label) return '';
+                        const raw = a.value;
+                        const valuesList = Array.isArray(raw) ? raw : [raw];
+                        const displayVal = valuesList
+                            .map(v => typeof v === 'object' ? (v.label || v.value || v.name || '') : String(v))
+                            .filter(Boolean)
+                            .join(', ');
+                        if (!displayVal) return '';
+                        return `<span style="background:#f1f5f9;color:#334155;padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid #e2e8f0;white-space:nowrap;">${label}: ${displayVal}</span>`;
+                    })
+                    .filter(Boolean)
+                    .join(' ');
+                visibleExtraBadges = coverageBadges;
+            }
 
             const weakBadges = weakMods.length > 0 ? weakMods.map(mod => {
                 const ok = prod.clip_similarity > 0.50;
