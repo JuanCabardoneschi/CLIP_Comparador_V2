@@ -2035,19 +2035,33 @@ def text_search():
 
                 # Construir respuesta compatible con widget
                 elapsed = time.time() - start_time
-                response_data = {
-                    "success": True,
-                    "query": query_text,
-                    "total_results": sum(len(v) for v in results_by_category.values()) if group_by_category else len(formatted_results[:limit]),
-                    "processing_time": round(elapsed, 3),
-                    "group_by_category": group_by_category
-                }
 
+                # Si agrupamos, aplanar results_by_category en un array plano para el widget
                 if group_by_category:
-                    response_data["results_by_category"] = results_by_category
-                    response_data["results"] = []
+                    flattened_results = []
+                    for cat_name, items in results_by_category.items():
+                        flattened_results.extend(items)
+
+                    response_data = {
+                        "success": True,
+                        "query": query_text,
+                        "total_results": len(flattened_results),
+                        "processing_time": round(elapsed, 3),
+                        "group_by_category": group_by_category,
+                        "results_by_category": results_by_category,
+                        "results": flattened_results  # Widget necesita esto poblado
+                    }
+                    print(f"📤 Retornando {len(flattened_results)} productos agrupados en {len(results_by_category)} categorías")
                 else:
-                    response_data["results"] = formatted_results[:limit]
+                    response_data = {
+                        "success": True,
+                        "query": query_text,
+                        "total_results": len(formatted_results[:limit]),
+                        "processing_time": round(elapsed, 3),
+                        "group_by_category": False,
+                        "results": formatted_results[:limit]
+                    }
+                    print(f"📤 Retornando {len(formatted_results[:limit])} productos sin agrupación")
 
                 # 📊 También registrar analytics antes de retornar (evita perder conteo por early return)
                 try:
