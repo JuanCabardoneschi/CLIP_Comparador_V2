@@ -1930,168 +1930,124 @@ def text_search():
                 except Exception as e_sort:
                     log_error(f"Error ordenando productos post-CLIP: {e_sort}")
 
-                # 🛑 BREAKPOINT: Retornar resultados de prueba
-                # Enriquecer top_5 con imagen y cobertura de atributos fuertes/débiles
-                try:
-                    def _attr_exists(val):
-                        if val is None:
-                            return False
-                        if isinstance(val, bool):
-                            return bool(val)
-                        if isinstance(val, (list, tuple, set, dict)):
-                            return len(val) > 0
-                        s = str(val).strip().lower()
-                        return s not in ('', 'no', 'false', '0', 'none', 'null')
+                # ✅ FORMATEAR RESULTADOS para el widget (formato compatible)
+                formatted_results = []
+                for product in filtered_products:
+                    # Obtener imagen principal
+                    primary_image = Image.query.filter_by(
+                        product_id=product.id,
+                        is_primary=True
+                    ).first()
 
-                    # Mapa key->label de atributos fuertes detectados
-                    strong_attr_map = []
-                    for a in (atributos_encontrados or []):
-                        strong_attr_map.append({
-                            'key': a.get('atributo_key'),
-                            'label': a.get('atributo_label') or a.get('atributo_key')
-                        })
+                    if not primary_image:
+                        primary_image = Image.query.filter_by(
+                            product_id=product.id
+                        ).first()
 
-                        # Mapa de similitudes CLIP si existe
-                    try:
-                        clip_scores  # noqa: F401 (puede no existir si no hubo CLIP)
-                    except NameError:
-                        clip_scores = {}
-
-                    # Asegurar existencia de tag_matches_map aunque no se haya calculado el boost por tags
-                    try:
-                        tag_matches_map  # noqa: F401
-                    except NameError:
-                        tag_matches_map = {}
-
-                    enriched_top5 = []
-                    for p in (filtered_products[:5] if filtered_products else []):
-                        # Imagen principal
-                        image_url = None
-                        try:
-                            primary_image = Image.query.filter_by(product_id=p.id, is_primary=True).first()
-                            if not primary_image:
-                                primary_image = Image.query.filter_by(product_id=p.id).first()
-                            if primary_image:
-                                image_url = primary_image.display_url  # TiendaNube source_url o Cloudinary
-                        except Exception:
-                            image_url = None
-
-                        # Cobertura atributos fuertes
-                        coverage = []
-                        attrs = p.attributes or {}
-                        for m in strong_attr_map:
-                            key = (m.get('key') or '').strip()
-                            label = (m.get('label') or key).strip()
-                            val = attrs.get(key)
-                            exists = _attr_exists(val)
-                            coverage.append({
-                                'key': key,
-                                'label': label,
-                                'exists': bool(exists),
-                                'value': val
-                            })
-
-                        # Débil (CLIP) en base a similitud y presencia de modificadores no configurados
-                        sim = float(clip_scores.get(p.id, 0.0)) if isinstance(clip_scores, dict) else 0.0
-                        weak_applied = bool(modificadores_no_configurados) and sim > 0.50
-
-                        # match_type
-                        has_strong = any(c.get('exists') for c in coverage) if coverage else False
-                        if has_strong and weak_applied:
-                            match_type = 'AMBOS'
-                        elif has_strong:
-                            match_type = 'FUERTE'
-                        elif weak_applied:
-                            match_type = 'DÉBIL'
+                    # Priorizar external_url (Tiendanube/externo) sobre url_producto (atributo custom)
+                    prod_attrs = product.attributes or {}
+                    final_product_url = None
+                    if hasattr(product, 'external_url') and product.external_url:
+                        final_product_url = product.external_url
+                    elif prod_attrs.get('url_producto'):
+                        raw_url = prod_attrs.get('url_producto')
+                        if isinstance(raw_url, dict):
+                            final_product_url = raw_url.get('value') or raw_url.get('url') or None
                         else:
-                            match_type = 'BASE'
+                            final_product_url = raw_url
 
-                        enriched_top5.append({
-                            'id': str(p.id),
-                            'name': p.name,
-                            'sku': p.sku,
-                            'category': p.category.name if p.category else None,
-                            'price': float(p.price) if p.price else None,
-                            'stock': p.stock if hasattr(p, 'stock') else None,
-                            'attributes': p.attributes or {},
-                            'image_url': image_url,
-                            'attributes_coverage': coverage,
-                            'weak_modifiers': modificadores_no_configurados or [],
-                            'clip_similarity': round(sim, 3) if sim else 0.0,
-                            'match_type': match_type,
-                            'tags_matched': tag_matches_map.get(p.id, [])
-                        })
-                except Exception as _e:
-                    print(f"⚠️ Enriquecimiento top_5 falló: {_e}")
-                    enriched_top5 = [
-                        {
-                            "id": str(p.id),
-                            "name": p.name,
-                            "sku": p.sku,
-                            "category": p.category.name if p.category else None
-                        } for p in filtered_products[:5]
-                    ]
+                    # Score de similitud (si existe clip_product_scores)
+                    try:
+                        clip_score = clip_product_scores.get(product.id, {}) if 'clip_product_scores' in locals() else {}
+                        similarity = clip_score.get('max_similarity', 0.0) if clip_score else 0.0
+                    except:
+                        similarity = 0.0
 
-                # Construir respuesta de testing
-                # Helper seguro para normalizar categorías (objeto SQLAlchemy o dict)
-                def _cat_to_dict(cat):
-                    if isinstance(cat, dict):
-                        return {
-                            "id": cat.get("id"),
-                            "name": cat.get("name"),
-                            "name_en": cat.get("name_en"),
-                            "slug": cat.get("slug")
-                        }
-                    return {
-                        "id": getattr(cat, "id", None),
-                        "name": getattr(cat, "name", None),
-                        "name_en": getattr(cat, "name_en", None),
-                        "slug": getattr(cat, "slug", None)
-                    }
+                    formatted_results.append({
+                        "id": product.id,
+                        "name": product.name,
+                        "price": float(product.price) if product.price is not None else None,
+                        "similarity": round(similarity, 3),
+                        "final_score": round(similarity, 3),
+                        "image": primary_image.display_url if primary_image else '/static/images/placeholder.svg',
+                        "image_url": primary_image.display_url if primary_image else '/static/images/placeholder.svg',
+                        "category": product.category.name if product.category else None,
+                        "attributes": prod_attrs,
+                        "sku": product.sku,
+                        "stock": product.stock,
+                        "product_url": final_product_url
+                    })
 
-                # Helper seguro para normalizar categorías también en fallback
-                def _cat_to_dict(cat):
-                    if isinstance(cat, dict):
-                        return {
-                            "id": cat.get("id"),
-                            "name": cat.get("name"),
-                            "name_en": cat.get("name_en"),
-                            "slug": cat.get("slug")
-                        }
-                    return {
-                        "id": getattr(cat, "id", None),
-                        "name": getattr(cat, "name", None),
-                        "name_en": getattr(cat, "name_en", None),
-                        "slug": getattr(cat, "slug", None)
-                    }
+                print(f"✅ Formateados {len(formatted_results)} productos para respuesta")
 
+                # ⭐ AGRUPACIÓN POR CATEGORÍAS HERMANAS (si hay múltiples categorías detectadas)
+                results_by_category = {}
+                group_by_category = False
+                MIN_CATEGORY_RESULTS = 3
+
+                # Construir detection_metadata con matched_categories
+                detection_metadata = {
+                    'matched_categories': matched_categories  # Lista de dicts con {id, name, slug}
+                }
+
+                print(f"\n🎯 AGRUPACIÓN - DIAGNÓSTICO:")
+                print(f"   matched_categories: {len(matched_categories)}")
+                print(f"   formatted_results: {len(formatted_results)}")
+
+                if detection_metadata and len(detection_metadata.get('matched_categories', [])) > 1:
+                    group_by_category = True
+                    print(f"   ✅ Activando agrupación (múltiples categorías detectadas)")
+
+                    # Agrupar por categoría
+                    for result in formatted_results:
+                        cat_name = result.get('category')
+                        if cat_name:
+                            if cat_name not in results_by_category:
+                                results_by_category[cat_name] = []
+                            # Limitar a MIN_CATEGORY_RESULTS por categoría
+                            if len(results_by_category[cat_name]) < MIN_CATEGORY_RESULTS:
+                                results_by_category[cat_name].append(result)
+
+                    print(f"   📊 Distribución inicial:")
+                    for cat, items in results_by_category.items():
+                        print(f"      • {cat}: {len(items)} productos")
+
+                    # Top-up: completar categorías con < MIN_CATEGORY_RESULTS
+                    for cat_name, items in results_by_category.items():
+                        if len(items) < MIN_CATEGORY_RESULTS:
+                            needed = MIN_CATEGORY_RESULTS - len(items)
+                            print(f"   🔄 Top-up para '{cat_name}': necesita {needed} más")
+
+                            # Buscar productos disponibles de esa categoría que no estén ya incluidos
+                            existing_ids = {r['id'] for r in items}
+                            available = [r for r in formatted_results if r.get('category') == cat_name and r['id'] not in existing_ids]
+
+                            # Agregar hasta completar
+                            to_add = available[:needed]
+                            results_by_category[cat_name].extend(to_add)
+                            print(f"      ✅ Agregados {len(to_add)} productos a '{cat_name}'")
+
+                    print(f"   📊 Distribución final:")
+                    for cat, items in results_by_category.items():
+                        print(f"      • {cat}: {len(items)} productos")
+                else:
+                    print(f"   ℹ️  Sin agrupación (categoría única o ninguna)")
+
+                # Construir respuesta compatible con widget
+                elapsed = time.time() - start_time
                 response_data = {
                     "success": True,
-                    "query_original": query_text,
-                    "query_normalizada": cleaned_query,
-                    "extraction": {
-                        "categoria": categoria_extraida,
-                        "modificadores": modificadores
-                    },
-                    "detection": {
-                        "tiene_match": len(matched_categories) > 0,
-                        "categorias_matched": [ _cat_to_dict(cat) for cat in (matched_categories or []) ],
-                        "categorias_cliente_total": len(client_categories)
-                    },
-                    "analysis": {
-                        "atributos_configurados_total": len(configured_attributes),
-                        "atributos_encontrados": atributos_encontrados,
-                        "modificadores_no_configurados": modificadores_no_configurados
-                    },
-                    "filtering": {
-                        "productos_base": len(base_products),
-                        "productos_post_fuerte": len(filtered_products) if atributos_encontrados else len(base_products),
-                        "productos_finales": len(filtered_products),
-                        "filtrado_clip_aplicado": len(modificadores_no_configurados) > 0,
-                        "top_5_productos": enriched_top5
-                    },
-                    "next_step": "Testing completado - Ver cobertura en servidor y UI de prueba"
+                    "query": query_text,
+                    "total_results": sum(len(v) for v in results_by_category.values()) if group_by_category else len(formatted_results[:limit]),
+                    "processing_time": round(elapsed, 3),
+                    "group_by_category": group_by_category
                 }
+
+                if group_by_category:
+                    response_data["results_by_category"] = results_by_category
+                    response_data["results"] = []
+                else:
+                    response_data["results"] = formatted_results[:limit]
 
                 # 📊 También registrar analytics antes de retornar (evita perder conteo por early return)
                 try:
@@ -2139,10 +2095,11 @@ def text_search():
                     print(f"❌ ANALYTICS (early) ERROR: {_log_e}", flush=True)
                     print(f"   Traceback: {_tb.format_exc()}", flush=True)
 
-                # 🛑 Deshabilitado retorno temprano de testing para permitir AGRUPACIÓN por categorías
-                # En lugar de retornar aquí, continuamos con el flujo estándar (Stage 2 + agrupación)
-                # de modo que el widget reciba `results`/`results_by_category` correctamente.
-                print("🛑 Early return de testing deshabilitado: continuando para agrupación por categorías", flush=True)
+                _resp = jsonify(response_data)
+                _resp.headers['Access-Control-Allow-Origin'] = '*'
+                _resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+                _resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+                return _resp
 
             except Exception as e:
                 attribute_labels = {}  # label normalizado -> objeto config
