@@ -1347,9 +1347,9 @@
                         }
                     }
                 }
-                const icon = ok ? '✅' : '❌';
+                const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${ok ? '#22c55e' : '#ef4444'};margin-right:6px;vertical-align:middle;"></span>`;
                 const valueSuffix = displayVal ? `: ${displayVal}` : '';
-                return `<span style="background:${ok ? '#ecfdf5' : '#fef2f2'};color:${ok ? '#065f46' : '#991b1b'};padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid ${ok ? '#a7f3d0' : '#fecaca'};white-space:nowrap;">${icon} ${label}${valueSuffix}</span>`;
+                return `<span style="background:${ok ? '#ecfdf5' : '#fef2f2'};color:${ok ? '#065f46' : '#991b1b'};padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid ${ok ? '#a7f3d0' : '#fecaca'};white-space:nowrap;display:inline-flex;align-items:center;">${dot}${label}${valueSuffix}</span>`;
             }).join(' ');
 
             // Mostrar también los atributos visibles NO requeridos para la búsqueda
