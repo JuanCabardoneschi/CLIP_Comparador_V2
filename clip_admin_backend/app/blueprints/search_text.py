@@ -267,11 +267,7 @@ def _infer_attribute_from_clip_cached(image_vec: np.ndarray, modificador: str, c
         }
 
 
-# DEPRECATED: Mantener para compatibilidad pero usar versión cacheada
-def _infer_attribute_from_clip(image_vec: np.ndarray, modificador: str, categoria: str = None,
-                               variants: list = None, threshold: float = 0.20) -> dict:
-    """DEPRECATED: Usar _infer_attribute_from_clip_cached() en su lugar."""
-    return _infer_attribute_from_clip_cached(image_vec, modificador, categoria, variants, threshold)
+## Eliminado: función deprecada _infer_attribute_from_clip
 
 
 def _extract_key_terms_with_dependency_parsing(text: str, client_profile: dict = None) -> dict:
