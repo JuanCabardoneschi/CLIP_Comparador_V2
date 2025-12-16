@@ -1285,9 +1285,31 @@
             const matchedCriteria = strongMatches + weakMatches;
             const matchPercentage = totalCriteria > 0 ? Math.round((matchedCriteria / totalCriteria) * 100) : 0;
 
-            const imgHtml = prod.image_url
-                ? `<img src="${prod.image_url}" alt="${prod.name || 'Producto'}" class="clip-product-img">`
-                : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.8rem;">Sin imagen</div>`;
+            // Construir link de producto (si viene en la respuesta)
+            let productUrl = '';
+            let productLinkHtml = '';
+            if (prod.product_url) {
+                if (typeof prod.product_url === 'object' && prod.product_url !== null) {
+                    productUrl = prod.product_url.url || prod.product_url.value || '';
+                } else {
+                    productUrl = String(prod.product_url);
+                }
+                if (productUrl) {
+                    productLinkHtml = `<a href="${productUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:8px;background:#0ea5e9;color:#fff;padding:6px 10px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;">Ver producto ↗</a>`;
+                }
+            }
+
+            // Hacer la imagen clickeable si hay URL
+            const imgHtml = (() => {
+                if (!prod.image_url) {
+                    return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.8rem;">Sin imagen</div>`;
+                }
+                const imgTag = `<img src="${prod.image_url}" alt="${prod.name || 'Producto'}" class="clip-product-img">`;
+                if (productUrl) {
+                    return `<a href="${productUrl}" target="_blank" rel="noopener noreferrer" style="display:block;height:100%;cursor:pointer;">${imgTag}</a>`;
+                }
+                return imgTag;
+            })();
 
             const strongBadges = requiredStrongKeys.map(key => {
                 const coverage = coverageByKey[key];
@@ -1358,6 +1380,7 @@
                                 ${prod.stock > 0 ? `✓ Stock: ${prod.stock}` : '✗ Sin stock'}
                             </div>
                         ` : ''}
+                        ${productLinkHtml}
                     </div>
                 </div>
             `;
