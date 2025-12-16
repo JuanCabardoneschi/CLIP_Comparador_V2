@@ -1289,12 +1289,6 @@
                 if (anyMatch) strongMatches += 1;
             });
 
-            // Fallback: si no hay atributos requeridos (ej. el backend no devolvió analysis.atributos_encontrados), usar lo que venga en attributes_coverage para calcular el porcentaje
-            if (strongCriteria === 0 && coverageAttrs.length > 0) {
-                strongMatches = coverageAttrs.filter(a => a.exists).length;
-                strongCriteria = coverageAttrs.length;
-            }
-
             const weakSimilarityMatched = (weakMods.length > 0 && prod.clip_similarity > 0.50);
             const weakMatches = weakSimilarityMatched ? weakMods.length : 0;
             const weakCriteria = weakMods.length;
@@ -1367,27 +1361,6 @@
                 })
                 .filter(Boolean)
                 .join(' ');
-
-            // Fallback visual: si no hay claves expuestas (o no generaron badges), usar attributes_coverage para mostrar atributos presentes (p.ej., Color: Negro)
-            if (!visibleExtraBadges) {
-                const coverageBadges = coverageAttrs
-                    .filter(a => a && (a.value !== undefined && a.value !== null))
-                    .map(a => {
-                        const label = a.label || a.key || '';
-                        if (!label) return '';
-                        const raw = a.value;
-                        const valuesList = Array.isArray(raw) ? raw : [raw];
-                        const displayVal = valuesList
-                            .map(v => typeof v === 'object' ? (v.label || v.value || v.name || '') : String(v))
-                            .filter(Boolean)
-                            .join(', ');
-                        if (!displayVal) return '';
-                        return `<span style="background:#f1f5f9;color:#334155;padding:4px 8px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid #e2e8f0;white-space:nowrap;">${label}: ${displayVal}</span>`;
-                    })
-                    .filter(Boolean)
-                    .join(' ');
-                visibleExtraBadges = coverageBadges;
-            }
 
             const weakBadges = weakMods.length > 0 ? weakMods.map(mod => {
                 const ok = prod.clip_similarity > 0.50;

@@ -2077,6 +2077,38 @@ def text_search():
                 # Construir respuesta compatible con widget
                 elapsed = time.time() - start_time
 
+                # Calcular exposed_attribute_keys y exposed_attribute_labels
+                exposed_attribute_keys = []
+                exposed_attribute_labels = {}
+                try:
+                    for cfg in configured_attributes:
+                        key_l = (cfg.key or '').strip().lower()
+                        if not key_l:
+                            continue
+                        # Lista de atributos visibles
+                        if cfg.expose_in_search:
+                            exposed_attribute_keys.append(key_l)
+                        # Mapa de etiquetas para TODOS los atributos
+                        exposed_attribute_labels[key_l] = (cfg.label or cfg.key or key_l)
+                except Exception:
+                    pass
+
+                # Helper para normalizar categorías
+                def _cat_to_dict(cat):
+                    if isinstance(cat, dict):
+                        return {
+                            "id": cat.get("id"),
+                            "name": cat.get("name"),
+                            "name_en": cat.get("name_en"),
+                            "slug": cat.get("slug")
+                        }
+                    return {
+                        "id": getattr(cat, "id", None),
+                        "name": getattr(cat, "name", None),
+                        "name_en": getattr(cat, "name_en", None),
+                        "slug": getattr(cat, "slug", None)
+                    }
+
                 # Si agrupamos, aplanar results_by_category en un array plano para el widget
                 if group_by_category:
                     flattened_results = []
@@ -2090,7 +2122,19 @@ def text_search():
                         "processing_time": round(elapsed, 3),
                         "group_by_category": group_by_category,
                         "results_by_category": results_by_category,
-                        "results": flattened_results  # Widget necesita esto poblado
+                        "results": flattened_results,  # Widget necesita esto poblado
+                        "detection": {
+                            "categorias_cliente_total": len(client_categories) if 'client_categories' in locals() else 0,
+                            "categorias_matched": [_cat_to_dict(cat) for cat in (matched_categories or [])],
+                            "tiene_match": len(matched_categories) > 0
+                        },
+                        "analysis": {
+                            "atributos_configurados_total": len(configured_attributes) if 'configured_attributes' in locals() else 0,
+                            "atributos_encontrados": atributos_encontrados or [],
+                            "modificadores_no_configurados": modificadores_no_configurados or []
+                        },
+                        "exposed_attribute_keys": exposed_attribute_keys,
+                        "exposed_attribute_labels": exposed_attribute_labels
                     }
                     print(f"📤 Retornando {len(flattened_results)} productos agrupados en {len(results_by_category)} categorías")
                 else:
@@ -2100,7 +2144,19 @@ def text_search():
                         "total_results": len(formatted_results[:limit]),
                         "processing_time": round(elapsed, 3),
                         "group_by_category": False,
-                        "results": formatted_results[:limit]
+                        "results": formatted_results[:limit],
+                        "detection": {
+                            "categorias_cliente_total": len(client_categories) if 'client_categories' in locals() else 0,
+                            "categorias_matched": [_cat_to_dict(cat) for cat in (matched_categories or [])],
+                            "tiene_match": len(matched_categories) > 0
+                        },
+                        "analysis": {
+                            "atributos_configurados_total": len(configured_attributes) if 'configured_attributes' in locals() else 0,
+                            "atributos_encontrados": atributos_encontrados or [],
+                            "modificadores_no_configurados": modificadores_no_configurados or []
+                        },
+                        "exposed_attribute_keys": exposed_attribute_keys,
+                        "exposed_attribute_labels": exposed_attribute_labels
                     }
                     print(f"📤 Retornando {len(formatted_results[:limit])} productos sin agrupación")
 
