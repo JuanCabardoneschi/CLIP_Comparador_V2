@@ -1963,6 +1963,43 @@ def text_search():
                     except:
                         similarity = 0.0
 
+                    # Cobertura de atributos fuertes (para que el widget calcule % correctamente)
+                    try:
+                        def _attr_exists(_val):
+                            if _val is None:
+                                return False
+                            if isinstance(_val, bool):
+                                return bool(_val)
+                            if isinstance(_val, (list, tuple, set, dict)):
+                                return len(_val) > 0
+                            _s = str(_val).strip().lower()
+                            return _s not in ('', 'no', 'false', '0', 'none', 'null')
+
+                        strong_attr_map = []
+                        for _a in (atributos_encontrados or []):
+                            key = (_a.get('atributo_key') or '').strip()
+                            if not key:
+                                continue
+                            strong_attr_map.append({
+                                'key': key,
+                                'label': (_a.get('atributo_label') or key).strip()
+                            })
+
+                        coverage = []
+                        for _m in strong_attr_map:
+                            _k = (_m.get('key') or '').strip()
+                            _label = (_m.get('label') or _k).strip()
+                            _val = (prod_attrs or {}).get(_k)
+                            _exists = _attr_exists(_val)
+                            coverage.append({
+                                'key': _k,
+                                'label': _label,
+                                'exists': bool(_exists),
+                                'value': _val
+                            })
+                    except Exception:
+                        coverage = []
+
                     formatted_results.append({
                         "id": product.id,
                         "name": product.name,
@@ -1973,6 +2010,10 @@ def text_search():
                         "image_url": primary_image.display_url if primary_image else '/static/images/placeholder.svg',
                         "category": product.category.name if product.category else None,
                         "attributes": prod_attrs,
+                        "attributes_coverage": coverage,
+                        "weak_modifiers": modificadores_no_configurados or [],
+                        "clip_similarity": round(similarity, 3),
+                        "similarity_score": round(similarity, 3),
                         "sku": product.sku,
                         "stock": product.stock,
                         "product_url": final_product_url
