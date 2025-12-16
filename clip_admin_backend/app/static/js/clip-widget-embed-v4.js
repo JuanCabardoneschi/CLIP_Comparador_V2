@@ -1208,6 +1208,14 @@
         // Ajustar cálculo de porcentaje para listas multi-valor
         const resultsDiv = widgetContainer.querySelector('#clip-results');
 
+        const normalizeVal = (val) => String(val || '').trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+        const matchesRequestedValue = (reqSet, normVal) => {
+            if (reqSet.has(normVal)) return true;
+            if (normVal.endsWith('o') && reqSet.has(`${normVal.slice(0, -1)}a`)) return true;
+            if (normVal.endsWith('a') && reqSet.has(`${normVal.slice(0, -1)}o`)) return true;
+            return false;
+        };
+
         // Usar data.results (nuevo formato) o data.filtering.top_5_productos (legacy)
         const productos = data.results || data.filtering?.top_5_productos || [];
 
@@ -1217,7 +1225,8 @@
         const requiredStrong = {};
         const encontrados = (data.analysis && data.analysis.atributos_encontrados) ? data.analysis.atributos_encontrados : [];
         encontrados.forEach(a => {
-            const key = (a.atributo_key || '').trim();
+            const keyRaw = (a.atributo_key || '').trim();
+            const key = keyRaw.toLowerCase();
             const matchTipo = a.match_tipo || a.matchTipo || a.match_tipo;
             const valorDetectado = a.valor_detectado;
             if (!key) return;
@@ -1252,7 +1261,10 @@
             let strongCriteria = requiredStrongKeys.length;
 
             const coverageByKey = {};
-            coverageAttrs.forEach(a => { coverageByKey[a.key] = a; });
+            coverageAttrs.forEach(a => {
+                const k = (a.key || '').toLowerCase();
+                if (k) coverageByKey[k] = a;
+            });
 
             requiredStrongKeys.forEach(key => {
                 const req = requiredStrong[key];
@@ -1267,8 +1279,8 @@
                     }
                 } else {
                     for (const val of valuesList) {
-                        const normVal = String(val).trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'');
-                        if (req.values.has(normVal)) {
+                        const normVal = normalizeVal(val);
+                        if (matchesRequestedValue(req.values, normVal)) {
                             anyMatch = true;
                             break;
                         }
@@ -1276,6 +1288,12 @@
                 }
                 if (anyMatch) strongMatches += 1;
             });
+
+            // Fallback: si no hay atributos requeridos (ej. el backend no devolvió analysis.atributos_encontrados), usar lo que venga en attributes_coverage para calcular el porcentaje
+            if (strongCriteria === 0 && coverageAttrs.length > 0) {
+                strongMatches = coverageAttrs.filter(a => a.exists).length;
+                strongCriteria = coverageAttrs.length;
+            }
 
             const weakSimilarityMatched = (weakMods.length > 0 && prod.clip_similarity > 0.50);
             const weakMatches = weakSimilarityMatched ? weakMods.length : 0;
@@ -1324,8 +1342,8 @@
                         ok = valuesList.length > 0;
                     } else {
                         for (const val of valuesList) {
-                            const normVal = String(val).trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'');
-                            if (req.values.has(normVal)) { ok = true; break; }
+                            const normVal = normalizeVal(val);
+                            if (matchesRequestedValue(req.values, normVal)) { ok = true; break; }
                         }
                     }
                 }
