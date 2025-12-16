@@ -978,7 +978,11 @@
 
             widgetContainer.querySelector('#clip-detection').classList.remove('active');
 
-            if (data.filtering?.top_5_productos && data.filtering.top_5_productos.length > 0) {
+            // Verificar si hay resultados (en formato plano o agrupado)
+            const hasResults = (data.results && data.results.length > 0) ||
+                              (data.filtering?.top_5_productos && data.filtering.top_5_productos.length > 0);
+
+            if (hasResults) {
                 displayTextSearchResults(data);
             } else {
                 showNoResults(data.user_feedback || data.partial_match_info || { message: 'No se encontraron productos' });
@@ -1203,7 +1207,10 @@
         // Mostrar TODOS los atributos visibles, no solo los que coinciden
         // Ajustar cálculo de porcentaje para listas multi-valor
         const resultsDiv = widgetContainer.querySelector('#clip-results');
-        const productos = data.filtering.top_5_productos || [];
+
+        // Usar data.results (nuevo formato) o data.filtering.top_5_productos (legacy)
+        const productos = data.results || data.filtering?.top_5_productos || [];
+
         const exposedKeys = data.exposed_attribute_keys || [];
         const labelMap = data.exposed_attribute_labels || {};
 
