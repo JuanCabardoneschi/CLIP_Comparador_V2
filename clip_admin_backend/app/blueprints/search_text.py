@@ -2139,11 +2139,10 @@ def text_search():
                     print(f"❌ ANALYTICS (early) ERROR: {_log_e}", flush=True)
                     print(f"   Traceback: {_tb.format_exc()}", flush=True)
 
-                _resp = jsonify(response_data)
-                _resp.headers['Access-Control-Allow-Origin'] = '*'
-                _resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-                _resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
-                return _resp
+                # 🛑 Deshabilitado retorno temprano de testing para permitir AGRUPACIÓN por categorías
+                # En lugar de retornar aquí, continuamos con el flujo estándar (Stage 2 + agrupación)
+                # de modo que el widget reciba `results`/`results_by_category` correctamente.
+                print("🛑 Early return de testing deshabilitado: continuando para agrupación por categorías", flush=True)
 
             except Exception as e:
                 attribute_labels = {}  # label normalizado -> objeto config
