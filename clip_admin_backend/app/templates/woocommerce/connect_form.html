@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}Conectar Tienda WooCommerce{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-plug"></i> Conectar Tienda WooCommerce
+                    </h4>
+                </div>
+
+                <div class="card-body">
+                    <!-- Instrucciones -->
+                    <div class="alert alert-info">
+                        <h5><i class="bi bi-info-circle"></i> Antes de comenzar</h5>
+                        <p class="mb-2">Para conectar tu tienda WooCommerce necesitas generar credenciales de API:</p>
+                        <ol class="mb-0">
+                            <li>Ve a <strong>WooCommerce → Settings → Advanced → REST API</strong></li>
+                            <li>Click en <strong>"Add key"</strong></li>
+                            <li>Descripción: "CLIP Comparador"</li>
+                            <li>Usuario: Selecciona un administrador</li>
+                            <li>Permisos: <strong>Read/Write</strong></li>
+                            <li>Copia el <strong>Consumer Key</strong> y <strong>Consumer Secret</strong></li>
+                        </ol>
+                    </div>
+
+                    <!-- Formulario -->
+                    <form id="woocommerce-form">
+                        <!-- URL de Tienda -->
+                        <div class="mb-3">
+                            <label for="store_url" class="form-label">
+                                URL de tu Tienda <span class="text-danger">*</span>
+                            </label>
+                            <input
+                                type="url"
+                                class="form-control"
+                                id="store_url"
+                                name="store_url"
+                                placeholder="https://mitienda.com"
+                                required
+                            >
+                            <small class="form-text text-muted">
+                                URL completa de tu tienda WooCommerce (incluyendo https://)
+                            </small>
+                        </div>
+
+                        <!-- Consumer Key -->
+                        <div class="mb-3">
+                            <label for="consumer_key" class="form-label">
+                                Consumer Key <span class="text-danger">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                class="form-control font-monospace"
+                                id="consumer_key"
+                                name="consumer_key"
+                                placeholder="ck_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                required
+                            >
+                            <small class="form-text text-muted">
+                                Comienza con "ck_"
+                            </small>
+                        </div>
+
+                        <!-- Consumer Secret -->
+                        <div class="mb-3">
+                            <label for="consumer_secret" class="form-label">
+                                Consumer Secret <span class="text-danger">*</span>
+                            </label>
+                            <input
+                                type="password"
+                                class="form-control font-monospace"
+                                id="consumer_secret"
+                                name="consumer_secret"
+                                placeholder="cs_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                required
+                            >
+                            <small class="form-text text-muted">
+                                Comienza con "cs_"
+                            </small>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="show_secret">
+                                <label class="form-check-label" for="show_secret">
+                                    Mostrar Consumer Secret
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Información adicional (se completa automáticamente después del test) -->
+                        <div id="store-info-section" class="d-none">
+                            <hr class="my-4">
+                            <h5 class="mb-3">Información de la Tienda</h5>
+
+                            <div class="mb-3">
+                                <label for="store_name" class="form-label">Nombre de la Tienda</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="store_name"
+                                    name="store_name"
+                                    readonly
+                                >
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Versión WooCommerce</label>
+                                    <input type="text" class="form-control" id="wc_version" readonly>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Versión WordPress</label>
+                                    <input type="text" class="form-control" id="wp_version" readonly>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Botones -->
+                        <div class="d-grid gap-2 mt-4">
+                            <button type="button" class="btn btn-outline-primary" id="test-connection-btn">
+                                <i class="bi bi-plug-fill"></i> Probar Conexión
+                            </button>
+
+                            <button type="submit" class="btn btn-success d-none" id="save-integration-btn">
+                                <i class="bi bi-check-circle"></i> Guardar Integración
+                            </button>
+
+                            <a href="{{ url_for('admin.dashboard') }}" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> Cancelar
+                            </a>
+                        </div>
+                    </form>
+
+                    <!-- Alertas -->
+                    <div id="alert-container" class="mt-3"></div>
+
+                </div>
+            </div>
+
+            <!-- Información adicional -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-question-circle"></i> ¿Necesitas ayuda?</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>¿No encuentras la opción REST API en WooCommerce?</strong></p>
+                    <p>Asegúrate de tener habilitados los permalinks "amigables" en WordPress:</p>
+                    <ol>
+                        <li>Ve a <strong>Settings → Permalinks</strong></li>
+                        <li>Selecciona cualquier opción excepto "Plain"</li>
+                        <li>Guarda los cambios</li>
+                    </ol>
+
+                    <p class="mb-0">
+                        <a href="https://woocommerce.github.io/woocommerce-rest-api-docs/" target="_blank">
+                            <i class="bi bi-book"></i> Documentación oficial de WooCommerce REST API
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.font-monospace {
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+}
+
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('woocommerce-form');
+    const testBtn = document.getElementById('test-connection-btn');
+    const saveBtn = document.getElementById('save-integration-btn');
+    const alertContainer = document.getElementById('alert-container');
+    const storeInfoSection = document.getElementById('store-info-section');
+    const showSecretCheckbox = document.getElementById('show_secret');
+    const consumerSecretInput = document.getElementById('consumer_secret');
+
+    let storeInfo = null;
+
+    // Toggle mostrar/ocultar secret
+    showSecretCheckbox.addEventListener('change', function() {
+        consumerSecretInput.type = this.checked ? 'text' : 'password';
+    });
+
+    // Test de conexión
+    testBtn.addEventListener('click', async function() {
+        const storeUrl = document.getElementById('store_url').value.trim();
+        const consumerKey = document.getElementById('consumer_key').value.trim();
+        const consumerSecret = document.getElementById('consumer_secret').value.trim();
+
+        // Validar campos
+        if (!storeUrl || !consumerKey || !consumerSecret) {
+            showAlert('Por favor completa todos los campos', 'warning');
+            return;
+        }
+
+        // Validar formato de consumer key/secret
+        if (!consumerKey.startsWith('ck_')) {
+            showAlert('Consumer Key debe comenzar con "ck_"', 'warning');
+            return;
+        }
+
+        if (!consumerSecret.startsWith('cs_')) {
+            showAlert('Consumer Secret debe comenzar con "cs_"', 'warning');
+            return;
+        }
+
+        // Deshabilitar botón y mostrar loading
+        testBtn.disabled = true;
+        testBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Probando conexión...';
+
+        try {
+            const response = await fetch('/woocommerce/test-connection', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    store_url: storeUrl,
+                    consumer_key: consumerKey,
+                    consumer_secret: consumerSecret
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                storeInfo = data.store_info;
+
+                // Mostrar información de la tienda
+                document.getElementById('store_name').value = storeInfo.name;
+                document.getElementById('wc_version').value = storeInfo.wc_version;
+                document.getElementById('wp_version').value = storeInfo.wp_version;
+
+                storeInfoSection.classList.remove('d-none');
+                saveBtn.classList.remove('d-none');
+
+                showAlert('✅ Conexión exitosa con ' + storeInfo.name, 'success');
+
+                // Scroll al formulario de guardar
+                storeInfoSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } else {
+                showAlert('❌ Error: ' + data.error, 'danger');
+            }
+
+        } catch (error) {
+            showAlert('❌ Error de conexión: ' + error.message, 'danger');
+        } finally {
+            testBtn.disabled = false;
+            testBtn.innerHTML = '<i class="bi bi-plug-fill"></i> Probar Conexión';
+        }
+    });
+
+    // Guardar integración
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        if (!storeInfo) {
+            showAlert('Primero debes probar la conexión', 'warning');
+            return;
+        }
+
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...';
+
+        try {
+            const response = await fetch('/woocommerce/save-integration', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    store_url: document.getElementById('store_url').value,
+                    consumer_key: document.getElementById('consumer_key').value,
+                    consumer_secret: document.getElementById('consumer_secret').value,
+                    store_name: storeInfo.name,
+                    store_email: storeInfo.email || ''
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showAlert('✅ Integración guardada exitosamente', 'success');
+
+                // Mostrar API key generada
+                showAlert(`
+                    <strong>¡Integración creada!</strong><br>
+                    <strong>API Key:</strong> <code>${data.api_key}</code><br>
+                    <small>Guarda esta clave, la necesitarás para el widget.</small>
+                `, 'info', false);
+
+                // Redirigir después de 3 segundos
+                setTimeout(() => {
+                    window.location.href = '/admin/dashboard';
+                }, 3000);
+            } else {
+                showAlert('❌ Error: ' + data.error, 'danger');
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="bi bi-check-circle"></i> Guardar Integración';
+            }
+
+        } catch (error) {
+            showAlert('❌ Error: ' + error.message, 'danger');
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="bi bi-check-circle"></i> Guardar Integración';
+        }
+    });
+
+    // Función helper para mostrar alertas
+    function showAlert(message, type, autoDismiss = true) {
+        const alert = document.createElement('div');
+        alert.className = `alert alert-${type} alert-dismissible fade show`;
+        alert.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+
+        alertContainer.innerHTML = '';
+        alertContainer.appendChild(alert);
+
+        if (autoDismiss) {
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        // Scroll a la alerta
+        alertContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+});
+</script>
+{% endblock %}

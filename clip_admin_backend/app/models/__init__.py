@@ -13,3 +13,4 @@ from .search_log import SearchLog
 from .store_search_config import StoreSearchConfig
 from .color_mapping import ColorMapping
 from .tiendanube_integration import TiendanubeIntegration
+from .woocommerce_integration import WooCommerceIntegration
