@@ -49,8 +49,8 @@
                     <tr>
                         <th>Cliente</th>
                         <th>Email</th>
+                        <th>Integración</th>
                         <th>Estado</th>
-                        <th>API Keys</th>
                         <th>Productos</th>
                         <th>Fecha Registro</th>
                         <th width="120">Acciones</th>
@@ -76,14 +76,30 @@
                             <span class="text-muted">{{ client.email }}</span>
                         </td>
                         <td>
+                            {% if client.integration_type == 'standalone' %}
+                                <span class="badge bg-secondary">
+                                    <i class="bi bi-box me-1"></i>
+                                    Standalone
+                                </span>
+                            {% elif client.integration_type == 'tiendanube' %}
+                                <span class="badge bg-info">
+                                    <i class="bi bi-link-45deg me-1"></i>
+                                    TiendaNube
+                                </span>
+                            {% elif client.integration_type == 'woocommerce' %}
+                                <span class="badge bg-warning">
+                                    <i class="bi bi-wordpress me-1"></i>
+                                    WooCommerce
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ client.integration_type }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
                             <span class="badge bg-success">
                                 <i class="bi bi-check-circle me-1"></i>
                                 Activo
                             </span>
-                        </td>
-                        <td>
-                            <span class="badge bg-secondary">0 keys</span>
-                            <small class="text-muted d-block">(No implementado)</small>
                         </td>
                         <td>
                             {% set total_products = [] %}

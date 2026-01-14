@@ -85,6 +85,129 @@
                             </select>
                             <div class="form-text">La industria ayuda a optimizar las traducciones automáticas</div>
                         </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="integration_type" class="form-label">
+                                <i class="bi bi-link-45deg me-1"></i>
+                                Tipo de Integración <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="integration_type" name="integration_type" required>
+                                <option value="standalone">Standalone (Sin integración)</option>
+                                <option value="tiendanube">TiendaNube</option>
+                                <option value="woocommerce">WooCommerce</option>
+                            </select>
+                            <div class="form-text">Selecciona cómo se conectará la tienda</div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- SECCIÓN TIENDANUBE - Mostrada solo cuando se selecciona TiendaNube -->
+                    <div id="tiendanube_section" class="tiendanube-section" style="display: none;">
+                        <h6 class="mb-3">
+                            <i class="bi bi-link-45deg me-2"></i>
+                            Configuración TiendaNube
+                        </h6>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="tiendanube_url" class="form-label">
+                                    <i class="bi bi-globe me-1"></i>
+                                    URL de la Tienda TiendaNube <span class="text-danger">*</span>
+                                </label>
+                                <input type="url"
+                                       class="form-control"
+                                       id="tiendanube_url"
+                                       name="tiendanube_url"
+                                       placeholder="https://mitienda.mitiendanube.com"
+                                       data-integration="tiendanube">
+                                <div class="form-text">URL completa de tu tienda TiendaNube</div>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="tiendanube_token" class="form-label">
+                                    <i class="bi bi-key me-1"></i>
+                                    Token de Autenticación <span class="text-danger">*</span>
+                                </label>
+                                <input type="password"
+                                       class="form-control"
+                                       id="tiendanube_token"
+                                       name="tiendanube_token"
+                                       placeholder="Pega tu token aquí"
+                                       data-integration="tiendanube">
+                                <div class="form-text">Token de acceso de TiendaNube (desde Panel Admin)</div>
+                            </div>
+                        </div>
+
+                        <button type="button" class="btn btn-outline-info btn-sm" id="test_tiendanube_btn">
+                            <i class="bi bi-check-circle me-1"></i>
+                            Probar Conexión TiendaNube
+                        </button>
+                        <div id="tiendanube_status" class="mt-2" style="display: none;"></div>
+
+                        <hr class="my-4">
+                    </div>
+
+                    <!-- SECCIÓN WOOCOMMERCE - Mostrada solo cuando se selecciona WooCommerce -->
+                    <div id="woocommerce_section" class="woocommerce-section" style="display: none;">
+                        <h6 class="mb-3">
+                            <i class="bi bi-link-45deg me-2"></i>
+                            Configuración WooCommerce
+                        </h6>
+
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label for="wc_store_url" class="form-label">
+                                    <i class="bi bi-globe me-1"></i>
+                                    URL de la Tienda <span class="text-danger">*</span>
+                                </label>
+                                <input type="url"
+                                       class="form-control"
+                                       id="wc_store_url"
+                                       name="wc_store_url"
+                                       placeholder="https://mitienda.com"
+                                       data-integration="woocommerce">
+                                <div class="form-text">URL completa de tu tienda WordPress con WooCommerce</div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="wc_consumer_key" class="form-label">
+                                    <i class="bi bi-key me-1"></i>
+                                    Consumer Key <span class="text-danger">*</span>
+                                </label>
+                                <input type="password"
+                                       class="form-control"
+                                       id="wc_consumer_key"
+                                       name="wc_consumer_key"
+                                       placeholder="ck_..."
+                                       data-integration="woocommerce">
+                                <div class="form-text">Consumer Key de WooCommerce REST API</div>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="wc_consumer_secret" class="form-label">
+                                    <i class="bi bi-key-fill me-1"></i>
+                                    Consumer Secret <span class="text-danger">*</span>
+                                </label>
+                                <input type="password"
+                                       class="form-control"
+                                       id="wc_consumer_secret"
+                                       name="wc_consumer_secret"
+                                       placeholder="cs_..."
+                                       data-integration="woocommerce">
+                                <div class="form-text">Consumer Secret de WooCommerce REST API</div>
+                            </div>
+                        </div>
+
+                        <button type="button" class="btn btn-outline-info btn-sm" id="test_woocommerce_btn">
+                            <i class="bi bi-check-circle me-1"></i>
+                            Probar Conexión WooCommerce
+                        </button>
+                        <div id="woocommerce_status" class="mt-2" style="display: none;"></div>
+
+                        <hr class="my-4">
                     </div>
 
                     <hr class="my-4">
@@ -198,15 +321,20 @@
                     <li>Búsqueda visual CLIP</li>
                 </ul>
 
-                <h6 class="text-info">
-                    <i class="bi bi-lightbulb me-1"></i>
-                    Después de crear el cliente:
+                <h6 class="text-primary mt-4">
+                    <i class="bi bi-link-45deg me-1"></i>
+                    Tipos de Integración
                 </h6>
-                <ul class="text-sm text-muted">
-                    <li>Se generará automáticamente un slug único</li>
-                    <li>Podrás crear API keys</li>
-                    <li>Podrás añadir categorías y productos</li>
-                    <li>Tendrás acceso a métricas detalladas</li>
+                <ul class="text-sm text-muted mb-3">
+                    <li class="mb-2">
+                        <strong>Standalone:</strong> Sin integración, carga manual de productos
+                    </li>
+                    <li class="mb-2">
+                        <strong>TiendaNube:</strong> Sincronización automática de productos desde TiendaNube
+                    </li>
+                    <li class="mb-2">
+                        <strong>WooCommerce:</strong> Sincronización automática de productos desde WordPress/WooCommerce
+                    </li>
                 </ul>
             </div>
         </div>
@@ -232,6 +360,121 @@
 
 {% block extra_js %}
 <script>
+// Control de secciones dinámicas según tipo de integración
+const integrationSelect = document.getElementById('integration_type');
+const tiendanubeSection = document.getElementById('tiendanube_section');
+const woocommerceSection = document.getElementById('woocommerce_section');
+
+function updateIntegrationSections() {
+    const selectedType = integrationSelect.value;
+    
+    // Ocultar todas las secciones
+    tiendanubeSection.style.display = 'none';
+    woocommerceSection.style.display = 'none';
+    
+    // Mostrar la sección correspondiente
+    if (selectedType === 'tiendanube') {
+        tiendanubeSection.style.display = 'block';
+    } else if (selectedType === 'woocommerce') {
+        woocommerceSection.style.display = 'block';
+    }
+}
+
+// Escuchar cambios en el selector de integración
+integrationSelect.addEventListener('change', updateIntegrationSections);
+
+// Validación de credenciales - TiendaNube
+document.getElementById('test_tiendanube_btn').addEventListener('click', async function() {
+    const storeUrl = document.getElementById('tiendanube_url').value.trim();
+    const token = document.getElementById('tiendanube_token').value.trim();
+    const statusDiv = document.getElementById('tiendanube_status');
+    
+    if (!storeUrl || !token) {
+        statusDiv.innerHTML = '<div class="alert alert-warning mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Por favor completa todos los campos</div>';
+        statusDiv.style.display = 'block';
+        return;
+    }
+    
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Probando...';
+    
+    try {
+        const response = await fetch('{{ url_for("clients.validate_integration") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                integration_type: 'tiendanube',
+                store_url: storeUrl,
+                access_token: token
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            statusDiv.innerHTML = `<div class="alert alert-success mb-0"><i class="bi bi-check-circle me-2"></i>${data.message}</div>`;
+        } else {
+            statusDiv.innerHTML = `<div class="alert alert-danger mb-0"><i class="bi bi-x-circle me-2"></i>${data.message}</div>`;
+        }
+    } catch (error) {
+        statusDiv.innerHTML = `<div class="alert alert-danger mb-0"><i class="bi bi-x-circle me-2"></i>Error: ${error.message}</div>`;
+    } finally {
+        statusDiv.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Probar Conexión TiendaNube';
+    }
+});
+
+// Validación de credenciales - WooCommerce
+document.getElementById('test_woocommerce_btn').addEventListener('click', async function() {
+    const storeUrl = document.getElementById('wc_store_url').value.trim();
+    const consumerKey = document.getElementById('wc_consumer_key').value.trim();
+    const consumerSecret = document.getElementById('wc_consumer_secret').value.trim();
+    const statusDiv = document.getElementById('woocommerce_status');
+    
+    if (!storeUrl || !consumerKey || !consumerSecret) {
+        statusDiv.innerHTML = '<div class="alert alert-warning mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Por favor completa todos los campos</div>';
+        statusDiv.style.display = 'block';
+        return;
+    }
+    
+    const btn = this;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Probando...';
+    
+    try {
+        const response = await fetch('{{ url_for("clients.validate_integration") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                integration_type: 'woocommerce',
+                store_url: storeUrl,
+                consumer_key: consumerKey,
+                consumer_secret: consumerSecret
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            statusDiv.innerHTML = `<div class="alert alert-success mb-0"><i class="bi bi-check-circle me-2"></i>${data.message}</div>`;
+        } else {
+            statusDiv.innerHTML = `<div class="alert alert-danger mb-0"><i class="bi bi-x-circle me-2"></i>${data.message}</div>`;
+        }
+    } catch (error) {
+        statusDiv.innerHTML = `<div class="alert alert-danger mb-0"><i class="bi bi-x-circle me-2"></i>Error: ${error.message}</div>`;
+    } finally {
+        statusDiv.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Probar Conexión WooCommerce';
+    }
+});
+
 // Generar preview del slug
 document.getElementById('name').addEventListener('input', function(e) {
     const name = e.target.value;
@@ -249,6 +492,7 @@ document.getElementById('name').addEventListener('input', function(e) {
 document.getElementById('clientForm').addEventListener('submit', function(e) {
     const name = document.getElementById('name').value.trim();
     const email = document.getElementById('email').value.trim();
+    const integrationType = document.getElementById('integration_type').value;
     const adminPassword = document.getElementById('admin_password').value;
     const adminPasswordConfirm = document.getElementById('admin_password_confirm').value;
 
@@ -264,6 +508,26 @@ document.getElementById('clientForm').addEventListener('submit', function(e) {
         e.preventDefault();
         alert('Por favor ingresa un email válido');
         return false;
+    }
+
+    // Validar credenciales según tipo de integración
+    if (integrationType === 'tiendanube') {
+        const url = document.getElementById('tiendanube_url').value.trim();
+        const token = document.getElementById('tiendanube_token').value.trim();
+        if (!url || !token) {
+            e.preventDefault();
+            alert('Por favor completa los campos de TiendaNube (URL y Token)');
+            return false;
+        }
+    } else if (integrationType === 'woocommerce') {
+        const url = document.getElementById('wc_store_url').value.trim();
+        const key = document.getElementById('wc_consumer_key').value.trim();
+        const secret = document.getElementById('wc_consumer_secret').value.trim();
+        if (!url || !key || !secret) {
+            e.preventDefault();
+            alert('Por favor completa todos los campos de WooCommerce (URL, Consumer Key y Consumer Secret)');
+            return false;
+        }
     }
 
     // Validar que las contraseñas coincidan

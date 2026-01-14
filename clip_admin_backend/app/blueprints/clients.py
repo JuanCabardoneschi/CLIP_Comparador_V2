@@ -33,6 +33,7 @@ def create():
         name = request.form.get("name")
         email = request.form.get("email")
         industry = request.form.get("industry", "general")
+        integration_type = request.form.get("integration_type", "standalone")
 
         # Datos del usuario administrador
         admin_name = request.form.get("admin_name")
@@ -69,9 +70,51 @@ def create():
             flash("Ya existe un usuario con ese email de login", "error")
             return render_template("clients/create.html")
 
+        # Validar credenciales según el tipo de integración
+        integration_config = {}
+
+        if integration_type == "tiendanube":
+            tiendanube_url = request.form.get("tiendanube_url", "").strip()
+            tiendanube_token = request.form.get("tiendanube_token", "").strip()
+
+            if not tiendanube_url or not tiendanube_token:
+                flash("URL y Token de TiendaNube son requeridos", "error")
+                return render_template("clients/create.html")
+
+            integration_config = {
+                "store_url": tiendanube_url,
+                "access_token": tiendanube_token
+            }
+
+        elif integration_type == "woocommerce":
+            wc_store_url = request.form.get("wc_store_url", "").strip()
+            wc_consumer_key = request.form.get("wc_consumer_key", "").strip()
+            wc_consumer_secret = request.form.get("wc_consumer_secret", "").strip()
+
+            if not wc_store_url or not wc_consumer_key or not wc_consumer_secret:
+                flash("URL de la tienda, Consumer Key y Consumer Secret de WooCommerce son requeridos", "error")
+                return render_template("clients/create.html")
+
+            # Validar formato de URL
+            if not wc_store_url.startswith(("http://", "https://")):
+                flash("La URL de WooCommerce debe comenzar con http:// o https://", "error")
+                return render_template("clients/create.html")
+
+            integration_config = {
+                "store_url": wc_store_url,
+                "consumer_key": wc_consumer_key,
+                "consumer_secret": wc_consumer_secret
+            }
+
         try:
             # Crear cliente (la API Key se genera automáticamente)
-            client = Client(name=name, email=email, industry=industry)
+            client = Client(
+                name=name,
+                email=email,
+                industry=industry,
+                integration_type=integration_type,
+                integration_config=integration_config if integration_config else {}
+            )
             db.session.add(client)
             db.session.flush()  # Para obtener el client.id
 
@@ -96,6 +139,12 @@ def create():
             flash(f"🔐 Contraseña: {admin_password}", "info")
             flash("⚠️ IMPORTANTE: Guarda estas credenciales, la contraseña no se mostrará nuevamente", "warning")
 
+            # Mensaje según tipo de integración
+            if integration_type == "tiendanube":
+                flash(f"🔗 Integración TiendaNube: {integration_config['store_url']}", "info")
+            elif integration_type == "woocommerce":
+                flash(f"🔗 Integración WooCommerce: {integration_config['store_url']}", "info")
+
             return redirect(url_for("clients.view", client_id=client.id))
 
         except Exception as e:
@@ -104,6 +153,86 @@ def create():
             return render_template("clients/create.html")
 
     return render_template("clients/create.html")
+
+
+@bp.route("/api/validate-integration", methods=["POST"])
+@login_required
+@requires_super_admin
+def validate_integration():
+    """Validar credenciales de integración (AJAX)"""
+    data = request.get_json()
+    integration_type = data.get("integration_type", "standalone")
+
+    if integration_type == "standalone":
+        return jsonify({"success": True, "message": "✅ Integración Standalone (sin credenciales necesarias)"})
+
+    elif integration_type == "tiendanube":
+        store_url = data.get("store_url", "").strip()
+        access_token = data.get("access_token", "").strip()
+
+        if not store_url or not access_token:
+            return jsonify({"success": False, "message": "❌ URL y Token de TiendaNube son requeridos"}), 400
+
+        try:
+            # Importar el cliente de TiendaNube
+            from app.services.tiendanube_api_client import TiendanubeAPIClient
+            client = TiendanubeAPIClient(store_url, access_token)
+
+            # Intentar obtener información de la tienda
+            result = client.get_store_info()
+            if result.get("success"):
+                return jsonify({
+                    "success": True,
+                    "message": f"✅ Conexión exitosa con TiendaNube: {result.get('store_name', store_url)}"
+                })
+            else:
+                return jsonify({
+                    "success": False,
+                    "message": f"❌ Error en TiendaNube: {result.get('error', 'Error desconocido')}"
+                }), 400
+        except Exception as e:
+            return jsonify({
+                "success": False,
+                "message": f"❌ Error al validar TiendaNube: {str(e)}"
+            }), 400
+
+    elif integration_type == "woocommerce":
+        store_url = data.get("store_url", "").strip()
+        consumer_key = data.get("consumer_key", "").strip()
+        consumer_secret = data.get("consumer_secret", "").strip()
+
+        if not store_url or not consumer_key or not consumer_secret:
+            return jsonify({"success": False, "message": "❌ URL, Consumer Key y Consumer Secret son requeridos"}), 400
+
+        # Validar formato de URL
+        if not store_url.startswith(("http://", "https://")):
+            return jsonify({"success": False, "message": "❌ La URL debe comenzar con http:// o https://"}), 400
+
+        try:
+            # Importar el cliente de WooCommerce
+            from app.services.woocommerce_api_client import WooCommerceAPIClient
+            client = WooCommerceAPIClient(store_url, consumer_key, consumer_secret)
+
+            # Intentar obtener información del sistema
+            result = client.test_connection()
+            if result.get("success"):
+                return jsonify({
+                    "success": True,
+                    "message": f"✅ Conexión exitosa con WooCommerce: {result.get('store_name', store_url)}"
+                })
+            else:
+                return jsonify({
+                    "success": False,
+                    "message": f"❌ Error en WooCommerce: {result.get('error', 'Error desconocido')}"
+                }), 400
+        except Exception as e:
+            return jsonify({
+                "success": False,
+                "message": f"❌ Error al validar WooCommerce: {str(e)}"
+            }), 400
+
+    else:
+        return jsonify({"success": False, "message": "❌ Tipo de integración desconocido"}), 400
 
 
 @bp.route("/<client_id>")

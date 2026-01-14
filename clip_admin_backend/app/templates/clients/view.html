@@ -87,6 +87,42 @@
                     </span>
                 </div>
 
+                <!-- Tipo de Integración -->
+                <hr>
+                <div class="mb-3">
+                    <label class="form-label text-muted">
+                        <i class="bi bi-link-45deg me-1"></i>
+                        Tipo de Integración
+                    </label>
+                    <div>
+                        {% if client.integration_type == 'standalone' %}
+                            <span class="badge bg-secondary fs-6">
+                                <i class="bi bi-box me-1"></i>
+                                Standalone
+                            </span>
+                            <small class="d-block text-muted mt-2">Sin integración externa. Carga manual de productos.</small>
+                        {% elif client.integration_type == 'tiendanube' %}
+                            <span class="badge bg-info fs-6">
+                                <i class="bi bi-link-45deg me-1"></i>
+                                TiendaNube
+                            </span>
+                            <small class="d-block text-muted mt-2">
+                                <strong>URL:</strong> {{ client.integration_config.get('store_url', 'N/A') }}
+                            </small>
+                        {% elif client.integration_type == 'woocommerce' %}
+                            <span class="badge bg-warning fs-6">
+                                <i class="bi bi-wordpress me-1"></i>
+                                WooCommerce
+                            </span>
+                            <small class="d-block text-muted mt-2">
+                                <strong>URL:</strong> {{ client.integration_config.get('store_url', 'N/A') }}
+                            </small>
+                        {% else %}
+                            <span class="badge bg-secondary">{{ client.integration_type }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+
                 <!-- API Key del Cliente -->
                 <hr>
                 <div class="mb-3">
