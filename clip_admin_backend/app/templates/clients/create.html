@@ -367,11 +367,11 @@ const woocommerceSection = document.getElementById('woocommerce_section');
 
 function updateIntegrationSections() {
     const selectedType = integrationSelect.value;
-    
+
     // Ocultar todas las secciones
     tiendanubeSection.style.display = 'none';
     woocommerceSection.style.display = 'none';
-    
+
     // Mostrar la sección correspondiente
     if (selectedType === 'tiendanube') {
         tiendanubeSection.style.display = 'block';
@@ -388,17 +388,17 @@ document.getElementById('test_tiendanube_btn').addEventListener('click', async f
     const storeUrl = document.getElementById('tiendanube_url').value.trim();
     const token = document.getElementById('tiendanube_token').value.trim();
     const statusDiv = document.getElementById('tiendanube_status');
-    
+
     if (!storeUrl || !token) {
         statusDiv.innerHTML = '<div class="alert alert-warning mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Por favor completa todos los campos</div>';
         statusDiv.style.display = 'block';
         return;
     }
-    
+
     const btn = this;
     btn.disabled = true;
     btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Probando...';
-    
+
     try {
         const response = await fetch('{{ url_for("clients.validate_integration") }}', {
             method: 'POST',
@@ -411,9 +411,9 @@ document.getElementById('test_tiendanube_btn').addEventListener('click', async f
                 access_token: token
             })
         });
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
             statusDiv.innerHTML = `<div class="alert alert-success mb-0"><i class="bi bi-check-circle me-2"></i>${data.message}</div>`;
         } else {
@@ -434,17 +434,17 @@ document.getElementById('test_woocommerce_btn').addEventListener('click', async 
     const consumerKey = document.getElementById('wc_consumer_key').value.trim();
     const consumerSecret = document.getElementById('wc_consumer_secret').value.trim();
     const statusDiv = document.getElementById('woocommerce_status');
-    
+
     if (!storeUrl || !consumerKey || !consumerSecret) {
         statusDiv.innerHTML = '<div class="alert alert-warning mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Por favor completa todos los campos</div>';
         statusDiv.style.display = 'block';
         return;
     }
-    
+
     const btn = this;
     btn.disabled = true;
     btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Probando...';
-    
+
     try {
         const response = await fetch('{{ url_for("clients.validate_integration") }}', {
             method: 'POST',
@@ -458,9 +458,9 @@ document.getElementById('test_woocommerce_btn').addEventListener('click', async 
                 consumer_secret: consumerSecret
             })
         });
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
             statusDiv.innerHTML = `<div class="alert alert-success mb-0"><i class="bi bi-check-circle me-2"></i>${data.message}</div>`;
         } else {

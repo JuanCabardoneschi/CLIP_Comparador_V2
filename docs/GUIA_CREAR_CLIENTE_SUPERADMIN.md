@@ -235,7 +235,7 @@ Haz clic en **"Crear Cliente y Usuario"**
   email:                 "contacto@goodyshop.com",
   industry:              "fashion",
   api_key:               "clip_abc123def456...",
-  
+
   -- INTEGRACIÓN
   integration_type:      "woocommerce",  -- o "standalone", "tiendanube"
   integration_config:    {
@@ -243,7 +243,7 @@ Haz clic en **"Crear Cliente y Usuario"**
     "consumer_key": "[ENCRIPTADO]",      -- Solo para WooCommerce
     "consumer_secret": "[ENCRIPTADO]"    -- Solo para WooCommerce
   },
-  
+
   is_active:             true,
   created_at:            "2026-01-14 15:30:00",
   updated_at:            "2026-01-14 15:30:00"
@@ -257,11 +257,11 @@ Haz clic en **"Crear Cliente y Usuario"**
   email:                 "juan.perez@goodyshop.com",
   full_name:             "Juan Pérez Martínez",
   password_hash:         "[HASH BCRYPT]",
-  
+
   -- RELACIONES
   client_id:             "550e8400-e29b-41d4-a716-446655440000",  -- FK a clients
   role:                  "STORE_ADMIN",
-  
+
   is_active:             true,
   created_at:            "2026-01-14 15:30:00",
   updated_at:            "2026-01-14 15:30:00"
@@ -276,17 +276,17 @@ Haz clic en **"Crear Cliente y Usuario"**
   store_url:                    "https://goodyshop.com",
   consumer_key_encrypted:       "[AES-128 ENCRIPTADO]",
   consumer_secret_encrypted:    "[AES-128 ENCRIPTADO]",
-  
+
   -- METADATA
   store_name:                   "Goody Shop",
   wc_version:                   "8.5.0",
   is_active:                    true,
-  
+
   -- SINCRONIZACIÓN
   last_sync_products:           "2026-01-14 15:35:00",
   last_sync_categories:         "2026-01-14 15:35:00",
   sync_status:                  "idle",
-  
+
   created_at:                   "2026-01-14 15:30:00",
   updated_at:                   "2026-01-14 15:30:00"
 }
@@ -481,5 +481,5 @@ Se muestra todo lo creado:
 
 ---
 
-**Última actualización:** 14 de enero de 2026  
+**Última actualización:** 14 de enero de 2026
 **Versión:** 2.0 (Con soporte dinámico de 3 tipos de integración)

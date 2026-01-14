@@ -158,7 +158,7 @@ Los cambios son **aditivos** (no se modificaron campos existentes):
 
 ```sql
 -- Campos ya existentes (no cambian):
-id, name, slug, email, industry, api_key, 
+id, name, slug, email, industry, api_key,
 is_active, created_at, updated_at
 
 -- Campos ya existentes (ahora se usan):
@@ -252,15 +252,15 @@ integration_config (antes vacío, ahora se llena)
 
 ```
 commit 5388a8c (recovery/woocommerce-infrastructure)
-  WooCommerce: Infraestructura de BD, modelos, servicios 
+  WooCommerce: Infraestructura de BD, modelos, servicios
   y documentación completa
 
 commit fea701a
-  SuperAdmin: Integración de cliente con soporte para 
+  SuperAdmin: Integración de cliente con soporte para
   Standalone, TiendaNube y WooCommerce
 
 commit 0077ee8
-  docs: Guía completa de creación de cliente SuperAdmin 
+  docs: Guía completa de creación de cliente SuperAdmin
   con 3 tipos de integración
 ```
 
@@ -358,6 +358,6 @@ Si encuentras algún problema:
 
 ---
 
-**Última actualización:** 14 de enero de 2026  
-**Versión:** 1.0 (SuperAdmin dinámico)  
+**Última actualización:** 14 de enero de 2026
+**Versión:** 1.0 (SuperAdmin dinámico)
 **Estado:** ✅ Listo para producción

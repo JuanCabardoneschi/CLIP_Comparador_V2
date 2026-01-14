@@ -459,7 +459,7 @@ try:
     # Validar credenciales
     api_client = WooCommerceAPIClient(url, key, secret)
     result = api_client.test_connection()
-    
+
     if result['success']:
         return jsonify({'success': True, 'message': '✅ ...'})
     else:
@@ -513,6 +513,6 @@ except Exception as e:
 
 ---
 
-**Última actualización:** 14 de enero de 2026  
-**Versión:** 2.0 - SuperAdmin Dinámico  
+**Última actualización:** 14 de enero de 2026
+**Versión:** 2.0 - SuperAdmin Dinámico
 **Estado:** ✅ Producción
