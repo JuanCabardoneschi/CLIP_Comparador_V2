@@ -273,6 +273,14 @@ def create_app(config_name=None):
     # Error handlers
     @app.errorhandler(404)
     def not_found_error(error):
+        # Si es una ruta API, devolver JSON
+        if request.path.startswith('/api/'):
+            return jsonify({
+                'error': 'Not Found',
+                'message': f'The requested URL {request.path} was not found on the server.',
+                'path': request.path,
+                'method': request.method
+            }), 404
         return render_template("errors/404.html"), 404
 
     @app.errorhandler(500)
