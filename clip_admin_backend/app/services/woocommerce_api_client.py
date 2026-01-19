@@ -349,7 +349,7 @@ class WooCommerceAPIClient:
             'status': status,
         }
 
-        response = self._make_request('POST', endpoint, json=payload)
+        response = self._make_request('POST', endpoint, data=payload)
         logger.info(f"Webhook creado: {name} (topic: {topic})")
         return response
 
