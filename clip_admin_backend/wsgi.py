@@ -5,7 +5,16 @@ Aplicación Flask para gestión de clientes y catálogos
 
 import os
 import sys
-import time
+import logging
+
+# Configurar logging ANTES de cualquier otra cosa
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(asctime)s] %(levelname)s in %(name)s: %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 # Añadir el directorio padre al path para las importaciones
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -14,7 +23,7 @@ sys.path.insert(0, current_dir)
 sys.path.insert(0, parent_dir)
 
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, flash
+from flask import Flask, render_template, request, flash, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_login import LoginManager, current_user
@@ -28,18 +37,20 @@ env_path = os.path.join(parent_dir, '.env')
 
 if os.path.exists(env_local_path):
     load_dotenv(env_local_path)
+    print(f"📄 Cargando configuración desde {env_local_path} (desarrollo)")
 elif os.path.exists(env_path):
     load_dotenv(env_path)
+    print(f"📄 Cargando configuración desde {env_path}")
 else:
     load_dotenv()
+    print("📄 Cargando configuración desde variables de entorno")
 
-# Sin Redis: las caches son en memoria dentro de servicios
+# Sin Redis: la caché es solo en memoria (ver services)
 
+# Importar extensiones y modelos del paquete app
+from app import db, login_manager, jwt
 def create_app(config_name=None):
     """Factory pattern para crear la aplicación Flask"""
-
-    # Importar extensiones DENTRO de create_app para evitar imports circulares
-    from app import db, login_manager, jwt
 
     # Configurar paths absolutos para templates y static
     template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app', 'templates'))
@@ -48,6 +59,11 @@ def create_app(config_name=None):
     app = Flask(__name__,
                 template_folder=template_dir,
                 static_folder=static_dir)
+
+    # Debug: Verificar rutas de templates
+    print(f"📁 Template folder: {template_dir}")
+    print(f"📁 Static folder: {static_dir}")
+    print(f"📁 Template folder exists: {os.path.exists(template_dir)}")
 
     # Importar configuración de entorno
     from app.config import Config, print_environment_info
@@ -58,6 +74,11 @@ def create_app(config_name=None):
     # Cargar configuración
     config = Config()
     app.config.from_object(config)
+
+    # Inyectar credenciales Tiendanube en app.config desde variables de entorno
+    # para que los blueprints las lean de forma consistente
+    app.config['TIENDANUBE_CLIENT_ID'] = os.getenv('TIENDANUBE_CLIENT_ID', app.config.get('TIENDANUBE_CLIENT_ID'))
+    app.config['TIENDANUBE_CLIENT_SECRET'] = os.getenv('TIENDANUBE_CLIENT_SECRET', app.config.get('TIENDANUBE_CLIENT_SECRET'))
 
     # PostgreSQL es obligatorio - no se permiten otras bases de datos
     app.config["JWT_SECRET_KEY"] = os.getenv(
@@ -80,6 +101,14 @@ def create_app(config_name=None):
     app.config["SESSION_COOKIE_NAME"] = "clip_session"  # Nombre específico
     app.config["SESSION_REFRESH_EACH_REQUEST"] = True  # Renovar sesión en cada request
 
+    print("⚙️ Configuración de sesiones:")
+    print(f"   SESSION_COOKIE_SECURE: {app.config.get('SESSION_COOKIE_SECURE')}")
+    print(f"   SESSION_COOKIE_HTTPONLY: {app.config.get('SESSION_COOKIE_HTTPONLY')}")
+    print(f"   SESSION_COOKIE_SAMESITE: {app.config.get('SESSION_COOKIE_SAMESITE')}")
+    print(f"   SESSION_COOKIE_NAME: {app.config.get('SESSION_COOKIE_NAME')}")
+    print(f"   SESSION_PERMANENT: {app.config.get('SESSION_PERMANENT')}")
+    print(f"   PERMANENT_SESSION_LIFETIME: {app.config.get('PERMANENT_SESSION_LIFETIME')}")
+
     # Configuración anti-caché para desarrollo
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
     app.config["TEMPLATES_AUTO_RELOAD"] = True
@@ -94,18 +123,12 @@ def create_app(config_name=None):
     login_manager.init_app(app)
     jwt.init_app(app)
 
-    # Silenciar logs verbosos de SQLAlchemy y psycopg2
-    import logging
-    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
-    logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
-    logging.getLogger('sqlalchemy.dialects').setLevel(logging.WARNING)
-    logging.getLogger('sqlalchemy.orm').setLevel(logging.WARNING)
-
     # Configurar CORS para permitir requests desde el widget
     CORS(app, origins=["*"],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
          allow_headers=["Content-Type", "X-API-Key", "Authorization"],
          supports_credentials=False)
+    print("🌐 CORS configurado para permitir requests externos")
 
     # Configurar Flask-Login
     login_manager.login_view = "auth.login"
@@ -114,7 +137,7 @@ def create_app(config_name=None):
     )
     login_manager.login_message_category = "info"
 
-    # Sin Redis: cache en memoria manejada por los servicios
+    # Sin Redis: las caches están en memoria dentro de los servicios
 
     # User loader para Flask-Login
     @login_manager.user_loader
@@ -138,13 +161,13 @@ def create_app(config_name=None):
                 return user
             else:
                 # print("👤 USER_LOADER: ❌ Usuario no encontrado en BD")
-                pass
                 return None
 
         except Exception as e:
             print(f"👤 USER_LOADER: ERROR GENERAL: {type(e).__name__}: {e}")
             import traceback
             print(f"👤 USER_LOADER: Traceback: {traceback.format_exc()}")
+            return None
             return None
 
     # Registrar blueprints
@@ -153,21 +176,13 @@ def create_app(config_name=None):
     # Headers anti-caché para desarrollo
     @app.before_request
     def before_request():
-        """Log de requests para debug + timing crítico para /api/search"""
-        # ⏱️ TIMING CRÍTICO: Capturar timestamp en el punto más temprano posible
-        request._wsgi_entry_time = time.time()
-
-        # Solo mostrar timing para /api/search
-        if '/api/search' in request.path:
-            print(f"\n⏰ [WSGI BEFORE_REQUEST T+0.000s] {request.method} {request.path} - Request recibido por Flask")
-
+        """Log de requests para debug"""
         # print(f"🌐 REQUEST: {request.method} {request.path}")
         # print(f"🍪 COOKIES: {dict(request.cookies)}")
         # if hasattr(current_user, 'is_authenticated'):
         #     print(f"🌐 REQUEST: Usuario autenticado: {current_user.is_authenticated}")
         #     if current_user.is_authenticated:
         #         print(f"🌐 REQUEST: Usuario actual: {current_user.email}")
-
         # # Verificar session
         # from flask import session
         # print(f"🎫 SESSION: {dict(session)}")
@@ -205,9 +220,67 @@ def create_app(config_name=None):
             return "N/A"
         return f"${value:,.2f}"
 
+    @app.template_filter("attribute_label")
+    def attribute_label(key, client_id=None):
+        """Obtiene el label de un atributo desde ProductAttributeConfig
+
+        Args:
+            key: El key del atributo (ej: 'color', 'talla')
+            client_id: ID del cliente (opcional, si no se pasa usa current_user.client_id)
+
+        Returns:
+            El label configurado o el key capitalizado si no existe config
+        """
+        from app.models.product_attribute_config import ProductAttributeConfig
+        from flask_login import current_user
+
+        if not client_id and current_user and current_user.is_authenticated:
+            client_id = current_user.client_id
+
+        if client_id:
+            config = ProductAttributeConfig.query.filter_by(
+                client_id=client_id,
+                key=key
+            ).first()
+
+            if config:
+                return config.label
+
+        # Fallback: capitalizar el key
+        return key.replace('_', ' ').title()
+
+    # Catch-all temporal para webhooks viejos de Tiendanube
+    @app.route('/webhooks/tiendanube/<path:subpath>', methods=['POST', 'GET'])
+    def catch_old_webhooks(subpath):
+        """Intercepta webhooks viejos para debug"""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        store_id = request.headers.get('X-Linked-Nube-Info-Id', 'UNKNOWN')
+        logger.warning(f"⚠️ WEBHOOK VIEJO detectado: /webhooks/tiendanube/{subpath}")
+        logger.warning(f"   Store ID: {store_id}")
+        logger.warning(f"   Headers: {dict(request.headers)}")
+
+        try:
+            payload = request.get_json()
+            logger.warning(f"   Payload: {payload}")
+        except:
+            logger.warning(f"   Body: {request.data[:200]}")
+
+        # Responder 204 para cortar reintentos del emisor y evitar saturación.
+        # Mantener logs para diagnóstico.
+        return ('', 204)
     # Error handlers
     @app.errorhandler(404)
     def not_found_error(error):
+        # Si es una ruta API, devolver JSON
+        if request.path.startswith('/api/'):
+            return jsonify({
+                'error': 'Not Found',
+                'message': f'The requested URL {request.path} was not found on the server.',
+                'path': request.path,
+                'method': request.method
+            }), 404
         return render_template("errors/404.html"), 404
 
     @app.errorhandler(500)
@@ -239,6 +312,7 @@ def register_blueprints(app):
     try:
         from app.blueprints.main import bp as main_bp
         app.register_blueprint(main_bp)
+        print("✓ Blueprint main registrado")
     except ImportError as e:
         print(f"✗ Error importando main blueprint: {e}")
 
@@ -246,6 +320,7 @@ def register_blueprints(app):
     try:
         from app.blueprints.auth import bp as auth_bp
         app.register_blueprint(auth_bp, url_prefix="/auth")
+        print("✓ Blueprint auth registrado")
     except ImportError as e:
         print(f"✗ Error importando auth blueprint: {e}")
 
@@ -253,6 +328,7 @@ def register_blueprints(app):
     try:
         from app.blueprints.dashboard import bp as dashboard_bp
         app.register_blueprint(dashboard_bp, url_prefix="/dashboard")
+        print("✓ Blueprint dashboard registrado")
     except ImportError as e:
         print(f"✗ Error importando dashboard blueprint: {e}")
 
@@ -260,6 +336,7 @@ def register_blueprints(app):
     try:
         from app.blueprints.clients import bp as clients_bp
         app.register_blueprint(clients_bp, url_prefix="/clients")
+        print("✓ Blueprint clients registrado")
     except ImportError as e:
         print(f"✗ Error importando clients blueprint: {e}")
 
@@ -267,6 +344,7 @@ def register_blueprints(app):
     try:
         from app.blueprints.users import bp as users_bp
         app.register_blueprint(users_bp, url_prefix="/users")
+        print("✓ Blueprint users registrado")
     except ImportError as e:
         print(f"✗ Error importando users blueprint: {e}")
 
@@ -274,13 +352,17 @@ def register_blueprints(app):
     try:
         from app.blueprints.categories import bp as categories_bp
         app.register_blueprint(categories_bp, url_prefix="/categories")
+        print("✓ Blueprint categories registrado")
     except ImportError as e:
         print(f"✗ Error importando categories blueprint: {e}")
+
+    # Blueprint de exclusiones de pares de categorías eliminado (category_exclusions)
 
     # Blueprint de productos
     try:
         from app.blueprints.products import bp as products_bp
         app.register_blueprint(products_bp, url_prefix="/products")
+        print("✓ Blueprint products registrado")
     except ImportError as e:
         print(f"✗ Error importando products blueprint: {e}")
 
@@ -288,6 +370,7 @@ def register_blueprints(app):
     try:
         from app.blueprints.images import bp as images_bp
         app.register_blueprint(images_bp, url_prefix="/images")
+        print("✓ Blueprint images registrado")
     except ImportError as e:
         print(f"✗ Error importando images blueprint: {e}")
 
@@ -295,13 +378,36 @@ def register_blueprints(app):
     try:
         from app.blueprints.analytics import bp as analytics_bp
         app.register_blueprint(analytics_bp, url_prefix="/analytics")
+        print("✓ Blueprint analytics registrado")
     except ImportError as e:
         print(f"✗ Error importando analytics blueprint: {e}")
+
+    # Blueprint de webhooks (WooCommerce) - DEBE IR ANTES DE api_bp
+    try:
+        from app.blueprints.webhooks import webhooks_bp
+        print(f"🔍 Webhooks blueprint importado: {webhooks_bp}")
+        print(f"🔍 URL prefix: {webhooks_bp.url_prefix}")
+        print(f"🔍 Deferred functions: {len(webhooks_bp.deferred_functions)}")
+        app.register_blueprint(webhooks_bp)
+        print("✓ Blueprint webhooks registrado")
+        # Verificar rutas después de registro
+        webhook_routes = [str(rule) for rule in app.url_map.iter_rules() if 'webhook' in str(rule).lower()]
+        print(f"  📍 Rutas webhooks registradas: {webhook_routes}")
+        for rule in app.url_map.iter_rules():
+            if 'webhook' in str(rule).lower():
+                print(f"    🔗 {rule.rule} -> {rule.endpoint} [{','.join(rule.methods)}]")
+    except ImportError as e:
+        print(f"✗ Error importando webhooks blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando webhooks blueprint: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Blueprint de API interna
     try:
         from app.blueprints.api import bp as api_bp
         app.register_blueprint(api_bp, url_prefix="/api")
+        print("✓ Blueprint api registrado")
     except ImportError as e:
         print(f"✗ Error importando api blueprint: {e}")
 
@@ -309,13 +415,23 @@ def register_blueprints(app):
     try:
         from app.blueprints.embeddings import bp as embeddings_bp
         app.register_blueprint(embeddings_bp, url_prefix="/embeddings")
+        print("✓ Blueprint embeddings registrado")
     except ImportError as e:
         print(f"✗ Error importando embeddings blueprint: {e}")
+
+    # Blueprint de monitoreo del sistema (desactivado; métricas se ven en Railway)
+    # try:
+    #     from app.blueprints.system_monitor import bp as system_monitor_bp
+    #     app.register_blueprint(system_monitor_bp)
+    #     print("✓ Blueprint system_monitor registrado")
+    # except ImportError as e:
+    #     print(f"✗ Error importando system_monitor blueprint: {e}")
 
     # Blueprint de atributos de productos
     try:
         from app.blueprints.attributes import bp as attributes_bp
         app.register_blueprint(attributes_bp, url_prefix="/attributes")
+        print("✓ Blueprint attributes registrado")
     except ImportError as e:
         print(f"✗ Error importando attributes blueprint: {e}")
 
@@ -323,6 +439,7 @@ def register_blueprints(app):
     try:
         from app.blueprints.search_config import bp as search_config_bp
         app.register_blueprint(search_config_bp, url_prefix="/search-config")
+        print("✓ Blueprint search_config registrado")
     except ImportError as e:
         print(f"✗ Error importando search_config blueprint: {e}")
 
@@ -330,6 +447,7 @@ def register_blueprints(app):
     try:
         from app.blueprints.inventory import bp as inventory_bp
         app.register_blueprint(inventory_bp, url_prefix="/inventory")
+        print("✓ Blueprint inventory registrado")
     except ImportError as e:
         print(f"✗ Error importando inventory blueprint: {e}")
 
@@ -337,6 +455,7 @@ def register_blueprints(app):
     try:
         from app.blueprints.external_inventory import bp as external_inventory_bp
         app.register_blueprint(external_inventory_bp)
+        print("✓ Blueprint external_inventory registrado")
     except ImportError as e:
         print(f"✗ Error importando external_inventory blueprint: {e}")
 
@@ -347,19 +466,98 @@ def register_blueprints(app):
         print("✓ Blueprint system_config_admin registrado")
     except ImportError as e:
         print(f"✗ Error importando system_config_admin blueprint: {e}")
+
+    # Blueprint de búsqueda del widget (público)
+    try:
+        from app.blueprints.widget_search import widget_search_bp
+        app.register_blueprint(widget_search_bp)
+        print("✓ Blueprint widget_search registrado")
+    except ImportError as e:
+        print(f"✗ Error importando widget_search blueprint: {e}")
     except Exception as e:
         print(f"✗ Error registrando system_config_admin blueprint: {e}")
 
-    # Blueprint de exclusiones de categorías (Pair Exclusion Rules)
+    # Blueprint GPT-4 Vision (detección de categorías)
     try:
-        from app.blueprints.category_exclusions import bp as category_exclusions_bp
-        app.register_blueprint(category_exclusions_bp, url_prefix="/categories/exclusions")
-        print("✓ Blueprint category_exclusions registrado")
+        from app.blueprints.gpt4v_detection import gpt4v_bp
+        app.register_blueprint(gpt4v_bp)
+        print("✓ Blueprint gpt4v_detection registrado")
     except ImportError as e:
-        print(f"✗ Error importando category_exclusions blueprint: {e}")
+        print(f"✗ Error importando gpt4v_detection blueprint: {e}")
     except Exception as e:
-        print(f"✗ Error registrando category_exclusions blueprint: {e}")
+        print(f"✗ Error registrando gpt4v_detection blueprint: {e}")
 
+    # 🆕 Blueprint de búsqueda textual V2 (nuevo sistema con GPT-4 + CLIP)
+    try:
+        from app.blueprints.search_text import bp as search_text_bp
+        app.register_blueprint(search_text_bp, url_prefix="/api")
+        print("✓ Blueprint search_text V2 registrado (🆕 NUEVO)")
+    except ImportError as e:
+        print(f"✗ Error importando search_text blueprint: {e}")
+
+    # 🆕 Blueprint de administración de perfiles de búsqueda
+    try:
+        from app.blueprints.search_profiles_admin import bp as search_profiles_admin_bp
+        app.register_blueprint(search_profiles_admin_bp)
+        print("✓ Blueprint search_profiles_admin registrado (🆕 NUEVO)")
+    except ImportError as e:
+        print(f"✗ Error importando search_profiles_admin blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando search_text blueprint: {e}")
+
+    # Blueprint de OAuth Tiendanube
+    try:
+        from app.blueprints.tiendanube_oauth import bp as tiendanube_oauth_bp
+        app.register_blueprint(tiendanube_oauth_bp)
+        print("✓ Blueprint tiendanube_oauth registrado")
+    except ImportError as e:
+        print(f"✗ Error importando tiendanube_oauth blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando tiendanube_oauth blueprint: {e}")
+
+    # Blueprint de configuración Tiendanube
+    try:
+        from app.blueprints.tiendanube_config import bp as tiendanube_config_bp
+        app.register_blueprint(tiendanube_config_bp)
+        print("✓ Blueprint tiendanube_config registrado")
+    except ImportError as e:
+        print(f"✗ Error importando tiendanube_config blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando tiendanube_config blueprint: {e}")
+
+    # Blueprint de administración Tiendanube
+    try:
+        from app.blueprints.tiendanube_admin import bp as tiendanube_admin_bp
+        app.register_blueprint(tiendanube_admin_bp)
+        print("✓ Blueprint tiendanube_admin registrado")
+    except ImportError as e:
+        print(f"✗ Error importando tiendanube_admin blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando tiendanube_admin blueprint: {e}")
+
+    # Blueprint de webhooks Tiendanube
+    try:
+        from app.blueprints.tiendanube_webhooks import tiendanube_webhooks_bp
+        app.register_blueprint(tiendanube_webhooks_bp)
+        print("✓ Blueprint tiendanube_webhooks registrado")
+    except ImportError as e:
+        print(f"✗ Error importando tiendanube_webhooks blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando tiendanube_webhooks blueprint: {e}")
+
+    # 🆕 Registrar módulos personalizados de búsqueda por cliente
+    try:
+        from app.search_modules import register_client_module
+
+        # Eve's Store
+        import app.search_modules.search_client_eve_s_store as eve_module
+        register_client_module("eve-s-store", eve_module)
+
+        print("✓ Módulos de búsqueda personalizados registrados")
+    except ImportError as e:
+        print(f"⚠️ Advertencia: No se pudieron cargar módulos personalizados: {e}")
+    except Exception as e:
+        print(f"⚠️ Error registrando módulos personalizados: {e}")
 
 # Crear instancia de la aplicación
 app = create_app()
@@ -368,30 +566,43 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("FLASK_DEBUG", "False").lower() == "true"
 
-    print("🚀 Iniciando CLIP Comparador V2 - Backend Admin")
+    print("🚀 Iniciando CLIP Comparador V2 - Backend Admin v2.1.0")
     print(f"📍 Puerto: {port}")
     print(f"🔧 Debug: {debug}")
     print(f"🗄️ Base de datos: {os.getenv('DATABASE_URL', 'No configurada')}")
 
-    # Precarga condicional de CLIP: en Railway/producción se precarga; en local queda lazy
+    # Precarga condicional de modelos (CLIP y LM) controlada por system_config
     try:
-        from app.config import is_production
-        # Leer configuración desde JSON del sistema
-        try:
-            from app.utils.system_config import system_config
-            should_preload = system_config.get('clip', 'preload', False)
+        # Leer configuración desde system_config.json
+        from app.utils.system_config import system_config
+        preload_clip = system_config.get('clip', 'preload', False)
+        preload_text = system_config.get('text', 'preload', False)
 
-            if should_preload:
-                print("⚡ Precargando modelo CLIP al iniciar (configurado en system_config.json)")
-                from app.blueprints.embeddings import get_clip_model
-                get_clip_model()
-                print("✅ CLIP precargado correctamente")
-            else:
-                print("⚡ CLIP se cargará al primer uso (lazy loading configurado)")
-        except Exception as e:
-            # En caso de fallo de precarga, continuar para no bloquear el arranque
-            print(f"❌ Error con configuración CLIP (continuando con lazy load): {e}")
+        if preload_clip:
+            from app.blueprints.embeddings import get_clip_model
+            print("⚡ Precargando CLIP al iniciar (configuración del sistema)")
+            get_clip_model()
+            print("✅ CLIP precargado correctamente")
+        else:
+            print("⚡ CLIP se cargará al primer uso (lazy loading configurado)")
+
+        if preload_text:
+            from app.utils.llm_query_normalizer import get_model as get_minilm_model
+            print("⚡ Precargando MiniLM al iniciar (configuración del sistema)")
+            # Validar spaCy solo si se solicitó precarga de texto
+            try:
+                import spacy
+                model_name = os.getenv("SPACY_MODEL", "es_core_news_md")
+                _ = spacy.load(model_name, disable=["parser", "ner", "textcat"])
+                print(f"✅ spaCy validado correctamente ({model_name})")
+            except Exception as spacy_err:
+                print(f"⚠️ spaCy no disponible al inicio: {spacy_err} (se cargará on-demand)")
+            get_minilm_model()
+            print("✅ MiniLM precargado correctamente")
+        else:
+            print("⚡ MiniLM se cargará al primer uso (lazy loading configurado)")
     except Exception as e:
-        print(f"⚠️  Error general en precarga CLIP: {e}")
+        # En caso de fallo de lectura de configuración, continuar en lazy
+        print(f"⚠️  Error en configuración de precarga, usando lazy loading: {e}")
 
     app.run(host="0.0.0.0", port=port, debug=debug)
