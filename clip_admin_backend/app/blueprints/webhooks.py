@@ -276,11 +276,13 @@ def _handle_product_created(integration: WooCommerceIntegration, payload: dict):
 
         logger.info(f"✅ [WEBHOOK] Producto CREADO: {ext_id} ({product.name}) en categoría {category_id}")
 
-        # Procesar imágenes y embeddings en background (no bloquear respuesta del webhook)
-        thread = threading.Thread(
-            target=_process_product_images_and_embeddings,
-            args=(product.id, client.id, payload.get('images', []))
-        )
+        # Procesar imágenes y embeddings en background (con app_context)
+        from flask import current_app
+        def thread_with_context():
+            with current_app.app_context():
+                _process_product_images_and_embeddings(product.id, client.id, payload.get('images', []))
+
+        thread = threading.Thread(target=thread_with_context)
         thread.daemon = True
         thread.start()
 
@@ -335,11 +337,13 @@ def _handle_product_updated(integration: WooCommerceIntegration, payload: dict):
         else:
             logger.info(f"✅ [WEBHOOK] Producto actualizado: {ext_id} ({product.name}). Sin cambios detectados")
 
-        # Procesar imágenes y embeddings en background
-        thread = threading.Thread(
-            target=_process_product_images_and_embeddings,
-            args=(product.id, client.id, payload.get('images', []))
-        )
+        # Procesar imágenes y embeddings en background (con app_context)
+        from flask import current_app
+        def thread_with_context():
+            with current_app.app_context():
+                _process_product_images_and_embeddings(product.id, client.id, payload.get('images', []))
+
+        thread = threading.Thread(target=thread_with_context)
         thread.daemon = True
         thread.start()
 
