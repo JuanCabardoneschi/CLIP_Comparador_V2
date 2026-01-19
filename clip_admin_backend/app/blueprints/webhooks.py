@@ -7,6 +7,7 @@ import hmac
 import hashlib
 import base64
 import json
+import threading
 from datetime import datetime
 
 from app import db
@@ -204,6 +205,14 @@ def _handle_product_created(integration: WooCommerceIntegration, payload: dict):
 
         logger.info(f"✅ Producto creado: {ext_id} ({product.name})")
 
+        # Procesar imágenes y embeddings en background (no bloquear respuesta del webhook)
+        thread = threading.Thread(
+            target=_process_product_images_and_embeddings,
+            args=(product.id, client.id, payload.get('images', []))
+        )
+        thread.daemon = True
+        thread.start()
+
     except Exception as e:
         logger.error(f"Error creando producto desde webhook: {str(e)}", exc_info=True)
         db.session.rollback()
@@ -234,6 +243,14 @@ def _handle_product_updated(integration: WooCommerceIntegration, payload: dict):
         db.session.commit()
 
         logger.info(f"✅ Producto actualizado: {ext_id} ({product.name})")
+
+        # Procesar imágenes y embeddings en background
+        thread = threading.Thread(
+            target=_process_product_images_and_embeddings,
+            args=(product.id, client.id, payload.get('images', []))
+        )
+        thread.daemon = True
+        thread.start()
 
     except Exception as e:
         logger.error(f"Error actualizando producto desde webhook: {str(e)}", exc_info=True)
@@ -376,4 +393,239 @@ def _extract_attributes(attributes_list: list) -> dict:
             attrs[key] = value
 
     return attrs
+
+
+def _process_product_images_and_embeddings(product_id: str, client_id: str, images_data: list):
+    """
+    Procesa imágenes y embeddings en background (no bloquea respuesta del webhook)
+
+    Args:
+        product_id: ID interno del producto
+        client_id: ID del cliente
+        images_data: Lista de datos de imágenes del webhook
+    """
+    try:
+        logger.info(f"🖼️ Iniciando procesamiento de imágenes para producto {product_id}")
+
+        # Descargar y guardar imágenes
+        images_created = _sync_product_images_webhook(product_id, images_data)
+        logger.info(f"✅ {images_created} imágenes procesadas para producto {product_id}")
+
+        if images_created > 0:
+            # Generar embeddings CLIP para las nuevas imágenes
+            embeddings_generated = _generate_embeddings_for_product(product_id)
+            logger.info(f"✅ {embeddings_generated} embeddings generados para producto {product_id}")
+
+            # Recalcular centroide de la categoría
+            _recalculate_category_centroid(product_id)
+            logger.info(f"✅ Centroide recalculado para categoría del producto {product_id}")
+
+    except Exception as e:
+        logger.error(f"Error procesando imágenes/embeddings del producto {product_id}: {str(e)}", exc_info=True)
+
+
+def _sync_product_images_webhook(product_id: str, images_data: list) -> int:
+    """Sincronizar imágenes desde webhook (solo base64, sin Cloudinary)"""
+    import io
+    import hashlib
+    import requests
+    from PIL import Image as PILImage
+
+    processed = 0
+    try:
+        product = Product.query.get(product_id)
+        if not product:
+            logger.warning(f"Producto {product_id} no encontrado")
+            return 0
+
+        for idx, img_data in enumerate(images_data):
+            source_url = img_data.get('src')
+            if not source_url:
+                continue
+
+            url_hash = hashlib.sha256(source_url.encode()).hexdigest()
+
+            # Evitar duplicados
+            existing_image = Image.query.filter_by(
+                product_id=product.id,
+                hash_sha256=url_hash
+            ).first()
+
+            if existing_image:
+                continue
+
+            # Descargar y convertir a base64
+            base64_full, base64_thumb, mime_type, width, height, size_bytes = _download_and_convert_image_webhook(source_url)
+            if not base64_thumb:
+                continue
+
+            image = Image(
+                client_id=product.client_id,
+                product_id=product.id,
+                filename=f"wc_{product.external_id}_{idx}.{mime_type.split('/')[-1] if mime_type else 'jpg'}",
+                original_filename=source_url.split('/')[-1],
+                source_url=source_url,
+                base64_data=base64_full,
+                base64_thumb=base64_thumb,
+                mime_type=mime_type,
+                width=width,
+                height=height,
+                size_bytes=size_bytes,
+                hash_sha256=url_hash,
+                is_primary=(idx == 0),
+                display_order=idx,
+                upload_status='completed',
+                is_processed=False,
+            )
+            db.session.add(image)
+            processed += 1
+
+        db.session.commit()
+        return processed
+
+    except Exception as e:
+        logger.error(f"Error sincronizando imágenes del webhook: {str(e)}", exc_info=True)
+        db.session.rollback()
+        return 0
+
+
+def _download_and_convert_image_webhook(url: str, thumb_size: tuple = (300, 300)) -> tuple:
+    """Descargar imagen y convertir a base64"""
+    import io
+    import base64
+    import requests
+    from PIL import Image as PILImage
+
+    try:
+        response = requests.get(url, timeout=15, verify=False)
+        if response.status_code != 200:
+            return None, None, '', 0, 0, 0
+
+        image_bytes = response.content
+        size_bytes = len(image_bytes)
+
+        img = PILImage.open(io.BytesIO(image_bytes))
+        width, height = img.size
+        mime_type = f"image/{img.format.lower()}" if img.format else "image/jpeg"
+
+        # Convertir a RGB si es necesario
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = PILImage.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            background.paste(img, mask=img.split()[-1] if 'A' in img.mode else None)
+            img = background
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+
+        base64_full = None  # No guardamos imagen completa
+
+        # Crear thumbnail
+        img_thumb = img.copy()
+        img_thumb.thumbnail(thumb_size, PILImage.Resampling.LANCZOS)
+        thumb_buffer = io.BytesIO()
+        img_thumb.save(thumb_buffer, format='JPEG', quality=85, optimize=True)
+        thumb_buffer.seek(0)
+        base64_thumb = base64.b64encode(thumb_buffer.read()).decode('utf-8')
+
+        return base64_full, base64_thumb, mime_type, width, height, size_bytes
+
+    except Exception as e:
+        logger.error(f"Error descargando imagen {url}: {str(e)}")
+        return None, None, '', 0, 0, 0
+
+
+def _generate_embeddings_for_product(product_id: str) -> int:
+    """Generar embeddings CLIP para imágenes no procesadas del producto"""
+    try:
+        from app.blueprints.embeddings import get_clip_model, load_image_from_source
+        import torch
+        import numpy as np
+
+        product = Product.query.get(product_id)
+        if not product:
+            logger.warning(f"Producto {product_id} no encontrado")
+            return 0
+
+        # Obtener imágenes sin procesar
+        unprocessed = Image.query.filter_by(
+            product_id=product.id,
+            is_processed=False
+        ).filter(Image.base64_thumb.isnot(None)).all()
+
+        if not unprocessed:
+            return 0
+
+        clip_model, clip_processor = get_clip_model()
+        generated = 0
+
+        for image in unprocessed:
+            try:
+                image_bytes = base64.b64decode(image.base64_thumb)
+                pil_image = load_image_from_source(image_bytes)
+                inputs = clip_processor(images=pil_image, return_tensors="pt")
+
+                if torch.cuda.is_available():
+                    inputs = {k: v.cuda() for k, v in inputs.items()}
+
+                with torch.no_grad():
+                    feats = clip_model.get_image_features(**inputs)
+                    feats = feats / feats.norm(dim=-1, keepdim=True)
+                    embedding = feats.cpu().numpy().flatten()
+
+                image.clip_embedding = json.dumps(embedding.tolist())
+                image.is_processed = True
+                image.upload_status = 'completed'
+                generated += 1
+
+            except Exception as e:
+                logger.error(f"Error generando embedding para imagen {image.id}: {str(e)}")
+                image.upload_status = 'failed'
+                image.error_message = str(e)
+
+            db.session.add(image)
+
+        db.session.commit()
+        return generated
+
+    except Exception as e:
+        logger.error(f"Error generando embeddings para producto {product_id}: {str(e)}", exc_info=True)
+        db.session.rollback()
+        return 0
+
+
+def _recalculate_category_centroid(product_id: str):
+    """Recalcular el centroide de la categoría después de generar embeddings"""
+    try:
+        import numpy as np
+
+        product = Product.query.get(product_id)
+        if not product or not product.category_id:
+            return
+
+        category = Category.query.get(product.category_id)
+        if not category:
+            return
+
+        # Recolectar todos los embeddings de la categoría
+        embeddings = []
+        for prod in category.products:
+            for image in prod.images:
+                if image.is_processed and image.clip_embedding:
+                    try:
+                        emb = json.loads(image.clip_embedding)
+                        embeddings.append(emb)
+                    except Exception:
+                        continue
+
+        if embeddings:
+            centroid = np.mean(np.array(embeddings), axis=0)
+            category.centroid_embedding = json.dumps(centroid.tolist())
+            db.session.add(category)
+            db.session.commit()
+            logger.info(f"✅ Centroide recalculado para categoría {category.id}")
+
+    except Exception as e:
+        logger.error(f"Error recalculando centroide para producto {product_id}: {str(e)}", exc_info=True)
+        db.session.rollback()
 
