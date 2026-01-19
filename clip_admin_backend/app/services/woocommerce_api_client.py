@@ -340,7 +340,7 @@ class WooCommerceAPIClient:
         Returns:
             Respuesta de WooCommerce con el webhook creado (incluye 'id')
         """
-        endpoint = f"{self.base_url}/webhooks"
+        endpoint = "/webhooks"
         payload = {
             'name': name,
             'topic': topic,
@@ -355,7 +355,7 @@ class WooCommerceAPIClient:
 
     def list_webhooks(self) -> List[Dict]:
         """Lista todos los webhooks de la tienda"""
-        endpoint = f"{self.base_url}/webhooks"
+        endpoint = "/webhooks"
         response = self._make_request('GET', endpoint)
 
         if isinstance(response, dict) and 'data' in response:
@@ -371,7 +371,7 @@ class WooCommerceAPIClient:
         Returns:
             True si se eliminó exitosamente
         """
-        endpoint = f"{self.base_url}/webhooks/{webhook_id}"
+        endpoint = f"/webhooks/{webhook_id}"
         self._make_request('DELETE', endpoint)
         logger.info(f"Webhook {webhook_id} eliminado")
         return True
