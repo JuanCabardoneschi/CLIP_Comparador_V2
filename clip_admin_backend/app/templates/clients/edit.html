@@ -148,7 +148,247 @@
             </div>
         </div>
 
-        <!-- Ayuda -->
+        <!-- Información de Integración y Tests -->
+        <div class="card shadow-sm mt-3">
+            <div class="card-header bg-light py-3">
+                <h6 class="m-0 font-weight-bold text-primary">
+                    <i class="bi bi-plug me-2"></i>
+                    Integración y Conectividad
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if integration %}
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <p class="mb-2">
+                                <strong>Tipo de Integración:</strong>
+                                <span class="badge bg-primary">{{ integration.integration_type.upper() }}</span>
+                            </p>
+                            <p class="mb-2">
+                                <strong>Store URL:</strong><br>
+                                <small class="text-muted">{{ integration.store_url }}</small>
+                            </p>
+                            <p class="mb-2">
+                                <strong>Estado Sync:</strong>
+                                {% if integration.sync_status == 'completed' %}
+                                    <span class="badge bg-success">{{ integration.sync_status }}</span>
+                                {% elif integration.sync_status == 'in_progress' %}
+                                    <span class="badge bg-warning">{{ integration.sync_status }}</span>
+                                {% elif integration.sync_status == 'error' %}
+                                    <span class="badge bg-danger">{{ integration.sync_status }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ integration.sync_status }}</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <p class="mb-2">
+                                <strong>Última Sincronización:</strong><br>
+                                <small class="text-muted">
+                                    {% if integration.last_sync_at %}
+                                        {{ integration.last_sync_at.strftime('%d/%m/%Y %H:%M') }}
+                                    {% else %}
+                                        Nunca sincronizado
+                                    {% endif %}
+                                </small>
+                            </p>
+                            <p class="mb-2">
+                                <strong>Webhooks Registrados:</strong><br>
+                                <small class="text-muted">
+                                    {% if integration.webhook_ids %}
+                                        {{ integration.webhook_ids | length }} webhook(s) activo(s)
+                                    {% else %}
+                                        No registrados
+                                    {% endif %}
+                                </small>
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Botones de Tests -->
+                    <hr class="my-3">
+                    <div class="row">
+                        <div class="col-md-6 mb-2">
+                            <button type="button" class="btn btn-sm btn-outline-info w-100" id="btn-test-connectivity">
+                                <i class="bi bi-wifi me-1"></i> Test de Conectividad
+                            </button>
+                        </div>
+                        {% if integration.integration_type == 'woocommerce' %}
+                        <div class="col-md-6 mb-2">
+                            <button type="button" class="btn btn-sm btn-outline-warning w-100" id="btn-test-webhook">
+                                <i class="bi bi-arrow-repeat me-1"></i> Test de Webhooks
+                            </button>
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <button type="button" class="btn btn-sm btn-outline-success w-100" id="btn-resync">
+                                <i class="bi bi-cloud-arrow-down me-1"></i> Re-sincronizar
+                            </button>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Alert de resultados -->
+                    <div id="test-results" class="mt-3" style="display: none;">
+                        <div class="alert alert-info" role="alert">
+                            <div id="test-message"></div>
+                            <small id="test-details" class="text-muted"></small>
+                        </div>
+                    </div>
+
+                    <script>
+                        document.getElementById('btn-test-connectivity').addEventListener('click', function() {
+                            testConnectivity('{{ client.id }}');
+                        });
+
+                        const btnWebhook = document.getElementById('btn-test-webhook');
+                        if (btnWebhook) {
+                            btnWebhook.addEventListener('click', function() {
+                                testWebhook('{{ client.id }}');
+                            });
+                        }
+
+                        const btnResync = document.getElementById('btn-resync');
+                        if (btnResync) {
+                            btnResync.addEventListener('click', function() {
+                                resyncIntegration('{{ client.id }}');
+                            });
+                        }
+
+                        function testConnectivity(clientId) {
+                            const btn = document.getElementById('btn-test-connectivity');
+                            const results = document.getElementById('test-results');
+                            const message = document.getElementById('test-message');
+                            const details = document.getElementById('test-details');
+
+                            btn.disabled = true;
+                            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Probando...';
+
+                            fetch(`/admin/clients/${clientId}/test-connectivity`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                }
+                            })
+                            .then(r => r.json())
+                            .then(data => {
+                                results.style.display = 'block';
+                                if (data.success) {
+                                    results.className = 'alert alert-success mt-3';
+                                    message.innerHTML = '<strong>✅ Conectividad OK</strong>';
+                                    details.innerHTML = data.message || 'Conexión establecida correctamente';
+                                } else {
+                                    results.className = 'alert alert-danger mt-3';
+                                    message.innerHTML = '<strong>❌ Error de Conectividad</strong>';
+                                    details.innerHTML = data.error || 'No se pudo conectar al store';
+                                }
+                            })
+                            .catch(err => {
+                                results.style.display = 'block';
+                                results.className = 'alert alert-danger mt-3';
+                                message.innerHTML = '<strong>❌ Error</strong>';
+                                details.innerHTML = err.message;
+                            })
+                            .finally(() => {
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="bi bi-wifi me-1"></i> Test de Conectividad';
+                            });
+                        }
+
+                        function testWebhook(clientId) {
+                            const btn = document.getElementById('btn-test-webhook');
+                            const results = document.getElementById('test-results');
+                            const message = document.getElementById('test-message');
+                            const details = document.getElementById('test-details');
+
+                            btn.disabled = true;
+                            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Enviando...';
+
+                            fetch(`/admin/clients/${clientId}/test-webhook`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                }
+                            })
+                            .then(r => r.json())
+                            .then(data => {
+                                results.style.display = 'block';
+                                if (data.success) {
+                                    results.className = 'alert alert-success mt-3';
+                                    message.innerHTML = '<strong>✅ Webhook Enviado</strong>';
+                                    details.innerHTML = data.message || 'Webhook de prueba enviado correctamente. Revisa los logs de Railway.';
+                                } else {
+                                    results.className = 'alert alert-warning mt-3';
+                                    message.innerHTML = '<strong>⚠️ Webhook Enviado (revisa logs)</strong>';
+                                    details.innerHTML = data.message || 'Webhook enviado, pero revisa los logs para verificar si llegó correctamente.';
+                                }
+                            })
+                            .catch(err => {
+                                results.style.display = 'block';
+                                results.className = 'alert alert-danger mt-3';
+                                message.innerHTML = '<strong>❌ Error</strong>';
+                                details.innerHTML = err.message;
+                            })
+                            .finally(() => {
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> Test de Webhooks';
+                            });
+                        }
+
+                        function resyncIntegration(clientId) {
+                            if (!confirm('¿Deseas resincronizar todos los datos (categorías, productos, imágenes)? Esto puede tomar varios minutos.')) {
+                                return;
+                            }
+
+                            const btn = document.getElementById('btn-resync');
+                            const results = document.getElementById('test-results');
+                            const message = document.getElementById('test-message');
+                            const details = document.getElementById('test-details');
+
+                            btn.disabled = true;
+                            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Sincronizando...';
+
+                            fetch(`/admin/clients/${clientId}/resync-integration`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                }
+                            })
+                            .then(r => r.json())
+                            .then(data => {
+                                results.style.display = 'block';
+                                if (data.success) {
+                                    results.className = 'alert alert-success mt-3';
+                                    message.innerHTML = '<strong>✅ Resincronización Iniciada</strong>';
+                                    details.innerHTML = `Se está sincronizando en background. Revisa el estado en los logs.<br>
+                                        <small>Categorías: ${data.stats?.categories_created || 0}, Productos: ${data.stats?.products_created || 0}</small>`;
+                                } else {
+                                    results.className = 'alert alert-danger mt-3';
+                                    message.innerHTML = '<strong>❌ Error en Resincronización</strong>';
+                                    details.innerHTML = data.error || 'No se pudo iniciar la resincronización';
+                                }
+                            })
+                            .catch(err => {
+                                results.style.display = 'block';
+                                results.className = 'alert alert-danger mt-3';
+                                message.innerHTML = '<strong>❌ Error</strong>';
+                                details.innerHTML = err.message;
+                            })
+                            .finally(() => {
+                                btn.disabled = false;
+                                btn.innerHTML = '<i class="bi bi-cloud-arrow-down me-1"></i> Re-sincronizar';
+                            });
+                        }
+                    </script>
+                {% else %}
+                    <p class="text-muted mb-0">
+                        <i class="bi bi-info-circle me-2"></i>
+                        Este cliente no tiene integración configurada.
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Ayuda sobre Rubro -->
         <div class="card shadow-sm mt-3">
             <div class="card-header bg-light py-3">
                 <h6 class="m-0 font-weight-bold text-warning">

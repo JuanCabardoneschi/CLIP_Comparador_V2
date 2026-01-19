@@ -22,6 +22,17 @@ logger = logging.getLogger(__name__)
 webhooks_bp = Blueprint('webhooks', __name__, url_prefix='/api/webhooks')
 
 
+@webhooks_bp.route('/health', methods=['GET'])
+def webhook_health():
+    """Endpoint para verificar si el servidor puede recibir webhooks"""
+    logger.info("✅ [WEBHOOK HEALTH] Server is reachable!")
+    return jsonify({
+        'status': 'healthy',
+        'message': 'Webhook endpoint is reachable',
+        'timestamp': datetime.utcnow().isoformat()
+    }), 200
+
+
 def verify_webhook_signature(payload_body: bytes, signature: str, secret: str) -> bool:
     """
     Verifica la firma HMAC-SHA256 del webhook de WooCommerce

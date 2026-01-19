@@ -271,7 +271,15 @@ def edit(client_id):
         flash("Cliente actualizado exitosamente", "success")
         return redirect(url_for("clients.view", client_id=client.id))
 
-    return render_template("clients/edit.html", client=client)
+    # Obtener integración si existe
+    integration = None
+    if client.integration_type == 'woocommerce':
+        integration = WooCommerceIntegration.query.filter_by(client_id=client_id, is_active=True).first()
+    elif client.integration_type == 'tiendanube':
+        from app.models.tiendanube_integration import TiendaNubeIntegration
+        integration = TiendaNubeIntegration.query.filter_by(client_id=client_id, is_active=True).first()
+
+    return render_template("clients/edit.html", client=client, integration=integration)
 
 
 # COMENTADO: Funciones de API Keys deshabilitadas temporalmente
