@@ -467,8 +467,15 @@ def _update_product_fields(product: Product, payload: dict):
 
     if categories:
         new_category_id = _resolve_category_id(product.client_id, categories)
+        logger.info(f"📁 [WEBHOOK] new_category_id resuelto: {new_category_id}")
         if new_category_id:
+            logger.info(f"📁 [WEBHOOK] Asignando categoría: {product.category_id} → {new_category_id}")
             product.category_id = new_category_id
+            logger.info(f"📁 [WEBHOOK] Categoría asignada. product.category_id ahora: {product.category_id}")
+        else:
+            logger.warning(f"⚠️ [WEBHOOK] new_category_id es None, no se actualiza categoría")
+    else:
+        logger.info(f"📁 [WEBHOOK] Sin categorías en el payload, no se actualiza")
 
     # Atributos
     attributes = _extract_attributes(payload.get('attributes', []) or [])
