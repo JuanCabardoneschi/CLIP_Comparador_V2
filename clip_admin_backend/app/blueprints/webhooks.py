@@ -96,6 +96,10 @@ def handle_woocommerce_webhook():
     webhook_signature = request.headers.get('X-WC-Webhook-Signature')
 
     logger.info(f"🔔 [WEBHOOK] ID={webhook_id}, Topic={webhook_topic}, Event={webhook_event}, Resource={webhook_resource}")
+    try:
+        logger.info(f"🧾 [WEBHOOK] Headers: {dict(request.headers)}")
+    except Exception:
+        pass
 
     # Validar que tenemos los headers requeridos
     if not all([webhook_id, webhook_topic, webhook_signature]):
