@@ -444,3 +444,230 @@ def register_webhooks(client_id):
             "success": False,
             "error": str(e)
         }), 500
+
+@bp.route("/<client_id>/test-webhook", methods=["POST"])
+@login_required
+def test_webhook(client_id):
+    """Enviar un webhook de prueba para testear la conectividad
+
+    Solo puede ser llamado por Super Admin
+    """
+    # Solo superadmin puede testear webhooks
+    if not current_user.is_super_admin:
+        return jsonify({"success": False, "error": "Solo superadmin puede testear webhooks"}), 403
+
+    client = Client.query.get_or_404(client_id)
+
+    # Verificar que es WooCommerce
+    if client.integration_type != "woocommerce":
+        return jsonify({"success": False, "error": "Cliente no es WooCommerce"}), 400
+
+    # Obtener integración
+    integration = WooCommerceIntegration.query.filter_by(client_id=client_id, is_active=True).first()
+    if not integration:
+        return jsonify({"success": False, "error": "No hay integración WooCommerce activa"}), 400
+
+    try:
+        import requests
+        import json
+        import hmac
+        import hashlib
+        import base64
+        from datetime import datetime
+
+        # Crear payload de prueba (simular un webhook real)
+        test_payload = {
+            "id": 999999,
+            "name": "[TEST] Producto de Prueba",
+            "description": "Este es un producto de prueba para verificar que los webhooks funcionan",
+            "sku": "TEST-SKU-001",
+            "price": "99.99",
+            "status": "publish",
+            "categories": [],
+            "images": [],
+            "attributes": [],
+            "_links": {
+                "self": [
+                    {
+                        "href": integration.store_url
+                    }
+                ]
+            }
+        }
+
+        payload_json = json.dumps(test_payload)
+        payload_bytes = payload_json.encode('utf-8')
+
+        # Calcular firma HMAC-SHA256
+        signature = base64.b64encode(
+            hmac.new(
+                integration.webhook_secret.encode(),
+                payload_bytes,
+                hashlib.sha256
+            ).digest()
+        ).decode()
+
+        # Enviar webhook a nuestro endpoint
+        webhook_url = f"{integration.store_url.rstrip('/')}/api/webhooks/woocommerce".replace(
+            integration.store_url.rstrip('/'),
+            'https://clip-comparador-v2.railway.app'
+        )
+
+        headers = {
+            'X-WC-Webhook-ID': '999999',
+            'X-WC-Webhook-Topic': 'product.updated',
+            'X-WC-Webhook-Resource': 'product',
+            'X-WC-Webhook-Event': 'updated',
+            'X-WC-Webhook-Signature': signature,
+            'Content-Type': 'application/json'
+        }
+
+        response = requests.post(
+            'https://clip-comparador-v2.railway.app/api/webhooks/woocommerce',
+            json=test_payload,
+            headers=headers,
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            return jsonify({
+                "success": True,
+                "message": "Webhook de prueba enviado exitosamente",
+                "status_code": response.status_code,
+                "response": response.json()
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": f"Webhook rechazado con código {response.status_code}: {response.text}"
+            }), response.status_code
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error testando webhook para {client.name}: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@bp.route("/<client_id>/test-connectivity", methods=["POST"])
+@login_required
+def test_connectivity(client_id):
+    """Test de conectividad con el store (WooCommerce/TiendaNube)
+
+    Solo puede ser llamado por Super Admin
+    """
+    if not current_user.is_super_admin:
+        return jsonify({"success": False, "error": "Solo superadmin"}), 403
+
+    client = Client.query.get_or_404(client_id)
+
+    try:
+        if client.integration_type == "woocommerce":
+            from app.services.woocommerce_api_client import WooCommerceAPIClient
+            from cryptography.fernet import Fernet
+            import os
+
+            integration = WooCommerceIntegration.query.filter_by(client_id=client_id, is_active=True).first()
+            if not integration:
+                return jsonify({"success": False, "error": "No hay integración WooCommerce activa"}), 400
+
+            # Desencriptar credenciales
+            cipher = Fernet(os.environ.get('ENCRYPTION_KEY', '').encode())
+            consumer_key = cipher.decrypt(integration.consumer_key.encode()).decode()
+            consumer_secret = cipher.decrypt(integration.consumer_secret.encode()).decode()
+
+            api = WooCommerceAPIClient(
+                store_url=integration.store_url,
+                consumer_key=consumer_key,
+                consumer_secret=consumer_secret,
+                api_version=integration.api_version,
+                verify_ssl=integration.use_ssl
+            )
+
+            # Intentar obtener info del store
+            info = api.get_store_info()
+            if info:
+                return jsonify({
+                    "success": True,
+                    "message": f"Conectado a {info.get('name', 'WooCommerce')} exitosamente",
+                    "store_name": info.get('name')
+                })
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "Store no respondió correctamente"
+                }), 500
+
+        else:
+            return jsonify({"success": False, "error": f"Integración {client.integration_type} no soportada"}), 400
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error testeando conectividad para {client.name}: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@bp.route("/<client_id>/resync-integration", methods=["POST"])
+@login_required
+def resync_integration(client_id):
+    """Resincronizar todos los datos de la integración
+
+    Solo puede ser llamado por Super Admin
+    """
+    if not current_user.is_super_admin:
+        return jsonify({"success": False, "error": "Solo superadmin"}), 403
+
+    client = Client.query.get_or_404(client_id)
+
+    try:
+        if client.integration_type == "woocommerce":
+            from app.services.woocommerce_sync_service import WooCommerceSyncService
+
+            integration = WooCommerceIntegration.query.filter_by(client_id=client_id, is_active=True).first()
+            if not integration:
+                return jsonify({"success": False, "error": "No hay integración WooCommerce activa"}), 400
+
+            # Ejecutar sincronización en background
+            def background_sync():
+                try:
+                    service = WooCommerceSyncService(integration)
+                    stats = service.full_sync()
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"✅ [RESYNC] Completado para {client.name}: {stats}")
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"❌ [RESYNC] Error para {client.name}: {str(e)}", exc_info=True)
+
+            thread = threading.Thread(target=background_sync)
+            thread.daemon = True
+            thread.start()
+
+            return jsonify({
+                "success": True,
+                "message": "Resincronización iniciada en background. Revisa los logs.",
+                "stats": {
+                    "categories_created": 0,
+                    "products_created": 0
+                }
+            })
+
+        else:
+            return jsonify({"success": False, "error": f"Integración {client.integration_type} no soportada"}), 400
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error resincronizando {client.name}: {str(e)}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
