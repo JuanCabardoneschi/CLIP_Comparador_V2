@@ -374,6 +374,19 @@ def register_blueprints(app):
     except ImportError as e:
         print(f"✗ Error importando analytics blueprint: {e}")
 
+    # Blueprint de webhooks (WooCommerce) - DEBE IR ANTES DE api_bp
+    try:
+        from app.blueprints.webhooks import webhooks_bp
+        app.register_blueprint(webhooks_bp)
+        print("✓ Blueprint webhooks registrado")
+        print(f"  📍 Rutas webhooks: {[rule.rule for rule in app.url_map.iter_rules() if 'webhook' in rule.rule.lower()]}")
+    except ImportError as e:
+        print(f"✗ Error importando webhooks blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando webhooks blueprint: {e}")
+        import traceback
+        traceback.print_exc()
+
     # Blueprint de API interna
     try:
         from app.blueprints.api import bp as api_bp
@@ -447,19 +460,6 @@ def register_blueprints(app):
         print(f"✗ Error importando widget_search blueprint: {e}")
     except Exception as e:
         print(f"✗ Error registrando system_config_admin blueprint: {e}")
-
-    # Blueprint de webhooks (WooCommerce)
-    try:
-        from app.blueprints.webhooks import webhooks_bp
-        app.register_blueprint(webhooks_bp)
-        print("✓ Blueprint webhooks registrado")
-        print(f"  📍 Rutas webhooks: {[rule.rule for rule in app.url_map.iter_rules() if 'webhook' in rule.rule.lower()]}")
-    except ImportError as e:
-        print(f"✗ Error importando webhooks blueprint: {e}")
-    except Exception as e:
-        print(f"✗ Error registrando webhooks blueprint: {e}")
-        import traceback
-        traceback.print_exc()
 
     # Blueprint GPT-4 Vision (detección de categorías)
     try:
