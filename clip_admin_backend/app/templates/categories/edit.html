@@ -33,6 +33,12 @@
     El nombre de la categoría se sincroniza automáticamente desde Tiendanube.
 </div>
 {% endif %}
+{% if is_woocommerce %}
+<div class="alert alert-info mb-4">
+    <i class="bi bi-diagram-3"></i>
+    <strong>WooCommerce:</strong> Puedes ajustar el padre para reflejar la jerarquía Woo ↔ CLIP. Se enviará a WooCommerce al guardar.
+</div>
+{% endif %}
 
 <div class="row">
     <div class="col-md-8">
@@ -101,6 +107,25 @@
                             </div>
                         </div>
                         <div class="col-md-4">
+                            {% if is_woocommerce %}
+                            <div class="mb-3">
+                                <label for="parent_external_id" class="form-label">
+                                    <i class="bi bi-diagram-3 me-1"></i> Categoría Padre (WooCommerce)
+                                </label>
+                                <select class="form-select" id="parent_external_id" name="parent_external_id">
+                                    <option value="">(Raíz)</option>
+                                    {% for node in categories_tree %}
+                                        {% set cat = node.category %}
+                                        {% if cat.id != category.id and cat.external_id %}
+                                            <option value="{{ cat.external_id }}" {% if category.parent_external_id == cat.external_id %}selected{% endif %}>
+                                                {{ '-' * (node.depth) }} {{ cat.name }}
+                                            </option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">Solo categorías WooCommerce (con external_id) pueden ser padre.</div>
+                            </div>
+                            {% endif %}
                             <div class="mb-3">
                                 <label for="color" class="form-label">Color Identificativo</label>
                                 <div class="d-flex align-items-center">

@@ -9,6 +9,33 @@ from app import db
 from app.models.category import Category
 from app.models.product import Product
 from slugify import slugify
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _build_category_tree(categories):
+    """Crea lista plana con jerarquía usando external_id/parent_external_id."""
+    by_external = {c.external_id: c for c in categories if c.external_id}
+    children = {}
+    roots = []
+
+    for c in categories:
+        parent_ext = c.parent_external_id
+        if parent_ext and parent_ext in by_external and parent_ext != c.external_id:
+            children.setdefault(parent_ext, []).append(c)
+        else:
+            roots.append(c)
+
+    def walk(node, depth, acc):
+        acc.append({'category': node, 'depth': depth})
+        for child in sorted(children.get(node.external_id, []), key=lambda x: x.name.lower()):
+            walk(child, depth + 1, acc)
+
+    flat = []
+    for root in sorted(roots, key=lambda x: x.name.lower()):
+        walk(root, 0, flat)
+    return flat
 
 bp = Blueprint("categories", __name__)
 
@@ -23,6 +50,7 @@ def index():
         return redirect(url_for('dashboard.index'))
 
     categories = Category.query.filter_by(client_id=current_user.client_id).all()
+    categories_tree = _build_category_tree(categories)
 
     # Calcular estadísticas
     total_categories = len(categories)
@@ -39,6 +67,7 @@ def index():
 
     return render_template("categories/index.html",
                            categories=categories,
+                           categories_tree=categories_tree,
                            total_categories=total_categories,
                            active_categories=active_categories,
                            inactive_categories=inactive_categories,
@@ -147,8 +176,14 @@ def edit(category_id):
         flash("No tienes permisos para editar esta categoría", "error")
         return redirect(url_for("categories.index"))
 
-    # Determinar si la categoría viene de TiendaNube (tiene external_id)
-    is_tiendanube = bool(category.external_id)
+    client = current_user.client
+    integration_type = client.integration_type if client else None
+    is_tiendanube = bool(client and (integration_type == 'tiendanube' or client.is_read_only))
+    is_woocommerce = bool(client and integration_type == 'woocommerce')
+
+    # Árbol para selector de padre (WooCommerce)
+    categories = Category.query.filter_by(client_id=current_user.client_id).all()
+    categories_tree = _build_category_tree(categories)
 
     if request.method == "GET":
         print(f"🏷️ CATEGORIES EDIT GET: Category: {category.name}")
@@ -174,14 +209,13 @@ def edit(category_id):
                 flash("El nombre en inglés es obligatorio", "error")
                 return render_template("categories/edit.html",
                                      category=category,
-                                     is_tiendanube=is_tiendanube)
+                                     is_tiendanube=is_tiendanube,
+                                     is_woocommerce=is_woocommerce,
+                                     categories_tree=categories_tree)
 
-            # No permitir modificar name ni color ni is_active ni slug
             category.name_en = name_en
             category.alternative_terms = alternative_terms if alternative_terms else None
             category.vision_hint = vision_hint if vision_hint else None
-            # description editable solo si no viene de TiendaNube (por compatibilidad)
-            # Si quieres permitir editar description, déjalo así:
             category.description = description if description else None
 
             db.session.commit()
@@ -193,13 +227,17 @@ def edit(category_id):
             flash("El nombre de la categoría es obligatorio", "error")
             return render_template("categories/edit.html",
                                  category=category,
-                                 is_tiendanube=is_tiendanube)
+                                 is_tiendanube=is_tiendanube,
+                                 is_woocommerce=is_woocommerce,
+                                 categories_tree=categories_tree)
 
         if not name_en:
             flash("El nombre en inglés es obligatorio", "error")
             return render_template("categories/edit.html",
                                  category=category,
-                                 is_tiendanube=is_tiendanube)
+                                 is_tiendanube=is_tiendanube,
+                                 is_woocommerce=is_woocommerce,
+                                 categories_tree=categories_tree)
 
         # Actualizar slug si cambió el nombre
         if name != category.name:
@@ -213,7 +251,9 @@ def edit(category_id):
                 flash("Ya existe una categoría con ese nombre", "error")
                 return render_template("categories/edit.html",
                                      category=category,
-                                     is_tiendanube=is_tiendanube)
+                                     is_tiendanube=is_tiendanube,
+                                     is_woocommerce=is_woocommerce,
+                                     categories_tree=categories_tree)
 
             category.slug = new_slug
 
@@ -226,13 +266,28 @@ def edit(category_id):
         category.vision_hint = vision_hint if vision_hint else None
         category.is_active = is_active
 
+        # Padre (solo WooCommerce o para reflejar jerarquía local)
+        parent_external_id = request.form.get("parent_external_id") or None
+        category.parent_external_id = parent_external_id
+
         db.session.commit()
+
+        # Sincronizar a WooCommerce si aplica
+        if is_woocommerce and category.external_id:
+            try:
+                from app.services.woocommerce_sync_service import WooCommerceSyncService
+                woo_service = WooCommerceSyncService(category.client_id)
+                woo_service.update_category_parent(category.external_id, parent_external_id)
+            except Exception as e:
+                logger.error(f"Error enviando cambio de jerarquía a WooCommerce: {e}")
         flash(f"Categoría '{name}' actualizada exitosamente", "success")
         return redirect(url_for("categories.view", category_id=category.id))
 
     return render_template("categories/edit.html",
                          category=category,
-                         is_tiendanube=is_tiendanube)
+                         is_tiendanube=is_tiendanube,
+                         is_woocommerce=is_woocommerce,
+                         categories_tree=categories_tree)
 
 
 @bp.route("/<category_id>/delete", methods=["POST"])

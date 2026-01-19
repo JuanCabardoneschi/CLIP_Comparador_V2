@@ -595,3 +595,23 @@ class WooCommerceSyncService:
 
         logger.info(f"WooCommerce: actualizando categoría de producto {external_product_id} -> {external_category_id}")
         return self.api.update_product(int(external_product_id), payload)
+
+    def update_category_parent(self, external_category_id: str, parent_external_id: str | None) -> Dict:
+        """Actualiza el padre de una categoría WooCommerce (CLIP → Woo)
+
+        Args:
+            external_category_id: ID de la categoría en WooCommerce (Category.external_id)
+            parent_external_id: ID de la categoría padre en WooCommerce (Category.external_id) o None para raíz
+        """
+        if not external_category_id:
+            raise ValueError("Se requiere external_id de la categoría para actualizar en WooCommerce")
+
+        payload = {
+            'parent': int(parent_external_id) if parent_external_id else 0
+        }
+
+        logger.info(
+            f"WooCommerce: actualizando padre de categoría {external_category_id} -> "
+            f"{parent_external_id if parent_external_id else 'root'}"
+        )
+        return self.api.update_category(int(external_category_id), payload)

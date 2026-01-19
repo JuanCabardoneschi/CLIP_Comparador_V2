@@ -208,6 +208,10 @@ class WooCommerceAPIClient:
         """Obtiene una categoría por ID"""
         return self._make_request('GET', f'/products/categories/{category_id}')
 
+    def update_category(self, category_id: int, data: Dict) -> Dict:
+        """Actualiza una categoría (ej: parent)"""
+        return self._make_request('PUT', f'/products/categories/{category_id}', data=data)
+
     # ==================== WEBHOOKS ====================
 
     def list_webhooks(self) -> List[Dict]:
