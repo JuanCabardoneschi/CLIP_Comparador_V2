@@ -453,8 +453,13 @@ def register_blueprints(app):
         from app.blueprints.webhooks import webhooks_bp
         app.register_blueprint(webhooks_bp)
         print("✓ Blueprint webhooks registrado")
+        print(f"  📍 Rutas webhooks: {[rule.rule for rule in app.url_map.iter_rules() if 'webhook' in rule.rule.lower()]}")
     except ImportError as e:
         print(f"✗ Error importando webhooks blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando webhooks blueprint: {e}")
+        import traceback
+        traceback.print_exc()
 
     # Blueprint GPT-4 Vision (detección de categorías)
     try:
