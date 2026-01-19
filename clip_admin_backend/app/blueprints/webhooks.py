@@ -26,6 +26,9 @@ webhooks_bp = Blueprint('webhooks', __name__, url_prefix='/api/webhooks')
 @webhooks_bp.route('/test', methods=['GET'])
 def webhook_test():
     """Endpoint de prueba mínimo"""
+    import logging
+    logging.error("🚨 WEBHOOK TEST ENDPOINT CALLED!")
+    print("🚨 WEBHOOK TEST ENDPOINT CALLED!")
     return "WEBHOOK BLUEPRINT WORKS!", 200
 
 
