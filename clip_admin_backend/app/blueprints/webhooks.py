@@ -112,14 +112,51 @@ def handle_woocommerce_webhook():
         logger.error(f"❌ [WEBHOOK] Error parseando JSON: {str(e)}")
         return jsonify({'error': 'Invalid JSON'}), 400
 
-    # Obtener store URL del payload
-    store_url = payload.get('_links', {}).get('self', [{}])[0].get('href', '')
+    # Resolver store_url de forma robusta
+    # Preferimos el header oficial de WooCommerce: X-WC-Webhook-Source
+    from urllib.parse import urlparse
+
+    source_header = request.headers.get('X-WC-Webhook-Source', '')
+    store_url = ''
+
+    if source_header:
+        try:
+            parsed = urlparse(source_header)
+            if parsed.scheme and parsed.netloc:
+                store_url = f"{parsed.scheme}://{parsed.netloc}"
+        except Exception as e:
+            logger.warning(f"⚠️ [WEBHOOK] Error parseando X-WC-Webhook-Source '{source_header}': {e}")
+
+    # Fallback 1: usar 'permalink' del producto si está disponible
     if not store_url:
-        logger.warning("⚠️ [WEBHOOK] No store URL en payload")
+        permalink = payload.get('permalink') or payload.get('url')
+        if permalink:
+            try:
+                p = urlparse(permalink)
+                if p.scheme and p.netloc:
+                    store_url = f"{p.scheme}://{p.netloc}"
+            except Exception as e:
+                logger.warning(f"⚠️ [WEBHOOK] Error parseando permalink '{permalink}': {e}")
+
+    # Fallback 2: extraer base desde _links.self[0].href
+    if not store_url:
+        self_href = payload.get('_links', {}).get('self', [{}])[0].get('href', '')
+        if self_href:
+            try:
+                p = urlparse(self_href)
+                if p.scheme and p.netloc:
+                    store_url = f"{p.scheme}://{p.netloc}"
+            except Exception as e:
+                logger.warning(f"⚠️ [WEBHOOK] Error parseando _links.self '{self_href}': {e}")
+
+    if not store_url:
+        logger.warning("⚠️ [WEBHOOK] No se pudo resolver store_url (headers/payload)")
         return jsonify({'error': 'No store URL'}), 400
 
     # Buscar integración por store URL
-    integration = WooCommerceIntegration.query.filter_by(store_url=store_url).first()
+    # Buscar integración por store_url normalizado (sin trailing slash)
+    normalized_store_url = store_url.rstrip('/')
+    integration = WooCommerceIntegration.query.filter_by(store_url=normalized_store_url).first()
 
     if not integration:
         logger.warning(f"❌ [WEBHOOK] No hay integración para store: {store_url}")
