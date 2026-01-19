@@ -325,3 +325,53 @@ class WooCommerceAPIClient:
             page += 1
 
         return all_categories
+    # ---- Webhooks ----
+
+    def create_webhook(self, name: str, topic: str, delivery_url: str, secret: str, status: str = 'active') -> Dict:
+        """Crea un webhook en WooCommerce
+        
+        Args:
+            name: Nombre del webhook (ej: 'CLIP - product.updated')
+            topic: Topic del webhook (ej: 'product.updated')
+            delivery_url: URL donde WooCommerce enviará los eventos
+            secret: Secret para firmar el webhook (HMAC-SHA256)
+            status: Estado del webhook ('active' o 'inactive')
+        
+        Returns:
+            Respuesta de WooCommerce con el webhook creado (incluye 'id')
+        """
+        endpoint = f"{self.base_url}/webhooks"
+        payload = {
+            'name': name,
+            'topic': topic,
+            'delivery_url': delivery_url,
+            'secret': secret,
+            'status': status,
+        }
+        
+        response = self._make_request('POST', endpoint, json=payload)
+        logger.info(f"Webhook creado: {name} (topic: {topic})")
+        return response
+
+    def list_webhooks(self) -> List[Dict]:
+        """Lista todos los webhooks de la tienda"""
+        endpoint = f"{self.base_url}/webhooks"
+        response = self._make_request('GET', endpoint)
+        
+        if isinstance(response, dict) and 'data' in response:
+            return response.get('data', [])
+        return response if isinstance(response, list) else []
+
+    def delete_webhook(self, webhook_id: int) -> bool:
+        """Elimina un webhook de WooCommerce
+        
+        Args:
+            webhook_id: ID del webhook a eliminar
+        
+        Returns:
+            True si se eliminó exitosamente
+        """
+        endpoint = f"{self.base_url}/webhooks/{webhook_id}"
+        self._make_request('DELETE', endpoint)
+        logger.info(f"Webhook {webhook_id} eliminado")
+        return True

@@ -448,6 +448,14 @@ def register_blueprints(app):
     except Exception as e:
         print(f"✗ Error registrando system_config_admin blueprint: {e}")
 
+    # Blueprint de webhooks (WooCommerce)
+    try:
+        from app.blueprints.webhooks import webhooks_bp
+        app.register_blueprint(webhooks_bp)
+        print("✓ Blueprint webhooks registrado")
+    except ImportError as e:
+        print(f"✗ Error importando webhooks blueprint: {e}")
+
     # Blueprint GPT-4 Vision (detección de categorías)
     try:
         from app.blueprints.gpt4v_detection import gpt4v_bp
