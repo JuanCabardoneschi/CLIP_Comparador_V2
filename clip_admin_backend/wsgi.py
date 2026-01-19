@@ -383,27 +383,6 @@ def register_blueprints(app):
     except ImportError as e:
         print(f"✗ Error importando analytics blueprint: {e}")
 
-    # Blueprint de webhooks (WooCommerce) - DEBE IR ANTES DE api_bp
-    try:
-        from app.blueprints.webhooks import webhooks_bp
-        print(f"🔍 Webhooks blueprint importado: {webhooks_bp}")
-        print(f"🔍 URL prefix: {webhooks_bp.url_prefix}")
-        print(f"🔍 Deferred functions: {len(webhooks_bp.deferred_functions)}")
-        app.register_blueprint(webhooks_bp)
-        print("✓ Blueprint webhooks registrado")
-        # Verificar rutas después de registro
-        webhook_routes = [str(rule) for rule in app.url_map.iter_rules() if 'webhook' in str(rule).lower()]
-        print(f"  📍 Rutas webhooks registradas: {webhook_routes}")
-        for rule in app.url_map.iter_rules():
-            if 'webhook' in str(rule).lower():
-                print(f"    🔗 {rule.rule} -> {rule.endpoint} [{','.join(rule.methods)}]")
-    except ImportError as e:
-        print(f"✗ Error importando webhooks blueprint: {e}")
-    except Exception as e:
-        print(f"✗ Error registrando webhooks blueprint: {e}")
-        import traceback
-        traceback.print_exc()
-
     # Blueprint de API interna
     try:
         from app.blueprints.api import bp as api_bp
@@ -562,6 +541,28 @@ def register_blueprints(app):
 
 # Crear instancia de la aplicación
 app = create_app()
+
+# Registrar webhooks blueprint AL FINAL (después de todos los demás blueprints)
+# para que tenga prioridad sobre el error handler del api blueprint
+try:
+    from app.blueprints.webhooks import webhooks_bp
+    print(f"🔍 Webhooks blueprint importado: {webhooks_bp}")
+    print(f"🔍 URL prefix: {webhooks_bp.url_prefix}")
+    print(f"🔍 Deferred functions: {len(webhooks_bp.deferred_functions)}")
+    app.register_blueprint(webhooks_bp)
+    print("✓ Blueprint webhooks registrado (AL FINAL)")
+    # Verificar rutas después de registro
+    webhook_routes = [str(rule) for rule in app.url_map.iter_rules() if 'webhook' in str(rule).lower()]
+    print(f"  📍 Rutas webhooks registradas: {webhook_routes}")
+    for rule in app.url_map.iter_rules():
+        if 'webhook' in str(rule).lower():
+            print(f"    🔗 {rule.rule} -> {rule.endpoint} [{','.join(rule.methods)}]")
+except ImportError as e:
+    print(f"✗ Error importando webhooks blueprint: {e}")
+except Exception as e:
+    print(f"✗ Error registrando webhooks blueprint: {e}")
+    import traceback
+    traceback.print_exc()
 
 # Endpoint de prueba global
 @app.route('/test-global', methods=['GET'])
