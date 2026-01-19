@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 webhooks_bp = Blueprint('webhooks', __name__, url_prefix='/api/webhooks')
 
 
+@webhooks_bp.route('/test', methods=['GET'])
+def webhook_test():
+    """Endpoint de prueba mínimo"""
+    return "WEBHOOK BLUEPRINT WORKS!", 200
+
+
 @webhooks_bp.route('/health', methods=['GET'])
 def webhook_health():
     """Endpoint para verificar si el servidor puede recibir webhooks"""
