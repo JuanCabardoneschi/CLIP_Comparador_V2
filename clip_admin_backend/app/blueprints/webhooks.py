@@ -103,6 +103,13 @@ def handle_woocommerce_webhook():
 
     # Validar que tenemos los headers requeridos
     if not all([webhook_id, webhook_topic, webhook_signature]):
+        # WooCommerce puede enviar un ping mínimo al guardar o al "Enviar prueba"
+        # sin los headers X-WC-*. Para no fallar la validación, aceptamos ese ping.
+        ua = request.headers.get('User-Agent', '')
+        ctype = request.headers.get('Content-Type', '')
+        if 'WooCommerce' in ua and 'application/x-www-form-urlencoded' in ctype:
+            logger.info("🟢 [WEBHOOK] Ping de verificación recibido (sin headers) -> 200")
+            return jsonify({'ok': True, 'type': 'ping'}), 200
         logger.warning("❌ [WEBHOOK] Incompleto: faltan headers requeridos")
         return jsonify({'error': 'Missing required headers'}), 400
 
