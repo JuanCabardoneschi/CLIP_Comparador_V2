@@ -1,5 +1,6 @@
 """
 Endpoints para recibir webhooks de WooCommerce
+Versión: 2.0
 """
 from flask import Blueprint, request, jsonify
 import logging
