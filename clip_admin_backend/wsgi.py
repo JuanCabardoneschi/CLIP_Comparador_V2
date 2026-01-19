@@ -1,6 +1,7 @@
 """
 CLIP Comparador V2 - Backend Admin
 Aplicación Flask para gestión de clientes y catálogos
+Versión: 2.1.1 (fixed wsgi naming)
 """
 
 import os
