@@ -377,9 +377,17 @@ def register_blueprints(app):
     # Blueprint de webhooks (WooCommerce) - DEBE IR ANTES DE api_bp
     try:
         from app.blueprints.webhooks import webhooks_bp
+        print(f"🔍 Webhooks blueprint importado: {webhooks_bp}")
+        print(f"🔍 URL prefix: {webhooks_bp.url_prefix}")
+        print(f"🔍 Deferred functions: {len(webhooks_bp.deferred_functions)}")
         app.register_blueprint(webhooks_bp)
         print("✓ Blueprint webhooks registrado")
-        print(f"  📍 Rutas webhooks: {[rule.rule for rule in app.url_map.iter_rules() if 'webhook' in rule.rule.lower()]}")
+        # Verificar rutas después de registro
+        webhook_routes = [str(rule) for rule in app.url_map.iter_rules() if 'webhook' in str(rule).lower()]
+        print(f"  📍 Rutas webhooks registradas: {webhook_routes}")
+        for rule in app.url_map.iter_rules():
+            if 'webhook' in str(rule).lower():
+                print(f"    🔗 {rule.rule} -> {rule.endpoint} [{','.join(rule.methods)}]")
     except ImportError as e:
         print(f"✗ Error importando webhooks blueprint: {e}")
     except Exception as e:
