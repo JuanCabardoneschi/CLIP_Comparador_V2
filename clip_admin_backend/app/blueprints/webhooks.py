@@ -74,11 +74,11 @@ def handle_woocommerce_webhook():
     webhook_event = request.headers.get('X-WC-Webhook-Event')
     webhook_signature = request.headers.get('X-WC-Webhook-Signature')
 
-    logger.info(f"🔔 Webhook recibido: ID={webhook_id}, Topic={webhook_topic}, Event={webhook_event}")
+    logger.info(f"🔔 [WEBHOOK] ID={webhook_id}, Topic={webhook_topic}, Event={webhook_event}, Resource={webhook_resource}")
 
     # Validar que tenemos los headers requeridos
     if not all([webhook_id, webhook_topic, webhook_signature]):
-        logger.warning("❌ Webhook incompleto: faltan headers requeridos")
+        logger.warning("❌ [WEBHOOK] Incompleto: faltan headers requeridos")
         return jsonify({'error': 'Missing required headers'}), 400
 
     # Obtener body crudo
@@ -88,28 +88,30 @@ def handle_woocommerce_webhook():
     try:
         payload = request.get_json()
     except Exception as e:
-        logger.error(f"❌ Error parseando JSON: {str(e)}")
+        logger.error(f"❌ [WEBHOOK] Error parseando JSON: {str(e)}")
         return jsonify({'error': 'Invalid JSON'}), 400
 
     # Obtener store URL del payload
     store_url = payload.get('_links', {}).get('self', [{}])[0].get('href', '')
     if not store_url:
-        logger.warning("⚠️ No store URL en webhook")
+        logger.warning("⚠️ [WEBHOOK] No store URL en payload")
         return jsonify({'error': 'No store URL'}), 400
 
     # Buscar integración por store URL
     integration = WooCommerceIntegration.query.filter_by(store_url=store_url).first()
 
     if not integration:
-        logger.warning(f"❌ No hay integración para store: {store_url}")
+        logger.warning(f"❌ [WEBHOOK] No hay integración para store: {store_url}")
         return jsonify({'error': 'Integration not found'}), 404
+
+    logger.info(f"✅ [WEBHOOK] Integración encontrada: {integration.client_id}")
 
     # Verificar firma del webhook
     if not verify_webhook_signature(payload_body, webhook_signature, integration.webhook_secret):
-        logger.warning(f"❌ Firma inválida para webhook {webhook_id}")
+        logger.warning(f"❌ [WEBHOOK] Firma inválida para webhook {webhook_id}")
         return jsonify({'error': 'Invalid signature'}), 403
 
-    logger.info(f"✅ Firma válida. Procesando webhook...")
+    logger.info(f"✅ [WEBHOOK] Firma válida. Procesando webhook...")
 
     # Encolar el procesamiento del webhook (por ahora lo hacemos sincronizadamente)
     try:
@@ -123,7 +125,7 @@ def handle_woocommerce_webhook():
         }), 200
 
     except Exception as e:
-        logger.error(f"❌ Error procesando webhook: {str(e)}")
+        logger.error(f"❌ [WEBHOOK] Error procesando webhook: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 
@@ -141,25 +143,25 @@ def _process_webhook(integration: WooCommerceIntegration, topic: str, event: str
     product_id = payload.get('id')
     product_name = payload.get('name', 'Unknown')
 
-    logger.info(f"🔄 Procesando {topic}: producto {product_id} ({product_name})")
+    logger.info(f"🔄 [WEBHOOK] Procesando: {topic} - Producto #{product_id} ({product_name})")
 
     if event == 'created':
-        logger.info(f"➕ Nuevo producto: {product_name}")
+        logger.info(f"➕ [WEBHOOK] CREAR nuevo producto")
         _handle_product_created(integration, payload)
 
     elif event == 'updated':
-        logger.info(f"🔄 Producto actualizado: {product_name}")
+        logger.info(f"🔄 [WEBHOOK] ACTUALIZAR producto existente")
         _handle_product_updated(integration, payload)
 
     elif event == 'deleted':
-        logger.info(f"🗑️ Producto eliminado: {product_name}")
+        logger.info(f"🗑️ [WEBHOOK] ELIMINAR producto")
         _handle_product_deleted(integration, payload)
 
     elif event == 'restored':
-        logger.info(f"♻️ Producto restaurado: {product_name}")
+        logger.info(f"♻️ [WEBHOOK] RESTAURAR producto")
         _handle_product_restored(integration, payload)
 
-    logger.info(f"✅ Webhook procesado: {topic} - {product_name}")
+    logger.info(f"✅ [WEBHOOK] Procesamiento completado: {topic}")
 
 
 def _handle_product_created(integration: WooCommerceIntegration, payload: dict):
@@ -185,7 +187,7 @@ def _handle_product_created(integration: WooCommerceIntegration, payload: dict):
         # Resolver categoría
         category_id = _resolve_category_id(client.id, payload.get('categories', []))
         if not category_id:
-            logger.warning(f"Webhook: No hay categoría válida para producto {ext_id}")
+            logger.warning(f"⚠️ [WEBHOOK] Producto {ext_id} sin categoría válida")
             return
 
         # Crear producto
@@ -203,7 +205,7 @@ def _handle_product_created(integration: WooCommerceIntegration, payload: dict):
         db.session.add(product)
         db.session.commit()
 
-        logger.info(f"✅ Producto creado: {ext_id} ({product.name})")
+        logger.info(f"✅ [WEBHOOK] Producto CREADO: {ext_id} ({product.name}) en categoría {category_id}")
 
         # Procesar imágenes y embeddings en background (no bloquear respuesta del webhook)
         thread = threading.Thread(
@@ -214,7 +216,7 @@ def _handle_product_created(integration: WooCommerceIntegration, payload: dict):
         thread.start()
 
     except Exception as e:
-        logger.error(f"Error creando producto desde webhook: {str(e)}", exc_info=True)
+        logger.error(f"❌ [WEBHOOK] Error creando producto: {str(e)}", exc_info=True)
         db.session.rollback()
 
 
@@ -237,12 +239,32 @@ def _handle_product_updated(integration: WooCommerceIntegration, payload: dict):
             _handle_product_created(integration, payload)
             return
 
+        # Loguear cambios importantes
+        old_category_id = product.category_id
+        old_name = product.name
+        old_price = product.price
+        old_stock = product.stock
+
         # Actualizar campos
         _update_product_fields(product, payload)
         db.session.add(product)
         db.session.commit()
 
-        logger.info(f"✅ Producto actualizado: {ext_id} ({product.name})")
+        # Loguear cambios detectados
+        changes = []
+        if old_name != product.name:
+            changes.append(f"nombre: '{old_name}' → '{product.name}'")
+        if old_category_id != product.category_id:
+            changes.append(f"categoría: {old_category_id} → {product.category_id}")
+        if old_price != product.price:
+            changes.append(f"precio: {old_price} → {product.price}")
+        if old_stock != product.stock:
+            changes.append(f"stock: {old_stock} → {product.stock}")
+
+        if changes:
+            logger.info(f"✅ [WEBHOOK] Producto actualizado: {ext_id} ({product.name}). Cambios: {', '.join(changes)}")
+        else:
+            logger.info(f"✅ [WEBHOOK] Producto actualizado: {ext_id} ({product.name}). Sin cambios detectados")
 
         # Procesar imágenes y embeddings en background
         thread = threading.Thread(
@@ -272,7 +294,7 @@ def _handle_product_deleted(integration: WooCommerceIntegration, payload: dict):
 
         product = Product.query.filter_by(client_id=client.id, external_id=ext_id).first()
         if not product:
-            logger.warning(f"Producto {ext_id} no encontrado para deletear")
+            logger.warning(f"⚠️ [WEBHOOK] Producto {ext_id} no encontrado para deletear")
             return
 
         product.is_active = False
@@ -281,10 +303,10 @@ def _handle_product_deleted(integration: WooCommerceIntegration, payload: dict):
         db.session.add(product)
         db.session.commit()
 
-        logger.info(f"✅ Producto marcado como inactivo: {ext_id}")
+        logger.info(f"✅ [WEBHOOK] Producto ELIMINADO: {ext_id} ({product.name})")
 
     except Exception as e:
-        logger.error(f"Error deletando producto desde webhook: {str(e)}", exc_info=True)
+        logger.error(f"❌ [WEBHOOK] Error deletando producto: {str(e)}", exc_info=True)
         db.session.rollback()
 
 
@@ -303,7 +325,7 @@ def _handle_product_restored(integration: WooCommerceIntegration, payload: dict)
 
         product = Product.query.filter_by(client_id=client.id, external_id=ext_id).first()
         if not product:
-            logger.warning(f"Producto {ext_id} no encontrado para restaurar")
+            logger.warning(f"⚠️ [WEBHOOK] Producto {ext_id} no encontrado para restaurar")
             return
 
         product.is_active = True
@@ -312,10 +334,10 @@ def _handle_product_restored(integration: WooCommerceIntegration, payload: dict)
         db.session.add(product)
         db.session.commit()
 
-        logger.info(f"✅ Producto reactivado: {ext_id}")
+        logger.info(f"✅ [WEBHOOK] Producto RESTAURADO: {ext_id} ({product.name})")
 
     except Exception as e:
-        logger.error(f"Error restaurando producto desde webhook: {str(e)}", exc_info=True)
+        logger.error(f"❌ [WEBHOOK] Error restaurando producto: {str(e)}", exc_info=True)
         db.session.rollback()
 
 
@@ -360,15 +382,50 @@ def _update_product_fields(product: Product, payload: dict):
 
 
 def _resolve_category_id(client_id: str, categories: list) -> str:
-    """Resolver la categoría interna desde las categorías de WooCommerce"""
-    for cat in categories or []:
+    """
+    Resolver la categoría interna desde las categorías de WooCommerce
+
+    Si un producto está en una categoría padre Y su categoría hija,
+    se asigna SOLO a la hija (más específica).
+    """
+    if not categories:
+        return None
+
+    # Obtener todas las categorías válidas del producto
+    valid_categories = []
+    for cat in categories:
         ext_id = str(cat.get('id')) if cat.get('id') is not None else None
         if not ext_id:
             continue
         existing = Category.query.filter_by(client_id=client_id, external_id=ext_id).first()
         if existing:
-            return existing.id
-    return None
+            valid_categories.append(existing)
+
+    if not valid_categories:
+        return None
+
+    if len(valid_categories) == 1:
+        # Solo una categoría: asignar directamente
+        return valid_categories[0].id
+
+    # Múltiples categorías: buscar relación padre-hijo
+    # Preferir las categorías que NO son padres de otra categoría en la lista
+    for candidate in valid_categories:
+        # ¿Es esta categoría padre de alguna otra en la lista?
+        is_parent_of_another = any(
+            other.parent_external_id == candidate.external_id
+            for other in valid_categories
+            if other.id != candidate.id
+        )
+
+        if not is_parent_of_another:
+            # Esta es una categoría "hoja" (no es padre de otra en la lista)
+            logger.info(f"📁 Categoría seleccionada (hoja): {candidate.name} (padre: {candidate.parent_external_id})")
+            return candidate.id
+
+    # Fallback: retornar la primera si no hay relación padre-hijo clara
+    logger.warning(f"⚠️ Sin relación padre-hijo clara, usando primera categoría: {valid_categories[0].name}")
+    return valid_categories[0].id
 
 
 def _extract_attributes(attributes_list: list) -> dict:
