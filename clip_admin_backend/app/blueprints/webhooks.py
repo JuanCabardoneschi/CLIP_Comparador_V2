@@ -123,6 +123,14 @@ def handle_woocommerce_webhook():
         logger.error(f"❌ [WEBHOOK] Error parseando JSON: {str(e)}")
         return jsonify({'error': 'Invalid JSON'}), 400
 
+    # 🔍 LOG COMPLETO DEL PAYLOAD
+    logger.info(f"📦 [WEBHOOK] PAYLOAD COMPLETO (JSON):")
+    try:
+        import json
+        logger.info(json.dumps(payload, indent=2, default=str))
+    except Exception as e:
+        logger.info(f"Payload (repr): {repr(payload)}")
+
     # Resolver store_url de forma robusta
     # Preferimos el header oficial de WooCommerce: X-WC-Webhook-Source
     from urllib.parse import urlparse
@@ -252,6 +260,13 @@ def _handle_product_created(integration: WooCommerceIntegration, payload: dict):
             logger.info(f"Producto {ext_id} ya existe, actualizando en su lugar")
             _handle_product_updated(integration, payload)
             return
+
+        # 📁 LOG DE CATEGORÍAS PARA NUEVO PRODUCTO
+        categories_raw = payload.get('categories', [])
+        logger.info(f"📁 [WEBHOOK CATEGORÍAS NUEVO] Raw list from WooCommerce: {categories_raw}")
+        logger.info(f"📁 [WEBHOOK CATEGORÍAS NUEVO] Count: {len(categories_raw)}")
+        for idx, cat in enumerate(categories_raw):
+            logger.info(f"  [{idx}] ID: {cat.get('id')}, Name: {cat.get('name')}, Slug: {cat.get('slug')}")
 
         # Resolver categoría
         category_id = _resolve_category_id(client.id, payload.get('categories', []))
@@ -443,6 +458,11 @@ def _update_product_fields(product: Product, payload: dict):
 
     # Categoría
     categories = payload.get('categories', [])
+    logger.info(f"📁 [WEBHOOK CATEGORÍAS UPDATE] Raw list from WooCommerce: {categories}")
+    logger.info(f"📁 [WEBHOOK CATEGORÍAS UPDATE] Count: {len(categories)}")
+    for idx, cat in enumerate(categories):
+        logger.info(f"  [{idx}] ID: {cat.get('id')}, Name: {cat.get('name')}, Slug: {cat.get('slug')}")
+    
     if categories:
         new_category_id = _resolve_category_id(product.client_id, categories)
         if new_category_id:
@@ -462,26 +482,43 @@ def _resolve_category_id(client_id: str, categories: list) -> str:
     se asigna SOLO a la hija (más específica).
     """
     if not categories:
+        logger.info(f"🔍 [RESOLVE_CATEGORY] No categories provided")
         return None
+
+    logger.info(f"🔍 [RESOLVE_CATEGORY] Starting resolution with {len(categories)} categories")
 
     # Obtener todas las categorías válidas del producto
     valid_categories = []
     for cat in categories:
         ext_id = str(cat.get('id')) if cat.get('id') is not None else None
+        cat_name = cat.get('name', '?')
+        cat_slug = cat.get('slug', '?')
+        
         if not ext_id:
+            logger.info(f"  ❌ Category skipped - no ID: {cat_name}")
             continue
+        
         existing = Category.query.filter_by(client_id=client_id, external_id=ext_id).first()
         if existing:
             valid_categories.append(existing)
+            logger.info(f"  ✅ Valid category found: {existing.name} (ext_id={ext_id}, internal_id={existing.id})")
+        else:
+            logger.info(f"  ❌ Category NOT found in DB: {cat_name} (ext_id={ext_id})")
 
     if not valid_categories:
+        logger.warning(f"🔍 [RESOLVE_CATEGORY] No valid categories found in database")
         return None
 
     if len(valid_categories) == 1:
         # Solo una categoría: asignar directamente
+        logger.info(f"🔍 [RESOLVE_CATEGORY] Single category - selecting: {valid_categories[0].name}")
         return valid_categories[0].id
 
     # Múltiples categorías: buscar relación padre-hijo
+    logger.info(f"🔍 [RESOLVE_CATEGORY] Multiple categories found ({len(valid_categories)}), checking parent-child relationships:")
+    for candidate in valid_categories:
+        logger.info(f"  - {candidate.name} (ext_id={candidate.external_id}, parent_ext_id={candidate.parent_external_id})")
+
     # Preferir las categorías que NO son padres de otra categoría en la lista
     for candidate in valid_categories:
         # ¿Es esta categoría padre de alguna otra en la lista?
@@ -493,11 +530,11 @@ def _resolve_category_id(client_id: str, categories: list) -> str:
 
         if not is_parent_of_another:
             # Esta es una categoría "hoja" (no es padre de otra en la lista)
-            logger.info(f"📁 Categoría seleccionada (hoja): {candidate.name} (padre: {candidate.parent_external_id})")
+            logger.info(f"✅ [RESOLVE_CATEGORY] SELECTED (leaf): {candidate.name} (ext_id={candidate.external_id}, is_parent=False)")
             return candidate.id
 
     # Fallback: retornar la primera si no hay relación padre-hijo clara
-    logger.warning(f"⚠️ Sin relación padre-hijo clara, usando primera categoría: {valid_categories[0].name}")
+    logger.warning(f"⚠️ [RESOLVE_CATEGORY] No clear parent-child relationship, using first: {valid_categories[0].name}")
     return valid_categories[0].id
 
 
