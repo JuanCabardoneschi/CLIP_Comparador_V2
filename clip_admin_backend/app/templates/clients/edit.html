@@ -162,7 +162,7 @@
                         <div class="col-md-6 mb-3">
                             <p class="mb-2">
                                 <strong>Tipo de Integración:</strong>
-                                <span class="badge bg-primary">{{ integration.integration_type.upper() }}</span>
+                                <span class="badge bg-primary">{{ client.integration_type.upper() if client.integration_type else 'N/A' }}</span>
                             </p>
                             <p class="mb-2">
                                 <strong>Store URL:</strong><br>
