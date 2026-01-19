@@ -39,6 +39,11 @@
     </div>
 </div>
 
+<style>
+    .toggle-btn i { font-size: 1rem; }
+    .category-row[data-depth="0"] .toggle-btn { font-size: 0.95rem; }
+</style>
+
     <!-- Estadísticas rápidas -->
     <div class="row mb-4">
         <div class="col-md-3">
@@ -188,7 +193,7 @@
                     <tbody>
                         {% for node in categories_tree %}
                         {% set category = node.category %}
-                        <tr class="category-row" data-category-id="{{ category.id }}">
+                        <tr class="category-row" data-category-id="{{ category.id }}" data-cat-id="{{ category.external_id or category.id }}" data-parent-id="{{ category.parent_external_id or '' }}" data-depth="{{ node.depth }}">
                             <td>
                                 <div class="d-flex align-items-center">
                                     <div class="color-indicator me-2"
@@ -197,8 +202,11 @@
                             </td>
                             <td>
                                 <div class="fw-medium">
-                                    <span style="margin-left: {{ node.depth * 16 }}px">
-                                        {% if node.depth > 0 %}<i class="bi bi-arrow-return-right text-muted me-1"></i>{% endif %}
+                                    <span style="margin-left: {{ node.depth * 16 }}px" class="d-inline-flex align-items-center gap-1">
+                                        <button type="button" class="btn btn-link btn-sm p-0 toggle-btn d-none" aria-label="toggle">
+                                            <i class="bi bi-plus-square"></i>
+                                        </button>
+                                        {% if node.depth > 0 %}<i class="bi bi-arrow-return-right text-muted"></i>{% endif %}
                                         {{ category.name }}
                                     </span>
                                 </div>
@@ -208,6 +216,67 @@
                                 <div class="text-truncate" style="max-width: 300px;" title="{{ category.description or 'Sin descripción' }}">
                                     {{ category.description or 'Sin descripción' }}
                                 </div>
+                <script>
+                document.addEventListener('DOMContentLoaded', () => {
+                    const rows = Array.from(document.querySelectorAll('.category-row'));
+                    const byId = new Map();
+                    rows.forEach(r => byId.set(r.dataset.catId, r));
+
+                    // Mapear hijos
+                    const children = {};
+                    rows.forEach(r => {
+                        const parent = r.dataset.parentId;
+                        if (parent) {
+                            (children[parent] = children[parent] || []).push(r);
+                        }
+                    });
+
+                    // Ocultar todos los que no son raíz inicialmente
+                    rows.forEach(r => {
+                        if (r.dataset.depth !== '0') {
+                            r.classList.add('d-none');
+                        }
+                    });
+
+                    // Configurar toggles en filas con hijos
+                    rows.forEach(r => {
+                        const id = r.dataset.catId;
+                        const hasChildren = children[id] && children[id].length > 0;
+                        if (!hasChildren) return;
+
+                        const btn = r.querySelector('.toggle-btn');
+                        if (!btn) return;
+                        btn.classList.remove('d-none');
+
+                        const icon = btn.querySelector('i');
+                        let expanded = false;
+
+                        const setVisibility = (parentId, show) => {
+                            (children[parentId] || []).forEach(child => {
+                                child.classList.toggle('d-none', !show);
+                                if (!show) {
+                                    // Si se colapsa, colapsar descendientes también
+                                    const childBtn = child.querySelector('.toggle-btn');
+                                    if (childBtn && !childBtn.classList.contains('d-none')) {
+                                        childBtn.dataset.state = 'collapsed';
+                                        const childIcon = childBtn.querySelector('i');
+                                        if (childIcon) childIcon.className = 'bi bi-plus-square';
+                                    }
+                                    setVisibility(child.dataset.catId, false);
+                                }
+                            });
+                        };
+
+                        const toggle = () => {
+                            expanded = !expanded;
+                            icon.className = expanded ? 'bi bi-dash-square' : 'bi bi-plus-square';
+                            setVisibility(id, expanded);
+                        };
+
+                        btn.addEventListener('click', toggle);
+                    });
+                });
+                </script>
                             </td>
                             <td>
                                 {% if category.is_active %}
