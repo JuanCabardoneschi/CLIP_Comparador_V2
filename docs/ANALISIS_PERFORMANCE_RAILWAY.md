@@ -12,7 +12,7 @@ Basado en el log de Railway:
 
 ```
 19:11:07 - 🔍 GPT4V-UNIFIED SEARCH: Request from 100.64.0.6
-19:11:07 - ✅ Cliente autenticado: Goody Store
+19:11:07 - ✅ Cliente autenticado: Demo Store
 19:11:07 - ⚙️ Parámetros: max_results=3 (límite sistema: 3), threshold=0.65 (config: 0.3)
 19:11:07 - ⚠️ Detectando categorías con GPT-4V
 19:11:27 - ✅ GPT-4V detectó 2 categorías: ['CAMISAS HOMBRE- DAMA', 'ZAPATO DAMA']
@@ -297,7 +297,7 @@ producto.images[0]  # Sin query adicional
 
 ### 📊 Consumo de Memoria
 
-#### Caso Actual (Goody Store)
+#### Caso Actual (Demo Store)
 **Productos totales:** ~9 productos (8 camisas + 1 zapato)
 
 | Optimización | Memoria Adicional | Impacto |

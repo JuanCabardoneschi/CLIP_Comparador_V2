@@ -1,8 +1,8 @@
 """
-Módulo de Búsqueda Personalizado: Goody Store
+Módulo de Búsqueda Personalizado: Demo Store
 
-Cliente: Goody Store
-Slug: goody-store
+Cliente: Demo Store
+Slug: demo-store
 Industria: Textil / Uniformes y ropa de trabajo
 
 Categorías principales:
@@ -30,7 +30,7 @@ from app.models.category import Category
 
 
 # ============================================================================
-# CONFIGURACIÓN ESPECÍFICA DE GOODY STORE
+# CONFIGURACIÓN ESPECÍFICA DE DEMO STORE
 # ============================================================================
 
 # Mapa de variantes ortográficas y plurales
@@ -119,7 +119,7 @@ CATEGORY_SYNONYMS = {
 
 def normalize_tokens(text: str) -> List[str]:
     """
-    Normaliza tokens para Goody Store.
+    Normaliza tokens para Demo Store.
 
     Aplica:
     1. Lowercase y split por espacios/guiones
@@ -158,7 +158,7 @@ def normalize_tokens(text: str) -> List[str]:
 
 def expand_query(query: str, categories: List[Category]) -> List[str]:
     """
-    Expande query con sinónimos específicos de Goody Store.
+    Expande query con sinónimos específicos de Demo Store.
 
     Args:
         query: Query original del usuario
@@ -188,7 +188,7 @@ def expand_query(query: str, categories: List[Category]) -> List[str]:
             expanded.update(normalized_synonyms)
 
     result = list(expanded)
-    print(f"🔍 [Goody Store] Query expandido: '{query}' → {len(result)} términos: {result[:10]}")
+    print(f"🔍 [Demo Store] Query expandido: '{query}' → {len(result)} términos: {result[:10]}")
     return result
 
 
@@ -230,7 +230,7 @@ def filter_by_category(query_tokens: List[str], categories: List[Category]) -> O
                 matched_category_ids.append(cat.id)
 
     if matched_category_ids:
-        print(f"🔒 [Goody Store] Filtro de categoría activado: {len(matched_category_ids)} categorías")
+        print(f"🔒 [Demo Store] Filtro de categoría activado: {len(matched_category_ids)} categorías")
         return matched_category_ids
 
     return None
@@ -278,11 +278,11 @@ def detect_category_filter(query_tokens: List[str], categories: List[Category]):
         root = next(iter(token_to_cat_ids.keys()))
         ids = token_to_cat_ids[root]
         matched_names = [c.name for c in categories if c.id in ids]
-        print(f"🔒 [Goody Store] Filtro de categoría aplicado: token='{root}' → {len(ids)} categorías")
+        print(f"🔒 [Demo Store] Filtro de categoría aplicado: token='{root}' → {len(ids)} categorías")
         return ids, { 'requested_term': root, 'matched_categories': matched_names }
 
     # Ambiguo: no forzamos filtro
-    print(f"📝 [Goody Store] Detección de categoría ambigua: tokens={list(token_to_cat_ids.keys())}")
+    print(f"📝 [Demo Store] Detección de categoría ambigua: tokens={list(token_to_cat_ids.keys())}")
     return [], None
 
 
@@ -310,7 +310,7 @@ def stage1_broad_recall(query_text: str, client_id: str, top_n: int = 100):
     # Obtener categorías del cliente
     categories = Category.query.filter_by(client_id=client_id, is_active=True).all()
 
-    # Expandir query con sinónimos de Goody Store
+    # Expandir query con sinónimos de Demo Store
     expanded_terms = expand_query(query_text, categories)
 
     # Normalizar query original
@@ -353,7 +353,7 @@ def stage1_broad_recall(query_text: str, client_id: str, top_n: int = 100):
     # Limitar resultados
     candidates = query.limit(top_n).all()
 
-    print(f"📊 [Goody Store] Stage 1: {len(candidates)} candidatos encontrados")
+    print(f"📊 [Demo Store] Stage 1: {len(candidates)} candidatos encontrados")
     return candidates
 
 
@@ -433,5 +433,5 @@ def stage2_precise_rerank(query_text: str, candidates: List, limit: int = 20):
     # Limitar resultados
     results = results[:limit]
 
-    print(f"🎯 [Goody Store] Stage 2: {len(results)} productos re-rankeados")
+    print(f"🎯 [Demo Store] Stage 2: {len(results)} productos re-rankeados")
     return results

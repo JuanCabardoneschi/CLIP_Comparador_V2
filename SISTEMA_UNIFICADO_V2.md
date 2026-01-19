@@ -211,7 +211,7 @@ category_pair_exclusions (
 **Validación completa ejecutada:**
 
 ```
-📦 Cliente: Goody Store
+📦 Cliente: Demo Store
    12 categorías - ✅ Todos con centroide
 
 📦 Cliente: Eve's Store
@@ -232,7 +232,7 @@ http://localhost:5000/static/Test-Completo.html
 ### Pasos de Prueba:
 
 1. **Abrir Test-Completo.html**
-2. **Seleccionar cliente** (Goody Store o Eve's Store)
+2. **Seleccionar cliente** (Demo Store o Eve's Store)
 3. **Pestaña "Vista Cliente":**
    - Arrastrar imagen de prenda
    - Click "Buscar Productos Similares"

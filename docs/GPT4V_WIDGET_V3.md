@@ -38,7 +38,7 @@ Headers: {
   "success": true,
   "client": {
     "id": "uuid",
-    "name": "Goody Store"
+    "name": "Demo Store"
   },
   "detection": {
     "prendas": [

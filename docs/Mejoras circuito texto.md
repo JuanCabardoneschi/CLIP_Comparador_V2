@@ -39,7 +39,7 @@ SIMPLE_COLORS = {
 → Cae a FULL pipeline: 11.5 segundos
 ```
 
-**Cliente Goody Store** busca `"camisa roja"`:
+**Cliente Demo Store** busca `"camisa roja"`:
 ```
 [SEARCH_CLASSIFY] query='camisa roja' -> SIMPLE color=roja tipo=camisa
 → Fast-path: 0.033 segundos

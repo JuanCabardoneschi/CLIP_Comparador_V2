@@ -73,20 +73,7 @@ def create():
         # Validar credenciales según el tipo de integración
         integration_config = {}
 
-        if integration_type == "tiendanube":
-            tiendanube_url = request.form.get("tiendanube_url", "").strip()
-            tiendanube_token = request.form.get("tiendanube_token", "").strip()
-
-            if not tiendanube_url or not tiendanube_token:
-                flash("URL y Token de TiendaNube son requeridos", "error")
-                return render_template("clients/create.html")
-
-            integration_config = {
-                "store_url": tiendanube_url,
-                "access_token": tiendanube_token
-            }
-
-        elif integration_type == "woocommerce":
+        if integration_type == "woocommerce":
             wc_store_url = request.form.get("wc_store_url", "").strip()
             wc_consumer_key = request.form.get("wc_consumer_key", "").strip()
             wc_consumer_secret = request.form.get("wc_consumer_secret", "").strip()
@@ -140,9 +127,7 @@ def create():
             flash("⚠️ IMPORTANTE: Guarda estas credenciales, la contraseña no se mostrará nuevamente", "warning")
 
             # Mensaje según tipo de integración
-            if integration_type == "tiendanube":
-                flash(f"🔗 Integración TiendaNube: {integration_config['store_url']}", "info")
-            elif integration_type == "woocommerce":
+            if integration_type == "woocommerce":
                 flash(f"🔗 Integración WooCommerce: {integration_config['store_url']}", "info")
 
             return redirect(url_for("clients.view", client_id=client.id))
@@ -165,36 +150,6 @@ def validate_integration():
 
     if integration_type == "standalone":
         return jsonify({"success": True, "message": "✅ Integración Standalone (sin credenciales necesarias)"})
-
-    elif integration_type == "tiendanube":
-        store_url = data.get("store_url", "").strip()
-        access_token = data.get("access_token", "").strip()
-
-        if not store_url or not access_token:
-            return jsonify({"success": False, "message": "❌ URL y Token de TiendaNube son requeridos"}), 400
-
-        try:
-            # Importar el cliente de TiendaNube
-            from app.services.tiendanube_api_client import TiendanubeAPIClient
-            client = TiendanubeAPIClient(store_url, access_token)
-
-            # Intentar obtener información de la tienda
-            result = client.get_store_info()
-            if result.get("success"):
-                return jsonify({
-                    "success": True,
-                    "message": f"✅ Conexión exitosa con TiendaNube: {result.get('store_name', store_url)}"
-                })
-            else:
-                return jsonify({
-                    "success": False,
-                    "message": f"❌ Error en TiendaNube: {result.get('error', 'Error desconocido')}"
-                }), 400
-        except Exception as e:
-            return jsonify({
-                "success": False,
-                "message": f"❌ Error al validar TiendaNube: {str(e)}"
-            }), 400
 
     elif integration_type == "woocommerce":
         store_url = data.get("store_url", "").strip()

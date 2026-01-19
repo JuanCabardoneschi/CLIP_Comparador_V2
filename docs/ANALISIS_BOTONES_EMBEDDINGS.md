@@ -128,7 +128,7 @@ Paso 2: recalculateCentroids() forzado
 
 ## 📈 Análisis de Impacto
 
-### Escenario Real: Goody Store
+### Escenario Real: Demo Store
 
 **Datos:**
 - 9 productos

@@ -1,7 +1,7 @@
 """Script para descargar todas las imágenes de Cloudinary organizadas por categoría.
 
-Descarga las imágenes del cliente Goody Store y las organiza en:
-imagenes_goodystore/
+Descarga las imágenes del cliente Demo Store y las organiza en:
+imagenes_demostore/
   ├── CATEGORIA_1/
   │   ├── producto_001.jpg
   │   └── producto_002.jpg
@@ -32,8 +32,8 @@ from app.models.product import Product
 from app.models.category import Category
 from app.models.image import Image
 
-CLIENT_ID = '60231500-ca6f-4c46-a960-2e17298fcdb0'  # Goody Store
-OUTPUT_DIR = Path(__file__).parent / 'imagenes_goodystore'
+CLIENT_ID = '60231500-ca6f-4c46-a960-2e17298fcdb0'  # Demo Store
+OUTPUT_DIR = Path(__file__).parent / 'imagenes_demostore'
 
 
 def sanitize_filename(name: str) -> str:
@@ -99,7 +99,7 @@ def main():
     print("=" * 80)
     print("DESCARGA DE IMAGENES DE CLOUDINARY")
     print("=" * 80)
-    print(f"Cliente: Goody Store ({CLIENT_ID})")
+    print(f"Cliente: Demo Store ({CLIENT_ID})")
     print(f"Destino: {OUTPUT_DIR}")
     print("=" * 80)
 

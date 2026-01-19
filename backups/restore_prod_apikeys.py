@@ -16,7 +16,7 @@ local_conn.close()
 prod_api_keys = [
     {
         'api_key': 'test-api-key-demo-fashion-store-2024',
-        'client_name': 'Goody Store',
+        'client_name': 'Demo Store',
         'key_name': 'Demo Fashion Store Key'
     },
     {
@@ -43,10 +43,10 @@ for key_data in prod_api_keys:
     if client_name not in clients:
         print(f'    Cliente {client_name} no encontrado, saltando...')
         continue
-    
+
     client_id = clients[client_name]
     api_key_id = str(uuid.uuid4())
-    
+
     railway_cur.execute(\"\"\"
         INSERT INTO api_keys (id, client_id, key_name, api_key, is_active, requests_made, rate_limit, created_at)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
