@@ -52,6 +52,9 @@ else:
 from app import db, login_manager, jwt
 def create_app(config_name=None):
     """Factory pattern para crear la aplicación Flask"""
+    print("=" * 80)
+    print("🔧 CREATE_APP: Iniciando creación de aplicación Flask")
+    print("=" * 80)
 
     # Configurar paths absolutos para templates y static
     template_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'app', 'templates'))
