@@ -215,17 +215,14 @@ def validate_integration():
             client = WooCommerceAPIClient(store_url, consumer_key, consumer_secret)
 
             # Intentar obtener información del sistema
-            result = client.test_connection()
-            if result.get("success"):
-                return jsonify({
-                    "success": True,
-                    "message": f"✅ Conexión exitosa con WooCommerce: {result.get('store_name', store_url)}"
-                })
-            else:
-                return jsonify({
-                    "success": False,
-                    "message": f"❌ Error en WooCommerce: {result.get('error', 'Error desconocido')}"
-                }), 400
+            system_info = client.get_system_status()
+            environment = system_info.get('environment', {})
+            store_name = environment.get('site_name', store_url)
+            
+            return jsonify({
+                "success": True,
+                "message": f"✅ Conexión exitosa con WooCommerce: {store_name}"
+            })
         except Exception as e:
             return jsonify({
                 "success": False,
