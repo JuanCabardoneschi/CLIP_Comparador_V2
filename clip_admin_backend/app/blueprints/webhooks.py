@@ -293,8 +293,9 @@ def _handle_product_created(integration: WooCommerceIntegration, payload: dict):
 
         # Procesar imágenes y embeddings en background (con app_context)
         from flask import current_app
+        app_ref = current_app._get_current_object()
         def thread_with_context():
-            with current_app.app_context():
+            with app_ref.app_context():
                 _process_product_images_and_embeddings(product.id, client.id, payload.get('images', []))
 
         thread = threading.Thread(target=thread_with_context)
@@ -354,8 +355,9 @@ def _handle_product_updated(integration: WooCommerceIntegration, payload: dict):
 
         # Procesar imágenes y embeddings en background (con app_context)
         from flask import current_app
+        app_ref = current_app._get_current_object()
         def thread_with_context():
-            with current_app.app_context():
+            with app_ref.app_context():
                 _process_product_images_and_embeddings(product.id, client.id, payload.get('images', []))
 
         thread = threading.Thread(target=thread_with_context)
@@ -462,7 +464,7 @@ def _update_product_fields(product: Product, payload: dict):
     logger.info(f"📁 [WEBHOOK CATEGORÍAS UPDATE] Count: {len(categories)}")
     for idx, cat in enumerate(categories):
         logger.info(f"  [{idx}] ID: {cat.get('id')}, Name: {cat.get('name')}, Slug: {cat.get('slug')}")
-    
+
     if categories:
         new_category_id = _resolve_category_id(product.client_id, categories)
         if new_category_id:
@@ -493,11 +495,11 @@ def _resolve_category_id(client_id: str, categories: list) -> str:
         ext_id = str(cat.get('id')) if cat.get('id') is not None else None
         cat_name = cat.get('name', '?')
         cat_slug = cat.get('slug', '?')
-        
+
         if not ext_id:
             logger.info(f"  ❌ Category skipped - no ID: {cat_name}")
             continue
-        
+
         existing = Category.query.filter_by(client_id=client_id, external_id=ext_id).first()
         if existing:
             valid_categories.append(existing)
