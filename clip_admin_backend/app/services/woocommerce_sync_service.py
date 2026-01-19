@@ -574,3 +574,24 @@ class WooCommerceSyncService:
                 'success': False,
                 'error': str(e),
             }
+
+    # ---------------- Actualizaciones desde CLIP → WooCommerce ----------------
+
+    def update_product_category(self, external_product_id: str, external_category_id: str) -> Dict:
+        """Actualiza la categoría de un producto WooCommerce (CLIP → Woo)
+
+        Args:
+            external_product_id: ID del producto en WooCommerce (Product.external_id)
+            external_category_id: ID de la categoría en WooCommerce (Category.external_id)
+        """
+        if not external_product_id or not external_category_id:
+            raise ValueError("Se requieren external_id de producto y categoría para actualizar en WooCommerce")
+
+        payload = {
+            'categories': [
+                {'id': int(external_category_id)}
+            ]
+        }
+
+        logger.info(f"WooCommerce: actualizando categoría de producto {external_product_id} -> {external_category_id}")
+        return self.api.update_product(int(external_product_id), payload)

@@ -6,6 +6,7 @@ Gestión de productos del catálogo con subida de imágenes por lotes
 import os
 import json
 import uuid
+import logging
 from werkzeug.utils import secure_filename
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, current_app
 from flask_login import login_required, current_user
@@ -17,6 +18,8 @@ from app.models.client import Client
 from app.models.product_attribute_config import ProductAttributeConfig
 from app.services.image_manager import image_manager
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("products", __name__)
 
@@ -484,6 +487,8 @@ def edit(product_id):
         client_id=current_user.client_id
     ).first_or_404()
 
+    client = Client.query.get(current_user.client_id)
+
     categories = Category.query.filter_by(client_id=current_user.client_id).all()
     attribute_configs = _get_client_attribute_config(current_user.client_id)
     is_tiendanube = _is_tiendanube_readonly()
@@ -574,6 +579,18 @@ def edit(product_id):
                         # No bloquear la edición por error en centroides
                         print(f"⚠️ Error actualizando centroides tras cambio de categoría: {e}")
                         db.session.rollback()
+
+                # Enviar cambio de categoría a WooCommerce
+                try:
+                    if client and client.integration_type == 'woocommerce':
+                        if product.external_id and new_category and new_category.external_id:
+                            from app.services.woocommerce_sync_service import WooCommerceSyncService
+                            woo_service = WooCommerceSyncService(client.id)
+                            woo_service.update_product_category(product.external_id, new_category.external_id)
+                        else:
+                            logger.warning("No se pudo sincronizar categoría a WooCommerce: faltan external_id de producto o categoría")
+                except Exception as e:
+                    logger.error(f"Error enviando cambio de categoría a WooCommerce: {e}")
 
             flash("Producto actualizado correctamente", "success")
             return redirect(url_for("products.view", product_id=product.id))
