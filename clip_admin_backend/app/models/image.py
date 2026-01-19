@@ -88,8 +88,8 @@ class Image(db.Model):
     @property
     def thumbnail_url(self):
         """Genera URL de thumbnail - Tiendanube source_url o Cloudinary"""
-        # Si es cliente Tiendanube, usar source_url
-        if self._is_tiendanube_client() and self.source_url:
+        # Priorizar URL de origen si existe (Tiendanube / WooCommerce)
+        if self.source_url:
             return self.source_url
         # Clientes standalone usan Cloudinary
         if self.cloudinary_url:
@@ -99,8 +99,8 @@ class Image(db.Model):
     @property
     def medium_url(self):
         """Genera URL de imagen mediana - Tiendanube source_url o Cloudinary"""
-        # Si es cliente Tiendanube, usar source_url
-        if self._is_tiendanube_client() and self.source_url:
+        # Priorizar URL de origen si existe (Tiendanube / WooCommerce)
+        if self.source_url:
             return self.source_url
         # Clientes standalone usan Cloudinary
         if self.cloudinary_url:
@@ -110,8 +110,8 @@ class Image(db.Model):
     @property
     def display_url(self):
         """URL principal para mostrar la imagen - Tiendanube source_url o Cloudinary"""
-        # Si es cliente Tiendanube, usar source_url
-        if self._is_tiendanube_client() and self.source_url:
+        # Priorizar URL de origen si existe (Tiendanube / WooCommerce)
+        if self.source_url:
             return self.source_url
         # Clientes standalone usan Cloudinary
         if self.cloudinary_url:
@@ -131,8 +131,8 @@ class Image(db.Model):
         if self.base64_data:
             return self.base64_data
 
-        # 2. Si es Tiendanube, usar source_url
-        if self._is_tiendanube_client() and self.source_url:
+        # 2. Si hay URL de origen (Tiendanube / WooCommerce), usarla
+        if self.source_url:
             return self.source_url
 
         # 3. Fallback a Cloudinary para clientes standalone
