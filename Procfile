@@ -1,1 +1,1 @@
-web: cd clip_admin_backend && python wsgi.py
+web: cd clip_admin_backend && python app.py
