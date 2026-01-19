@@ -658,11 +658,11 @@ function registerWebhooks() {
     const clientId = '{{ client.id }}';
     const btn = document.getElementById('registerWebhooksBtn');
     const originalHTML = btn.innerHTML;
-    
+
     // Deshabilitar botón y mostrar cargando
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Registrando...';
-    
+
     fetch(`/clients/${clientId}/register-webhooks`, {
         method: 'POST',
         headers: {

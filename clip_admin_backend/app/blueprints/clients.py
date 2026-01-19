@@ -397,33 +397,33 @@ def update_sensitivity(client_id):
 @login_required
 def register_webhooks(client_id):
     """Registrar webhooks de WooCommerce manualmente
-    
+
     Solo puede ser llamado por Super Admin o usuario del cliente
     """
     client = Client.query.get_or_404(client_id)
-    
+
     # Verificar permisos
     if not current_user.is_super_admin and str(current_user.client_id) != str(client_id):
         return jsonify({"success": False, "error": "Permisos insuficientes"}), 403
-    
+
     # Verificar que es WooCommerce
     if client.integration_type != "woocommerce":
         return jsonify({"success": False, "error": "Cliente no es WooCommerce"}), 400
-    
+
     # Obtener integración
     integration = WooCommerceIntegration.query.filter_by(client_id=client_id, is_active=True).first()
     if not integration:
         return jsonify({"success": False, "error": "No hay integración WooCommerce activa"}), 400
-    
+
     try:
         from app.services.woocommerce_sync_service import WooCommerceSyncService
         import os
-        
+
         service = WooCommerceSyncService(client_id)
         delivery_url = os.environ.get('WEBHOOK_DELIVERY_URL', 'https://clip-comparador-v2.railway.app')
-        
+
         result = service.register_webhooks(delivery_url)
-        
+
         if result.get('success'):
             return jsonify({
                 "success": True,
@@ -435,7 +435,7 @@ def register_webhooks(client_id):
                 "success": False,
                 "error": result.get('error', 'Error desconocido')
             }), 400
-    
+
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)

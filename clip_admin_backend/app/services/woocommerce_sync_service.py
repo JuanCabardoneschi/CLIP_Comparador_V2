@@ -516,33 +516,33 @@ class WooCommerceSyncService:
 
     def register_webhooks(self, delivery_url: str) -> Dict:
         """Registra los webhooks en WooCommerce para mantener sincronización en tiempo real
-        
+
         Args:
             delivery_url: URL base del servidor (ej: https://clip-comparador-v2.railway.app)
-        
+
         Returns:
             Dict con webhook_ids registrados
         """
         import secrets
         import json
-        
+
         webhook_topics = [
             'product.created',
             'product.updated',
             'product.deleted',
             'product.restored',
         ]
-        
+
         try:
             # Generar secret para firmar webhooks (HMAC)
             webhook_secret = secrets.token_urlsafe(32)
-            
+
             webhook_ids = []
             webhook_endpoint = f"{delivery_url}/api/webhooks/woocommerce"
-            
+
             for topic in webhook_topics:
                 webhook_name = f"CLIP - {topic}"
-                
+
                 result = self.api.create_webhook(
                     name=webhook_name,
                     topic=topic,
@@ -550,48 +550,27 @@ class WooCommerceSyncService:
                     secret=webhook_secret,
                     status='active'
                 )
-                
+
                 if 'id' in result:
                     webhook_ids.append(result['id'])
                     logger.info(f"Webhook registrado: {webhook_name} (ID: {result['id']})")
-            
+
             # Guardar webhook_secret y webhook_ids en la integración
             self.integration.webhook_secret = webhook_secret
             self.integration.webhook_ids = json.dumps(webhook_ids)  # Guardamos como JSON
             db.session.commit()
-            
+
             logger.info(f"Webhooks registrados exitosamente para {self.client.name}. Total: {len(webhook_ids)}")
-            
+
             return {
                 'success': True,
                 'webhook_ids': webhook_ids,
                 'secret_hash': hashlib.sha256(webhook_secret.encode()).hexdigest()[:16],  # No guardar el secret completo en logs
             }
-        
+
         except Exception as e:
             logger.error(f"Error registrando webhooks para {self.client.name}: {str(e)}")
             return {
                 'success': False,
                 'error': str(e),
             }
-
-
-    """Inicializa la sincronización completa o selectiva en un cliente WooCommerce.
-
-    Args:
-        client_id: ID del cliente asociado a la integración WooCommerce.
-        sync_options: Dict opcional con flags de sincronización (categories, attributes, products, images, embeddings, centroids).
-    """
-    try:
-        service = WooCommerceSyncService(client_id)
-        stats = service.full_sync(sync_options)
-        return {
-            'success': True,
-            'stats': stats,
-        }
-    except Exception as e:
-        logger.error(f"Error iniciando sincronización WooCommerce para cliente {client_id}: {str(e)}")
-        return {
-            'success': False,
-            'error': str(e),
-        }
