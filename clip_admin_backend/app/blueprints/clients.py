@@ -3,14 +3,16 @@ Blueprint de Clientes
 Gestión de clientes y API keys
 """
 
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, current_app
 from flask_login import login_required, current_user
 from app import db
 from app.models.client import Client
 from app.models.user import User
+from app.models.woocommerce_integration import WooCommerceIntegration
 from app.utils.permissions import requires_super_admin
 import secrets
 import string
+import threading
 
 bp = Blueprint("clients", __name__)
 
@@ -117,6 +119,50 @@ def create():
             db.session.add(admin_user)
 
             db.session.commit()
+
+            # Si es WooCommerce, crear registro de integración y lanzar sincronización inicial (background)
+            if integration_type == "woocommerce":
+                integration = WooCommerceIntegration(
+                    client_id=client.id,
+                    store_url=integration_config["store_url"],
+                    use_ssl=integration_config["store_url"].startswith("https://"),
+                )
+                integration.set_consumer_key(integration_config["consumer_key"])
+                integration.set_consumer_secret(integration_config["consumer_secret"])
+                integration.sync_status = "pending"
+                db.session.add(integration)
+                db.session.commit()
+
+                # Sincronización inicial en segundo plano para no bloquear la UI
+                try:
+                    from app.services.woocommerce_sync_service import start_full_sync
+
+                    def _run_sync(app_ctx, cid: str):
+                        with app_ctx.app_context():
+                            try:
+                                start_full_sync(cid, {
+                                    "categories": True,
+                                    "attributes": True,
+                                    "products": True,
+                                    "images": True,
+                                    "embeddings": True,
+                                    "centroids": True,
+                                })
+                            except Exception as sync_err_inner:
+                                app_ctx.logger.error(
+                                    f"Error en hilo de sincronización WooCommerce para cliente {cid}: {sync_err_inner}",
+                                    exc_info=True,
+                                )
+
+                    threading.Thread(
+                        target=_run_sync,
+                        args=(current_app._get_current_object(), str(client.id)),
+                        daemon=True,
+                    ).start()
+                    flash("🚀 Sincronización WooCommerce iniciada en segundo plano. Se actualizará el estado en el panel.", "info")
+                except Exception as sync_err:
+                    current_app.logger.error(f"No se pudo iniciar sincronización WooCommerce: {sync_err}", exc_info=True)
+                    flash(f"⚠️ No se pudo iniciar la sincronización WooCommerce: {sync_err}", "warning")
 
             # Mostrar credenciales completas
             flash(f"✅ Cliente '{name}' creado exitosamente", "success")

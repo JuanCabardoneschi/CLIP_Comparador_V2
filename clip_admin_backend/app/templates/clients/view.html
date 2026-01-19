@@ -109,6 +109,21 @@
                             <small class="d-block text-muted mt-2">
                                 <strong>URL:</strong> {{ client.integration_config.get('store_url', 'N/A') }}
                             </small>
+                            {% set integ = client.tiendanube_integrations.first() %}
+                            {% if integ %}
+                            <small class="d-block mt-1">
+                                <strong>Sync:</strong>
+                                {% if integ.sync_status == 'completed' %}
+                                    <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Listo</span>
+                                {% elif integ.sync_status == 'in_progress' %}
+                                    <span class="badge bg-info"><i class="bi bi-arrow-repeat me-1"></i>Sincronizando</span>
+                                {% elif integ.sync_status == 'error' %}
+                                    <span class="badge bg-danger"><i class="bi bi-exclamation-triangle me-1"></i>Error</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Pendiente</span>
+                                {% endif %}
+                            </small>
+                            {% endif %}
                         {% elif client.integration_type == 'woocommerce' %}
                             <span class="badge bg-warning fs-6">
                                 <i class="bi bi-wordpress me-1"></i>
@@ -117,6 +132,21 @@
                             <small class="d-block text-muted mt-2">
                                 <strong>URL:</strong> {{ client.integration_config.get('store_url', 'N/A') }}
                             </small>
+                            {% set integ = client.woocommerce_integrations.first() %}
+                            {% if integ %}
+                            <small class="d-block mt-1">
+                                <strong>Sync:</strong>
+                                {% if integ.sync_status == 'completed' %}
+                                    <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Listo</span>
+                                {% elif integ.sync_status == 'in_progress' %}
+                                    <span class="badge bg-info"><i class="bi bi-arrow-repeat me-1"></i>Sincronizando</span>
+                                {% elif integ.sync_status == 'error' %}
+                                    <span class="badge bg-danger"><i class="bi bi-exclamation-triangle me-1"></i>Error</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Pendiente</span>
+                                {% endif %}
+                            </small>
+                            {% endif %}
                         {% else %}
                             <span class="badge bg-secondary">{{ client.integration_type }}</span>
                         {% endif %}

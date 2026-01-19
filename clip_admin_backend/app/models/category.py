@@ -36,6 +36,7 @@ class Category(db.Model):
 
     # 🔗 INTEGRACIÓN TIENDANUBE
     external_id = db.Column(db.String(100), index=True)  # ID de categoría en Tiendanube
+    parent_external_id = db.Column(db.String(100), index=True)  # ID de categoría padre (multi-plataforma)
     last_sync_at = db.Column(db.DateTime)  # Última sincronización
     sync_status = db.Column(db.String(50), default='synced')  # 'synced', 'pending', 'error'
 

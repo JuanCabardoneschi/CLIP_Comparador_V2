@@ -259,6 +259,17 @@ class WooCommerceAPIClient:
         }
         return self.update_product(product_id, data)
 
+    # ==================== ATTRIBUTES ====================
+
+    def list_attributes(self) -> List[Dict]:
+        """Lista atributos globales de productos"""
+        return self._make_request('GET', '/products/attributes')
+
+    def list_attribute_terms(self, attribute_id: int, page: int = 1, per_page: int = 100) -> List[Dict]:
+        """Lista términos de un atributo global"""
+        params = {'page': page, 'per_page': min(per_page, 100)}
+        return self._make_request('GET', f'/products/attributes/{attribute_id}/terms', params=params)
+
     # ==================== HELPERS ====================
 
     def get_all_products(self, status: str = 'publish', **filters) -> List[Dict]:

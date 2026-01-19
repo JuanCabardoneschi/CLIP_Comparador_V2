@@ -50,6 +50,7 @@
                         <th>Cliente</th>
                         <th>Email</th>
                         <th>Integración</th>
+                        <th>Sync</th>
                         <th>Estado</th>
                         <th>Productos</th>
                         <th>Fecha Registro</th>
@@ -93,6 +94,41 @@
                                 </span>
                             {% else %}
                                 <span class="badge bg-secondary">{{ client.integration_type }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if client.integration_type == 'tiendanube' %}
+                                {% set integ = client.tiendanube_integrations.first() %}
+                                {% if integ %}
+                                    {% if integ.sync_status == 'completed' %}
+                                        <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Listo</span>
+                                    {% elif integ.sync_status == 'in_progress' %}
+                                        <span class="badge bg-info"><i class="bi bi-arrow-repeat me-1"></i>Sincronizando</span>
+                                    {% elif integ.sync_status == 'error' %}
+                                        <span class="badge bg-danger"><i class="bi bi-exclamation-triangle me-1"></i>Error</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Pendiente</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="badge bg-secondary">Sin integración</span>
+                                {% endif %}
+                            {% elif client.integration_type == 'woocommerce' %}
+                                {% set integ = client.woocommerce_integrations.first() %}
+                                {% if integ %}
+                                    {% if integ.sync_status == 'completed' %}
+                                        <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Listo</span>
+                                    {% elif integ.sync_status == 'in_progress' %}
+                                        <span class="badge bg-info"><i class="bi bi-arrow-repeat me-1"></i>Sincronizando</span>
+                                    {% elif integ.sync_status == 'error' %}
+                                        <span class="badge bg-danger"><i class="bi bi-exclamation-triangle me-1"></i>Error</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Pendiente</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="badge bg-secondary">Sin integración</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge bg-light text-muted">N/A</span>
                             {% endif %}
                         </td>
                         <td>
