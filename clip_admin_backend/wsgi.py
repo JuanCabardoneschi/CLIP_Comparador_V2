@@ -563,6 +563,12 @@ def register_blueprints(app):
 # Crear instancia de la aplicación
 app = create_app()
 
+# Endpoint de prueba global
+@app.route('/test-global', methods=['GET'])
+def test_global():
+    """Endpoint de prueba en nivel global"""
+    return "GLOBAL TEST WORKS!", 200
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     debug = os.getenv("FLASK_DEBUG", "False").lower() == "true"
