@@ -418,7 +418,7 @@ def resync_woocommerce(client_id):
                         "images": True,
                         "embeddings": True,
                         "centroids": True,
-                    })
+                    }, is_resync=True)
 
                     # Actualizar estado: COMPLETADO
                     integ = WooCommerceIntegration.query.filter_by(client_id=cid, is_active=True).first()

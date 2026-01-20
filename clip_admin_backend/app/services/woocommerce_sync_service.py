@@ -53,7 +53,7 @@ class WooCommerceSyncService:
 
     # ---------------- Public API ----------------
 
-    def full_sync(self, sync_options: Dict = None) -> Dict:
+    def full_sync(self, sync_options: Dict = None, is_resync: bool = False) -> Dict:
         if sync_options is None:
             sync_options = {
                 'categories': True,
@@ -79,6 +79,16 @@ class WooCommerceSyncService:
             self.integration.sync_status = 'in_progress'
             self.integration.sync_error = None
             db.session.commit()
+
+            # Si es resync, limpiar embeddings viejos para emular "primera vez"
+            if is_resync:
+                Image.query.filter(
+                    Image.product_id.in_(
+                        db.session.query(Product.id).filter_by(client_id=self.client.id)
+                    )
+                ).update({'is_processed': False, 'clip_embedding': None})
+                db.session.commit()
+                logger.info(f"🔄 [RESYNC] Embeddings limpiados para cliente {self.client.id}")
 
             if sync_options.get('categories', True):
                 created, updated = self.sync_categories()
@@ -664,7 +674,7 @@ class WooCommerceSyncService:
         return self.api.update_category(int(external_category_id), payload)
 
 
-def start_full_sync(client_id: str, sync_options: Dict = None) -> Dict:
+def start_full_sync(client_id: str, sync_options: Dict = None, is_resync: bool = False) -> Dict:
     """
     Función auxiliar para iniciar sincronización completa de WooCommerce.
     Puede ser llamada desde un task asíncrono o endpoint de resincronización.
@@ -678,13 +688,14 @@ def start_full_sync(client_id: str, sync_options: Dict = None) -> Dict:
             - images: bool (sincronizar imágenes)
             - embeddings: bool (generar embeddings)
             - centroids: bool (calcular centroides)
+        is_resync: bool (True si es resincronización - limpia embeddings viejos)
 
     Returns:
         Dict con resultado de la sincronización
     """
     try:
         service = WooCommerceSyncService(client_id)
-        return service.full_sync(sync_options)
+        return service.full_sync(sync_options, is_resync=is_resync)
     except Exception as e:
         logger.error(f"Error iniciando sincronización WooCommerce para cliente {client_id}: {str(e)}")
         return {
