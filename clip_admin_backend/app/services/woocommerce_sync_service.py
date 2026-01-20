@@ -223,6 +223,9 @@ class WooCommerceSyncService:
         attr_upserts = 0
         images_processed = 0
 
+        if sync_images:
+            logger.info(f"📥 [SYNC] Iniciando descarga de imágenes para cliente {self.client.id}")
+
         products = self.api.get_all_products(status='publish')
         attr_values = {}  # key -> set(values)
 
@@ -285,6 +288,10 @@ class WooCommerceSyncService:
             attr_upserts += self._upsert_attribute_config(key, values)
 
         db.session.commit()
+
+        if sync_images and images_processed > 0:
+            logger.info(f"✅ [SYNC] Descarga completada: {images_processed} imágenes procesadas")
+
         return created, updated, attr_upserts, images_processed
 
     # ---------------- Helpers ----------------

@@ -17,6 +17,12 @@ logging.basicConfig(
     ]
 )
 
+# Silenciar logs innecesarios de librerías de terceros
+logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+logging.getLogger('PIL.TiffImagePlugin').setLevel(logging.WARNING)
+logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARNING)
+logging.getLogger('werkzeug').setLevel(logging.INFO)  # Mantener INFO para peticiones HTTP
+
 # Añadir el directorio padre al path para las importaciones
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
