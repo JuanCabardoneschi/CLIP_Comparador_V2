@@ -519,8 +519,11 @@ class WooCommerceSyncService:
 
             logger.info(f"[EMBEDDING] Iniciando generación de embeddings para {len(unprocessed)} imágenes")
             generated = 0
-            for image in unprocessed:
+            for idx, image in enumerate(unprocessed):
                 try:
+                    if idx < 10:
+                        logger.info(f"[EMBEDDING] Procesando imagen {idx+1}/{len(unprocessed)}: {image.id}")
+                    
                     image_bytes = base64.b64decode(image.base64_thumb)
                     pil_image = load_image_from_source(image_bytes)
                     inputs = clip_processor(images=pil_image, return_tensors="pt")
@@ -539,7 +542,7 @@ class WooCommerceSyncService:
                     if generated % 100 == 0:
                         logger.info(f"[EMBEDDING] Procesadas {generated} imágenes...")
                 except Exception as e:
-                    logger.error(f"[EMBEDDING] Error en imagen {image.id}: {e}")
+                    logger.error(f"[EMBEDDING] Error en imagen {image.id}: {e}", exc_info=True)
                     image.upload_status = 'failed'
                     image.error_message = str(e)
                 db.session.add(image)
