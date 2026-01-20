@@ -2,12 +2,16 @@
 Blueprint para conectar una tienda WooCommerce
 Proceso: Formulario → Validación → Crear Cliente → Guardar integración
 """
-from flask import Blueprint, request, jsonify, render_template
+from flask import Blueprint, request, jsonify, render_template, current_app
 import logging
 import uuid
+import threading
 from app import db
 from app.models.client import Client
 from app.models.woocommerce_integration import WooCommerceIntegration
+from app.models.product import Product
+from app.models.category import Category
+from app.models.image import Image
 from app.services.woocommerce_api_client import WooCommerceAPIClient, WooCommerceAPIError
 
 logger = logging.getLogger(__name__)
@@ -320,6 +324,187 @@ def delete_integration(integration_id):
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error eliminando integración: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@bp.route('/resync/<client_id>', methods=['POST'])
+def resync_woocommerce(client_id):
+    """
+    Re-sincroniza completamente una tienda WooCommerce:
+    1. Borra todos los productos, categorías e imágenes del cliente (mantiene cliente e integración)
+    2. Ejecuta la misma rutina de sincronización que se usa en la creación inicial
+
+    Request JSON (opcional):
+    {
+        "delete_mode": "soft"  # "soft" (is_active=False) o "hard" (borrado completo)
+    }
+
+    Response:
+    {
+        "success": true,
+        "message": "Resincronización iniciada en segundo plano"
+    }
+    """
+    try:
+        # Validar que el cliente y su integración WooCommerce existen
+        client = Client.query.get(client_id)
+        if not client:
+            return jsonify({
+                'success': False,
+                'error': 'Cliente no encontrado'
+            }), 404
+
+        integration = WooCommerceIntegration.query.filter_by(
+            client_id=client_id,
+            is_active=True
+        ).first()
+
+        if not integration:
+            return jsonify({
+                'success': False,
+                'error': 'No hay integración WooCommerce activa para este cliente'
+            }), 404
+
+        # Obtener parámetros
+        data = request.get_json() or {}
+        delete_mode = data.get('delete_mode', 'soft')  # soft o hard
+
+        # Iniciar resincronización en thread background
+        app_ctx = current_app._get_current_object()
+
+        def _run_resync(app_context, cid: str, del_mode: str):
+            """Ejecuta resync en background sin bloquear la UI"""
+            with app_context.app_context():
+                try:
+                    # Actualizar estado: EN PROGRESO
+                    integ = WooCommerceIntegration.query.filter_by(client_id=cid, is_active=True).first()
+                    if integ:
+                        integ.sync_status = 'in_progress'
+                        integ.sync_error = None
+                        db.session.commit()
+
+                    logger.info(f"🔄 Iniciando resincronización para cliente {cid} (modo: {del_mode})")
+
+                    # Paso 1: Borrar productos, categorías e imágenes del cliente
+                    # (pero NO el cliente ni la integración)
+                    if del_mode == 'hard':
+                        # Borrado duro
+                        Image.query.filter(
+                            Image.client_id == cid
+                        ).delete()
+                        Product.query.filter_by(
+                            client_id=cid
+                        ).delete()
+                        Category.query.filter_by(
+                            client_id=cid
+                        ).delete()
+                        logger.info(f"✓ Borrado duro completado para cliente {cid}")
+                    else:
+                        # Borrado suave (soft delete)
+                        Product.query.filter_by(client_id=cid).update({'is_active': False})
+                        logger.info(f"✓ Borrado suave completado para cliente {cid}")
+
+                    db.session.commit()
+
+                    # Paso 2: Ejecutar sincronización completa (igual que en creación)
+                    from app.services.woocommerce_sync_service import start_full_sync
+
+                    sync_result = start_full_sync(cid, {
+                        "categories": True,
+                        "attributes": True,
+                        "products": True,
+                        "images": True,
+                        "embeddings": True,
+                        "centroids": True,
+                    })
+
+                    # Actualizar estado: COMPLETADO
+                    integ = WooCommerceIntegration.query.filter_by(client_id=cid, is_active=True).first()
+                    if integ:
+                        integ.sync_status = 'completed'
+                        integ.last_sync_at = db.func.now()
+                        db.session.commit()
+
+                    logger.info(f"✅ Resincronización completada para cliente {cid}: {sync_result}")
+
+                except Exception as e:
+                    logger.error(
+                        f"❌ Error en resincronización WooCommerce para cliente {cid}: {e}",
+                        exc_info=True
+                    )
+                    # Actualizar estado: ERROR
+                    try:
+                        integ = WooCommerceIntegration.query.filter_by(client_id=cid, is_active=True).first()
+                        if integ:
+                            integ.sync_status = 'error'
+                            integ.sync_error = str(e)
+                            db.session.commit()
+                    except:
+                        pass
+                    db.session.rollback()
+
+        # Enqueuer el thread
+        thread = threading.Thread(
+            target=_run_resync,
+            args=(app_ctx, client_id, delete_mode),
+            daemon=True
+        )
+        thread.start()
+
+        logger.info(f"📌 Resincronización enqueued para cliente {client_id}")
+
+        return jsonify({
+            'success': True,
+            'message': 'Resincronización iniciada en segundo plano',
+            'client_id': client_id,
+            'delete_mode': delete_mode
+        }), 202
+
+    except Exception as e:
+        logger.error(f"Error iniciando resincronización: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@bp.route('/resync-status/<client_id>', methods=['GET'])
+def resync_status(client_id):
+    """
+    Obtiene el estado REAL de la resincronización en progreso.
+
+    Response:
+    {
+        "success": true,
+        "client_id": "...",
+        "status": "pending" | "in_progress" | "completed" | "error",
+        "last_sync": "2026-01-20T14:23:45",
+        "error": null o string si hubo error
+    }
+    """
+    try:
+        integration = WooCommerceIntegration.query.filter_by(
+            client_id=client_id,
+            is_active=True
+        ).first()
+
+        if not integration:
+            return jsonify({
+                'success': False,
+                'error': 'Integración no encontrada'
+            }), 404
+
+        return jsonify({
+            'success': True,
+            'client_id': client_id,
+            'status': integration.sync_status or 'pending',
+            'last_sync': integration.last_sync_at.isoformat() if integration.last_sync_at else None,
+            'error': integration.sync_error
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error obteniendo estado resync: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)

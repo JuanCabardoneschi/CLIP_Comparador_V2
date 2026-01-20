@@ -679,3 +679,51 @@ def resync_integration(client_id):
             "success": False,
             "error": str(e)
         }), 500
+
+@bp.route("/<client_id>/woocommerce-admin")
+@login_required
+def woocommerce_admin(client_id):
+    """
+    Panel de administración específico para clientes WooCommerce.
+    Muestra estadísticas, estado de sincronización y botón de resync.
+    """
+    client = Client.query.get_or_404(client_id)
+
+    # Verificar permisos
+    if not current_user.is_super_admin and str(current_user.client_id) != str(client_id):
+        flash("No tienes permisos para ver este cliente", "error")
+        return redirect(url_for("dashboard.index"))
+
+    # Obtener integración WooCommerce
+    from app.models.woocommerce_integration import WooCommerceIntegration
+    integration = WooCommerceIntegration.query.filter_by(
+        client_id=client_id,
+        is_active=True
+    ).first()
+
+    if not integration:
+        flash("Este cliente no tiene integración WooCommerce activa", "warning")
+        return redirect(url_for("clients.view", client_id=client_id))
+
+    # Obtener estadísticas
+    from app.models.product import Product
+    from app.models.category import Category
+    from app.models.image import Image
+
+    product_count = Product.query.filter_by(client_id=client_id, is_active=True).count()
+    category_count = Category.query.filter_by(client_id=client_id).count()
+    image_count = Image.query.filter_by(client_id=client_id).count()
+    processed_count = Image.query.filter_by(
+        client_id=client_id,
+        is_processed=True
+    ).count()
+
+    return render_template(
+        "woocommerce/admin_panel.html",
+        client=client,
+        integration=integration,
+        product_count=product_count,
+        category_count=category_count,
+        image_count=image_count,
+        processed_count=processed_count
+    )

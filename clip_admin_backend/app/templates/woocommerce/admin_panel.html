@@ -1,0 +1,288 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Panel WooCommerce - {{ client.name }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8">
+            <h2><i class="bi bi-shop"></i> {{ client.name }}</h2>
+            <p class="text-muted">Panel de administración WooCommerce</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('clients.view', client_id=client.id) }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Volver
+            </a>
+        </div>
+    </div>
+
+    <hr>
+
+    <!-- Información de integración -->
+    <div class="card mb-4">
+        <div class="card-header bg-info">
+            <h5><i class="bi bi-info-circle"></i> Información de la Tienda</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>Tienda:</strong> {{ integration.store_name }}</p>
+                    <p><strong>URL:</strong> <a href="{{ integration.store_url }}" target="_blank">{{ integration.store_url }}</a></p>
+                    <p><strong>Email:</strong> {{ integration.store_email or 'N/A' }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>Versión WooCommerce:</strong> {{ integration.wc_version or 'N/A' }}</p>
+                    <p><strong>Versión WordPress:</strong> {{ integration.wp_version or 'N/A' }}</p>
+                    <p><strong>Moneda:</strong> {{ integration.currency or 'USD' }}</p>
+                </div>
+            </div>
+            <hr>
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>Estado de sincronización:</strong>
+                        <span id="sync-status-badge">
+                            {% if integration.sync_status == 'completed' %}
+                                <span class="badge bg-success">✓ Completada</span>
+                            {% elif integration.sync_status == 'in_progress' %}
+                                <span class="badge bg-warning text-dark"><span class="spinner-border spinner-border-sm me-1"></span>En progreso</span>
+                            {% elif integration.sync_status == 'error' %}
+                                <span class="badge bg-danger">✗ Error</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ integration.sync_status or 'Pendiente' }}</span>
+                            {% endif %}
+                        </span>
+                    </p>
+                    {% if integration.last_sync_at %}
+                    <p><strong>Última sincronización:</strong> <span id="last-sync">{{ integration.last_sync_at.strftime('%d/%m/%Y %H:%M') }}</span></p>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <p><strong>Instalada el:</strong> {{ integration.installed_at.strftime('%d/%m/%Y %H:%M') if integration.installed_at else 'N/A' }}</p>
+                </div>
+            </div>
+            {% if integration.sync_error %}
+            <div class="alert alert-danger mt-3">
+                <strong>Último error:</strong> {{ integration.sync_error }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Estadísticas del catálogo -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary">
+            <h5><i class="bi bi-bar-chart"></i> Estadísticas del Catálogo</h5>
+        </div>
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-md-3">
+                    <h4 class="text-primary" id="stat-products">{{ product_count }}</h4>
+                    <p class="text-muted">Productos</p>
+                </div>
+                <div class="col-md-3">
+                    <h4 class="text-info" id="stat-categories">{{ category_count }}</h4>
+                    <p class="text-muted">Categorías</p>
+                </div>
+                <div class="col-md-3">
+                    <h4 class="text-success" id="stat-images">{{ image_count }}</h4>
+                    <p class="text-muted">Imágenes</p>
+                </div>
+                <div class="col-md-3">
+                    <h4 class="text-warning" id="stat-processed">{{ processed_count }}</h4>
+                    <p class="text-muted">Con embeddings</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botón de Re-sincronización -->
+    <div class="card mb-4 border-warning">
+        <div class="card-header bg-warning text-dark">
+            <h5><i class="bi bi-arrow-clockwise"></i> Re-sincronizar Tienda</h5>
+        </div>
+        <div class="card-body">
+            <p>Borra todos los productos, categorías e imágenes locales y vuelve a importar completamente desde WooCommerce.</p>
+            <p class="text-muted"><small>⚠️ Esto puede tomar algunos minutos. Los webhooks seguirán funcionando normalmente.</small></p>
+
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-warning" id="btn-resync" data-client-id="{{ client.id }}"
+                        {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>
+                    <i class="bi bi-arrow-clockwise"></i> Re-sincronizar Ahora
+                </button>
+                <button type="button" class="btn btn-info" id="btn-resync-dryrun" data-client-id="{{ client.id }}"
+                        {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>
+                    <i class="bi bi-eye"></i> Vista Previa
+                </button>
+            </div>
+
+            <!-- Status message (real-time) -->
+            <div id="resync-message" style="display: none;" class="mt-3 alert"></div>
+        </div>
+    </div>
+
+    <!-- Webhook Status -->
+    <div class="card mb-4">
+        <div class="card-header bg-success">
+            <h5><i class="bi bi-webhook"></i> Estado de Webhooks</h5>
+        </div>
+        <div class="card-body">
+            {% if integration.webhook_ids %}
+                <p class="text-success"><i class="bi bi-check-circle"></i> Webhooks registrados en WooCommerce</p>
+                <small class="text-muted">
+                    Los productos se sincronizarán automáticamente cuando se cambien en WooCommerce.
+                </small>
+            {% else %}
+                <p class="text-warning"><i class="bi bi-exclamation-triangle"></i> Webhooks no registrados</p>
+                <small class="text-muted">
+                    Los webhooks se registrarán automáticamente en la próxima sincronización.
+                </small>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+
+<script>
+const CLIENT_ID = document.getElementById('btn-resync').dataset.clientId;
+let statusCheckInterval = null;
+
+// Event listeners
+document.getElementById('btn-resync').addEventListener('click', function() {
+    if (this.disabled) {
+        alert('Una resincronización ya está en progreso');
+        return;
+    }
+
+    const message = '⚠️ Esto borrará todos los productos y categorías locales y reimportará desde WooCommerce.\n\n¿Estás seguro de continuar?';
+    if (!confirm(message)) return;
+
+    startResync();
+});
+
+document.getElementById('btn-resync-dryrun').addEventListener('click', function() {
+    alert('Vista previa: Este botón mostraría un análisis sin hacer cambios (próxima versión)');
+});
+
+function startResync() {
+    const btn = document.getElementById('btn-resync');
+    const msgDiv = document.getElementById('resync-message');
+
+    btn.disabled = true;
+
+    fetch(`/woocommerce/resync/${CLIENT_ID}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ delete_mode: 'soft' })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            msgDiv.className = 'alert alert-info';
+            msgDiv.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm text-info me-2" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <span><strong>Resincronización iniciada en segundo plano</strong></span>
+                </div>
+                <p class="mt-2 mb-0"><small>Puedes salir de esta página. Los cambios se guardarán automáticamente.</small></p>
+            `;
+            msgDiv.style.display = 'block';
+
+            // Iniciar verificación de estado
+            checkStatusPeriodically();
+        } else {
+            msgDiv.className = 'alert alert-danger';
+            msgDiv.innerHTML = `<strong>Error:</strong> ${data.error || 'Error desconocido'}`;
+            msgDiv.style.display = 'block';
+            btn.disabled = false;
+        }
+    })
+    .catch(e => {
+        msgDiv.className = 'alert alert-danger';
+        msgDiv.innerHTML = `<strong>Error de conexión:</strong> ${e.message}`;
+        msgDiv.style.display = 'block';
+        btn.disabled = false;
+        console.error(e);
+    });
+}
+
+function checkStatusPeriodically() {
+    // Verificar cada 3 segundos
+    statusCheckInterval = setInterval(() => {
+        checkStatus();
+    }, 3000);
+
+    // Primera verificación inmediata
+    checkStatus();
+}
+
+function checkStatus() {
+    fetch(`/woocommerce/resync-status/${CLIENT_ID}`)
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const status = data.status;
+            const badge = document.getElementById('sync-status-badge');
+            const msgDiv = document.getElementById('resync-message');
+            const btn = document.getElementById('btn-resync');
+
+            if (status === 'in_progress') {
+                // Sigue en progreso, no hacer nada (se verá refrescado)
+                return;
+            } else if (status === 'completed') {
+                // ¡Listo!
+                badge.innerHTML = '<span class="badge bg-success">✓ Completada</span>';
+                msgDiv.className = 'alert alert-success';
+                msgDiv.innerHTML = `
+                    <i class="bi bi-check-circle"></i> <strong>✅ Resincronización completada</strong>
+                    <p class="mt-2 mb-0"><small>Los datos se han actualizado correctamente. Recarga la página para ver los cambios.</small></p>
+                `;
+
+                // Actualizar timestamp
+                const now = new Date();
+                const formatted = now.toLocaleString('es-ES', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                document.getElementById('last-sync').textContent = formatted;
+
+                btn.disabled = false;
+                clearInterval(statusCheckInterval);
+
+                // Auto-refresh en 5 segundos
+                setTimeout(() => location.reload(), 5000);
+
+            } else if (status === 'error') {
+                // Hubo error
+                badge.innerHTML = '<span class="badge bg-danger">✗ Error</span>';
+                msgDiv.className = 'alert alert-danger';
+                msgDiv.innerHTML = `
+                    <i class="bi bi-exclamation-circle"></i> <strong>❌ Error en la resincronización</strong>
+                    <p class="mt-2 mb-0"><small>${data.error || 'Revisa los logs para más detalles'}</small></p>
+                `;
+                btn.disabled = false;
+                clearInterval(statusCheckInterval);
+            }
+        }
+    })
+    .catch(e => {
+        console.error('Error verificando status:', e);
+    });
+}
+
+// Verificar estado inicial (en caso de que haya un resync en progreso)
+document.addEventListener('DOMContentLoaded', () => {
+    const badge = document.getElementById('sync-status-badge');
+    if (badge.querySelector('.text-dark')) {
+        // Ya hay un resync en progreso
+        document.getElementById('btn-resync').disabled = true;
+        checkStatusPeriodically();
+    }
+});
+</script>
+
+{% endblock %}
