@@ -99,7 +99,7 @@ class WooCommerceSyncService:
                 stats['images_processed'] = images_count
 
             if sync_options.get('embeddings', True):
-                embeddings = self.generate_embeddings(force_regenerate=True)
+                embeddings = self.generate_embeddings(force_regenerate=False)
                 stats['embeddings_generated'] = embeddings
 
             if sync_options.get('centroids', True) and stats.get('embeddings_generated', 0) > 0:
