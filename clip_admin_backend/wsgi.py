@@ -528,6 +528,16 @@ def register_blueprints(app):
     except Exception as e:
         print(f"✗ Error registrando tiendanube_webhooks blueprint: {e}")
 
+    # Blueprint de WooCommerce setup
+    try:
+        from app.blueprints.woocommerce_setup import bp as woocommerce_setup_bp
+        app.register_blueprint(woocommerce_setup_bp)
+        print("✓ Blueprint woocommerce_setup registrado")
+    except ImportError as e:
+        print(f"✗ Error importando woocommerce_setup blueprint: {e}")
+    except Exception as e:
+        print(f"✗ Error registrando woocommerce_setup blueprint: {e}")
+
     # 🆕 Registrar módulos personalizados de búsqueda por cliente
     try:
         from app.search_modules import register_client_module

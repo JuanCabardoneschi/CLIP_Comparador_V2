@@ -174,7 +174,15 @@ function startResync() {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ delete_mode: 'soft' })
     })
-    .then(r => r.json())
+    .then(r => {
+        // Verificar si la respuesta es OK antes de parsear JSON
+        if (!r.ok) {
+            return r.text().then(text => {
+                throw new Error(`HTTP ${r.status}: ${text.substring(0, 200)}`);
+            });
+        }
+        return r.json();
+    })
     .then(data => {
         if (data.success) {
             msgDiv.className = 'alert alert-info';
@@ -203,7 +211,7 @@ function startResync() {
         msgDiv.innerHTML = `<strong>Error de conexión:</strong> ${e.message}`;
         msgDiv.style.display = 'block';
         btn.disabled = false;
-        console.error(e);
+        console.error('ERROR COMPLETO:', e);
     });
 }
 
