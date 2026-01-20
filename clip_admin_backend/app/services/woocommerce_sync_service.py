@@ -662,3 +662,32 @@ class WooCommerceSyncService:
             f"{parent_external_id if parent_external_id else 'root'}"
         )
         return self.api.update_category(int(external_category_id), payload)
+
+
+def start_full_sync(client_id: str, sync_options: Dict = None) -> Dict:
+    """
+    Función auxiliar para iniciar sincronización completa de WooCommerce.
+    Puede ser llamada desde un task asíncrono o endpoint de resincronización.
+
+    Args:
+        client_id: ID del cliente
+        sync_options: Dict con opciones de sincronización:
+            - categories: bool (sincronizar categorías)
+            - attributes: bool (sincronizar atributos)
+            - products: bool (sincronizar productos)
+            - images: bool (sincronizar imágenes)
+            - embeddings: bool (generar embeddings)
+            - centroids: bool (calcular centroides)
+
+    Returns:
+        Dict con resultado de la sincronización
+    """
+    try:
+        service = WooCommerceSyncService(client_id)
+        return service.full_sync(sync_options)
+    except Exception as e:
+        logger.error(f"Error iniciando sincronización WooCommerce para cliente {client_id}: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
