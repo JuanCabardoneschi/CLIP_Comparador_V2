@@ -265,6 +265,16 @@
                     </li>
                     {% endif %}
 
+                    {% if current_user.client and current_user.client.woocommerce_integrations.filter_by(is_active=True).first() %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint and 'clients.woocommerce_admin' in request.endpoint %}active{% endif %}"
+                           href="{{ url_for('clients.woocommerce_admin', client_id=current_user.client_id) }}">
+                            <i class="bi bi-wordpress me-2"></i>
+                            Panel WooCommerce
+                        </a>
+                    </li>
+                    {% endif %}
+
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint and 'search_config' in request.endpoint %}active{% endif %}"
                            href="{{ url_for('search_config.index') }}">
