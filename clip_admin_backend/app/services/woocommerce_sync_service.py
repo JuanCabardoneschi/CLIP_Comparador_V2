@@ -498,6 +498,7 @@ class WooCommerceSyncService:
 
             if force_regenerate:
                 images_q = Image.query.filter_by(client_id=self.client.id).all()
+                logger.info(f"[EMBEDDING] force_regenerate=True: {len(images_q)} imágenes totales para cliente {self.client.id}")
                 for img in images_q:
                     img.clip_embedding = None
                     img.is_processed = False
@@ -507,7 +508,9 @@ class WooCommerceSyncService:
                 unprocessed = Image.query.filter_by(client_id=self.client.id, is_processed=False).filter(
                     Image.base64_thumb.isnot(None)
                 ).all()
+                logger.info(f"[EMBEDDING] force_regenerate=False: {len(unprocessed)} imágenes SIN procesar para cliente {self.client.id}")
 
+            logger.info(f"[EMBEDDING] Iniciando generación de embeddings para {len(unprocessed)} imágenes")
             generated = 0
             for image in unprocessed:
                 try:
@@ -526,12 +529,16 @@ class WooCommerceSyncService:
                     image.is_processed = True
                     image.upload_status = 'completed'
                     generated += 1
+                    if generated % 100 == 0:
+                        logger.info(f"[EMBEDDING] Procesadas {generated} imágenes...")
                 except Exception as e:
+                    logger.error(f"[EMBEDDING] Error en imagen {image.id}: {e}")
                     image.upload_status = 'failed'
                     image.error_message = str(e)
                 db.session.add(image)
 
             db.session.commit()
+            logger.info(f"[EMBEDDING] ✅ Embedding generation completada: {generated} embeddings generados")
             return generated
         except Exception as e:
             logger.error(f"Error generando embeddings WooCommerce: {e}")
