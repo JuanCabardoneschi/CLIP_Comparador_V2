@@ -519,26 +519,39 @@ class WooCommerceSyncService:
 
             logger.info(f"[EMBEDDING] Iniciando generación de embeddings para {len(unprocessed)} imágenes")
             generated = 0
+            import time
             for idx, image in enumerate(unprocessed):
                 try:
+                    iter_start = time.time()
                     if idx < 10:
                         logger.info(f"[EMBEDDING] Procesando imagen {idx+1}/{len(unprocessed)}: {image.id}")
-                    
+
+                    t1 = time.time()
                     image_bytes = base64.b64decode(image.base64_thumb)
+                    t2 = time.time()
                     pil_image = load_image_from_source(image_bytes)
+                    t3 = time.time()
                     inputs = clip_processor(images=pil_image, return_tensors="pt")
+                    t4 = time.time()
                     if torch.cuda.is_available():
                         inputs = {k: v.cuda() for k, v in inputs.items()}
 
+                    t5 = time.time()
                     with torch.no_grad():
                         feats = clip_model.get_image_features(**inputs)
                         feats = feats / feats.norm(dim=-1, keepdim=True)
                         embedding = feats.cpu().numpy().flatten()
+                    t6 = time.time()
 
                     image.clip_embedding = json.dumps(embedding.tolist())
                     image.is_processed = True
                     image.upload_status = 'completed'
                     generated += 1
+                    t7 = time.time()
+                    
+                    if idx < 5:
+                        logger.info(f"[TIMING] b64={t2-t1:.2f}s load={t3-t2:.2f}s proc={t4-t3:.2f}s feat={t6-t5:.2f}s save={t7-t6:.2f}s total={t7-iter_start:.2f}s")
+                    
                     if generated % 100 == 0:
                         logger.info(f"[EMBEDDING] Procesadas {generated} imágenes...")
                 except Exception as e:
