@@ -403,6 +403,13 @@ def resync_woocommerce(client_id):
                         logger.info(f"✓ Borrado duro completado para cliente {cid}")
                     else:
                         # Borrado suave (soft delete)
+                        # Primero borrar imágenes de productos
+                        Image.query.filter(
+                            Image.product_id.in_(
+                                db.session.query(Product.id).filter_by(client_id=cid)
+                            )
+                        ).delete()
+                        # Luego marcar productos como inactivos
                         Product.query.filter_by(client_id=cid).update({'is_active': False})
                         logger.info(f"✓ Borrado suave completado para cliente {cid}")
 
