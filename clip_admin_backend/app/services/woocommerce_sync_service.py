@@ -280,14 +280,61 @@ class WooCommerceSyncService:
     # ---------------- Helpers ----------------
 
     def _resolve_category_id(self, categories: List[Dict]):
-        for cat in categories or []:
+        """
+        Resolver la categoría interna desde las categorías de WooCommerce.
+
+        Si un producto está en una categoría padre Y su categoría hija,
+        se asigna SOLO a la hija (más específica/leaf).
+
+        Args:
+            categories: Lista de dicts con categorías de WooCommerce
+
+        Returns:
+            UUID de la categoría interna o None
+        """
+        if not categories:
+            return None
+
+        # Obtener todas las categorías válidas del producto
+        valid_categories = []
+        for cat in categories:
             ext_id = str(cat.get('id')) if cat.get('id') is not None else None
             if not ext_id:
                 continue
-            existing = Category.query.filter_by(client_id=self.client.id, external_id=ext_id).first()
+
+            existing = Category.query.filter_by(
+                client_id=self.client.id,
+                external_id=ext_id
+            ).first()
+
             if existing:
-                return existing.id
-        return None
+                valid_categories.append(existing)
+
+        if not valid_categories:
+            return None
+
+        if len(valid_categories) == 1:
+            # Solo una categoría: asignar directamente
+            return valid_categories[0].id
+
+        # Múltiples categorías: buscar relación padre-hijo
+        # Preferir las categorías que NO son padres de otra categoría en la lista (LEAF)
+        for candidate in valid_categories:
+            # ¿Es esta categoría padre de alguna otra en la lista?
+            is_parent_of_another = any(
+                other.parent_external_id == candidate.external_id
+                for other in valid_categories
+                if other.id != candidate.id
+            )
+
+            if not is_parent_of_another:
+                # Esta es una categoría "hoja" (no es padre de otra en la lista)
+                logger.info(f"🔍 [SYNC] Producto asignado a categoría hoja: {candidate.name} (en vez de padre)")
+                return candidate.id
+
+        # Fallback: retornar la primera si no hay relación padre-hijo clara
+        logger.warning(f"⚠️ [SYNC] No hay relación padre-hijo clara, usando primera categoría")
+        return valid_categories[0].id
 
     def _extract_attributes(self, prod: Dict, attr_values: Dict[str, set]) -> Dict:
         attrs = {}
