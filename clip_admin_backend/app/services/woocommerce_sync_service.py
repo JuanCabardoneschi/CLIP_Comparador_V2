@@ -416,6 +416,7 @@ class WooCommerceSyncService:
 
     def _sync_product_images(self, product: Product, images_data: List[Dict]) -> int:
         processed = 0
+        import time
         for idx, img_data in enumerate(images_data):
             source_url = img_data.get('src')
             if not source_url:
@@ -431,7 +432,10 @@ class WooCommerceSyncService:
             if existing_image:
                 continue
 
+            t_start = time.time()
             base64_full, base64_thumb, mime_type, width, height, size_bytes = self._download_and_convert_image(source_url)
+            t_download = time.time()
+            
             if not base64_thumb:
                 continue
 
@@ -455,6 +459,9 @@ class WooCommerceSyncService:
             )
             db.session.add(image)
             processed += 1
+            
+            if processed <= 5 or processed % 100 == 0:
+                logger.info(f"[DOWNLOAD] Imagen {processed}: {t_download - t_start:.2f}s ({size_bytes} bytes)")
 
         return processed
 
@@ -548,10 +555,10 @@ class WooCommerceSyncService:
                     image.upload_status = 'completed'
                     generated += 1
                     t7 = time.time()
-                    
+
                     if idx < 5:
                         logger.info(f"[TIMING] b64={t2-t1:.2f}s load={t3-t2:.2f}s proc={t4-t3:.2f}s feat={t6-t5:.2f}s save={t7-t6:.2f}s total={t7-iter_start:.2f}s")
-                    
+
                     if generated % 100 == 0:
                         logger.info(f"[EMBEDDING] Procesadas {generated} imágenes...")
                 except Exception as e:
