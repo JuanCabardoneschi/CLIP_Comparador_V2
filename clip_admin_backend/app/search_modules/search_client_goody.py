@@ -477,6 +477,21 @@ def rerank_visual_results_by_description(results: List[dict], description: str) 
                     matches.append(f"tipo:{keyword}")
                     break
 
+        # Penalización por tipo opuesto (evita mezclar pechera vs medio)
+        # Si el usuario pide medio delantal y el nombre contiene pechera, penalizamos, y viceversa.
+        if keywords_info['apron_type'] == 'medio':
+            for keyword in APRON_TYPES.get('pechera', []):
+                if keyword.lower() in product_name:
+                    boost_factor *= 0.6  # -40% por ser pechera cuando se pidió medio
+                    matches.append(f"penaliza:pechera")
+                    break
+        elif keywords_info['apron_type'] == 'pechera':
+            for keyword in APRON_TYPES.get('medio', []):
+                if keyword.lower() in product_name:
+                    boost_factor *= 0.6  # -40% por ser medio cuando se pidió pechera
+                    matches.append(f"penaliza:medio")
+                    break
+
         # Boost por color (más suave)
         if keywords_info['color']:
             color_name = keywords_info['color']
