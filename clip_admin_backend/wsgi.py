@@ -22,6 +22,9 @@ logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
 logging.getLogger('PIL.TiffImagePlugin').setLevel(logging.WARNING)
 logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARNING)
 logging.getLogger('werkzeug').setLevel(logging.INFO)  # Mantener INFO para peticiones HTTP
+logging.getLogger('openai').setLevel(logging.WARNING)  # Silenciar DEBUG de OpenAI (base64 spam)
+logging.getLogger('openai._base_client').setLevel(logging.WARNING)  # Silenciar "Request options"
+logging.getLogger('httpx').setLevel(logging.WARNING)  # Silenciar HTTP requests de OpenAI
 
 # Añadir el directorio padre al path para las importaciones
 current_dir = os.path.dirname(os.path.abspath(__file__))
