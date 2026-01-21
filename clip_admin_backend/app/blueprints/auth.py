@@ -13,10 +13,10 @@ bp = Blueprint("auth", __name__)
 @bp.route("/login", methods=["GET", "POST"])
 def login():
     """Login del usuario"""
-    print(f"� INICIO LOGIN: Método {request.method}")
+    print(f"🔑 INICIO LOGIN: Método {request.method}")
     print(f"🔥 INICIO LOGIN: Headers: {dict(request.headers)}")
     print(f"🔥 INICIO LOGIN: Form data: {dict(request.form)}")
-    print(f"�🔐 LOGIN: Método {request.method}")
+    print(f"🔐 LOGIN: Método {request.method}")
 
     if current_user.is_authenticated:
         print(f"🔐 LOGIN: Usuario ya autenticado: {current_user.email}")
