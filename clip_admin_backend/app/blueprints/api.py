@@ -2203,19 +2203,20 @@ def gpt4v_unified_search():
                 # Ordenar por similitud descendente
                 product_similarities.sort(key=lambda x: x['similarity'], reverse=True)
 
-                # Tomar top N resultados
-                top_results = product_similarities[:max_results]
+                # Ampliar candidatos para fusión/re-ranking (4x el límite)
+                fusion_limit = min(len(product_similarities), max_results * 4)
+                fusion_candidates = product_similarities[:fusion_limit]
 
                 # Cache de embeddings de imagen para fusiones texto↔imagen
                 top_image_embeddings = {
                     str(r['product'].id): r['image'].embedding_vector
-                    for r in top_results
+                    for r in fusion_candidates
                     if getattr(r['image'], 'embedding_vector', None)
                 }
 
-                # Serializar resultados
+                # Serializar resultados (sobre el set ampliado)
                 products_data = []
-                for result in top_results:
+                for result in fusion_candidates:
                     p = result['product']
                     img = result['image']
 
@@ -2311,8 +2312,8 @@ def gpt4v_unified_search():
 
                                     # Calcular similitud texto↔imagen por producto
                                     fused_count = 0
-                                    alpha = 0.7  # peso visual
-                                    beta = 0.3   # peso texto↔imagen
+                                    alpha = 0.55  # peso visual
+                                    beta = 0.45   # peso texto↔imagen
 
                                     for p in products_data:
                                         pid = p.get('id')
@@ -2387,6 +2388,9 @@ def gpt4v_unified_search():
                                         products_data.sort(key=lambda x: x['similarity_score'], reverse=True)
 
                                         railway_log(f"   ✅ Re-ranking aplicado a {len(products_data)} productos")
+
+                                        # Limitar a max_results tras el re-ranking
+                                        products_data = products_data[:max_results]
                             except ImportError:
                                 # Módulos custom no disponibles, continuar sin re-ranking
                                 pass
