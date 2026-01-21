@@ -1942,7 +1942,7 @@ def gpt4v_unified_search():
             categories_detected = list(dict.fromkeys(categories_detected_raw))
 
             railway_log(f"✅ GPT-4V detectó {len(categories_detected)} categorías: {categories_detected}")
-            
+
             # Log de descripciones detalladas
             for idx, prenda in enumerate(prendas, 1):
                 desc = prenda.get('descripcion', 'N/A')
@@ -2349,6 +2349,17 @@ def gpt4v_unified_search():
                                     if fused_count > 0:
                                         products_data.sort(key=lambda x: x['similarity_score'], reverse=True)
                                         railway_log(f"   🔀 Fusion visual+texto aplicada a {fused_count} productos (α={alpha}, β={beta})")
+                                        
+                                        # Log top 12 productos post-fusión
+                                        railway_log(f"   📊 Top-12 post-fusión:")
+                                        for idx, p in enumerate(products_data[:12], 1):
+                                            hybrid = p.get('_hybrid_similarity', {})
+                                            railway_log(
+                                                f"      {idx}. {p['name'][:50]}: "
+                                                f"fused={p['similarity_score']:.4f} "
+                                                f"(visual={hybrid.get('visual', 0):.4f}, "
+                                                f"text={hybrid.get('text_image', 0):.4f})"
+                                            )
                                 except Exception as fusion_error:
                                     railway_log(f"⚠️ Error en fusión visual+texto: {fusion_error}")
 
@@ -2394,6 +2405,18 @@ def gpt4v_unified_search():
                                         products_data.sort(key=lambda x: x['similarity_score'], reverse=True)
 
                                         railway_log(f"   ✅ Re-ranking aplicado a {len(products_data)} productos")
+                                        
+                                        # Log top 12 productos post-reranking
+                                        railway_log(f"   📊 Top-12 post-reranking:")
+                                        for idx, p in enumerate(products_data[:12], 1):
+                                            boost_info = p.get('_boost_applied', {})
+                                            matches_str = ', '.join(boost_info.get('matches', []))
+                                            railway_log(
+                                                f"      {idx}. {p['name'][:50]}: "
+                                                f"score={p['similarity_score']:.4f}, "
+                                                f"boost={boost_info.get('boost_factor', 1.0):.2f} "
+                                                f"[{matches_str[:60]}]"
+                                            )
 
                                         # Limitar a max_results tras el re-ranking
                                         products_data = products_data[:max_results]
