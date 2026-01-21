@@ -2268,6 +2268,71 @@ def gpt4v_unified_search():
                         'product_url': final_product_url
                     })
 
+                # ===================================================================
+                # RE-RANKING POR DESCRIPCIÓN DE GPT-4V (si Vision está habilitado)
+                # ===================================================================
+                if vision_enabled and prendas:
+                    try:
+                        # Buscar descripción para esta categoría en los prendas de GPT-4V
+                        gpt4v_description = None
+                        for prenda in prendas:
+                            if prenda.get('categoria_sugerida') == category_name:
+                                gpt4v_description = prenda.get('descripcion')
+                                break
+
+                        # Si hay descripción y cliente es Goody, aplicar re-ranking custom
+                        if gpt4v_description and client.name.lower() == 'goody':
+                            try:
+                                from app.search_modules import has_custom_module, get_client_module
+
+                                if has_custom_module(client.name.lower()):
+                                    module = get_client_module(client.name.lower())
+
+                                    # Llamar a función de re-ranking si existe
+                                    if hasattr(module, 'rerank_visual_results_by_description'):
+                                        railway_log(f"   🎯 Re-ranking visual por descripción: '{gpt4v_description[:60]}...'")
+
+                                        # Convertir products_data al formato para re-ranking
+                                        results_for_rerank = [
+                                            {
+                                                'name': p['name'],
+                                                'score': p['similarity_score']
+                                            }
+                                            for p in products_data
+                                        ]
+
+                                        # Aplicar re-ranking
+                                        reranked = module.rerank_visual_results_by_description(
+                                            results_for_rerank,
+                                            gpt4v_description
+                                        )
+
+                                        # Re-ordenar products_data según nuevo ranking
+                                        # El re-ranking devuelve la lista re-ordenada con scores actualizados
+                                        products_reranked_dict = {r['name']: r for r in reranked}
+
+                                        # Actualizar scores en products_data
+                                        for p in products_data:
+                                            if p['name'] in products_reranked_dict:
+                                                rerank_info = products_reranked_dict[p['name']]
+                                                # Actualizar score y guardar info de boost
+                                                p['similarity_score'] = rerank_info.get('score', p['similarity_score'])
+                                                if 'boost_info' in rerank_info:
+                                                    p['_boost_applied'] = rerank_info['boost_info']
+
+                                        # Re-ordenar por nuevo score
+                                        products_data.sort(key=lambda x: x['similarity_score'], reverse=True)
+
+                                        railway_log(f"   ✅ Re-ranking aplicado a {len(products_data)} productos")
+                            except ImportError:
+                                # Módulos custom no disponibles, continuar sin re-ranking
+                                pass
+                    except Exception as e:
+                        railway_log(f"⚠️ Error en re-ranking visual: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        # Continuar sin re-ranking
+
                 total_products_found += len(products_data)
 
                 results_by_category[category_name] = {

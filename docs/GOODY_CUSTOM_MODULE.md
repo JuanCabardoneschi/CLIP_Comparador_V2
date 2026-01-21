@@ -2,8 +2,8 @@
 
 ## 📋 Resumen
 
-Cliente: **Goody**  
-Industria: **Textil / Ropa profesional para gastronomía**  
+Cliente: **Goody**
+Industria: **Textil / Ropa profesional para gastronomía**
 Archivo: `clip_admin_backend/app/search_modules/search_client_goody.py`
 
 ## 🎯 Problema Resuelto
@@ -80,7 +80,7 @@ Query: "delantal pechera negro"
 
 1. CLIP busca: imágenes similares a "delantal negro"
 2. Módulo detecta: tipo="pechera"
-3. Re-ranking: 
+3. Re-ranking:
    - ✅ "Delantal Pechera Blue Note Negro" → boost +30%
    - ❌ "Medio Delantal Negro" → penaliza -30%
 ```
@@ -206,7 +206,7 @@ Nombres de productos analizados de la base de datos:
 
 El módulo se despliega automáticamente con la aplicación Flask:
 
-1. **Local**: 
+1. **Local**:
    ```bash
    cd clip_admin_backend && python app.py
    ```

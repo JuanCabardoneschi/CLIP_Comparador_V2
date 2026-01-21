@@ -338,6 +338,178 @@ def filter_results_by_pattern(results: List[dict], pattern_type: str) -> List[di
 
 
 # ============================================================================
+# RE-RANKING POR DESCRIPCIÓN DE IA (BÚSQUEDA VISUAL)
+# ============================================================================
+
+def extract_keywords_from_description(description: str) -> dict:
+    """
+    Extrae keywords de tipo y patrón desde descripción de IA (GPT-4V, etc.)
+
+    Diseñado para procesar descripciones en lenguaje natural como:
+    - "delantal floral en tonos rosados"
+    - "delantal con diseño de flores"
+    - "apron with floral pattern in pink tones"
+
+    Args:
+        description: Descripción en lenguaje natural de la IA
+
+    Returns:
+        Dict con claves 'apron_type', 'pattern', 'color'
+
+    Example:
+        >>> extract_keywords_from_description("delantal floral en tonos rosados")
+        {
+            'apron_type': 'delantal',
+            'pattern': 'floral',
+            'color': 'rosado',
+            'keywords': ['floral', 'rosado'],
+            'confidence': 'medium'
+        }
+    """
+    description_lower = description.lower()
+    tokens = normalize_tokens(description_lower)
+
+    result = {
+        'apron_type': None,
+        'pattern': None,
+        'color': None,
+        'keywords': [],
+        'confidence': 'low'
+    }
+
+    # Detectar tipo de delantal
+    apron_type = detect_apron_type(tokens)
+    if apron_type:
+        result['apron_type'] = apron_type
+        result['keywords'].append(apron_type)
+        result['confidence'] = 'high'
+
+    # Detectar patrón
+    pattern = detect_pattern(tokens)
+    if pattern:
+        result['pattern'] = pattern
+        result['keywords'].append(pattern)
+        result['confidence'] = 'high'
+
+    # Detectar colores mencionados
+    colors_found = []
+    for color_name, color_keywords in [
+        ('rosado', ['rosado', 'rosa', 'pink']),
+        ('blanco', ['blanco', 'white']),
+        ('negro', ['negro', 'black']),
+        ('azul', ['azul', 'blue']),
+        ('verde', ['verde', 'green']),
+        ('rojo', ['rojo', 'red']),
+        ('amarillo', ['amarillo', 'yellow']),
+        ('gris', ['gris', 'gray']),
+        ('marrón', ['marrón', 'marron', 'brown']),
+    ]:
+        for keyword in color_keywords:
+            if keyword in description_lower:
+                colors_found.append(color_name)
+                result['keywords'].append(color_name)
+                if result['confidence'] == 'low':
+                    result['confidence'] = 'medium'
+                break
+
+    if colors_found:
+        result['color'] = colors_found[0]  # Primer color detectado
+
+    return result
+
+
+def rerank_visual_results_by_description(results: List[dict], description: str) -> List[dict]:
+    """
+    Re-rankea resultados visuales basándose en descripción de IA.
+
+    Procesa la descripción generada por GPT-4V/IA y boosteamos resultados
+    que coinciden con los patrones, tipos y colores detectados.
+
+    Args:
+        results: Resultados de búsqueda visual (con 'score', 'similarity', u 'original_index')
+        description: Descripción de IA de la imagen
+
+    Returns:
+        Resultados re-rankeados con scores actualizados y metadata de boost
+
+    Example:
+        >>> results = [
+        ...     {'name': 'Delantal Floral Rosa', 'score': 0.85, 'original_index': 0},
+        ...     {'name': 'Delantal Western', 'score': 0.80, 'original_index': 1}
+        ... ]
+        >>> desc = "delantal con flores en tonos rosados"
+        >>> rerank_visual_results_by_description(results, desc)
+        # Delantal Floral Rosa recibe boost +40% por patrón floral
+    """
+    if not results or not description or len(description) < 10:
+        return results
+
+    # Extraer keywords de la descripción
+    keywords_info = extract_keywords_from_description(description)
+
+    # Si la confianza es baja, no hacer cambios significativos
+    if keywords_info['confidence'] == 'low':
+        return results
+
+    print(f"🔍 [GOODY] Re-ranking visual: detectados patrón='{keywords_info['pattern']}', tipo='{keywords_info['apron_type']}', color='{keywords_info['color']}'")
+
+    # Re-rankear cada resultado
+    for result in results:
+        product_name = result.get('name', '').lower()
+        boost_factor = 1.0
+        matches = []
+
+        # Boost por patrón detectado
+        if keywords_info['pattern']:
+            pattern_keywords = PATTERN_KEYWORDS.get(keywords_info['pattern'], [])
+            for keyword in pattern_keywords:
+                if keyword.lower() in product_name:
+                    boost_factor *= 1.4  # +40% per pattern match
+                    matches.append(f"patrón:{keyword}")
+                    break
+
+        # Boost por tipo de delantal detectado
+        if keywords_info['apron_type']:
+            apron_keywords = APRON_TYPES.get(keywords_info['apron_type'], [])
+            for keyword in apron_keywords:
+                if keyword.lower() in product_name:
+                    boost_factor *= 1.2  # +20% per type match
+                    matches.append(f"tipo:{keyword}")
+                    break
+
+        # Boost por color (más suave)
+        if keywords_info['color']:
+            color_name = keywords_info['color']
+            if color_name.lower() in product_name:
+                boost_factor *= 1.1  # +10% per color match
+                matches.append(f"color:{color_name}")
+
+        # Aplicar boost al score
+        if matches:
+            old_score = result.get('score', result.get('similarity', 0.0))
+            new_score = old_score * boost_factor
+            result['score'] = new_score
+            result['similarity'] = new_score
+            result['boost_factor'] = boost_factor
+            result['boost_info'] = {
+                'factor': boost_factor,
+                'matches': matches
+            }
+        else:
+            # Sin matches, preservar original_index y asegurar scores
+            if 'original_index' not in result:
+                result['original_index'] = results.index(result)
+            result['boost_factor'] = 1.0
+            result['boost_info'] = {'factor': 1.0, 'matches': []}
+
+    # Re-ordenar por score
+    results.sort(key=lambda x: x.get('score', x.get('similarity', 0.0)), reverse=True)
+
+    return results
+
+
+
+# ============================================================================
 # FUNCIÓN PRINCIPAL DE POST-PROCESAMIENTO
 # ============================================================================
 

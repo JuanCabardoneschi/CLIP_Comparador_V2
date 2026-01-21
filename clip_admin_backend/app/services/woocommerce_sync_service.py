@@ -435,7 +435,7 @@ class WooCommerceSyncService:
             t_start = time.time()
             base64_full, base64_thumb, mime_type, width, height, size_bytes = self._download_and_convert_image(source_url)
             t_download = time.time()
-            
+
             if not base64_thumb:
                 continue
 
@@ -459,7 +459,7 @@ class WooCommerceSyncService:
             )
             db.session.add(image)
             processed += 1
-            
+
             if processed <= 5 or processed % 100 == 0:
                 logger.info(f"[DOWNLOAD] Imagen {processed}: {t_download - t_start:.2f}s ({size_bytes} bytes)")
 
