@@ -2209,9 +2209,10 @@ def gpt4v_unified_search():
                 # Ordenar por similitud descendente
                 product_similarities.sort(key=lambda x: x['similarity'], reverse=True)
 
-                # Ampliar candidatos para fusión/re-ranking (4x el límite)
-                fusion_limit = min(len(product_similarities), max_results * 4)
-                fusion_candidates = product_similarities[:fusion_limit]
+                # NO limitar aún - aplicar fusión a TODOS los que pasan threshold
+                # Esto permite que productos semánticamente relevantes (ej: "medio delantal")
+                # pero con similitud visual más baja lleguen al pool de fusión
+                fusion_candidates = product_similarities
 
                 # Cache de embeddings de imagen para fusiones texto↔imagen
                 top_image_embeddings = {
@@ -2220,7 +2221,7 @@ def gpt4v_unified_search():
                     if getattr(r['image'], 'embedding_vector', None)
                 }
 
-                # Serializar resultados (sobre el set ampliado)
+                # Serializar resultados (sobre TODOS los candidatos que pasan threshold)
                 products_data = []
                 for result in fusion_candidates:
                     p = result['product']
@@ -2349,7 +2350,7 @@ def gpt4v_unified_search():
                                     if fused_count > 0:
                                         products_data.sort(key=lambda x: x['similarity_score'], reverse=True)
                                         railway_log(f"   🔀 Fusion visual+texto aplicada a {fused_count} productos (α={alpha}, β={beta})")
-                                        
+
                                         # Log top 12 productos post-fusión
                                         railway_log(f"   📊 Top-12 post-fusión:")
                                         for idx, p in enumerate(products_data[:12], 1):
@@ -2360,6 +2361,13 @@ def gpt4v_unified_search():
                                                 f"(visual={hybrid.get('visual', 0):.4f}, "
                                                 f"text={hybrid.get('text_image', 0):.4f})"
                                             )
+                                        
+                                        # AHORA limitar para re-ranking (4x el límite final)
+                                        fusion_limit = max_results * 4
+                                        if len(products_data) > fusion_limit:
+                                            railway_log(f"   ✂️ Limitando de {len(products_data)} a {fusion_limit} productos para re-ranking")
+                                            products_data = products_data[:fusion_limit]
+                                            
                                 except Exception as fusion_error:
                                     railway_log(f"⚠️ Error en fusión visual+texto: {fusion_error}")
 
@@ -2405,7 +2413,7 @@ def gpt4v_unified_search():
                                         products_data.sort(key=lambda x: x['similarity_score'], reverse=True)
 
                                         railway_log(f"   ✅ Re-ranking aplicado a {len(products_data)} productos")
-                                        
+
                                         # Log top 12 productos post-reranking
                                         railway_log(f"   📊 Top-12 post-reranking:")
                                         for idx, p in enumerate(products_data[:12], 1):
