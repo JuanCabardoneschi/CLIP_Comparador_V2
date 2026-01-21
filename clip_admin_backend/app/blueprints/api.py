@@ -2206,6 +2206,13 @@ def gpt4v_unified_search():
                 # Tomar top N resultados
                 top_results = product_similarities[:max_results]
 
+                # Cache de embeddings de imagen para fusiones texto↔imagen
+                top_image_embeddings = {
+                    str(r['product'].id): r['image'].embedding_vector
+                    for r in top_results
+                    if getattr(r['image'], 'embedding_vector', None)
+                }
+
                 # Serializar resultados
                 products_data = []
                 for result in top_results:
@@ -2279,8 +2286,8 @@ def gpt4v_unified_search():
                             if prenda.get('categoria_sugerida') == category_name:
                                 # Intentar obtener descripción de varios campos posibles
                                 gpt4v_description = (
-                                    prenda.get('descripcion') or 
-                                    prenda.get('tipo') or 
+                                    prenda.get('descripcion') or
+                                    prenda.get('tipo') or
                                     prenda.get('description')
                                 )
                                 break
@@ -2288,6 +2295,57 @@ def gpt4v_unified_search():
                         # Si hay descripción y cliente es Goody, aplicar re-ranking custom
                         if gpt4v_description and client.name.lower() == 'goody':
                             try:
+                                # 1) Fusionar similitud visual (imagen↔imagen) con texto↔imagen usando CLIP
+                                try:
+                                    model, processor = get_clip_model()
+                                    with torch.no_grad():
+                                        text_inputs = processor(
+                                            text=[gpt4v_description],
+                                            return_tensors="pt",
+                                            padding=True,
+                                            truncation=True
+                                        )
+                                        text_features = model.get_text_features(**text_inputs)
+                                        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+                                        text_embedding = text_features.squeeze().cpu().numpy().astype(np.float32)
+
+                                    # Calcular similitud texto↔imagen por producto
+                                    fused_count = 0
+                                    alpha = 0.7  # peso visual
+                                    beta = 0.3   # peso texto↔imagen
+
+                                    for p in products_data:
+                                        pid = p.get('id')
+                                        img_emb = top_image_embeddings.get(pid)
+                                        if img_emb is None:
+                                            continue
+
+                                        img_vec = np.array(img_emb, dtype=np.float32)
+                                        norm = np.linalg.norm(img_vec)
+                                        if norm == 0:
+                                            continue
+                                        img_vec = img_vec / norm
+
+                                        visual_score = p['similarity_score']
+                                        text_sim = float(np.dot(img_vec, text_embedding))
+                                        # Fusion lineal: prioriza similitud visual pero añade señal textual
+                                        fused_score = (alpha * visual_score) + (beta * text_sim)
+                                        p['similarity_score'] = fused_score
+                                        p['_hybrid_similarity'] = {
+                                            'visual': visual_score,
+                                            'text_image': text_sim,
+                                            'alpha': alpha,
+                                            'beta': beta
+                                        }
+                                        fused_count += 1
+
+                                    if fused_count > 0:
+                                        products_data.sort(key=lambda x: x['similarity_score'], reverse=True)
+                                        railway_log(f"   🔀 Fusion visual+texto aplicada a {fused_count} productos (α={alpha}, β={beta})")
+                                except Exception as fusion_error:
+                                    railway_log(f"⚠️ Error en fusión visual+texto: {fusion_error}")
+
+                                # 2) Re-ranking custom por descripción (tokens en nombres)
                                 from app.search_modules import has_custom_module, get_client_module
 
                                 if has_custom_module(client.name.lower()):
