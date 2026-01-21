@@ -2360,6 +2360,11 @@ def gpt4v_unified_search():
                                                 f"fused={p['similarity_score']:.4f} "
                                                 f"(v={hybrid.get('visual', 0):.4f}, "
                                                 f"t={hybrid.get('text_image', 0):.4f})"
+                                            )
+                                        
+                                        # Expandir pool para re-ranking (8x el límite final = 24 productos)
+                                        # Esto da más oportunidades a productos semánticamente relevantes
+                                        fusion_limit = max_results * 8
                                         if len(products_data) > fusion_limit:
                                             railway_log(f"   ✂️ Limitando de {len(products_data)} a {fusion_limit} productos para re-ranking")
                                             products_data = products_data[:fusion_limit]

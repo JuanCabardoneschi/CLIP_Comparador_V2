@@ -473,7 +473,7 @@ def rerank_visual_results_by_description(results: List[dict], description: str) 
             apron_keywords = APRON_TYPES.get(keywords_info['apron_type'], [])
             for keyword in apron_keywords:
                 if keyword.lower() in product_name:
-                    boost_factor *= 1.2  # +20% per type match
+                    boost_factor *= 1.5  # +50% per type match (aumentado de 1.2)
                     matches.append(f"tipo:{keyword}")
                     break
 
@@ -482,13 +482,13 @@ def rerank_visual_results_by_description(results: List[dict], description: str) 
         if keywords_info['apron_type'] == 'medio':
             for keyword in APRON_TYPES.get('pechera', []):
                 if keyword.lower() in product_name:
-                    boost_factor *= 0.6  # -40% por ser pechera cuando se pidió medio
+                    boost_factor *= 0.4  # -60% por ser pechera cuando se pidió medio (más agresivo)
                     matches.append(f"penaliza:pechera")
                     break
         elif keywords_info['apron_type'] == 'pechera':
             for keyword in APRON_TYPES.get('medio', []):
                 if keyword.lower() in product_name:
-                    boost_factor *= 0.6  # -40% por ser medio cuando se pidió pechera
+                    boost_factor *= 0.4  # -60% por ser medio cuando se pidió pechera (más agresivo)
                     matches.append(f"penaliza:medio")
                     break
 
