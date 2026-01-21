@@ -2277,7 +2277,12 @@ def gpt4v_unified_search():
                         gpt4v_description = None
                         for prenda in prendas:
                             if prenda.get('categoria_sugerida') == category_name:
-                                gpt4v_description = prenda.get('descripcion')
+                                # Intentar obtener descripción de varios campos posibles
+                                gpt4v_description = (
+                                    prenda.get('descripcion') or 
+                                    prenda.get('tipo') or 
+                                    prenda.get('description')
+                                )
                                 break
 
                         # Si hay descripción y cliente es Goody, aplicar re-ranking custom
