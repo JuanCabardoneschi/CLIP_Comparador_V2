@@ -10,7 +10,7 @@ import logging
 
 # Configurar logging ANTES de cualquier otra cosa
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARNING,  # Solo WARNING y ERROR (no DEBUG, no INFO)
     format='[%(asctime)s] %(levelname)s in %(name)s: %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout)
@@ -18,13 +18,16 @@ logging.basicConfig(
 )
 
 # Silenciar logs innecesarios de librerías de terceros
-logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
-logging.getLogger('PIL.TiffImagePlugin').setLevel(logging.WARNING)
-logging.getLogger('PIL.PngImagePlugin').setLevel(logging.WARNING)
-logging.getLogger('werkzeug').setLevel(logging.INFO)  # Mantener INFO para peticiones HTTP
-logging.getLogger('openai').setLevel(logging.WARNING)  # Silenciar DEBUG de OpenAI (base64 spam)
-logging.getLogger('openai._base_client').setLevel(logging.WARNING)  # Silenciar "Request options"
-logging.getLogger('httpx').setLevel(logging.WARNING)  # Silenciar HTTP requests de OpenAI
+logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
+logging.getLogger('PIL').setLevel(logging.ERROR)  # Silenciar TODOS los logs de PIL
+logging.getLogger('PIL.TiffImagePlugin').setLevel(logging.ERROR)
+logging.getLogger('PIL.PngImagePlugin').setLevel(logging.ERROR)
+logging.getLogger('PIL.Image').setLevel(logging.ERROR)  # Silenciar importación de plugins
+logging.getLogger('werkzeug').setLevel(logging.WARNING)  # Solo WARNING para peticiones HTTP
+logging.getLogger('openai').setLevel(logging.ERROR)
+logging.getLogger('openai._base_client').setLevel(logging.ERROR)
+logging.getLogger('httpx').setLevel(logging.ERROR)
+logging.getLogger('transformers').setLevel(logging.ERROR)  # Silenciar transformers warnings
 
 # Añadir el directorio padre al path para las importaciones
 current_dir = os.path.dirname(os.path.abspath(__file__))
