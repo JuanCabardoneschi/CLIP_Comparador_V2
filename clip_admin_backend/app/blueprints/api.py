@@ -1942,6 +1942,12 @@ def gpt4v_unified_search():
             categories_detected = list(dict.fromkeys(categories_detected_raw))
 
             railway_log(f"✅ GPT-4V detectó {len(categories_detected)} categorías: {categories_detected}")
+            
+            # Log de descripciones detalladas
+            for idx, prenda in enumerate(prendas, 1):
+                desc = prenda.get('descripcion', 'N/A')
+                tipo = prenda.get('tipo', 'N/A')
+                railway_log(f"   Prenda {idx}: {tipo} - {desc}")
         else:
             railway_log("🛡️ Vision deshabilitado: no se envía imagen a GPT-4V. Se hará pre-búsqueda CLIP por categorías.")
 

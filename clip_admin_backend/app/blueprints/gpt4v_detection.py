@@ -134,9 +134,16 @@ REGLAS DE MAPEO A CATEGORÍAS:
 
 Para CADA producto identifica:
 - tipo: nombre claro y específico del producto
+- descripcion: descripción DETALLADA con énfasis en patrones/estampados (ej: "floral con flores pequeñas", "rayas horizontales", "lunares grandes", "liso sin estampado", "textura tejida")
 - color: color principal percibido
 - confianza: alta | media | baja
 - categoria_sugerida: nombre EXACTO EN MAYÚSCULAS de la lista o null
+
+REGLAS DE DESCRIPCIÓN (CRÍTICO):
+- SIEMPRE menciona si tiene estampado/patrón (floral, rayas, lunares, cuadros, animal print, etc.) o si es liso
+- Para estampados florales: especifica si son flores grandes, pequeñas, realistas, abstractas
+- Incluye detalles de textura si son relevantes (tejido, bordado, denim, etc.)
+- Ejemplos: "delantal floral con flores pequeñas multicolor", "remera lisa color sólido", "falda a rayas verticales negras y blancas"
 
 REGLAS DE COLOR:
 - Usa nombres comunes: blanco, negro, azul, rojo, verde, amarillo, marrón, beige, gris, rosa, naranja, morado
@@ -155,9 +162,9 @@ EJEMPLOS (GENÉRICOS):
 RESPUESTA (JSON ESTRICTO):
 {{
     "prendas": [
-        {{"tipo": "nombre_producto", "color": "color_principal", "confianza": "alta", "categoria_sugerida": null}}
+        {{"tipo": "nombre_producto", "descripcion": "descripción detallada con estampados/patrones", "color": "color_principal", "confianza": "alta", "categoria_sugerida": null}}
     ],
-    "mensaje_usuario": "Descripción detallada (2-3 oraciones) de lo que el usuario busca basado en los productos detectados. Menciona colores, tipos de productos y características. Si algún producto NO tiene categoría disponible en el catálogo, menciona explícitamente qué producto no se comercializa."
+    "mensaje_usuario": "Descripción detallada (2-3 oraciones) de lo que el usuario busca basado en los productos detectados. MENCIONA EXPLÍCITAMENTE estampados y patrones detectados (ej: 'delantal con estampado floral', 'remera lisa'). Incluye colores y características visuales. Si algún producto NO tiene categoría disponible en el catálogo, menciona explícitamente qué producto no se comercializa."
 }}"""
 
         logger.info(f"🔍 GPT-4V detectando prendas (multi-cat) para cliente {client_id or 'N/A'}...")
