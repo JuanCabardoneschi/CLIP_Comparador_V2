@@ -57,7 +57,7 @@ VARIANTS_MAP = {
 
 # Tipos funcionales de delantal
 APRON_TYPES = {
-    "pechera": ["pechera", "pecheras", "bib"],
+    "pechera": ["pechera", "pecheras", "bib", "jumper"],  # jumper es pechera completa
     "medio": ["medio", "media", "cintura", "waist"],
     "chef": ["chef", "cocinero"],
     "bar": ["bar", "barman", "bartender"],
