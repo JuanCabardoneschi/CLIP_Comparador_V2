@@ -2319,9 +2319,11 @@ def gpt4v_unified_search():
 
                                     # Calcular similitud texto↔imagen por producto
                                     fused_count = 0
+                                    filtered_count = 0
                                     alpha = 0.55  # peso visual
                                     beta = 0.45   # peso texto↔imagen
 
+                                    products_after_fusion = []
                                     for p in products_data:
                                         pid = p.get('id')
                                         img_emb = top_image_embeddings.get(pid)
@@ -2338,6 +2340,12 @@ def gpt4v_unified_search():
                                         text_sim = float(np.dot(img_vec, text_embedding))
                                         # Fusion lineal: prioriza similitud visual pero añade señal textual
                                         fused_score = (alpha * visual_score) + (beta * text_sim)
+
+                                        # Filtrar productos que caen bajo threshold tras fusión
+                                        if fused_score < threshold:
+                                            filtered_count += 1
+                                            continue
+
                                         p['similarity_score'] = fused_score
                                         p['_hybrid_similarity'] = {
                                             'visual': visual_score,
@@ -2345,11 +2353,18 @@ def gpt4v_unified_search():
                                             'alpha': alpha,
                                             'beta': beta
                                         }
+                                        products_after_fusion.append(p)
                                         fused_count += 1
+
+                                    # Reemplazar products_data con productos filtrados
+                                    products_data = products_after_fusion
 
                                     if fused_count > 0:
                                         products_data.sort(key=lambda x: x['similarity_score'], reverse=True)
-                                        railway_log(f"   🔀 Fusion visual+texto aplicada a {fused_count} productos (α={alpha}, β={beta})")
+                                        if filtered_count > 0:
+                                            railway_log(f"   🔀 Fusion visual+texto aplicada a {fused_count} productos (α={alpha}, β={beta}), {filtered_count} eliminados por caer bajo threshold")
+                                        else:
+                                            railway_log(f"   🔀 Fusion visual+texto aplicada a {fused_count} productos (α={alpha}, β={beta})")
 
                                         # Log top 20 productos post-fusión (para debug)
                                         railway_log(f"   📊 Top-20 post-fusión:")
@@ -2361,7 +2376,7 @@ def gpt4v_unified_search():
                                                 f"(v={hybrid.get('visual', 0):.4f}, "
                                                 f"t={hybrid.get('text_image', 0):.4f})"
                                             )
-                                        
+
                                         # Expandir pool para re-ranking (8x el límite final = 24 productos)
                                         # Esto da más oportunidades a productos semánticamente relevantes
                                         fusion_limit = max_results * 8
