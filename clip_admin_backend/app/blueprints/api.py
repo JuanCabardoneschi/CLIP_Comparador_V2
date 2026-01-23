@@ -2320,8 +2320,7 @@ def gpt4v_unified_search():
                                     # Calcular similitud texto↔imagen por producto
                                     fused_count = 0
                                     filtered_count = 0
-                                    alpha = 0.55  # peso visual
-                                    beta = 0.45   # peso texto↔imagen
+                                    text_boost_weight = 0.30  # Boost aditivo del texto (máx +30%)
 
                                     products_after_fusion = []
                                     for p in products_data:
@@ -2338,8 +2337,10 @@ def gpt4v_unified_search():
 
                                         visual_score = p['similarity_score']
                                         text_sim = float(np.dot(img_vec, text_embedding))
-                                        # Fusion lineal: prioriza similitud visual pero añade señal textual
-                                        fused_score = (alpha * visual_score) + (beta * text_sim)
+                                        
+                                        # Modelo ADITIVO: texto como boost sobre visual (nunca penaliza)
+                                        text_contribution = text_sim * text_boost_weight
+                                        fused_score = min(visual_score + text_contribution, 1.0)
 
                                         # Filtrar productos que caen bajo threshold tras fusión
                                         if fused_score < threshold:
@@ -2350,8 +2351,8 @@ def gpt4v_unified_search():
                                         p['_hybrid_similarity'] = {
                                             'visual': visual_score,
                                             'text_image': text_sim,
-                                            'alpha': alpha,
-                                            'beta': beta
+                                            'text_boost': text_contribution,
+                                            'boost_weight': text_boost_weight
                                         }
                                         products_after_fusion.append(p)
                                         fused_count += 1
@@ -2362,19 +2363,19 @@ def gpt4v_unified_search():
                                     if fused_count > 0:
                                         products_data.sort(key=lambda x: x['similarity_score'], reverse=True)
                                         if filtered_count > 0:
-                                            railway_log(f"   🔀 Fusion visual+texto aplicada a {fused_count} productos (α={alpha}, β={beta}), {filtered_count} eliminados por caer bajo threshold")
+                                            railway_log(f"   🔀 Boost textual aditivo aplicado a {fused_count} productos (peso={text_boost_weight}), {filtered_count} eliminados por threshold")
                                         else:
-                                            railway_log(f"   🔀 Fusion visual+texto aplicada a {fused_count} productos (α={alpha}, β={beta})")
+                                            railway_log(f"   🔀 Boost textual aditivo aplicado a {fused_count} productos (peso={text_boost_weight})")
 
                                         # Log top 20 productos post-fusión (para debug)
-                                        railway_log(f"   📊 Top-20 post-fusión:")
+                                        railway_log(f"   📊 Top-20 post-boost:")
                                         for idx, p in enumerate(products_data[:20], 1):
                                             hybrid = p.get('_hybrid_similarity', {})
                                             railway_log(
                                                 f"      {idx}. {p['name'][:55]}: "
-                                                f"fused={p['similarity_score']:.4f} "
-                                                f"(v={hybrid.get('visual', 0):.4f}, "
-                                                f"t={hybrid.get('text_image', 0):.4f})"
+                                                f"final={p['similarity_score']:.4f} "
+                                                f"(v={hybrid.get('visual', 0):.4f} + "
+                                                f"boost={hybrid.get('text_boost', 0):.4f})"
                                             )
 
                                         # Expandir pool para re-ranking (8x el límite final = 24 productos)
