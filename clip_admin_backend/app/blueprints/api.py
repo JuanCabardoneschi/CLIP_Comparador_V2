@@ -1970,11 +1970,19 @@ def gpt4v_unified_search():
 
         # Generar embedding de imagen query (usar CLIPProcessor como en el resto del sistema)
         start_embed = time.time()
-        
+
         start_load = time.time()
         image = load_image_from_source(image_data)
         railway_log(f"   ⏱️ Imagen cargada en {(time.time()-start_load):.3f}s")
-        
+
+        # Pre-resize para acelerar procesamiento (PIL thumbnail es mucho más rápido que processor resize)
+        # CLIP igual va a resize a 224x224, así que empezar desde 512x512 no pierde calidad
+        start_resize = time.time()
+        from PIL import Image as PILImage
+        if max(image.size) > 512:
+            image.thumbnail((512, 512), PILImage.Resampling.LANCZOS)
+            railway_log(f"   ⏱️ Pre-resize a {image.size[0]}x{image.size[1]} en {(time.time()-start_resize):.3f}s")
+
         start_model = time.time()
         model, processor = get_clip_model()
         railway_log(f"   ⏱️ Modelo obtenido en {(time.time()-start_model):.3f}s")
@@ -1983,11 +1991,11 @@ def gpt4v_unified_search():
             start_process = time.time()
             inputs = processor(images=image, return_tensors="pt")
             railway_log(f"   ⏱️ Imagen procesada en {(time.time()-start_process):.3f}s")
-            
+
             start_features = time.time()
             image_features = model.get_image_features(**inputs)
             railway_log(f"   ⏱️ Features extraídas en {(time.time()-start_features):.3f}s")
-            
+
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
             query_embedding = image_features.cpu().numpy().flatten()
 
