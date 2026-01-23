@@ -844,7 +844,10 @@
         const formData = new FormData();
         formData.append('image', file);
         formData.append('max_results_per_category', '8');
-        formData.append('similarity_threshold', '0.65');
+        // NO hardcodear threshold - dejar que el API use la config del cliente
+        if (window.CLIPWidget?.similarityThreshold) {
+            formData.append('similarity_threshold', window.CLIPWidget.similarityThreshold);
+        }
 
         showLoading();
 
