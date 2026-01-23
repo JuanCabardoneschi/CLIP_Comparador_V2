@@ -2182,8 +2182,9 @@ def gpt4v_unified_search():
                 for idx, (product, img) in enumerate(product_refs):
                     sim = float(similarities[idx])
 
-                    # Log de similitudes para TODAS las categorías
-                    railway_log(f"      → {product.name} (SKU: {product.sku}): similarity={sim:.4f}, threshold={threshold:.4f}, pass={'✅' if sim >= threshold else '❌'}")
+                    # Log detallado solo en modo VERBOSE
+                    from app.utils.logging_config import log, LogCategory
+                    log(LogCategory.SEARCH, f"      → {product.name} (SKU: {product.sku}): similarity={sim:.4f}, threshold={threshold:.4f}, pass={'✅' if sim >= threshold else '❌'}")
 
                     # Aplicar threshold
                     if sim >= threshold:
@@ -2337,7 +2338,7 @@ def gpt4v_unified_search():
 
                                         visual_score = p['similarity_score']
                                         text_sim = float(np.dot(img_vec, text_embedding))
-                                        
+
                                         # Modelo ADITIVO: texto como boost sobre visual (nunca penaliza)
                                         text_contribution = text_sim * text_boost_weight
                                         fused_score = min(visual_score + text_contribution, 1.0)

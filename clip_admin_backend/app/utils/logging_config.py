@@ -55,7 +55,7 @@ def get_current_log_level() -> LogLevel:
     """
     try:
         from app.utils.system_config import system_config
-        level_name = system_config.get('system', 'log_level', default='VERBOSE')
+        level_name = system_config.get('system', 'log_level', default='REQUEST_LIFECYCLE')
         return LogLevel[level_name]
     except Exception:
         # Fallback si hay error leyendo config
