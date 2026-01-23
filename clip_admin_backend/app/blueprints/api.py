@@ -1969,16 +1969,29 @@ def gpt4v_unified_search():
             return float(np.dot(a, b) / (na * nb))
 
         # Generar embedding de imagen query (usar CLIPProcessor como en el resto del sistema)
+        start_embed = time.time()
+        
+        start_load = time.time()
         image = load_image_from_source(image_data)
+        railway_log(f"   ⏱️ Imagen cargada en {(time.time()-start_load):.3f}s")
+        
+        start_model = time.time()
         model, processor = get_clip_model()
+        railway_log(f"   ⏱️ Modelo obtenido en {(time.time()-start_model):.3f}s")
 
         with torch.no_grad():
+            start_process = time.time()
             inputs = processor(images=image, return_tensors="pt")
+            railway_log(f"   ⏱️ Imagen procesada en {(time.time()-start_process):.3f}s")
+            
+            start_features = time.time()
             image_features = model.get_image_features(**inputs)
+            railway_log(f"   ⏱️ Features extraídas en {(time.time()-start_features):.3f}s")
+            
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
             query_embedding = image_features.cpu().numpy().flatten()
 
-        railway_log(f"🔍 Embedding generado, buscando productos...")
+        railway_log(f"🔍 Embedding generado en {(time.time()-start_embed):.3f}s total, buscando productos...")
 
         results_by_category = {}
         total_products_found = 0
