@@ -2699,6 +2699,12 @@ def text_search():
 
         try:
             requested_attrs = attr_info.get('attributes', {}) or {}
+            not_configured_attrs = attr_info.get('not_configured', [])  # 🆕 Obtener atributos no configurados
+
+            # 🆕 FILTRADO CRÍTICO: Excluir atributos no configurados de requested_attrs
+            if not_configured_attrs:
+                requested_attrs = {k: v for k, v in requested_attrs.items() if k.lower() not in [nc.lower() for nc in not_configured_attrs]}
+
             from app.utils.colors import normalize_color
 
             # Solo intentar normalizar tokens que NO sean categorías (evitar "delantal" → "bordo")
@@ -2770,7 +2776,18 @@ def text_search():
 
         # Calcular cumplimiento de atributos por producto
         requested_attrs = attr_info.get('attributes', {})
+        not_configured_attrs = attr_info.get('not_configured', [])  # 🆕 Obtener atributos no configurados
+
+        # 🆕 FILTRADO CRÍTICO: Excluir atributos no configurados de requested_attrs
+        # Si un atributo no está configurado en ProductAttributeConfig, NO lo usamos para filtrar
+        # Esto permite que el sistema haga búsqueda semántica sin fallar por atributos ausentes
+        if not_configured_attrs:
+            requested_attrs = {k: v for k, v in requested_attrs.items() if k.lower() not in [nc.lower() for nc in not_configured_attrs]}
+            log_verbose(LogCategory.SEARCH, f"🔄 Atributos no configurados excluidos: {not_configured_attrs}. Filtrando por: {list(requested_attrs.keys())}")
+
         requested_count = int(attr_info.get('requested_count', 0))
+        # 🆕 Ajustar requested_count si hubo atributos excluidos
+        requested_count = len(requested_attrs)
 
         # 🎨 NO agregamos detected_color_normalized a requested_attrs aquí
         # Lo manejaremos especialmente en el filtrado para buscar colores SIMILARES        # Formatear resultados
@@ -3071,7 +3088,7 @@ def text_search():
             client_id=client.id,
             attrs_requested=requested_attrs,
             contradictions=attr_info.get('contradictions', []),
-            not_configured=attr_info.get('not_configured', []),
+            not_configured=[],  # 🆕 NO mostrar error sobre atributos no configurados (ya fueron excluidos del filtrado)
             all_available_values=all_available_values,  # Valores disponibles para los atributos filtrados
             detected_color_token=detected_color_token,  # Token original detectado como color
             detected_color_normalized=detected_color_normalized  # Color normalizado por LLM
