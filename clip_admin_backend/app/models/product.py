@@ -17,6 +17,7 @@ class Product(db.Model):
     sku = db.Column(db.String(100))  # Código único del producto
     price = db.Column(db.Numeric(10, 2), nullable=True)
     stock = db.Column(db.Integer, default=0)
+    manage_stock = db.Column(db.Boolean, default=True)  # 🆕 De WooCommerce: si stock es gestionado (true) o ilimitado (false)
     tags = db.Column(db.Text)  # Tags separados por comas para búsqueda
     is_active = db.Column(db.Boolean, default=True)
 
@@ -53,6 +54,21 @@ class Product(db.Model):
     def image_count(self):
         """Obtiene el número total de imágenes del producto"""
         return self.images.count()
+
+    @property
+    def has_unlimited_stock(self):
+        """Devuelve True si el producto tiene stock ilimitado (manage_stock = False en WooCommerce)"""
+        return not self.manage_stock
+
+    @property
+    def stock_display(self):
+        """Devuelve representación del stock para mostrar en UI"""
+        if not self.manage_stock:
+            return "Ilimitado"
+        elif self.stock == 0:
+            return "Sin stock"
+        else:
+            return f"{self.stock} disponibles"
 
     @property
     def tag_list(self):
