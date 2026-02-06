@@ -136,7 +136,7 @@ def get_log_level():
         str: Nivel de logging (DEBUG, INFO, WARNING, ERROR)
     """
     if is_production():
-        return os.environ.get('LOG_LEVEL', 'INFO')
+        return os.environ.get('LOG_LEVEL', 'ERROR')
     else:
         return os.environ.get('LOG_LEVEL', 'DEBUG')
 
