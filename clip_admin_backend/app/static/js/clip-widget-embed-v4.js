@@ -267,6 +267,28 @@
             background: rgba(220, 38, 38, 1);
         }
 
+        /* Responsive: evitar que la X tape la foto */
+        @media (max-width: 1024px) {
+            .clip-preview.active {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            .clip-preview-container {
+                padding: 12px;
+            }
+            .clip-preview-img {
+                max-width: 240px;
+                max-height: 240px;
+            }
+            .clip-remove-btn {
+                top: 0;
+                right: 0;
+                width: 28px;
+                height: 28px;
+                transform: translate(50%, -50%);
+            }
+        }
+
         /* Search Button */
         .clip-search-btn {
             width: 100%;

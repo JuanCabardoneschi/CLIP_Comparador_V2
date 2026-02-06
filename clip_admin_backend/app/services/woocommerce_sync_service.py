@@ -245,13 +245,13 @@ class WooCommerceSyncService:
             sku = prod.get('sku') or None
             price = prod.get('price') or None
             permalink = prod.get('permalink') or None
-            
+
             # 🆕 MANEJO CORRECTO DE STOCK ILIMITADO EN WOOCOMMERCE
             # manage_stock=false significa "stock ilimitado" (no gestionado)
             # manage_stock=true + stock_quantity=N significa "stock limitado de N unidades"
             stock_q = prod.get('stock_quantity')
             manage_stock = prod.get('manage_stock', True)  # Por defecto True si no viene
-            
+
             # Determinar stock final según manage_stock
             if not manage_stock:
                 # Stock ILIMITADO (no gestionado) → usar -1 como indicador
@@ -310,6 +310,49 @@ class WooCommerceSyncService:
             logger.info(f"✅ [SYNC] Descarga completada: {images_processed} imágenes procesadas")
 
         return created, updated, attr_upserts, images_processed
+
+    def sync_stock_only(self) -> Dict:
+        """Re-sincroniza únicamente stock desde WooCommerce."""
+        updated = 0
+        missing = 0
+
+        products = self.api.get_all_products(status='publish')
+
+        for prod in products:
+            ext_id = str(prod.get('id'))
+            if not ext_id:
+                continue
+
+            product = Product.query.filter_by(client_id=self.client.id, external_id=ext_id).first()
+            if not product:
+                missing += 1
+                continue
+
+            stock_q = prod.get('stock_quantity')
+            manage_stock = prod.get('manage_stock', True)
+
+            if not manage_stock:
+                final_stock = -1
+            elif stock_q is not None:
+                final_stock = int(stock_q)
+            else:
+                final_stock = product.stock
+
+            product.stock = final_stock
+            product.manage_stock = bool(manage_stock)
+            product.is_active = prod.get('status', 'publish') == 'publish'
+            product.last_sync_at = datetime.utcnow()
+
+            db.session.add(product)
+            updated += 1
+
+        db.session.commit()
+
+        return {
+            'updated': updated,
+            'missing': missing,
+            'total': len(products)
+        }
 
     # ---------------- Helpers ----------------
 
