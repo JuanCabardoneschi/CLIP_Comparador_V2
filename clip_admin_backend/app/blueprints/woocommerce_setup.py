@@ -476,6 +476,56 @@ def resync_woocommerce(client_id):
             'error': str(e)
         }), 500
 
+
+@bp.route('/resync-stock/<client_id>', methods=['POST'])
+def resync_woocommerce_stock(client_id):
+    """
+    Re-sincroniza SOLO stock desde WooCommerce (sin borrar productos).
+
+    Response:
+    {
+        "success": true,
+        "updated": 123,
+        "missing": 0,
+        "total": 123
+    }
+    """
+    try:
+        client = Client.query.get(client_id)
+        if not client:
+            return jsonify({
+                'success': False,
+                'error': 'Cliente no encontrado'
+            }), 404
+
+        integration = WooCommerceIntegration.query.filter_by(
+            client_id=client_id,
+            is_active=True
+        ).first()
+
+        if not integration:
+            return jsonify({
+                'success': False,
+                'error': 'No hay integración WooCommerce activa para este cliente'
+            }), 404
+
+        from app.services.woocommerce_sync_service import WooCommerceSyncService
+
+        service = WooCommerceSyncService(client_id)
+        result = service.sync_stock_only()
+
+        return jsonify({
+            'success': True,
+            **result
+        })
+
+    except Exception as e:
+        logger.error(f"Error re-sincronizando stock WooCommerce: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @bp.route('/resync-status/<client_id>', methods=['GET'])
 def resync_status(client_id):
     """

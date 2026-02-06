@@ -109,6 +109,10 @@
                         {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>
                     <i class="bi bi-arrow-clockwise"></i> Re-sincronizar Ahora
                 </button>
+                <button type="button" class="btn btn-outline-warning" id="btn-resync-stock" data-client-id="{{ client.id }}"
+                        {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>
+                    <i class="bi bi-box-seam"></i> Sincronizar solo stock
+                </button>
                 <button type="button" class="btn btn-info" id="btn-resync-dryrun" data-client-id="{{ client.id }}"
                         {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>
                     <i class="bi bi-eye"></i> Vista Previa
@@ -163,6 +167,18 @@ document.getElementById('btn-resync-dryrun').addEventListener('click', function(
     alert('Vista previa: Este botón mostraría un análisis sin hacer cambios (próxima versión)');
 });
 
+document.getElementById('btn-resync-stock').addEventListener('click', function() {
+    if (this.disabled) {
+        alert('Una resincronización ya está en progreso');
+        return;
+    }
+
+    const message = '⚠️ Esto actualizará solo el stock desde WooCommerce.\n\n¿Continuar?';
+    if (!confirm(message)) return;
+
+    startResyncStock();
+});
+
 function startResync() {
     const btn = document.getElementById('btn-resync');
     const msgDiv = document.getElementById('resync-message');
@@ -212,6 +228,49 @@ function startResync() {
         msgDiv.style.display = 'block';
         btn.disabled = false;
         console.error('ERROR COMPLETO:', e);
+    });
+}
+
+function startResyncStock() {
+    const btn = document.getElementById('btn-resync-stock');
+    const msgDiv = document.getElementById('resync-message');
+
+    btn.disabled = true;
+
+    fetch(`/woocommerce/resync-stock/${CLIENT_ID}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => {
+        if (!r.ok) {
+            return r.text().then(text => {
+                throw new Error(`HTTP ${r.status}: ${text.substring(0, 200)}`);
+            });
+        }
+        return r.json();
+    })
+    .then(data => {
+        if (data.success) {
+            msgDiv.className = 'alert alert-success';
+            msgDiv.innerHTML = `
+                <strong>Stock sincronizado.</strong>
+                <div class="mt-1"><small>Actualizados: ${data.updated} · Faltantes: ${data.missing} · Total: ${data.total}</small></div>
+            `;
+            msgDiv.style.display = 'block';
+        } else {
+            msgDiv.className = 'alert alert-danger';
+            msgDiv.innerHTML = `<strong>Error:</strong> ${data.error || 'Error desconocido'}`;
+            msgDiv.style.display = 'block';
+        }
+    })
+    .catch(e => {
+        msgDiv.className = 'alert alert-danger';
+        msgDiv.innerHTML = `<strong>Error de conexión:</strong> ${e.message}`;
+        msgDiv.style.display = 'block';
+        console.error('ERROR COMPLETO:', e);
+    })
+    .finally(() => {
+        btn.disabled = false;
     });
 }
 
