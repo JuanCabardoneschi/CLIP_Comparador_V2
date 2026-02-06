@@ -187,7 +187,14 @@ class WooCommerceAPIClient:
             'per_page': min(per_page, 100),  # Max 100
             **filters
         }
-        return self._make_request('GET', '/products', params=params)
+        response = self._make_request('GET', '/products', params=params)
+        if isinstance(response, dict):
+            if isinstance(response.get('data'), list):
+                return response.get('data', [])
+            if isinstance(response.get('products'), list):
+                return response.get('products', [])
+            return []
+        return response if isinstance(response, list) else []
 
     def get_product(self, product_id: int) -> Dict:
         """Obtiene un producto por ID"""
@@ -294,6 +301,10 @@ class WooCommerceAPIClient:
         while True:
             logger.info(f"Obteniendo productos - página {page}")
             products = self.list_products(page=page, per_page=per_page, status=status, **filters)
+
+            if not isinstance(products, list):
+                logger.error(f"Respuesta inesperada de WooCommerce (products): {type(products)}")
+                break
 
             if not products:
                 break
