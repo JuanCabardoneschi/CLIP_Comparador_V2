@@ -13,6 +13,8 @@
  * Text Domain: clip-visual-search
  */
 
+define('CLIP_VS_PLUGIN_VERSION', '1.0.1');
+
 if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
 }
@@ -69,6 +71,7 @@ class CLIP_Visual_Search_Settings {
         register_setting('clip_vs_settings', 'clip_vs_server_url');
         register_setting('clip_vs_settings', 'clip_vs_button_text');
         register_setting('clip_vs_settings', 'clip_vs_button_position');
+        register_setting('clip_vs_settings', 'clip_vs_widget_version');
     }
 
     public function render_settings_page() {
@@ -120,6 +123,15 @@ class CLIP_Visual_Search_Settings {
                             </select>
                         </td>
                     </tr>
+                    <tr>
+                        <th scope="row"><label for="clip_vs_widget_version">Versión del Widget</label></th>
+                        <td>
+                            <input type="text" id="clip_vs_widget_version" name="clip_vs_widget_version"
+                                   value="<?php echo esc_attr(get_option('clip_vs_widget_version', CLIP_VS_PLUGIN_VERSION)); ?>"
+                                   class="regular-text">
+                            <p class="description">Usar para forzar recarga del JS (ej: 1.0.1)</p>
+                        </td>
+                    </tr>
                 </table>
                 <?php submit_button('Guardar Configuración'); ?>
             </form>
@@ -152,6 +164,7 @@ function clip_vs_enqueue_widget() {
         // Configuración del widget
         $api_key = get_option('clip_vs_api_key');
         $server_url = get_option('clip_vs_server_url', 'https://clipcomparadorv2-production.up.railway.app');
+        $widget_version = get_option('clip_vs_widget_version', CLIP_VS_PLUGIN_VERSION);
 
         // Inyectar configuración
         wp_add_inline_script('jquery', "
@@ -166,7 +179,7 @@ function clip_vs_enqueue_widget() {
             'clip-widget-v4',
             $server_url . '/static/js/clip-widget-embed-v4.js',
             array('jquery'),
-            '4.0',
+            $widget_version,
             true
         );
 
@@ -258,6 +271,7 @@ register_activation_hook(__FILE__, function() {
     add_option('clip_vs_server_url', 'https://clipcomparadorv2-production.up.railway.app');
     add_option('clip_vs_button_text', '🔍 Buscar por Imagen');
     add_option('clip_vs_button_position', 'woocommerce_before_shop_loop');
+    add_option('clip_vs_widget_version', CLIP_VS_PLUGIN_VERSION);
 });
 
 register_deactivation_hook(__FILE__, function() {
