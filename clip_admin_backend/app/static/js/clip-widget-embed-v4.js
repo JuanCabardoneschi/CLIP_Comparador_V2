@@ -1212,8 +1212,8 @@
                                     ${attrBadges ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${attrBadges}</div>` : ''}
                                     ${productLinkHtml}
                                     ${p.stock !== undefined ? `
-                                        <div class="clip-product-stock ${p.stock > 0 ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
-                                            ${p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock'}
+                                        <div class="clip-product-stock ${(p.stock > 0 || p.stock === -1) ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
+                                            ${p.stock === -1 ? '✓ Stock: Ilimitado' : (p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock')}
                                         </div>
                                     ` : ''}
                                 </div>
@@ -1413,8 +1413,8 @@
                         </div>
                         ${allBadges ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${allBadges}</div>` : ''}
                         ${prod.stock !== undefined ? `
-                            <div class="clip-product-stock ${prod.stock > 0 ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
-                                ${prod.stock > 0 ? `✓ Stock: ${prod.stock}` : '✗ Sin stock'}
+                            <div class="clip-product-stock ${(prod.stock > 0 || prod.stock === -1) ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
+                                ${prod.stock === -1 ? '✓ Stock: Ilimitado' : (prod.stock > 0 ? `✓ Stock: ${prod.stock}` : '✗ Sin stock')}
                             </div>
                         ` : ''}
                         ${productLinkHtml}
