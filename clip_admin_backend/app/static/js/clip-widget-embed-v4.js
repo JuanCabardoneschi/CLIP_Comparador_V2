@@ -522,18 +522,28 @@
             flex-direction: column;
             flex: 1;
         }
+        .clip-product-meta {
+            flex: 0 0 auto;
+        }
         .clip-product-name {
             font-size: 0.95rem;
             font-weight: 600;
             color: #1e293b;
             margin-bottom: 0.5rem;
             line-height: 1.4;
+            min-height: calc(1.4em * 3);
         }
         .clip-product-price {
             font-size: 1.1rem;
             font-weight: 700;
             color: #667eea;
             margin-bottom: 0.5rem;
+        }
+        .clip-product-actions {
+            margin-top: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
         .clip-product-stock {
             font-size: 0.85rem;
@@ -1205,17 +1215,21 @@
                                     </div>
                                 </div>
                                 <div class="clip-product-info">
-                                    <div class="clip-product-name">${p.name}</div>
-                                    <div class="clip-product-price">
-                                        ${p.price ? `$${p.price.toFixed(2)}` : 'Consultar'}
-                                    </div>
-                                    ${attrBadges ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${attrBadges}</div>` : ''}
-                                    ${productLinkHtml}
-                                    ${p.stock !== undefined ? `
-                                        <div class="clip-product-stock ${(p.stock > 0 || p.stock === -1) ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
-                                            ${p.stock === -1 ? '✓ Stock: Ilimitado' : (p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock')}
+                                    <div class="clip-product-meta">
+                                        <div class="clip-product-name">${p.name}</div>
+                                        <div class="clip-product-price">
+                                            ${p.price ? `$${p.price.toFixed(2)}` : 'Consultar'}
                                         </div>
-                                    ` : ''}
+                                        ${attrBadges ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${attrBadges}</div>` : ''}
+                                    </div>
+                                    <div class="clip-product-actions">
+                                        ${productLinkHtml}
+                                        ${p.stock !== undefined ? `
+                                            <div class="clip-product-stock ${(p.stock > 0 || p.stock === -1) ? 'in-stock' : 'out-stock'}">
+                                                ${p.stock === -1 ? '✓ Stock: Ilimitado' : (p.stock > 0 ? `✓ Stock: ${p.stock}` : '✗ Sin stock')}
+                                            </div>
+                                        ` : ''}
+                                    </div>
                                 </div>
                             </div>`;
                         }).join('')}
@@ -1407,17 +1421,21 @@
                         <span class="clip-badge-percentage">${matchPercentage}%</span>
                     </div>
                     <div class="clip-product-info">
-                        <div class="clip-product-name">${prod.name || 'Producto'}</div>
-                        <div class="clip-product-price">
-                            ${(prod.price !== null && prod.price !== undefined && typeof prod.price === 'number') ? `$${prod.price.toFixed(2)}` : 'Consultar'}
-                        </div>
-                        ${allBadges ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${allBadges}</div>` : ''}
-                        ${prod.stock !== undefined ? `
-                            <div class="clip-product-stock ${(prod.stock > 0 || prod.stock === -1) ? 'in-stock' : 'out-stock'}" style="margin-top:auto;">
-                                ${prod.stock === -1 ? '✓ Stock: Ilimitado' : (prod.stock > 0 ? `✓ Stock: ${prod.stock}` : '✗ Sin stock')}
+                        <div class="clip-product-meta">
+                            <div class="clip-product-name">${prod.name || 'Producto'}</div>
+                            <div class="clip-product-price">
+                                ${(prod.price !== null && prod.price !== undefined && typeof prod.price === 'number') ? `$${prod.price.toFixed(2)}` : 'Consultar'}
                             </div>
-                        ` : ''}
-                        ${productLinkHtml}
+                            ${allBadges ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">${allBadges}</div>` : ''}
+                        </div>
+                        <div class="clip-product-actions">
+                            ${productLinkHtml}
+                            ${prod.stock !== undefined ? `
+                                <div class="clip-product-stock ${(prod.stock > 0 || prod.stock === -1) ? 'in-stock' : 'out-stock'}">
+                                    ${prod.stock === -1 ? '✓ Stock: Ilimitado' : (prod.stock > 0 ? `✓ Stock: ${prod.stock}` : '✗ Sin stock')}
+                                </div>
+                            ` : ''}
+                        </div>
                     </div>
                 </div>
             `;
