@@ -961,6 +961,11 @@ def _process_pending_background(client_id, app):
             for i in range(0, total_images, batch_size):
                 batch = pending_images[i:i + batch_size]
 
+                log_embedding(
+                    f"[BACKGROUND] Lote {i // batch_size + 1}: procesando {len(batch)} imagenes "
+                    f"({processed_count}/{total_images} completadas)"
+                )
+
                 # Pre-descargar imágenes en paralelo
                 log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] Pre-descargando {len(batch)} imagenes en paralelo...")
                 preloaded_cache = preload_images_parallel(batch, max_workers=5)
@@ -1029,6 +1034,10 @@ def _process_pending_background(client_id, app):
 
                 # Commit por lote
                 db.session.commit()
+                log_embedding(
+                    f"[BACKGROUND] Lote {i // batch_size + 1} guardado: "
+                    f"{processed_count}/{total_images} imagenes procesadas"
+                )
                 log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] Lote guardado: {processed_count}/{total_images} imagenes procesadas")
 
                 # Actualizar centroides de categorías afectadas
@@ -1097,6 +1106,11 @@ def process_pending():
         for i in range(0, total_images, batch_size):
             batch = pending_images[i:i + batch_size]
 
+            log_embedding(
+                f"Lote {i // batch_size + 1}: procesando {len(batch)} imagenes "
+                f"({processed_count}/{total_images} completadas)"
+            )
+
             for image in batch:
                 try:
                     log_verbose(LogCategory.EMBEDDING, f"Procesando {image.filename}...")
@@ -1136,6 +1150,10 @@ def process_pending():
 
             # Commit por lote
             db.session.commit()
+            log_embedding(
+                f"Lote {i // batch_size + 1} guardado: "
+                f"{processed_count}/{total_images} imagenes procesadas"
+            )
             log_verbose(LogCategory.EMBEDDING, f"Lote guardado: {processed_count}/{total_images} imagenes procesadas")
 
         log_embedding(f"Procesamiento completado: {processed_count}/{total_images} imagenes procesadas exitosamente")

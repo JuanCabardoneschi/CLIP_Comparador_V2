@@ -680,7 +680,7 @@ class WooCommerceSyncService:
                 hash_sha256=url_hash,
                 is_primary=(idx == 0),
                 display_order=idx,
-                upload_status='completed',
+                upload_status='pending',
                 is_processed=False,
             )
             db.session.add(image)
