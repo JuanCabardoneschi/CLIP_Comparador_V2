@@ -238,6 +238,8 @@ class WooCommerceSyncService:
         logger.info(f"[WOO SYNC] Productos recibidos: {len(products)}")
         attr_values = {}  # key -> set(values)
 
+        batch_commit_size = 20
+
         for idx, prod in enumerate(products, 1):
             ext_id = str(prod.get('id'))
             if not ext_id:
@@ -314,7 +316,12 @@ class WooCommerceSyncService:
                 images_processed += images_count
                 embeddings_generated += embeddings_count
 
+            if idx % batch_commit_size == 0:
+                db.session.commit()
+                logger.info(f"[WOO SYNC] Commit por lote: {idx}/{len(products)} productos")
+
         db.session.commit()
+        logger.info(f"[WOO SYNC] Commit final: {len(products)} productos")
 
         # Upsert de configs de atributos según valores encontrados en productos
         for key, values in attr_values.items():
@@ -759,6 +766,7 @@ class WooCommerceSyncService:
         try:
             response = requests.get(url, timeout=15, verify=False)
             if response.status_code != 200:
+                logger.warning(f"[WOO SYNC] Error descargando imagen ({response.status_code}): {url}")
                 return None, None, '', 0, 0, 0
 
             image_bytes = response.content
@@ -787,7 +795,8 @@ class WooCommerceSyncService:
             base64_thumb = base64.b64encode(thumb_buffer.read()).decode('utf-8')
 
             return base64_full, base64_thumb, mime_type, width, height, size_bytes
-        except Exception:
+        except Exception as e:
+            logger.error(f"[WOO SYNC] Excepción descargando imagen: {url} - {e}")
             return None, None, '', 0, 0, 0
 
     # ---------------- Embeddings y centroides ----------------
