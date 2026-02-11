@@ -330,6 +330,13 @@ function startVerifySync() {
                 <div><small>
                     Integridad → Productos sin imágenes: ${i.products_without_images} · Imágenes sin embeddings: ${i.images_unprocessed}
                 </small></div>
+                ${data.details ? `
+                <hr class="my-2">
+                <div><small><strong>Detalles (muestra)</strong></small></div>
+                <div><small>Faltantes (Woo → no en BD): ${(data.details.missing_products || []).map(p => p ? `${p.name} (#${p.id})` : '').filter(Boolean).join(' · ') || '—'}</small></div>
+                <div><small>Extras (BD → no en Woo): ${(data.details.extra_products || []).map(p => p ? `${p.name} (#${p.id})` : '').filter(Boolean).join(' · ') || '—'}</small></div>
+                <div><small>Sin imágenes: ${(data.details.products_without_images || []).map(p => p ? `${p.name} (#${p.external_id || p.id})` : '').filter(Boolean).join(' · ') || '—'}</small></div>
+                ` : ''}
             `;
             msgDiv.style.display = 'block';
         } else {

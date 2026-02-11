@@ -375,8 +375,25 @@ class WooCommerceSyncService:
         missing_categories = sorted(list(woo_category_ids - local_category_ids))
         extra_categories = sorted(list(local_category_ids - woo_category_ids))
 
-        products_without_images = [p.id for p in local_products if p.images.count() == 0]
+        products_without_images = [p for p in local_products if p.images.count() == 0]
         images_unprocessed = [img.id for img in local_images if not img.is_processed]
+
+        woo_product_map = {
+            str(p.get('id')): {
+                'id': str(p.get('id')),
+                'name': p.get('name') or 'Sin nombre',
+                'status': p.get('status')
+            }
+            for p in woo_products if p.get('id') is not None
+        }
+        local_product_map = {
+            str(p.external_id): {
+                'id': str(p.external_id),
+                'name': p.name,
+                'is_active': p.is_active
+            }
+            for p in local_products if p.external_id
+        }
 
         return {
             'counts': {
@@ -404,6 +421,12 @@ class WooCommerceSyncService:
                 'extra_product_ids': extra_products[:50],
                 'missing_category_ids': missing_categories[:50],
                 'extra_category_ids': extra_categories[:50],
+                'missing_products': [woo_product_map.get(pid) for pid in missing_products[:20] if pid in woo_product_map],
+                'extra_products': [local_product_map.get(pid) for pid in extra_products[:20] if pid in local_product_map],
+                'products_without_images': [
+                    {'id': str(p.id), 'external_id': p.external_id, 'name': p.name}
+                    for p in products_without_images[:20]
+                ]
             }
         }
 
