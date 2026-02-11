@@ -395,6 +395,11 @@ class WooCommerceSyncService:
             for p in local_products if p.external_id
         }
 
+        webhooks = self.api.list_webhooks()
+        webhook_topics = [w.get('topic') for w in webhooks if isinstance(w, dict)]
+
+        has_product_created = 'product.created' in webhook_topics
+
         return {
             'counts': {
                 'woo_products': len(woo_product_ids),
@@ -416,6 +421,10 @@ class WooCommerceSyncService:
                 'products_without_images': len(products_without_images),
                 'images_unprocessed': len(images_unprocessed),
             },
+            'webhooks': {
+                'topics': webhook_topics,
+                'has_product_created': has_product_created,
+            },
             'details': {
                 'missing_product_ids': missing_products[:50],
                 'extra_product_ids': extra_products[:50],
@@ -428,6 +437,87 @@ class WooCommerceSyncService:
                     for p in products_without_images[:20]
                 ]
             }
+        }
+
+    def verify_products_by_ids(self, product_ids: List[int]) -> Dict:
+        """Verifica en WooCommerce y BD local un conjunto de IDs externos."""
+        results = []
+
+        for pid in product_ids:
+            try:
+                woo_product = self.api.get_product(int(pid))
+                woo_found = True
+            except Exception as e:
+                results.append({
+                    'id': str(pid),
+                    'woo_found': False,
+                    'error': str(e)
+                })
+                continue
+
+            local_product = Product.query.filter_by(
+                client_id=self.client.id,
+                external_id=str(pid)
+            ).first()
+
+            results.append({
+                'id': str(pid),
+                'woo_found': woo_found,
+                'woo_status': woo_product.get('status'),
+                'woo_name': woo_product.get('name'),
+                'woo_images': len(woo_product.get('images') or []),
+                'woo_categories': [c.get('id') for c in (woo_product.get('categories') or [])],
+                'local_found': bool(local_product),
+                'local_is_active': local_product.is_active if local_product else None,
+                'local_category_id': str(local_product.category_id) if local_product else None,
+                'local_images': local_product.images.count() if local_product else 0,
+            })
+
+        return {
+            'items': results,
+            'total': len(results)
+        }
+
+    def sync_missing_images_only(self) -> Dict:
+        """Sincroniza solo imágenes faltantes (productos sin imágenes locales)."""
+        from sqlalchemy import func
+
+        woo_products = self.api.get_all_products(status='publish')
+        woo_map = {
+            str(p.get('id')): p
+            for p in woo_products if p.get('id') is not None
+        }
+
+        products_without_images = (
+            db.session.query(Product)
+            .outerjoin(Image, Image.product_id == Product.id)
+            .filter(Product.client_id == self.client.id)
+            .group_by(Product.id)
+            .having(func.count(Image.id) == 0)
+            .all()
+        )
+
+        processed_products = 0
+        images_added = 0
+
+        for product in products_without_images:
+            ext_id = str(product.external_id) if product.external_id else None
+            if not ext_id or ext_id not in woo_map:
+                continue
+
+            images_data = woo_map[ext_id].get('images', []) or []
+            if not images_data:
+                continue
+
+            images_added += self._sync_product_images(product, images_data)
+            processed_products += 1
+
+        db.session.commit()
+
+        return {
+            'products_without_images': len(products_without_images),
+            'products_processed': processed_products,
+            'images_added': images_added
         }
 
     # ---------------- Helpers ----------------

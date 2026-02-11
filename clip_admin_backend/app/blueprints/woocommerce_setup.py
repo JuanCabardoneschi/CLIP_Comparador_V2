@@ -566,6 +566,94 @@ def verify_woocommerce_sync(client_id):
             'error': str(e)
         }), 500
 
+
+@bp.route('/verify-products/<client_id>', methods=['POST'])
+def verify_woocommerce_products(client_id):
+    """Verifica IDs de productos específicos en WooCommerce vs BD local."""
+    try:
+        client = Client.query.get(client_id)
+        if not client:
+            return jsonify({
+                'success': False,
+                'error': 'Cliente no encontrado'
+            }), 404
+
+        integration = WooCommerceIntegration.query.filter_by(
+            client_id=client_id,
+            is_active=True
+        ).first()
+
+        if not integration:
+            return jsonify({
+                'success': False,
+                'error': 'No hay integración WooCommerce activa para este cliente'
+            }), 404
+
+        data = request.get_json() or {}
+        product_ids = data.get('product_ids', [])
+        if not isinstance(product_ids, list) or not product_ids:
+            return jsonify({
+                'success': False,
+                'error': 'product_ids requerido (lista de IDs)'
+            }), 400
+
+        from app.services.woocommerce_sync_service import WooCommerceSyncService
+
+        service = WooCommerceSyncService(client_id)
+        result = service.verify_products_by_ids(product_ids)
+
+        return jsonify({
+            'success': True,
+            **result
+        })
+
+    except Exception as e:
+        logger.error(f"Error verificando productos WooCommerce: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@bp.route('/sync-missing-images/<client_id>', methods=['POST'])
+def sync_missing_images_woocommerce(client_id):
+    """Sincroniza solo imágenes faltantes (productos sin imágenes locales)."""
+    try:
+        client = Client.query.get(client_id)
+        if not client:
+            return jsonify({
+                'success': False,
+                'error': 'Cliente no encontrado'
+            }), 404
+
+        integration = WooCommerceIntegration.query.filter_by(
+            client_id=client_id,
+            is_active=True
+        ).first()
+
+        if not integration:
+            return jsonify({
+                'success': False,
+                'error': 'No hay integración WooCommerce activa para este cliente'
+            }), 404
+
+        from app.services.woocommerce_sync_service import WooCommerceSyncService
+
+        service = WooCommerceSyncService(client_id)
+        result = service.sync_missing_images_only()
+
+        return jsonify({
+            'success': True,
+            **result
+        })
+
+    except Exception as e:
+        logger.error(f"Error sincronizando imágenes faltantes: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @bp.route('/resync-status/<client_id>', methods=['GET'])
 def resync_status(client_id):
     """
