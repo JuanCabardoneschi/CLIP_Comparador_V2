@@ -246,8 +246,7 @@ class WooCommerceSyncService:
             if not ext_id:
                 continue
 
-            if idx <= 5 or idx % 50 == 0:
-                logger.info(f"[WOO SYNC] Procesando producto {idx}/{len(products)} (ext_id={ext_id})")
+            log_system(f"[WOO SYNC] Procesando producto {idx}/{len(products)} (ext_id={ext_id})")
 
             category_id = self._resolve_category_id(prod.get('categories', []))
             if not category_id:
@@ -311,8 +310,7 @@ class WooCommerceSyncService:
             # Sincronizar imágenes del producto si está habilitado
             if sync_images:
                 images_data = prod.get('images', []) or []
-                if images_data:
-                    logger.info(f"[WOO SYNC] Producto {ext_id} imágenes: {len(images_data)}")
+                log_system(f"[WOO SYNC] Producto {ext_id} imágenes: {len(images_data)}")
                 images_count, embeddings_count = self._sync_product_images(product, images_data)
                 images_processed += images_count
                 embeddings_generated += embeddings_count
@@ -674,6 +672,8 @@ class WooCommerceSyncService:
             if not source_url:
                 continue
 
+            log_system(f"[WOO SYNC] Imagen {idx + 1}/{len(images_data)} producto {product.external_id}: {source_url}")
+
             url_hash = hashlib.sha256(source_url.encode()).hexdigest()
 
             existing_image = Image.query.filter_by(
@@ -734,8 +734,7 @@ class WooCommerceSyncService:
             db.session.add(image)
             processed += 1
 
-            if processed <= 5:
-                logger.info(f"[WOO SYNC] Imagen {processed} descargada ({size_bytes} bytes) para producto {product.external_id}")
+            log_system(f"[WOO SYNC] Imagen descargada ({size_bytes} bytes) para producto {product.external_id}")
 
             if self._generate_embedding_for_image(image, base64_thumb):
                 embeddings_generated += 1
@@ -748,7 +747,7 @@ class WooCommerceSyncService:
     def _generate_embedding_for_image(self, image: Image, image_source: str) -> bool:
         try:
             from app.blueprints.embeddings import generate_clip_embedding
-
+            log_system(f"[WOO SYNC] Generando embedding para imagen {image.id}")
             embedding, _metadata = generate_clip_embedding(image_source, image)
             if embedding is None:
                 raise Exception("No se pudo generar embedding")
@@ -757,10 +756,12 @@ class WooCommerceSyncService:
             image.is_processed = True
             image.upload_status = 'completed'
             image.error_message = None
+            log_system(f"[WOO SYNC] Embedding generado para imagen {image.id}")
             return True
         except Exception as e:
             image.upload_status = 'failed'
             image.error_message = str(e)
+            log_system(f"[WOO SYNC] Error generando embedding para imagen {image.id}: {e}")
             return False
 
     def _download_and_convert_image(self, url: str, thumb_size: Tuple[int, int] = (300, 300)) -> Tuple[Optional[str], Optional[str], str, int, int, int]:

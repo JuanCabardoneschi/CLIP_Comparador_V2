@@ -9,6 +9,7 @@ from requests.auth import HTTPBasicAuth
 import time
 
 logger = logging.getLogger(__name__)
+from app.utils.logging_config import log_system
 
 class WooCommerceAPIError(Exception):
     """Excepción personalizada para errores de API de WooCommerce"""
@@ -88,6 +89,8 @@ class WooCommerceAPIClient:
 
         url = f"{self.base_url}{endpoint}"
 
+        log_system(f"[WOO API] {method} {url} params={params or {}}")
+
         for attempt in range(max_retries):
             try:
                 response = requests.request(
@@ -100,6 +103,8 @@ class WooCommerceAPIClient:
                     verify=self.verify_ssl,
                     timeout=30
                 )
+
+                log_system(f"[WOO API] RESP {response.status_code} {endpoint}")
 
                 # Log de request
                 logger.debug(f"WooCommerce API: {method} {endpoint} → {response.status_code}")
