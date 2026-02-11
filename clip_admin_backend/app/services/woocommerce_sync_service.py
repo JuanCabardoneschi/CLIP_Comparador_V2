@@ -151,11 +151,13 @@ class WooCommerceSyncService:
         updated = 0
         categories = self.api.get_all_categories()
 
-        for cat in categories:
+        for idx, cat in enumerate(categories, 1):
             ext_id = str(cat.get('id'))
             parent_ext = str(cat.get('parent')) if cat.get('parent') else None
             name = cat.get('name') or 'Sin nombre'
             slug = cat.get('slug') or None
+
+            log_system(f"[WOO SYNC] Categoría {idx}/{len(categories)} ext_id={ext_id}")
 
             existing = Category.query.filter_by(client_id=self.client.id, external_id=ext_id).first()
 
@@ -185,7 +187,8 @@ class WooCommerceSyncService:
                 existing.last_sync_at = datetime.utcnow()
                 updated += 1
 
-        db.session.commit()
+            db.session.commit()
+            log_system(f"[WOO SYNC] Categoría guardada ext_id={ext_id}")
         return created, updated
 
     # ---------------- Atributos ----------------
@@ -193,16 +196,16 @@ class WooCommerceSyncService:
     def sync_attributes(self) -> int:
         """Atributos globales de WooCommerce → ProductAttributeConfig."""
         upserts = 0
-        try:
-            attributes = self.api.list_attributes()
-        except Exception:
-            attributes = []
+        log_system("[WOO SYNC] Listando atributos")
+        attributes = self.api.list_attributes()
 
-        for attr in attributes:
+        for idx, attr in enumerate(attributes, 1):
             key = attr.get('slug') or attr.get('name')
             label = attr.get('name') or key
             if not key:
                 continue
+
+            log_system(f"[WOO SYNC] Atributo {idx}/{len(attributes)} key={key}")
 
             config = ProductAttributeConfig.query.filter_by(client_id=self.client.id, key=key).first()
             if not config:
@@ -220,7 +223,8 @@ class WooCommerceSyncService:
                 config.label = label
             upserts += 1
 
-        db.session.commit()
+            db.session.commit()
+            log_system(f"[WOO SYNC] Atributo guardado key={key}")
         return upserts
 
     # ---------------- Productos ----------------
@@ -239,8 +243,6 @@ class WooCommerceSyncService:
         log_system(f"[WOO SYNC] Productos recibidos: {len(products)}")
         attr_values = {}  # key -> set(values)
 
-        batch_commit_size = 20
-
         for idx, prod in enumerate(products, 1):
             ext_id = str(prod.get('id'))
             if not ext_id:
@@ -250,7 +252,7 @@ class WooCommerceSyncService:
 
             category_id = self._resolve_category_id(prod.get('categories', []))
             if not category_id:
-                # Sin categoría válida, omitir
+                log_system(f"[WOO SYNC] Producto sin categoría válida ext_id={ext_id}")
                 continue
 
             product = Product.query.filter_by(client_id=self.client.id, external_id=ext_id).first()
@@ -306,6 +308,8 @@ class WooCommerceSyncService:
             product.last_sync_at = datetime.utcnow()
 
             db.session.add(product)
+            db.session.commit()
+            log_system(f"[WOO SYNC] Producto guardado ext_id={ext_id}")
 
             # Sincronizar imágenes del producto si está habilitado
             if sync_images:
@@ -315,18 +319,9 @@ class WooCommerceSyncService:
                 images_processed += images_count
                 embeddings_generated += embeddings_count
 
-            if idx % batch_commit_size == 0:
-                db.session.commit()
-                logger.info(f"[WOO SYNC] Commit por lote: {idx}/{len(products)} productos")
-
-        db.session.commit()
-        logger.info(f"[WOO SYNC] Commit final: {len(products)} productos")
-
         # Upsert de configs de atributos según valores encontrados en productos
         for key, values in attr_values.items():
             attr_upserts += self._upsert_attribute_config(key, values)
-
-        db.session.commit()
 
         if sync_images and images_processed > 0:
             logger.info(f"✅ [SYNC] Descarga completada: {images_processed} imágenes procesadas")
@@ -670,7 +665,7 @@ class WooCommerceSyncService:
         for idx, img_data in enumerate(images_data):
             source_url = img_data.get('src')
             if not source_url:
-                continue
+                raise ValueError(f"Imagen sin src en producto {product.external_id}")
 
             log_system(f"[WOO SYNC] Imagen {idx + 1}/{len(images_data)} producto {product.external_id}: {source_url}")
 
@@ -697,12 +692,14 @@ class WooCommerceSyncService:
                     existing_image.upload_status = 'failed'
                     existing_image.error_message = 'No hay fuente de imagen disponible'
                     db.session.add(existing_image)
-                    continue
+                    db.session.commit()
+                    raise ValueError(f"No hay fuente de imagen para {existing_image.id}")
 
-                if self._generate_embedding_for_image(existing_image, image_source):
-                    embeddings_generated += 1
-
+                self._generate_embedding_for_image(existing_image, image_source)
                 db.session.add(existing_image)
+                db.session.commit()
+                log_system(f"[WOO SYNC] Imagen existente procesada {existing_image.id}")
+                embeddings_generated += 1
                 continue
 
             t_start = time.time()
@@ -710,8 +707,7 @@ class WooCommerceSyncService:
             t_download = time.time()
 
             if not base64_thumb:
-                logger.warning(f"[WOO SYNC] Imagen sin thumbnail para producto {product.external_id}: {source_url}")
-                continue
+                raise ValueError(f"Imagen sin thumbnail para producto {product.external_id}: {source_url}")
 
             image = Image(
                 client_id=self.client.id,
@@ -734,72 +730,74 @@ class WooCommerceSyncService:
             db.session.add(image)
             processed += 1
 
+            db.session.commit()
+            log_system(f"[WOO SYNC] Imagen guardada {image.id} producto {product.external_id}")
+
             log_system(f"[WOO SYNC] Imagen descargada ({size_bytes} bytes) para producto {product.external_id}")
 
-            if self._generate_embedding_for_image(image, base64_thumb):
-                embeddings_generated += 1
+            self._generate_embedding_for_image(image, base64_thumb)
+            db.session.add(image)
+            db.session.commit()
+            log_system(f"[WOO SYNC] Embedding guardado para imagen {image.id}")
+            embeddings_generated += 1
 
             if processed <= 5 or processed % 100 == 0:
                 logger.info(f"[DOWNLOAD] Imagen {processed}: {t_download - t_start:.2f}s ({size_bytes} bytes)")
 
         return processed, embeddings_generated
 
-    def _generate_embedding_for_image(self, image: Image, image_source: str) -> bool:
-        try:
-            from app.blueprints.embeddings import generate_clip_embedding
-            log_system(f"[WOO SYNC] Generando embedding para imagen {image.id}")
-            embedding, _metadata = generate_clip_embedding(image_source, image)
-            if embedding is None:
-                raise Exception("No se pudo generar embedding")
+    def _generate_embedding_for_image(self, image: Image, image_source: str) -> None:
+        from app.blueprints.embeddings import generate_clip_embedding
 
-            image.clip_embedding = json.dumps(embedding)
-            image.is_processed = True
-            image.upload_status = 'completed'
-            image.error_message = None
-            log_system(f"[WOO SYNC] Embedding generado para imagen {image.id}")
-            return True
-        except Exception as e:
+        log_system(f"[WOO SYNC] Generando embedding para imagen {image.id}")
+        embedding, _metadata = generate_clip_embedding(image_source, image)
+        if embedding is None:
             image.upload_status = 'failed'
-            image.error_message = str(e)
-            log_system(f"[WOO SYNC] Error generando embedding para imagen {image.id}: {e}")
-            return False
+            image.error_message = "No se pudo generar embedding"
+            log_system(f"[WOO SYNC] Error generando embedding para imagen {image.id}: embedding None")
+            raise RuntimeError(f"Embedding None para imagen {image.id}")
+
+        image.clip_embedding = json.dumps(embedding)
+        image.is_processed = True
+        image.upload_status = 'completed'
+        image.error_message = None
+        log_system(f"[WOO SYNC] Embedding generado para imagen {image.id}")
 
     def _download_and_convert_image(self, url: str, thumb_size: Tuple[int, int] = (300, 300)) -> Tuple[Optional[str], Optional[str], str, int, int, int]:
-        try:
-            response = requests.get(url, timeout=15, verify=False)
-            if response.status_code != 200:
-                logger.warning(f"[WOO SYNC] Error descargando imagen ({response.status_code}): {url}")
-                return None, None, '', 0, 0, 0
+        response = requests.get(url, timeout=15, verify=False)
+        if response.status_code != 200:
+            log_system(f"[WOO SYNC] Error descargando imagen ({response.status_code}): {url}")
+            raise RuntimeError(f"Error descargando imagen {response.status_code} {url}")
 
-            image_bytes = response.content
-            size_bytes = len(image_bytes)
+        image_bytes = response.content
+        size_bytes = len(image_bytes)
 
-            img = PILImage.open(io.BytesIO(image_bytes))
-            width, height = img.size
-            mime_type = f"image/{img.format.lower()}" if img.format else "image/jpeg"
+        img = PILImage.open(io.BytesIO(image_bytes))
+        width, height = img.size
+        mime_type = f"image/{img.format.lower()}" if img.format else "image/jpeg"
 
-            if img.mode in ('RGBA', 'LA', 'P'):
-                background = PILImage.new('RGB', img.size, (255, 255, 255))
-                if img.mode == 'P':
-                    img = img.convert('RGBA')
-                background.paste(img, mask=img.split()[-1] if 'A' in img.mode else None)
-                img = background
-            elif img.mode != 'RGB':
-                img = img.convert('RGB')
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = PILImage.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            background.paste(img, mask=img.split()[-1] if 'A' in img.mode else None)
+            img = background
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
 
-            base64_full = None  # no almacenamos imagen completa
+        base64_full = None  # no almacenamos imagen completa
 
-            img_thumb = img.copy()
-            img_thumb.thumbnail(thumb_size, PILImage.Resampling.LANCZOS)
-            thumb_buffer = io.BytesIO()
-            img_thumb.save(thumb_buffer, format='JPEG', quality=85, optimize=True)
-            thumb_buffer.seek(0)
-            base64_thumb = base64.b64encode(thumb_buffer.read()).decode('utf-8')
+        img_thumb = img.copy()
+        img_thumb.thumbnail(thumb_size, PILImage.Resampling.LANCZOS)
+        thumb_buffer = io.BytesIO()
+        img_thumb.save(thumb_buffer, format='JPEG', quality=85, optimize=True)
+        thumb_buffer.seek(0)
+        base64_thumb = base64.b64encode(thumb_buffer.read()).decode('utf-8')
 
-            return base64_full, base64_thumb, mime_type, width, height, size_bytes
-        except Exception as e:
-            logger.error(f"[WOO SYNC] Excepción descargando imagen: {url} - {e}")
-            return None, None, '', 0, 0, 0
+        if not base64_thumb:
+            raise RuntimeError(f"No se pudo generar thumbnail para {url}")
+
+        return base64_full, base64_thumb, mime_type, width, height, size_bytes
 
     # ---------------- Embeddings y centroides ----------------
 
