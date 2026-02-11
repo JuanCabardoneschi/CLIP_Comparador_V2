@@ -671,14 +671,16 @@ class WooCommerceSyncService:
 
         for idx, img_data in enumerate(images_data):
             source_url = img_data.get('src')
+            thumbnail_url = img_data.get('thumbnail') or None
             if not source_url:
                 raise ValueError(f"Imagen sin src en producto {product.external_id}")
 
-            # 🚀 OPTIMIZACIÓN: Usar thumbnail 300x300 pre-generado por WordPress
-            thumbnail_url = self._get_wordpress_thumbnail_url(source_url, size='medium')
+            # ✅ Usar thumbnail que devuelve WooCommerce (300x300)
+            image_url = thumbnail_url or source_url
             log_system(f"[WOO SYNC] Imagen {idx + 1}/{len(images_data)} producto {product.external_id}")
             log_system(f"[WOO SYNC]   Original: {source_url}")
-            log_system(f"[WOO SYNC]   Thumbnail 300x300: {thumbnail_url}")
+            log_system(f"[WOO SYNC]   Thumbnail API: {thumbnail_url}")
+            log_system(f"[WOO SYNC]   Usando: {image_url}")
 
             url_hash = hashlib.sha256(source_url.encode()).hexdigest()
 
@@ -714,12 +716,12 @@ class WooCommerceSyncService:
                 continue
 
             t_start = time.time()
-            # 🚀 Descargar directamente thumbnail 300x300 (sin resize)
-            base64_thumb, mime_type, width, height, size_bytes = self._download_thumbnail_direct(thumbnail_url)
+            # 🚀 Descargar thumbnail 300x300 devuelto por WooCommerce
+            base64_thumb, mime_type, width, height, size_bytes = self._download_thumbnail_direct(image_url)
             t_download = time.time()
 
             if not base64_thumb:
-                raise ValueError(f"Imagen sin thumbnail para producto {product.external_id}: {thumbnail_url}")
+                raise ValueError(f"Imagen sin thumbnail para producto {product.external_id}: {image_url}")
 
             image = Image(
                 client_id=self.client.id,
@@ -774,47 +776,6 @@ class WooCommerceSyncService:
         image.upload_status = 'completed'
         image.error_message = None
         log_system(f"[WOO SYNC] Embedding generado para imagen {image.id}")
-
-    def _get_wordpress_thumbnail_url(self, original_url: str, size: str = 'medium') -> str:
-        """
-        Convierte URL de imagen original de WordPress a URL de thumbnail pre-generado.
-
-        WordPress genera automáticamente estos tamaños:
-        - thumbnail: 150x150
-        - medium: 300x300 (DEFAULT)
-        - medium_large: 768x768
-        - large: 1024x1024
-
-        Ejemplo:
-        IN:  https://goodyshop.com.ar/wp-content/uploads/2024/01/image.jpg
-        OUT: https://goodyshop.com.ar/wp-content/uploads/2024/01/image-300x300.jpg
-        """
-        if '-scaled' in original_url:
-            # Remover -scaled que WordPress agrega a imágenes grandes
-            original_url = original_url.replace('-scaled', '')
-
-        # Determinar dimensiones según tamaño solicitado
-        size_map = {
-            'thumbnail': '150x150',
-            'medium': '300x300',
-            'medium_large': '768x768',
-            'large': '1024x1024'
-        }
-
-        dimensions = size_map.get(size, '300x300')
-
-        # Extraer extensión y nombre base
-        parts = original_url.rsplit('.', 1)
-        if len(parts) != 2:
-            # Si no tiene extensión, devolver original
-            return original_url
-
-        base_url, extension = parts
-
-        # Construir URL del thumbnail
-        thumbnail_url = f"{base_url}-{dimensions}.{extension}"
-
-        return thumbnail_url
 
     def _download_thumbnail_direct(self, url: str) -> Tuple[Optional[str], str, int, int, int]:
         """
