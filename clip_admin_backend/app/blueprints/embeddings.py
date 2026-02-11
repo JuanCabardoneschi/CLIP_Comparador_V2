@@ -532,14 +532,15 @@ def generate_optimized_embedding(image_path_or_url, model, processor, context_in
     prompts_used = []
 
     # 1. Embedding base (imagen sola)
-    base_embedding = generate_image_only_embedding(image, model, processor)
+    image_features = generate_image_features(image, model, processor)
+    base_embedding = image_features.cpu().numpy().flatten()
     embeddings_list.append(base_embedding)
     prompts_used.append("image_only")
 
     # 2. Embeddings contextuales si hay información disponible
     if context_info.get('category_name'):
         contextual_embeddings = generate_contextual_embeddings(
-            image, model, processor, context_info
+            image, model, processor, context_info, image_features=image_features
         )
         embeddings_list.extend(contextual_embeddings['embeddings'])
         prompts_used.extend(contextual_embeddings['prompts'])
@@ -647,21 +648,7 @@ def generate_simple_embedding(image_path_or_url, model, processor, pil_override=
     # Cargar y procesar imagen (local o URL) o usar override recortado
     image = pil_override if pil_override is not None else load_image_from_source(image_path_or_url)
 
-    # Procesar imagen con manejo de errores
-    try:
-        inputs = processor(images=image, return_tensors="pt")
-    except Exception as e:
-        log_error(f"Error en procesador embeddings (linea 173): {e}")
-        # Fallback: usar solo argumentos posicionales
-        inputs = processor(image, return_tensors="pt")
-
-    # Mover a GPU si está disponible
-    if torch.cuda.is_available():
-        inputs = {k: v.cuda() for k, v in inputs.items()}
-
-    # Generar embedding
-    with torch.no_grad():
-        image_features = model.get_image_features(**inputs)
+    image_features = generate_image_features(image, model, processor)
 
     # Normalizar y convertir
     image_features = image_features / image_features.norm(dim=-1, keepdim=True)
@@ -669,15 +656,12 @@ def generate_simple_embedding(image_path_or_url, model, processor, pil_override=
 
     return embedding
 
-def generate_image_only_embedding(image, model, processor):
-    """Generar embedding solo de imagen"""
-
-    # Procesar imagen con manejo de errores
+def generate_image_features(image, model, processor):
+    """Generar features de imagen (tensor) una sola vez"""
     try:
         inputs = processor(images=image, return_tensors="pt")
     except Exception as e:
         log_error(f"Error en procesador embeddings (linea 194): {e}")
-        # Fallback: usar solo argumentos posicionales
         inputs = processor(image, return_tensors="pt")
 
     if torch.cuda.is_available():
@@ -686,9 +670,9 @@ def generate_image_only_embedding(image, model, processor):
     with torch.no_grad():
         image_features = model.get_image_features(**inputs)
 
-    return image_features.cpu().numpy().flatten()
+    return image_features
 
-def generate_contextual_embeddings(image, model, processor, context_info):
+def generate_contextual_embeddings(image, model, processor, context_info, image_features=None):
     """Generar embeddings usando prompts contextuales"""
 
     embeddings = []
@@ -697,34 +681,25 @@ def generate_contextual_embeddings(image, model, processor, context_info):
     # Obtener prompts basados en contexto
     contextual_prompts = create_contextual_prompts(context_info)
 
+    if image_features is None:
+        image_features = generate_image_features(image, model, processor)
+
     for prompt in contextual_prompts:
-        try:
-            # Procesar imagen y texto juntos
-            inputs = processor(
-                text=[prompt],
-                images=image,
-                return_tensors="pt",
-                padding=True
-            )
+        # Procesar solo texto (reusa image_features)
+        text_inputs = processor(text=[prompt], return_tensors="pt", padding=True)
 
-            if torch.cuda.is_available():
-                inputs = {k: v.cuda() for k, v in inputs.items()}
+        if torch.cuda.is_available():
+            text_inputs = {k: v.cuda() for k, v in text_inputs.items()}
 
-            with torch.no_grad():
-                # Obtener features combinadas
-                image_features = model.get_image_features(pixel_values=inputs['pixel_values'])
-                text_features = model.get_text_features(input_ids=inputs['input_ids'])
+        with torch.no_grad():
+            text_features = model.get_text_features(**text_inputs)
 
-                # Combinar con pesos (más peso a imagen)
-                combined_features = 0.75 * image_features + 0.25 * text_features
-                embedding = combined_features.cpu().numpy().flatten()
+            # Combinar con pesos (más peso a imagen)
+            combined_features = 0.75 * image_features + 0.25 * text_features
+            embedding = combined_features.cpu().numpy().flatten()
 
-            embeddings.append(embedding)
-            prompts.append(prompt)
-
-        except Exception as e:
-            log_error(f"Error con prompt '{prompt}': {e}")
-            continue
+        embeddings.append(embedding)
+        prompts.append(prompt)
 
     return {'embeddings': embeddings, 'prompts': prompts}
 
