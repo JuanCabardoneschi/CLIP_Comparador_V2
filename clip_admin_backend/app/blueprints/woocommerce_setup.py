@@ -526,6 +526,46 @@ def resync_woocommerce_stock(client_id):
             'error': str(e)
         }), 500
 
+
+@bp.route('/verify/<client_id>', methods=['POST'])
+def verify_woocommerce_sync(client_id):
+    """Verifica estado de sincronización entre WooCommerce y BD local."""
+    try:
+        client = Client.query.get(client_id)
+        if not client:
+            return jsonify({
+                'success': False,
+                'error': 'Cliente no encontrado'
+            }), 404
+
+        integration = WooCommerceIntegration.query.filter_by(
+            client_id=client_id,
+            is_active=True
+        ).first()
+
+        if not integration:
+            return jsonify({
+                'success': False,
+                'error': 'No hay integración WooCommerce activa para este cliente'
+            }), 404
+
+        from app.services.woocommerce_sync_service import WooCommerceSyncService
+
+        service = WooCommerceSyncService(client_id)
+        result = service.verify_sync_status()
+
+        return jsonify({
+            'success': True,
+            **result
+        })
+
+    except Exception as e:
+        logger.error(f"Error verificando sincronización WooCommerce: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @bp.route('/resync-status/<client_id>', methods=['GET'])
 def resync_status(client_id):
     """

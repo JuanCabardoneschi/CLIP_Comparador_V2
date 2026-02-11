@@ -113,6 +113,10 @@
                         {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>
                     <i class="bi bi-box-seam"></i> Sincronizar solo stock
                 </button>
+                <button type="button" class="btn btn-outline-primary" id="btn-verify-sync" data-client-id="{{ client.id }}"
+                        {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>
+                    <i class="bi bi-clipboard-check"></i> Verificar estado
+                </button>
                 <button type="button" class="btn btn-info" id="btn-resync-dryrun" data-client-id="{{ client.id }}"
                         {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>
                     <i class="bi bi-eye"></i> Vista Previa
@@ -177,6 +181,15 @@ document.getElementById('btn-resync-stock').addEventListener('click', function()
     if (!confirm(message)) return;
 
     startResyncStock();
+});
+
+document.getElementById('btn-verify-sync').addEventListener('click', function() {
+    if (this.disabled) {
+        alert('Una resincronización ya está en progreso');
+        return;
+    }
+
+    startVerifySync();
 });
 
 function startResync() {
@@ -255,6 +268,68 @@ function startResyncStock() {
             msgDiv.innerHTML = `
                 <strong>Stock sincronizado.</strong>
                 <div class="mt-1"><small>Actualizados: ${data.updated} · Faltantes: ${data.missing} · Total: ${data.total}</small></div>
+            `;
+            msgDiv.style.display = 'block';
+        } else {
+            msgDiv.className = 'alert alert-danger';
+            msgDiv.innerHTML = `<strong>Error:</strong> ${data.error || 'Error desconocido'}`;
+            msgDiv.style.display = 'block';
+        }
+    })
+    .catch(e => {
+        msgDiv.className = 'alert alert-danger';
+        msgDiv.innerHTML = `<strong>Error de conexión:</strong> ${e.message}`;
+        msgDiv.style.display = 'block';
+        console.error('ERROR COMPLETO:', e);
+    })
+    .finally(() => {
+        btn.disabled = false;
+    });
+}
+
+function startVerifySync() {
+    const btn = document.getElementById('btn-verify-sync');
+    const msgDiv = document.getElementById('resync-message');
+
+    btn.disabled = true;
+
+    fetch(`/woocommerce/verify/${CLIENT_ID}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => {
+        if (!r.ok) {
+            return r.text().then(text => {
+                throw new Error(`HTTP ${r.status}: ${text.substring(0, 200)}`);
+            });
+        }
+        return r.json();
+    })
+    .then(data => {
+        if (data.success) {
+            const c = data.counts;
+            const m = data.missing;
+            const e = data.extra;
+            const i = data.integrity;
+
+            msgDiv.className = 'alert alert-primary';
+            msgDiv.innerHTML = `
+                <strong>Verificación completada.</strong>
+                <div class="mt-2"><small>
+                    WooCommerce → Productos: ${c.woo_products} · Categorías: ${c.woo_categories} · Imágenes: ${c.woo_images}
+                </small></div>
+                <div><small>
+                    BD Local → Productos: ${c.local_products} · Categorías: ${c.local_categories} · Imágenes: ${c.local_images}
+                </small></div>
+                <div class="mt-2"><small>
+                    Faltantes → Productos: ${m.products} · Categorías: ${m.categories}
+                </small></div>
+                <div><small>
+                    Extras → Productos: ${e.products} · Categorías: ${e.categories}
+                </small></div>
+                <div><small>
+                    Integridad → Productos sin imágenes: ${i.products_without_images} · Imágenes sin embeddings: ${i.images_unprocessed}
+                </small></div>
             `;
             msgDiv.style.display = 'block';
         } else {

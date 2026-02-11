@@ -354,6 +354,59 @@ class WooCommerceSyncService:
             'total': len(products)
         }
 
+    def verify_sync_status(self) -> Dict:
+        """Verifica estado de sincronización entre WooCommerce y BD local."""
+        woo_products = self.api.get_all_products(status='publish')
+        woo_categories = self.api.get_all_categories()
+
+        woo_product_ids = {str(p.get('id')) for p in woo_products if p.get('id') is not None}
+        woo_category_ids = {str(c.get('id')) for c in woo_categories if c.get('id') is not None}
+        woo_images_total = sum(len(p.get('images') or []) for p in woo_products)
+
+        local_products = Product.query.filter_by(client_id=self.client.id, is_active=True).all()
+        local_categories = Category.query.filter_by(client_id=self.client.id, is_active=True).all()
+        local_images = Image.query.filter_by(client_id=self.client.id).all()
+
+        local_product_ids = {str(p.external_id) for p in local_products if p.external_id}
+        local_category_ids = {str(c.external_id) for c in local_categories if c.external_id}
+
+        missing_products = sorted(list(woo_product_ids - local_product_ids))
+        extra_products = sorted(list(local_product_ids - woo_product_ids))
+        missing_categories = sorted(list(woo_category_ids - local_category_ids))
+        extra_categories = sorted(list(local_category_ids - woo_category_ids))
+
+        products_without_images = [p.id for p in local_products if p.images.count() == 0]
+        images_unprocessed = [img.id for img in local_images if not img.is_processed]
+
+        return {
+            'counts': {
+                'woo_products': len(woo_product_ids),
+                'woo_categories': len(woo_category_ids),
+                'woo_images': woo_images_total,
+                'local_products': len(local_products),
+                'local_categories': len(local_categories),
+                'local_images': len(local_images),
+            },
+            'missing': {
+                'products': len(missing_products),
+                'categories': len(missing_categories),
+            },
+            'extra': {
+                'products': len(extra_products),
+                'categories': len(extra_categories),
+            },
+            'integrity': {
+                'products_without_images': len(products_without_images),
+                'images_unprocessed': len(images_unprocessed),
+            },
+            'details': {
+                'missing_product_ids': missing_products[:50],
+                'extra_product_ids': extra_products[:50],
+                'missing_category_ids': missing_categories[:50],
+                'extra_category_ids': extra_categories[:50],
+            }
+        }
+
     # ---------------- Helpers ----------------
 
     def _resolve_category_id(self, categories: List[Dict]):
