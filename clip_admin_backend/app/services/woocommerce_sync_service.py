@@ -662,6 +662,20 @@ class WooCommerceSyncService:
         processed = 0
         embeddings_generated = 0
         import time
+        batch_size = 4
+        batch_images = []
+        batch_sources = []
+
+        def _flush_batch():
+            nonlocal embeddings_generated
+            if not batch_images:
+                return
+
+            log_system(f"[WOO SYNC] Generando embeddings batch ({len(batch_images)}) para producto {product.external_id}")
+            self._generate_embeddings_batch(batch_images, batch_sources)
+            embeddings_generated += len(batch_images)
+            batch_images.clear()
+            batch_sources.clear()
 
         # 🔍 DEBUG: Ver qué campos trae WooCommerce en images
         if images_data and processed == 0:
@@ -717,11 +731,20 @@ class WooCommerceSyncService:
 
             t_start = time.time()
             # 🚀 Descargar thumbnail 300x300 devuelto por WooCommerce
-            base64_thumb, mime_type, width, height, size_bytes = self._download_thumbnail_direct(image_url)
+            try:
+                base64_thumb, mime_type, width, height, size_bytes = self._download_thumbnail_direct(image_url)
+            except Exception as e:
+                log_system(
+                    f"[WOO SYNC] Error descargando thumbnail {image_url}: {e}"
+                )
+                continue
             t_download = time.time()
 
             if not base64_thumb:
-                raise ValueError(f"Imagen sin thumbnail para producto {product.external_id}: {image_url}")
+                log_system(
+                    f"[WOO SYNC] Imagen sin thumbnail para producto {product.external_id}: {image_url}"
+                )
+                continue
 
             image = Image(
                 client_id=self.client.id,
@@ -749,14 +772,17 @@ class WooCommerceSyncService:
 
             log_system(f"[WOO SYNC] Imagen descargada ({size_bytes} bytes) para producto {product.external_id}")
 
-            self._generate_embedding_for_image(image, base64_thumb)
-            db.session.add(image)
-            db.session.commit()
-            log_system(f"[WOO SYNC] Embedding guardado para imagen {image.id}")
-            embeddings_generated += 1
+            batch_images.append(image)
+            batch_sources.append(base64_thumb)
+
+            if len(batch_images) >= batch_size:
+                _flush_batch()
 
             if processed <= 5 or processed % 100 == 0:
                 logger.info(f"[DOWNLOAD] Imagen {processed}: {t_download - t_start:.2f}s ({size_bytes} bytes)")
+
+        # Procesar últimos pendientes del batch
+        _flush_batch()
 
         return processed, embeddings_generated
 
@@ -776,6 +802,31 @@ class WooCommerceSyncService:
         image.upload_status = 'completed'
         image.error_message = None
         log_system(f"[WOO SYNC] Embedding generado para imagen {image.id}")
+
+    def _generate_embeddings_batch(self, images: List[Image], image_sources: List[str]) -> None:
+        from app.blueprints.embeddings import generate_clip_embeddings_batch
+
+        log_system(f"[WOO SYNC] Iniciando batch de embeddings: {len(images)} imágenes")
+        results = generate_clip_embeddings_batch(image_sources, images)
+
+        for image, (embedding, metadata) in zip(images, results):
+            if embedding is None:
+                image.upload_status = 'failed'
+                image.error_message = "No se pudo generar embedding"
+                log_system(f"[WOO SYNC] Error generando embedding batch para imagen {image.id}: embedding None")
+                raise RuntimeError(f"Embedding None para imagen {image.id}")
+
+            image.clip_embedding = json.dumps(embedding)
+            image.is_processed = True
+            image.upload_status = 'completed'
+            image.error_message = None
+
+            if hasattr(image, 'metadata') and metadata:
+                image.metadata = json.dumps(metadata)
+
+            db.session.add(image)
+            db.session.commit()
+            log_system(f"[WOO SYNC] Embedding generado (batch) para imagen {image.id}")
 
     def _download_thumbnail_direct(self, url: str) -> Tuple[Optional[str], str, int, int, int]:
         """
@@ -808,7 +859,8 @@ class WooCommerceSyncService:
             return base64_data, mime_type, width, height, size_bytes
 
         except Exception as e:
-            raise RuntimeError(f"Error descargando thumbnail {url}: {str(e)}")
+            log_system(f"[WOO SYNC] Error descargando thumbnail {url}: {str(e)}")
+            return None, None, 0, 0, 0
 
     def _download_and_convert_image(self, url: str, thumb_size: Tuple[int, int] = (300, 300)) -> Tuple[Optional[str], Optional[str], str, int, int, int]:
         response = requests.get(url, timeout=15, verify=False)

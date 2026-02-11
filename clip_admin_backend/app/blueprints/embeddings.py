@@ -41,6 +41,9 @@ from app.utils.logging_config import (
 
 bp = Blueprint('embeddings', __name__)
 
+# Cache simple de embeddings de texto (prompts) para reutilización entre imágenes
+_text_feature_cache = {}
+
 def load_image_from_source(source):
     """Cargar imagen desde múltiples fuentes.
 
@@ -672,6 +675,106 @@ def generate_image_features(image, model, processor):
 
     return image_features
 
+
+def generate_image_features_batch(images, model, processor):
+    """Generar features de imagen en batch (tensor)"""
+    try:
+        inputs = processor(images=images, return_tensors="pt", padding=True)
+    except Exception as e:
+        log_error(f"Error en procesador embeddings batch: {e}")
+        inputs = processor(images, return_tensors="pt", padding=True)
+
+    if torch.cuda.is_available():
+        inputs = {k: v.cuda() for k, v in inputs.items()}
+
+    with torch.no_grad():
+        image_features = model.get_image_features(**inputs)
+
+    return image_features
+
+
+def generate_clip_embeddings_batch(image_sources, image_objs=None):
+    """Generar embeddings CLIP en batch para múltiples imágenes.
+
+    Mantiene la misma lógica contextual que generate_clip_embedding, pero
+    procesa el forward de imágenes en un solo batch.
+    """
+    if image_objs is None:
+        image_objs = [None] * len(image_sources)
+
+    if len(image_sources) != len(image_objs):
+        raise ValueError("image_sources e image_objs deben tener la misma longitud")
+
+    model, processor = get_clip_model()
+    _touch_clip_last_used()
+
+    pil_images = []
+    contexts = []
+
+    for source, image_obj in zip(image_sources, image_objs):
+        context_info = get_image_context(image_obj) if image_obj else {}
+
+        # Recorte manual si aplica
+        pil_override = None
+        if image_obj and hasattr(image_obj, 'has_crop') and image_obj.has_crop():
+            try:
+                raw_img = load_image_from_source(image_obj.optimized_url)
+                pil_override = image_obj.apply_crop_to_pil(raw_img)
+                context_info['manual_crop_applied'] = True
+                context_info['manual_crop_box'] = image_obj.get_crop_box()
+            except Exception as ce:
+                log_error(f"Error aplicando recorte manual: {ce}")
+                context_info['manual_crop_applied'] = False
+
+        image = pil_override if pil_override is not None else load_image_from_source(source)
+        pil_images.append(image)
+        contexts.append(context_info)
+
+    # Forward de imágenes en batch
+    batch_features = generate_image_features_batch(pil_images, model, processor)
+
+    results = []
+    for idx, image_features in enumerate(batch_features):
+        image_features = image_features.unsqueeze(0)
+
+        embeddings_list = []
+        prompts_used = []
+
+        # Embedding base (imagen sola)
+        base_embedding = image_features.cpu().numpy().flatten()
+        embeddings_list.append(base_embedding)
+        prompts_used.append("image_only")
+
+        # Embeddings contextuales
+        if contexts[idx].get('category_name'):
+            contextual_embeddings = generate_contextual_embeddings(
+                None, model, processor, contexts[idx], image_features=image_features
+            )
+            embeddings_list.extend(contextual_embeddings['embeddings'])
+            prompts_used.extend(contextual_embeddings['prompts'])
+
+        # Fusionar y normalizar
+        if len(embeddings_list) > 1:
+            final_embedding = fuse_embeddings_weighted(embeddings_list, contexts[idx])
+        else:
+            final_embedding = embeddings_list[0]
+
+        final_embedding = normalize_embedding(final_embedding)
+
+        metadata = {
+            'optimization_method': 'contextual_fusion',
+            'industry': contexts[idx].get('client_industry', 'unknown'),
+            'category': contexts[idx].get('category_name', 'unknown'),
+            'prompts_used': prompts_used,
+            'num_embeddings_fused': len(embeddings_list),
+            'embedding_dim': len(final_embedding),
+            'confidence_score': calculate_embedding_confidence(embeddings_list)
+        }
+
+        results.append((final_embedding, metadata))
+
+    return results
+
 def generate_contextual_embeddings(image, model, processor, context_info, image_features=None):
     """Generar embeddings usando prompts contextuales"""
 
@@ -685,18 +788,26 @@ def generate_contextual_embeddings(image, model, processor, context_info, image_
         image_features = generate_image_features(image, model, processor)
 
     for prompt in contextual_prompts:
-        # Procesar solo texto (reusa image_features)
-        text_inputs = processor(text=[prompt], return_tensors="pt", padding=True)
+        # Reusar text_features cacheados por prompt
+        cached_text = _text_feature_cache.get(prompt)
+        if cached_text is None:
+            text_inputs = processor(text=[prompt], return_tensors="pt", padding=True)
+            if torch.cuda.is_available():
+                text_inputs = {k: v.cuda() for k, v in text_inputs.items()}
 
-        if torch.cuda.is_available():
-            text_inputs = {k: v.cuda() for k, v in text_inputs.items()}
+            with torch.no_grad():
+                text_features = model.get_text_features(**text_inputs)
 
-        with torch.no_grad():
-            text_features = model.get_text_features(**text_inputs)
+            # Guardar en cache en CPU para reutilizar
+            cached_text = text_features.cpu()
+            _text_feature_cache[prompt] = cached_text
 
-            # Combinar con pesos (más peso a imagen)
-            combined_features = 0.75 * image_features + 0.25 * text_features
-            embedding = combined_features.cpu().numpy().flatten()
+        # Llevar a mismo device que image_features
+        text_features = cached_text.to(image_features.device)
+
+        # Combinar con pesos (más peso a imagen)
+        combined_features = 0.75 * image_features + 0.25 * text_features
+        embedding = combined_features.cpu().numpy().flatten()
 
         embeddings.append(embedding)
         prompts.append(prompt)
