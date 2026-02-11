@@ -20,6 +20,7 @@ from app.models.product import Product
 from app.models.product_attribute_config import ProductAttributeConfig
 from app.models.woocommerce_integration import WooCommerceIntegration
 from app.services.woocommerce_api_client import WooCommerceAPIClient
+from app.utils.logging_config import log_system
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ class WooCommerceSyncService:
             self.integration.sync_error = None
             db.session.commit()
 
-            logger.info(f"[WOO SYNC] Inicio sync para cliente {self.client.id}")
+            log_system(f"[WOO SYNC] Inicio sync para cliente {self.client.id}")
 
             # Si es resync, limpiar embeddings viejos para emular "primera vez"
             if is_resync:
@@ -235,7 +236,7 @@ class WooCommerceSyncService:
             logger.info(f"📥 [SYNC] Iniciando descarga de imágenes para cliente {self.client.id}")
 
         products = self.api.get_all_products(status='publish')
-        logger.info(f"[WOO SYNC] Productos recibidos: {len(products)}")
+        log_system(f"[WOO SYNC] Productos recibidos: {len(products)}")
         attr_values = {}  # key -> set(values)
 
         batch_commit_size = 20

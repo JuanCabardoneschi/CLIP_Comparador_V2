@@ -452,14 +452,17 @@ def resync_woocommerce(client_id):
                         pass
                     db.session.rollback()
 
+        from app.utils.logging_config import log_system
+
         # Enqueuer el thread
         thread = threading.Thread(
             target=_run_resync,
             args=(app_ctx, client_id, delete_mode),
-            daemon=True
+            daemon=False
         )
         thread.start()
 
+        log_system(f"[WOO RESYNC] Thread iniciado para cliente {client_id} (modo: {delete_mode})")
         logger.info(f"📌 Resincronización enqueued para cliente {client_id}")
 
         return jsonify({
