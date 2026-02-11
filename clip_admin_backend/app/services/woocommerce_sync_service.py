@@ -80,6 +80,8 @@ class WooCommerceSyncService:
             self.integration.sync_error = None
             db.session.commit()
 
+            logger.info(f"[WOO SYNC] Inicio sync para cliente {self.client.id}")
+
             # Si es resync, limpiar embeddings viejos para emular "primera vez"
             if is_resync:
                 Image.query.filter(
@@ -100,6 +102,7 @@ class WooCommerceSyncService:
                 stats['attributes_upserted'] += self.sync_attributes()
 
             if sync_options.get('products', True):
+                logger.info("[WOO SYNC] Sincronizando productos...")
                 created, updated, attr_upserts, images_count, embeddings_count = self.sync_products(
                     sync_images=sync_options.get('images', True)
                 )
@@ -110,10 +113,12 @@ class WooCommerceSyncService:
                 stats['embeddings_generated'] = embeddings_count
 
             if sync_options.get('embeddings', True) and not sync_options.get('products', True):
+                logger.info("[WOO SYNC] Generando embeddings (modo batch)...")
                 embeddings = self.generate_embeddings(force_regenerate=False)
                 stats['embeddings_generated'] = embeddings
 
             if sync_options.get('centroids', True) and stats.get('embeddings_generated', 0) > 0:
+                logger.info("[WOO SYNC] Recalculando centroides...")
                 centroids = self.calculate_category_centroids()
                 stats['centroids_computed'] = centroids
 
@@ -128,6 +133,7 @@ class WooCommerceSyncService:
             self.integration.sync_status = 'completed'
             self.integration.last_sync_at = datetime.utcnow()
             db.session.commit()
+            logger.info(f"[WOO SYNC] Sync completada para cliente {self.client.id}")
             return stats
         except Exception as e:
             logger.exception("Error en sincronización WooCommerce")
@@ -229,12 +235,16 @@ class WooCommerceSyncService:
             logger.info(f"📥 [SYNC] Iniciando descarga de imágenes para cliente {self.client.id}")
 
         products = self.api.get_all_products(status='publish')
+        logger.info(f"[WOO SYNC] Productos recibidos: {len(products)}")
         attr_values = {}  # key -> set(values)
 
-        for prod in products:
+        for idx, prod in enumerate(products, 1):
             ext_id = str(prod.get('id'))
             if not ext_id:
                 continue
+
+            if idx <= 5 or idx % 50 == 0:
+                logger.info(f"[WOO SYNC] Procesando producto {idx}/{len(products)} (ext_id={ext_id})")
 
             category_id = self._resolve_category_id(prod.get('categories', []))
             if not category_id:
@@ -298,6 +308,8 @@ class WooCommerceSyncService:
             # Sincronizar imágenes del producto si está habilitado
             if sync_images:
                 images_data = prod.get('images', []) or []
+                if images_data:
+                    logger.info(f"[WOO SYNC] Producto {ext_id} imágenes: {len(images_data)}")
                 images_count, embeddings_count = self._sync_product_images(product, images_data)
                 images_processed += images_count
                 embeddings_generated += embeddings_count
@@ -665,6 +677,9 @@ class WooCommerceSyncService:
                 if existing_image.is_processed and existing_image.clip_embedding:
                     continue
 
+                if processed == 0:
+                    logger.info(f"[WOO SYNC] Reprocesando imagen existente para producto {product.external_id}")
+
                 existing_image.upload_status = 'processing'
                 if existing_image.base64_thumb:
                     image_source = existing_image.base64_thumb
@@ -687,6 +702,7 @@ class WooCommerceSyncService:
             t_download = time.time()
 
             if not base64_thumb:
+                logger.warning(f"[WOO SYNC] Imagen sin thumbnail para producto {product.external_id}: {source_url}")
                 continue
 
             image = Image(
@@ -709,6 +725,9 @@ class WooCommerceSyncService:
             )
             db.session.add(image)
             processed += 1
+
+            if processed <= 5:
+                logger.info(f"[WOO SYNC] Imagen {processed} descargada ({size_bytes} bytes) para producto {product.external_id}")
 
             if self._generate_embedding_for_image(image, base64_thumb):
                 embeddings_generated += 1
