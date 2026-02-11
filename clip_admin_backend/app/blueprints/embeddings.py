@@ -974,18 +974,24 @@ def _process_pending_background(client_id, app):
                     try:
                         log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] Procesando {image.filename}...")
 
-                        if not image.cloudinary_url:
-                            log_error(f"[BACKGROUND] Error: {image.filename} no tiene URL de Cloudinary")
-                            image.upload_status = 'failed'
-                            image.error_message = "No hay URL de Cloudinary disponible"
-                            continue
-
-                        # Usar imagen pre-descargada del cache
+                        # Usar imagen pre-descargada del cache (si hay Cloudinary)
                         cached_item = preloaded_cache.get(image.id)
 
                         if cached_item is None:
-                            log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] {image.filename} no encontrada en cache, descargando...")
-                            image_source = image.cloudinary_url
+                            if image.base64_thumb:
+                                image_source = image.base64_thumb
+                                log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] Usando base64_thumb de {image.filename}")
+                            elif image.cloudinary_url:
+                                log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] {image.filename} no encontrada en cache, descargando...")
+                                image_source = image.cloudinary_url
+                            elif image.source_url:
+                                image_source = image.source_url
+                                log_verbose(LogCategory.EMBEDDING, f"[BACKGROUND] Usando source_url de {image.filename}")
+                            else:
+                                log_error(f"[BACKGROUND] Error: {image.filename} no tiene fuente de imagen disponible")
+                                image.upload_status = 'failed'
+                                image.error_message = "No hay fuente de imagen disponible"
+                                continue
                         elif isinstance(cached_item, str):
                             raise Exception(f"Error en descarga paralela: {cached_item}")
                         else:
@@ -1115,15 +1121,23 @@ def process_pending():
                 try:
                     log_verbose(LogCategory.EMBEDDING, f"Procesando {image.filename}...")
 
-                    if not image.cloudinary_url:
-                        log_error(f"Error: {image.filename} no tiene URL de Cloudinary")
+                    if image.base64_thumb:
+                        image_source = image.base64_thumb
+                        log_verbose(LogCategory.EMBEDDING, f"Usando base64_thumb de {image.filename}")
+                    elif image.cloudinary_url:
+                        image_source = image.cloudinary_url
+                    elif image.source_url:
+                        image_source = image.source_url
+                        log_verbose(LogCategory.EMBEDDING, f"Usando source_url de {image.filename}")
+                    else:
+                        log_error(f"Error: {image.filename} no tiene fuente de imagen disponible")
                         image.upload_status = 'failed'
-                        image.error_message = "No hay URL de Cloudinary disponible"
+                        image.error_message = "No hay fuente de imagen disponible"
                         continue
 
                     # Generar embedding optimizado con CLIP
                     # Nota: Se eliminó preload paralelo para evitar problemas de contexto Flask
-                    embedding, metadata = generate_clip_embedding(image.cloudinary_url, image)
+                    embedding, metadata = generate_clip_embedding(image_source, image)
 
                     if embedding is None:
                         raise Exception("Error generando embedding")

@@ -100,15 +100,16 @@ class WooCommerceSyncService:
                 stats['attributes_upserted'] += self.sync_attributes()
 
             if sync_options.get('products', True):
-                created, updated, attr_upserts, images_count = self.sync_products(
+                created, updated, attr_upserts, images_count, embeddings_count = self.sync_products(
                     sync_images=sync_options.get('images', True)
                 )
                 stats['products_created'] = created
                 stats['products_updated'] = updated
                 stats['attributes_upserted'] += attr_upserts
                 stats['images_processed'] = images_count
+                stats['embeddings_generated'] = embeddings_count
 
-            if sync_options.get('embeddings', True):
+            if sync_options.get('embeddings', True) and not sync_options.get('products', True):
                 embeddings = self.generate_embeddings(force_regenerate=False)
                 stats['embeddings_generated'] = embeddings
 
@@ -217,11 +218,12 @@ class WooCommerceSyncService:
 
     # ---------------- Productos ----------------
 
-    def sync_products(self, sync_images: bool = True) -> (int, int, int, int):
+    def sync_products(self, sync_images: bool = True) -> (int, int, int, int, int):
         created = 0
         updated = 0
         attr_upserts = 0
         images_processed = 0
+        embeddings_generated = 0
 
         if sync_images:
             logger.info(f"📥 [SYNC] Iniciando descarga de imágenes para cliente {self.client.id}")
@@ -296,7 +298,9 @@ class WooCommerceSyncService:
             # Sincronizar imágenes del producto si está habilitado
             if sync_images:
                 images_data = prod.get('images', []) or []
-                images_processed += self._sync_product_images(product, images_data)
+                images_count, embeddings_count = self._sync_product_images(product, images_data)
+                images_processed += images_count
+                embeddings_generated += embeddings_count
 
         db.session.commit()
 
@@ -309,7 +313,7 @@ class WooCommerceSyncService:
         if sync_images and images_processed > 0:
             logger.info(f"✅ [SYNC] Descarga completada: {images_processed} imágenes procesadas")
 
-        return created, updated, attr_upserts, images_processed
+        return created, updated, attr_upserts, images_processed, embeddings_generated
 
     def sync_stock_only(self) -> Dict:
         """Re-sincroniza únicamente stock desde WooCommerce."""
@@ -509,7 +513,8 @@ class WooCommerceSyncService:
             if not images_data:
                 continue
 
-            images_added += self._sync_product_images(product, images_data)
+            images_count, _embeddings_count = self._sync_product_images(product, images_data)
+            images_added += images_count
             processed_products += 1
 
         db.session.commit()
@@ -640,8 +645,9 @@ class WooCommerceSyncService:
 
     # ---------------- Imágenes ----------------
 
-    def _sync_product_images(self, product: Product, images_data: List[Dict]) -> int:
+    def _sync_product_images(self, product: Product, images_data: List[Dict]) -> Tuple[int, int]:
         processed = 0
+        embeddings_generated = 0
         import time
         for idx, img_data in enumerate(images_data):
             source_url = img_data.get('src')
@@ -656,6 +662,24 @@ class WooCommerceSyncService:
             ).first()
 
             if existing_image:
+                if existing_image.is_processed and existing_image.clip_embedding:
+                    continue
+
+                existing_image.upload_status = 'processing'
+                if existing_image.base64_thumb:
+                    image_source = existing_image.base64_thumb
+                elif existing_image.source_url:
+                    image_source = existing_image.source_url
+                else:
+                    existing_image.upload_status = 'failed'
+                    existing_image.error_message = 'No hay fuente de imagen disponible'
+                    db.session.add(existing_image)
+                    continue
+
+                if self._generate_embedding_for_image(existing_image, image_source):
+                    embeddings_generated += 1
+
+                db.session.add(existing_image)
                 continue
 
             t_start = time.time()
@@ -680,16 +704,37 @@ class WooCommerceSyncService:
                 hash_sha256=url_hash,
                 is_primary=(idx == 0),
                 display_order=idx,
-                upload_status='pending',
+                upload_status='processing',
                 is_processed=False,
             )
             db.session.add(image)
             processed += 1
 
+            if self._generate_embedding_for_image(image, base64_thumb):
+                embeddings_generated += 1
+
             if processed <= 5 or processed % 100 == 0:
                 logger.info(f"[DOWNLOAD] Imagen {processed}: {t_download - t_start:.2f}s ({size_bytes} bytes)")
 
-        return processed
+        return processed, embeddings_generated
+
+    def _generate_embedding_for_image(self, image: Image, image_source: str) -> bool:
+        try:
+            from app.blueprints.embeddings import generate_clip_embedding
+
+            embedding, _metadata = generate_clip_embedding(image_source, image)
+            if embedding is None:
+                raise Exception("No se pudo generar embedding")
+
+            image.clip_embedding = json.dumps(embedding)
+            image.is_processed = True
+            image.upload_status = 'completed'
+            image.error_message = None
+            return True
+        except Exception as e:
+            image.upload_status = 'failed'
+            image.error_message = str(e)
+            return False
 
     def _download_and_convert_image(self, url: str, thumb_size: Tuple[int, int] = (300, 300)) -> Tuple[Optional[str], Optional[str], str, int, int, int]:
         try:
