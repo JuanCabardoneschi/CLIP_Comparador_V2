@@ -266,10 +266,14 @@ class WooCommerceSyncService:
             # manage_stock=false significa "stock ilimitado" (no gestionado)
             # manage_stock=true + stock_quantity=N significa "stock limitado de N unidades"
             stock_q = prod.get('stock_quantity')
+            stock_status = prod.get('stock_status')
             manage_stock = prod.get('manage_stock', True)  # Por defecto True si no viene
 
             # Determinar stock final según manage_stock
-            if not manage_stock:
+            if stock_status == 'outofstock':
+                # WooCommerce marca sin stock aunque manage_stock sea false
+                final_stock = 0
+            elif not manage_stock:
                 # Stock ILIMITADO (no gestionado) → usar -1 como indicador
                 final_stock = -1
             elif stock_q is not None:
@@ -346,9 +350,12 @@ class WooCommerceSyncService:
                 continue
 
             stock_q = prod.get('stock_quantity')
+            stock_status = prod.get('stock_status')
             manage_stock = prod.get('manage_stock', True)
 
-            if not manage_stock:
+            if stock_status == 'outofstock':
+                final_stock = 0
+            elif not manage_stock:
                 final_stock = -1
             elif stock_q is not None:
                 final_stock = int(stock_q)

@@ -63,10 +63,10 @@ class Product(db.Model):
     @property
     def stock_display(self):
         """Devuelve representación del stock para mostrar en UI"""
-        if not self.manage_stock:
-            return "Ilimitado"
-        elif self.stock == 0:
+        if self.stock == 0:
             return "Sin stock"
+        elif not self.manage_stock:
+            return "Ilimitado"
         else:
             return f"{self.stock} disponibles"
 
