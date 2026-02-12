@@ -4,7 +4,7 @@ Maneja autenticación, rate limiting y errores
 """
 import requests
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from requests.auth import HTTPBasicAuth
 import time
 
@@ -147,6 +147,67 @@ class WooCommerceAPIClient:
                 logger.error(f"Error inesperado: {str(e)}")
                 raise WooCommerceAPIError(f"Error inesperado: {str(e)}")
 
+    def _make_request_with_headers(self, method: str, endpoint: str, params: Dict = None,
+                                  data: Dict = None, max_retries: int = 3) -> Tuple[Any, Dict]:
+        """
+        Realiza una petición HTTP y devuelve JSON + headers.
+        """
+        self._wait_for_rate_limit()
+
+        url = f"{self.base_url}{endpoint}"
+
+        log_system(f"[WOO API] {method} {url} params={params or {}}")
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.request(
+                    method=method,
+                    url=url,
+                    auth=self.auth,
+                    headers=self.headers,
+                    params=params,
+                    json=data,
+                    verify=self.verify_ssl,
+                    timeout=30
+                )
+
+                log_system(f"[WOO API] RESP {response.status_code} {endpoint}")
+
+                if response.status_code >= 400:
+                    error_data = response.json() if response.content else {}
+                    error_msg = error_data.get('message', f'HTTP {response.status_code}')
+
+                    if response.status_code == 401:
+                        raise WooCommerceAPIError(f"Autenticación fallida: {error_msg}")
+                    elif response.status_code == 404:
+                        raise WooCommerceAPIError(f"Recurso no encontrado: {endpoint}")
+                    elif response.status_code == 429:
+                        wait_time = 2 ** attempt
+                        logger.warning(f"Rate limit exceeded, esperando {wait_time}s...")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        raise WooCommerceAPIError(f"Error {response.status_code}: {error_msg}")
+
+                data_json = response.json() if response.content else {}
+                return data_json, dict(response.headers)
+
+            except requests.exceptions.Timeout:
+                logger.warning(f"Timeout en intento {attempt + 1}/{max_retries}")
+                if attempt == max_retries - 1:
+                    raise WooCommerceAPIError("Request timeout después de varios intentos")
+                time.sleep(1)
+
+            except requests.exceptions.ConnectionError as e:
+                logger.error(f"Error de conexión: {str(e)}")
+                if attempt == max_retries - 1:
+                    raise WooCommerceAPIError(f"No se pudo conectar a {self.store_url}")
+                time.sleep(2)
+
+            except Exception as e:
+                logger.error(f"Error inesperado: {str(e)}")
+                raise WooCommerceAPIError(f"Error inesperado: {str(e)}")
+
     # ==================== SYSTEM STATUS ====================
 
     def get_system_status(self) -> Dict:
@@ -200,6 +261,42 @@ class WooCommerceAPIClient:
                 return response.get('products', [])
             return []
         return response if isinstance(response, list) else []
+
+    def list_products_with_meta(self, page: int = 1, per_page: int = 100, **filters) -> Tuple[List[Dict], Optional[int], Optional[int]]:
+        """
+        Lista productos y devuelve total/total_pages desde headers.
+        """
+        params = {
+            'page': page,
+            'per_page': min(per_page, 100),
+            **filters
+        }
+
+        response, headers = self._make_request_with_headers('GET', '/products', params=params)
+        if isinstance(response, dict):
+            if isinstance(response.get('data'), list):
+                products = response.get('data', [])
+            elif isinstance(response.get('products'), list):
+                products = response.get('products', [])
+            else:
+                products = []
+        else:
+            products = response if isinstance(response, list) else []
+
+        total = headers.get('X-WP-Total') or headers.get('x-wp-total')
+        total_pages = headers.get('X-WP-TotalPages') or headers.get('x-wp-totalpages')
+
+        try:
+            total = int(total) if total is not None else None
+        except (TypeError, ValueError):
+            total = None
+
+        try:
+            total_pages = int(total_pages) if total_pages is not None else None
+        except (TypeError, ValueError):
+            total_pages = None
+
+        return products, total, total_pages
 
     def get_product(self, product_id: int) -> Dict:
         """Obtiene un producto por ID"""

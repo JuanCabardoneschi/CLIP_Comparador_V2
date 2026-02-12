@@ -16,6 +16,8 @@ from app.services.woocommerce_api_client import WooCommerceAPIClient, WooCommerc
 
 logger = logging.getLogger(__name__)
 
+STOCK_SYNC_PROGRESS = {}
+
 bp = Blueprint('woocommerce_setup', __name__, url_prefix='/woocommerce')
 
 @bp.route('/connect', methods=['GET'])
@@ -512,18 +514,121 @@ def resync_woocommerce_stock(client_id):
                 'error': 'No hay integración WooCommerce activa para este cliente'
             }), 404
 
+        if integration.sync_status == 'in_progress':
+            return jsonify({
+                'success': False,
+                'error': 'Ya hay una sincronización en progreso'
+            }), 409
+
         from app.services.woocommerce_sync_service import WooCommerceSyncService
 
-        service = WooCommerceSyncService(client_id)
-        result = service.sync_stock_only()
+        integration.sync_status = 'in_progress'
+        integration.sync_error = None
+        db.session.commit()
+
+        app_ctx = current_app._get_current_object()
+
+        def _run_stock_sync(app_context, cid: str):
+            with app_context.app_context():
+                try:
+                    service = WooCommerceSyncService(cid)
+
+                    def _progress(processed, total, updated, missing, page, total_pages):
+                        percent = int((processed / total) * 100) if total else 0
+                        STOCK_SYNC_PROGRESS[cid] = {
+                            'status': 'in_progress',
+                            'processed': processed,
+                            'total': total,
+                            'updated': updated,
+                            'missing': missing,
+                            'page': page,
+                            'total_pages': total_pages,
+                            'percent': percent
+                        }
+
+                    result = service.sync_stock_only(progress_callback=_progress)
+
+                    integ = WooCommerceIntegration.query.filter_by(client_id=cid, is_active=True).first()
+                    if integ:
+                        integ.sync_status = 'completed'
+                        integ.last_sync_at = db.func.now()
+                        db.session.commit()
+
+                    progress = STOCK_SYNC_PROGRESS.get(cid, {})
+                    progress.update({
+                        'status': 'completed',
+                        'processed': result.get('total'),
+                        'total': result.get('total_products') or result.get('total'),
+                        'updated': result.get('updated'),
+                        'missing': result.get('missing'),
+                        'percent': 100
+                    })
+                    STOCK_SYNC_PROGRESS[cid] = progress
+
+                except Exception as e:
+                    logger.error(f"Error re-sincronizando stock WooCommerce: {str(e)}", exc_info=True)
+                    try:
+                        integ = WooCommerceIntegration.query.filter_by(client_id=cid, is_active=True).first()
+                        if integ:
+                            integ.sync_status = 'error'
+                            integ.sync_error = str(e)
+                            db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+
+                    STOCK_SYNC_PROGRESS[cid] = {
+                        'status': 'error',
+                        'error': str(e)
+                    }
+
+        thread = threading.Thread(
+            target=_run_stock_sync,
+            args=(app_ctx, client_id),
+            daemon=False
+        )
+        thread.start()
 
         return jsonify({
             'success': True,
-            **result
-        })
+            'message': 'Sincronización de stock iniciada en segundo plano',
+            'client_id': client_id
+        }), 202
 
     except Exception as e:
         logger.error(f"Error re-sincronizando stock WooCommerce: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@bp.route('/resync-stock-status/<client_id>', methods=['GET'])
+def resync_stock_status(client_id):
+    """
+    Devuelve el avance de la sincronización de stock en curso.
+    """
+    try:
+        integration = WooCommerceIntegration.query.filter_by(
+            client_id=client_id,
+            is_active=True
+        ).first()
+
+        if not integration:
+            return jsonify({
+                'success': False,
+                'error': 'Integración no encontrada'
+            }), 404
+
+        progress = STOCK_SYNC_PROGRESS.get(client_id)
+
+        return jsonify({
+            'success': True,
+            'status': integration.sync_status or 'pending',
+            'progress': progress
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error obteniendo estado resync stock: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)

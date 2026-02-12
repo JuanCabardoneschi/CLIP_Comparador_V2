@@ -332,50 +332,76 @@ class WooCommerceSyncService:
 
         return created, updated, attr_upserts, images_processed, embeddings_generated
 
-    def sync_stock_only(self) -> Dict:
+    def sync_stock_only(self, progress_callback=None) -> Dict:
         """Re-sincroniza únicamente stock desde WooCommerce."""
         updated = 0
         missing = 0
+        processed = 0
+        total_products = None
 
-        products = self.api.get_all_products(status='publish')
+        page = 1
+        per_page = 100
 
-        for prod in products:
-            ext_id = str(prod.get('id'))
-            if not ext_id:
-                continue
+        while True:
+            products, total, total_pages = self.api.list_products_with_meta(
+                page=page,
+                per_page=per_page,
+                status='publish'
+            )
 
-            product = Product.query.filter_by(client_id=self.client.id, external_id=ext_id).first()
-            if not product:
-                missing += 1
-                continue
+            if total_products is None and total is not None:
+                total_products = total
 
-            stock_q = prod.get('stock_quantity')
-            stock_status = prod.get('stock_status')
-            manage_stock = prod.get('manage_stock', True)
+            if not products:
+                break
 
-            if stock_status == 'outofstock':
-                final_stock = 0
-            elif not manage_stock:
-                final_stock = -1
-            elif stock_q is not None:
-                final_stock = int(stock_q)
-            else:
-                final_stock = product.stock
+            for prod in products:
+                ext_id = str(prod.get('id'))
+                if not ext_id:
+                    continue
 
-            product.stock = final_stock
-            product.manage_stock = bool(manage_stock)
-            product.is_active = prod.get('status', 'publish') == 'publish'
-            product.last_sync_at = datetime.utcnow()
+                product = Product.query.filter_by(client_id=self.client.id, external_id=ext_id).first()
+                if not product:
+                    missing += 1
+                    continue
 
-            db.session.add(product)
-            updated += 1
+                stock_q = prod.get('stock_quantity')
+                stock_status = prod.get('stock_status')
+                manage_stock = prod.get('manage_stock', True)
 
-        db.session.commit()
+                if stock_status == 'outofstock':
+                    final_stock = 0
+                elif not manage_stock:
+                    final_stock = -1
+                elif stock_q is not None:
+                    final_stock = int(stock_q)
+                else:
+                    final_stock = product.stock
+
+                product.stock = final_stock
+                product.manage_stock = bool(manage_stock)
+                product.is_active = prod.get('status', 'publish') == 'publish'
+                product.last_sync_at = datetime.utcnow()
+
+                db.session.add(product)
+                updated += 1
+
+            db.session.commit()
+
+            processed += len(products)
+            if progress_callback:
+                progress_callback(processed, total_products or processed, updated, missing, page, total_pages)
+
+            if len(products) < per_page:
+                break
+
+            page += 1
 
         return {
             'updated': updated,
             'missing': missing,
-            'total': len(products)
+            'total': processed,
+            'total_products': total_products
         }
 
     def verify_sync_status(self) -> Dict:
