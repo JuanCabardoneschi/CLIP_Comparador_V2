@@ -618,6 +618,136 @@ def verify_woocommerce_products(client_id):
         }), 500
 
 
+@bp.route('/stock-snapshot/<client_id>', methods=['POST'])
+def stock_snapshot_woocommerce(client_id):
+    """
+    Consulta productos en WooCommerce por nombre (exacto, case-insensitive)
+    o por ID y devuelve el JSON completo de respuesta.
+
+    Request JSON:
+    {
+        "queries": "Nombre 1, Nombre 2"  # o lista de strings
+    }
+    """
+    try:
+        client = Client.query.get(client_id)
+        if not client:
+            return jsonify({
+                'success': False,
+                'error': 'Cliente no encontrado'
+            }), 404
+
+        integration = WooCommerceIntegration.query.filter_by(
+            client_id=client_id,
+            is_active=True
+        ).first()
+
+        if not integration:
+            return jsonify({
+                'success': False,
+                'error': 'No hay integracion WooCommerce activa para este cliente'
+            }), 404
+
+        data = request.get_json() or {}
+        raw_queries = data.get('queries', [])
+        if isinstance(raw_queries, str):
+            queries = [q.strip() for q in raw_queries.split(',') if q.strip()]
+        elif isinstance(raw_queries, list):
+            queries = [str(q).strip() for q in raw_queries if str(q).strip()]
+        else:
+            queries = []
+
+        if not queries:
+            return jsonify({
+                'success': False,
+                'error': 'queries requerido (string con comas o lista)'
+            }), 400
+
+        queries = queries[:20]
+
+        api = WooCommerceAPIClient(
+            store_url=integration.store_url,
+            consumer_key=integration.get_consumer_key(),
+            consumer_secret=integration.get_consumer_secret(),
+            api_version=integration.api_version or 'v3',
+            verify_ssl=integration.use_ssl
+        )
+
+        items = []
+        for query in queries:
+            query_l = query.lower()
+            matches = []
+
+            search_results = api.list_products(
+                page=1,
+                per_page=100,
+                status='publish',
+                search=query
+            )
+
+            for prod in search_results or []:
+                name = (prod.get('name') or '').strip()
+                if name.lower() == query_l:
+                    matches.append(prod)
+
+            if not matches and query.isdigit():
+                try:
+                    prod = api.get_product(int(query))
+                    if prod:
+                        matches.append(prod)
+                except WooCommerceAPIError:
+                    pass
+
+            local_matches = []
+            for prod in matches:
+                ext_id = str(prod.get('id')) if prod.get('id') is not None else None
+                local_product = None
+                if ext_id:
+                    local_product = Product.query.filter_by(
+                        client_id=client_id,
+                        external_id=ext_id
+                    ).first()
+
+                local_matches.append({
+                    'woo_product': prod,
+                    'local_product': {
+                        'id': str(local_product.id) if local_product else None,
+                        'external_id': local_product.external_id if local_product else None,
+                        'name': local_product.name if local_product else None,
+                        'stock': local_product.stock if local_product else None,
+                        'manage_stock': local_product.manage_stock if local_product else None,
+                        'is_active': local_product.is_active if local_product else None,
+                        'last_sync_at': local_product.last_sync_at.isoformat() if local_product and local_product.last_sync_at else None
+                    }
+                })
+
+            items.append({
+                'query': query,
+                'match_count': len(local_matches),
+                'matches': local_matches
+            })
+
+        return jsonify({
+            'success': True,
+            'total_queries': len(queries),
+            'items': items
+        })
+
+    except WooCommerceAPIError as e:
+        logger.error(f"Error consultando stock WooCommerce: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
+
+    except Exception as e:
+        logger.error(f"Error consultando stock WooCommerce: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @bp.route('/sync-missing-images/<client_id>', methods=['POST'])
 def sync_missing_images_woocommerce(client_id):
     """Sincroniza solo imágenes faltantes (productos sin imágenes locales)."""
