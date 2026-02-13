@@ -326,6 +326,16 @@ def _handle_product_updated(integration: WooCommerceIntegration, payload: dict):
             _handle_product_created(integration, payload)
             return
 
+        # Soft delete cuando el producto pasa a papelera en WooCommerce
+        if payload.get('status') == 'trash':
+            product.is_active = False
+            product.sync_status = 'synced'
+            product.last_sync_at = datetime.utcnow()
+            db.session.add(product)
+            db.session.commit()
+            logger.info(f"🗑️ [WEBHOOK] Producto enviado a papelera: {ext_id} ({product.name})")
+            return
+
         # Loguear cambios importantes
         old_category_id = product.category_id
         old_name = product.name
@@ -370,7 +380,7 @@ def _handle_product_updated(integration: WooCommerceIntegration, payload: dict):
 
 
 def _handle_product_deleted(integration: WooCommerceIntegration, payload: dict):
-    """Marcar producto como inactivo cuando se elimina en WooCommerce"""
+    """Borrar producto físicamente cuando se elimina en WooCommerce"""
     try:
         client = Client.query.get(integration.client_id)
         if not client:
@@ -387,13 +397,12 @@ def _handle_product_deleted(integration: WooCommerceIntegration, payload: dict):
             logger.warning(f"⚠️ [WEBHOOK] Producto {ext_id} no encontrado para deletear")
             return
 
-        product.is_active = False
-        product.sync_status = 'synced'
-        product.last_sync_at = datetime.utcnow()
-        db.session.add(product)
+        # Borrado físico: elimina imágenes asociadas y el producto
+        Image.query.filter_by(product_id=product.id).delete()
+        db.session.delete(product)
         db.session.commit()
 
-        logger.info(f"✅ [WEBHOOK] Producto ELIMINADO: {ext_id} ({product.name})")
+        logger.info(f"✅ [WEBHOOK] Producto ELIMINADO (hard delete): {ext_id} ({product.name})")
 
     except Exception as e:
         logger.error(f"❌ [WEBHOOK] Error deletando producto: {str(e)}", exc_info=True)
