@@ -6,7 +6,7 @@ import hashlib
 import io
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 import requests
@@ -331,6 +331,182 @@ class WooCommerceSyncService:
             logger.info(f"✅ [SYNC] Descarga completada: {images_processed} imágenes procesadas")
 
         return created, updated, attr_upserts, images_processed, embeddings_generated
+
+    def sync_differences(self, sync_images: bool = True, progress_callback=None) -> Dict:
+        """Sincroniza solo diferencias usando date_modified de WooCommerce."""
+        created = 0
+        updated = 0
+        trashed = 0
+        hard_deleted = 0
+        attr_upserts = 0
+        images_processed = 0
+        embeddings_generated = 0
+
+        attr_values: Dict[str, set] = {}
+
+        # Sync categorías y atributos primero (barato, asegura consistencia)
+        categories_created, categories_updated = self.sync_categories()
+        attr_upserts += self.sync_attributes()
+
+        page = 1
+        per_page = 100
+        processed = 0
+        total_products = None
+        woo_ids = set()
+
+        while True:
+            products, total, total_pages = self.api.list_products_with_meta(
+                page=page,
+                per_page=per_page,
+                status='any'
+            )
+
+            if total_products is None and total is not None:
+                total_products = total
+
+            if not products:
+                break
+
+            for prod in products:
+                ext_id = str(prod.get('id')) if prod.get('id') is not None else None
+                if not ext_id:
+                    continue
+
+                woo_ids.add(ext_id)
+
+                product = Product.query.filter_by(
+                    client_id=self.client.id,
+                    external_id=ext_id
+                ).first()
+
+                woo_modified = self._parse_woo_datetime(
+                    prod.get('date_modified_gmt') or prod.get('date_modified')
+                )
+                local_sync = product.last_sync_at if product else None
+
+                should_update = False
+                if not product:
+                    should_update = True
+                elif not local_sync:
+                    should_update = True
+                elif woo_modified and woo_modified > local_sync:
+                    should_update = True
+
+                if not should_update:
+                    continue
+
+                # Si está en papelera, soft delete
+                if prod.get('status') == 'trash':
+                    if product and product.is_active:
+                        product.is_active = False
+                        product.sync_status = 'synced'
+                        product.last_sync_at = datetime.utcnow()
+                        db.session.add(product)
+                        trashed += 1
+                    continue
+
+                category_id = self._resolve_category_id(prod.get('categories', []))
+                if not category_id:
+                    log_system(f"[WOO DIFF] Producto sin categoría válida ext_id={ext_id}")
+                    continue
+
+                if not product:
+                    product = Product(
+                        client_id=self.client.id,
+                        external_id=ext_id,
+                        category_id=category_id,
+                        name=prod.get('name') or 'Sin nombre',
+                    )
+                    db.session.add(product)
+                    db.session.flush()
+                    created += 1
+                else:
+                    updated += 1
+
+                # Actualizar campos principales
+                product.category_id = category_id
+                product.name = prod.get('name') or product.name
+                product.description = prod.get('description') or None
+                product.sku = prod.get('sku') or None
+                price = prod.get('price')
+                product.price = price if price not in (None, '') else None
+
+                stock_q = prod.get('stock_quantity')
+                stock_status = prod.get('stock_status')
+                manage_stock = prod.get('manage_stock', True)
+
+                if stock_status == 'outofstock':
+                    final_stock = 0
+                elif not manage_stock:
+                    final_stock = -1
+                elif stock_q is not None:
+                    final_stock = int(stock_q)
+                else:
+                    final_stock = product.stock
+
+                product.stock = final_stock
+                product.manage_stock = manage_stock
+                product.external_url = prod.get('permalink') or None
+                product.is_active = prod.get('status', 'publish') == 'publish'
+                product.attributes = self._extract_attributes(prod, attr_values) or None
+                product.sync_status = 'synced'
+                product.last_sync_at = datetime.utcnow()
+
+                db.session.add(product)
+
+                if sync_images:
+                    images_data = prod.get('images', []) or []
+                    images_count, embeddings_count = self._sync_product_images(product, images_data)
+                    images_processed += images_count
+                    embeddings_generated += embeddings_count
+
+            db.session.commit()
+
+            processed += len(products)
+            if progress_callback:
+                progress_callback(processed, total_products or processed, created, updated, trashed, page, total_pages)
+
+            if len(products) < per_page:
+                break
+
+            page += 1
+
+        # Hard delete: productos locales que ya no existen en WooCommerce
+        if woo_ids:
+            missing_products = (
+                Product.query
+                .filter(Product.client_id == self.client.id)
+                .filter(Product.external_id.isnot(None))
+                .filter(~Product.external_id.in_(woo_ids))
+                .all()
+            )
+
+            for product in missing_products:
+                Image.query.filter_by(product_id=product.id).delete()
+                db.session.delete(product)
+                hard_deleted += 1
+
+            if missing_products:
+                db.session.commit()
+
+        # Upsert de configs de atributos
+        for key, values in attr_values.items():
+            attr_upserts += self._upsert_attribute_config(key, values)
+        db.session.commit()
+
+        return {
+            'categories_created': categories_created,
+            'categories_updated': categories_updated,
+            'products_created': created,
+            'products_updated': updated,
+            'products_trashed': trashed,
+            'products_hard_deleted': hard_deleted,
+            'attributes_upserted': attr_upserts,
+            'images_processed': images_processed,
+            'embeddings_generated': embeddings_generated,
+            'total_processed': processed,
+            'total_products': total_products
+        }
 
     def sync_stock_only(self, progress_callback=None) -> Dict:
         """Re-sincroniza únicamente stock desde WooCommerce."""
@@ -660,6 +836,19 @@ class WooCommerceSyncService:
                 attr_values[key].add(str(options))
 
         return attrs
+
+    def _parse_woo_datetime(self, value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+
+        try:
+            raw = value.replace('Z', '+00:00')
+            parsed = datetime.fromisoformat(raw)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        except (ValueError, TypeError):
+            return None
 
     def _upsert_attribute_config(self, key: str, values: set) -> int:
         config = ProductAttributeConfig.query.filter_by(client_id=self.client.id, key=key).first()

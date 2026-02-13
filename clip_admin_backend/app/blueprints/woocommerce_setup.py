@@ -17,6 +17,7 @@ from app.services.woocommerce_api_client import WooCommerceAPIClient, WooCommerc
 logger = logging.getLogger(__name__)
 
 STOCK_SYNC_PROGRESS = {}
+DIFF_SYNC_PROGRESS = {}
 
 bp = Blueprint('woocommerce_setup', __name__, url_prefix='/woocommerce')
 
@@ -602,6 +603,121 @@ def resync_woocommerce_stock(client_id):
         }), 500
 
 
+@bp.route('/resync-diff/<client_id>', methods=['POST'])
+def resync_woocommerce_diff(client_id):
+    """
+    Sincroniza solo diferencias con WooCommerce (productos, categorías, imágenes, atributos).
+    """
+    try:
+        client = Client.query.get(client_id)
+        if not client:
+            return jsonify({
+                'success': False,
+                'error': 'Cliente no encontrado'
+            }), 404
+
+        integration = WooCommerceIntegration.query.filter_by(
+            client_id=client_id,
+            is_active=True
+        ).first()
+
+        if not integration:
+            return jsonify({
+                'success': False,
+                'error': 'No hay integración WooCommerce activa para este cliente'
+            }), 404
+
+        if integration.sync_status == 'in_progress':
+            return jsonify({
+                'success': False,
+                'error': 'Ya hay una sincronización en progreso'
+            }), 409
+
+        from app.services.woocommerce_sync_service import WooCommerceSyncService
+
+        integration.sync_status = 'in_progress'
+        integration.sync_error = None
+        db.session.commit()
+
+        app_ctx = current_app._get_current_object()
+
+        def _run_diff_sync(app_context, cid: str):
+            with app_context.app_context():
+                try:
+                    service = WooCommerceSyncService(cid)
+
+                    def _progress(processed, total, created, updated, trashed, page, total_pages):
+                        percent = int((processed / total) * 100) if total else 0
+                        DIFF_SYNC_PROGRESS[cid] = {
+                            'status': 'in_progress',
+                            'processed': processed,
+                            'total': total,
+                            'created': created,
+                            'updated': updated,
+                            'trashed': trashed,
+                            'page': page,
+                            'total_pages': total_pages,
+                            'percent': percent
+                        }
+
+                    result = service.sync_differences(sync_images=True, progress_callback=_progress)
+
+                    integ = WooCommerceIntegration.query.filter_by(client_id=cid, is_active=True).first()
+                    if integ:
+                        integ.sync_status = 'completed'
+                        integ.last_sync_at = db.func.now()
+                        db.session.commit()
+
+                    progress = DIFF_SYNC_PROGRESS.get(cid, {})
+                    progress.update({
+                        'status': 'completed',
+                        'processed': result.get('total_processed'),
+                        'total': result.get('total_products') or result.get('total_processed'),
+                        'created': result.get('products_created'),
+                        'updated': result.get('products_updated'),
+                        'trashed': result.get('products_trashed'),
+                        'hard_deleted': result.get('products_hard_deleted'),
+                        'percent': 100
+                    })
+                    DIFF_SYNC_PROGRESS[cid] = progress
+
+                except Exception as e:
+                    logger.error(f"Error sincronizando diferencias WooCommerce: {str(e)}", exc_info=True)
+                    try:
+                        integ = WooCommerceIntegration.query.filter_by(client_id=cid, is_active=True).first()
+                        if integ:
+                            integ.sync_status = 'error'
+                            integ.sync_error = str(e)
+                            db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+
+                    DIFF_SYNC_PROGRESS[cid] = {
+                        'status': 'error',
+                        'error': str(e)
+                    }
+
+        thread = threading.Thread(
+            target=_run_diff_sync,
+            args=(app_ctx, client_id),
+            daemon=False
+        )
+        thread.start()
+
+        return jsonify({
+            'success': True,
+            'message': 'Sincronización de diferencias iniciada en segundo plano',
+            'client_id': client_id
+        }), 202
+
+    except Exception as e:
+        logger.error(f"Error sincronizando diferencias WooCommerce: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @bp.route('/resync-stock-status/<client_id>', methods=['GET'])
 def resync_stock_status(client_id):
     """
@@ -629,6 +745,37 @@ def resync_stock_status(client_id):
 
     except Exception as e:
         logger.error(f"Error obteniendo estado resync stock: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@bp.route('/resync-diff-status/<client_id>', methods=['GET'])
+def resync_diff_status(client_id):
+    """Devuelve el avance de la sincronización de diferencias."""
+    try:
+        integration = WooCommerceIntegration.query.filter_by(
+            client_id=client_id,
+            is_active=True
+        ).first()
+
+        if not integration:
+            return jsonify({
+                'success': False,
+                'error': 'Integración no encontrada'
+            }), 404
+
+        progress = DIFF_SYNC_PROGRESS.get(client_id)
+
+        return jsonify({
+            'success': True,
+            'status': integration.sync_status or 'pending',
+            'progress': progress
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error obteniendo estado resync diff: {str(e)}")
         return jsonify({
             'success': False,
             'error': str(e)

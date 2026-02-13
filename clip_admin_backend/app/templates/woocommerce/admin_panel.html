@@ -109,6 +109,10 @@
                         {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>
                     <i class="bi bi-arrow-clockwise"></i> Re-sincronizar Ahora
                 </button>
+                <button type="button" class="btn btn-outline-success" id="btn-resync-diff" data-client-id="{{ client.id }}"
+                        {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>
+                    <i class="bi bi-arrow-repeat"></i> Sincronizar diferencias
+                </button>
                 <button type="button" class="btn btn-outline-warning" id="btn-resync-stock" data-client-id="{{ client.id }}"
                         {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>
                     <i class="bi bi-box-seam"></i> Sincronizar solo stock
@@ -173,6 +177,7 @@
 const CLIENT_ID = document.getElementById('btn-resync').dataset.clientId;
 let statusCheckInterval = null;
 let stockStatusInterval = null;
+let diffStatusInterval = null;
 
 // Event listeners
 document.getElementById('btn-resync').addEventListener('click', function() {
@@ -189,6 +194,18 @@ document.getElementById('btn-resync').addEventListener('click', function() {
 
 document.getElementById('btn-resync-dryrun').addEventListener('click', function() {
     alert('Vista previa: Este botón mostraría un análisis sin hacer cambios (próxima versión)');
+});
+
+document.getElementById('btn-resync-diff').addEventListener('click', function() {
+    if (this.disabled) {
+        alert('Una resincronización ya está en progreso');
+        return;
+    }
+
+    const message = 'Esto sincroniza solo diferencias con WooCommerce.\n\n¿Continuar?';
+    if (!confirm(message)) return;
+
+    startResyncDiff();
 });
 
 document.getElementById('btn-resync-stock').addEventListener('click', function() {
@@ -328,6 +345,61 @@ function startResyncStock() {
     });
 }
 
+function startResyncDiff() {
+    const btn = document.getElementById('btn-resync-diff');
+    const msgDiv = document.getElementById('resync-message');
+    const badge = document.getElementById('sync-status-badge');
+
+    btn.disabled = true;
+    document.getElementById('btn-resync').disabled = true;
+    document.getElementById('btn-resync-stock').disabled = true;
+    document.getElementById('btn-verify-sync').disabled = true;
+    document.getElementById('btn-resync-dryrun').disabled = true;
+
+    fetch(`/woocommerce/resync-diff/${CLIENT_ID}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => {
+        if (!r.ok) {
+            return r.text().then(text => {
+                throw new Error(`HTTP ${r.status}: ${text.substring(0, 200)}`);
+            });
+        }
+        return r.json();
+    })
+    .then(data => {
+        if (data.success) {
+            msgDiv.className = 'alert alert-info';
+            msgDiv.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm text-info me-2" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <span><strong>Sincronización de diferencias iniciada</strong></span>
+                </div>
+                <div class="mt-2"><small>Avance: 0%</small></div>
+            `;
+            msgDiv.style.display = 'block';
+            badge.innerHTML = '<span class="badge bg-warning text-dark"><span class="spinner-border spinner-border-sm me-1"></span>En progreso</span>';
+
+            checkDiffStatusPeriodically();
+        } else {
+            msgDiv.className = 'alert alert-danger';
+            msgDiv.innerHTML = `<strong>Error:</strong> ${data.error || 'Error desconocido'}`;
+            msgDiv.style.display = 'block';
+            btn.disabled = false;
+        }
+    })
+    .catch(e => {
+        msgDiv.className = 'alert alert-danger';
+        msgDiv.innerHTML = `<strong>Error de conexión:</strong> ${e.message}`;
+        msgDiv.style.display = 'block';
+        console.error('ERROR COMPLETO:', e);
+        btn.disabled = false;
+    });
+}
+
 function checkStockStatusPeriodically() {
     stockStatusInterval = setInterval(() => {
         checkStockStatus();
@@ -395,6 +467,85 @@ function checkStockStatus() {
     })
     .catch(e => {
         console.error('Error verificando stock:', e);
+    });
+}
+
+function checkDiffStatusPeriodically() {
+    diffStatusInterval = setInterval(() => {
+        checkDiffStatus();
+    }, 3000);
+
+    checkDiffStatus();
+}
+
+function checkDiffStatus() {
+    const msgDiv = document.getElementById('resync-message');
+    const badge = document.getElementById('sync-status-badge');
+
+    fetch(`/woocommerce/resync-diff-status/${CLIENT_ID}`)
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            return;
+        }
+
+        const progress = data.progress || {};
+        const percent = typeof progress.percent === 'number' ? progress.percent : 0;
+        const processed = progress.processed ?? '—';
+        const total = progress.total ?? '—';
+        const created = progress.created ?? '—';
+        const updated = progress.updated ?? '—';
+        const trashed = progress.trashed ?? '—';
+        const hardDeleted = progress.hard_deleted ?? '—';
+
+        if (data.status === 'in_progress') {
+            msgDiv.className = 'alert alert-info';
+            msgDiv.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm text-info me-2" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <span><strong>Sincronización de diferencias en progreso</strong></span>
+                </div>
+                <div class="mt-2"><small>Avance: ${percent}% · Procesados: ${processed}/${total} · Creados: ${created} · Actualizados: ${updated} · Papelera: ${trashed} · Eliminados: ${hardDeleted}</small></div>
+            `;
+            msgDiv.style.display = 'block';
+            badge.innerHTML = '<span class="badge bg-warning text-dark"><span class="spinner-border spinner-border-sm me-1"></span>En progreso</span>';
+            return;
+        }
+
+        if (data.status === 'completed') {
+            msgDiv.className = 'alert alert-success';
+            msgDiv.innerHTML = `
+                <strong>Sincronización de diferencias completada.</strong>
+                <div class="mt-1"><small>Procesados: ${processed} · Creados: ${created} · Actualizados: ${updated} · Papelera: ${trashed} · Eliminados: ${hardDeleted}</small></div>
+            `;
+            msgDiv.style.display = 'block';
+            badge.innerHTML = '<span class="badge bg-success">✓ Completada</span>';
+            document.getElementById('btn-resync').disabled = false;
+            document.getElementById('btn-resync-diff').disabled = false;
+            document.getElementById('btn-resync-stock').disabled = false;
+            document.getElementById('btn-verify-sync').disabled = false;
+            document.getElementById('btn-resync-dryrun').disabled = false;
+            clearInterval(diffStatusInterval);
+            return;
+        }
+
+        if (data.status === 'error') {
+            msgDiv.className = 'alert alert-danger';
+            msgDiv.innerHTML = `<strong>Error:</strong> ${progress.error || data.error || 'Error desconocido'}`;
+            msgDiv.style.display = 'block';
+            badge.innerHTML = '<span class="badge bg-danger">✗ Error</span>';
+            document.getElementById('btn-resync').disabled = false;
+            document.getElementById('btn-resync-diff').disabled = false;
+            document.getElementById('btn-resync-stock').disabled = false;
+            document.getElementById('btn-verify-sync').disabled = false;
+            document.getElementById('btn-resync-dryrun').disabled = false;
+            clearInterval(diffStatusInterval);
+        }
+    })
+    .catch(e => {
+        console.error('Error verificando diff:', e);
     });
 }
 
@@ -607,6 +758,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.success && data.status === 'in_progress' && data.progress) {
             document.getElementById('btn-resync-stock').disabled = true;
             checkStockStatusPeriodically();
+        }
+    })
+    .catch(() => {});
+
+    fetch(`/woocommerce/resync-diff-status/${CLIENT_ID}`)
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.status === 'in_progress' && data.progress) {
+            document.getElementById('btn-resync-diff').disabled = true;
+            document.getElementById('btn-resync').disabled = true;
+            document.getElementById('btn-resync-stock').disabled = true;
+            document.getElementById('btn-verify-sync').disabled = true;
+            document.getElementById('btn-resync-dryrun').disabled = true;
+            checkDiffStatusPeriodically();
         }
     })
     .catch(() => {});
