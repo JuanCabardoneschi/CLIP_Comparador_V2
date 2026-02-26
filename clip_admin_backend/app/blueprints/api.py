@@ -2509,29 +2509,173 @@ def gpt4v_unified_search():
                 # Prioridad por color (opcional por cliente)
                 if color_priority_enabled and vision_enabled and prendas and products_data:
                     try:
+                        canonical_palette = {
+                            'negro': 'black',
+                            'blanco': 'white',
+                            'gris': 'gray',
+                            'azul': 'blue',
+                            'celeste': 'light blue',
+                            'verde': 'green',
+                            'rojo': 'red',
+                            'rosa': 'pink',
+                            'marron': 'brown',
+                            'beige': 'beige',
+                            'amarillo': 'yellow',
+                            'violeta': 'purple',
+                            'naranja': 'orange',
+                        }
+                        color_aliases = {
+                            'negro': 'negro', 'black': 'negro',
+                            'blanco': 'blanco', 'white': 'blanco', 'crudo': 'blanco', 'off white': 'blanco', 'offwhite': 'blanco',
+                            'gris': 'gris', 'gray': 'gris', 'grey': 'gris',
+                            'azul': 'azul', 'blue': 'azul', 'marino': 'azul', 'navy': 'azul', 'jean': 'azul', 'denim': 'azul',
+                            'celeste': 'celeste', 'light blue': 'celeste',
+                            'verde': 'verde', 'green': 'verde',
+                            'rojo': 'rojo', 'red': 'rojo', 'bordo': 'rojo', 'burgundy': 'rojo',
+                            'rosa': 'rosa', 'rosado': 'rosa', 'pink': 'rosa',
+                            'marron': 'marron', 'marrón': 'marron', 'brown': 'marron', 'chocolate': 'marron', 'habano': 'marron', 'tostado': 'marron',
+                            'beige': 'beige', 'arena': 'beige',
+                            'amarillo': 'amarillo', 'yellow': 'amarillo',
+                            'violeta': 'violeta', 'morado': 'violeta', 'purple': 'violeta',
+                            'naranja': 'naranja', 'orange': 'naranja',
+                        }
+
+                        def _normalize_text_local(value: str) -> str:
+                            s = str(value or '').strip().lower()
+                            s = s.replace('á', 'a').replace('é', 'e').replace('í', 'i').replace('ó', 'o').replace('ú', 'u')
+                            s = re.sub(r'[^a-z\s]', ' ', s)
+                            s = re.sub(r'\s+', ' ', s).strip()
+                            return s
+
+                        def _canonicalize_color_local(raw_color):
+                            if not raw_color:
+                                return None
+
+                            normalized = _normalize_text_local(raw_color)
+                            if not normalized:
+                                return None
+
+                            for alias, canonical in color_aliases.items():
+                                pattern = rf'(^|\s){re.escape(alias)}(\s|$)'
+                                if re.search(pattern, normalized):
+                                    return canonical
+
+                            try:
+                                llm_norm = normalize_color(str(raw_color), client_id=str(client.id))
+                                llm_norm = _normalize_text_local(llm_norm) if llm_norm else ''
+                                for alias, canonical in color_aliases.items():
+                                    pattern = rf'(^|\s){re.escape(alias)}(\s|$)'
+                                    if llm_norm and re.search(pattern, llm_norm):
+                                        return canonical
+                            except Exception:
+                                pass
+
+                            return None
+
+                        color_texts = [
+                            f"a photo of a {en_name} garment"
+                            for _, en_name in canonical_palette.items()
+                        ]
+                        color_keys = list(canonical_palette.keys())
+
+                        with torch.no_grad():
+                            color_text_inputs = processor(
+                                text=color_texts,
+                                return_tensors="pt",
+                                padding=True,
+                                truncation=True
+                            )
+                            color_text_features = model.get_text_features(**color_text_inputs)
+                            color_text_features = color_text_features / color_text_features.norm(dim=-1, keepdim=True)
+                            color_text_matrix = color_text_features.cpu().numpy().astype(np.float32)
+
+                        def _infer_color_from_clip_embedding(embedding_vector):
+                            if embedding_vector is None:
+                                return None, 0.0
+                            emb = np.asarray(embedding_vector, dtype=np.float32)
+                            emb_norm = np.linalg.norm(emb)
+                            if emb_norm == 0:
+                                return None, 0.0
+                            emb = emb / emb_norm
+                            sims = np.dot(color_text_matrix, emb)
+                            best_idx = int(np.argmax(sims))
+                            return color_keys[best_idx], float(sims[best_idx])
+
                         detected_color_for_category = None
+                        detected_description_for_category = None
                         for prenda in prendas:
                             if prenda.get('categoria_sugerida') == category_name:
+                                if not detected_description_for_category:
+                                    detected_description_for_category = (
+                                        prenda.get('descripcion') or
+                                        prenda.get('description') or
+                                        prenda.get('tipo')
+                                    )
                                 detected_color_for_category = prenda.get('color') or prenda.get('color_detectado')
                                 if detected_color_for_category:
                                     break
 
-                        if detected_color_for_category:
-                            detected_color_norm = normalize_color(str(detected_color_for_category), client_id=str(client.id))
-                            if not detected_color_norm:
-                                detected_color_norm = str(detected_color_for_category).strip().lower()
+                        # Fallback para Goody: inferir color desde descripción si GPT no lo devuelve en prenda.color
+                        if not detected_color_for_category and client.name.lower() == 'goody':
+                            try:
+                                from app.search_modules import has_custom_module, get_client_module
 
+                                if has_custom_module(client.name.lower()):
+                                    module = get_client_module(client.name.lower())
+                                    if hasattr(module, 'extract_keywords_from_description'):
+                                        description_for_color = (detected_description_for_category or '').strip()
+                                        user_message = (gpt4v_result.get('mensaje_usuario') or '').strip()
+
+                                        if user_message and user_message not in description_for_color:
+                                            if description_for_color:
+                                                description_for_color = f"{description_for_color}. {user_message}"
+                                            else:
+                                                description_for_color = user_message
+
+                                        if description_for_color:
+                                            extracted = module.extract_keywords_from_description(description_for_color)
+                                            detected_color_for_category = extracted.get('color')
+                                            if detected_color_for_category:
+                                                railway_log(
+                                                    f"   🎨 Color inferido (Goody) en '{category_name}': {detected_color_for_category}"
+                                                )
+                            except Exception as color_inference_error:
+                                railway_log(f"⚠️ Error infiriendo color para Goody: {color_inference_error}")
+
+                        detected_color_norm = _canonicalize_color_local(detected_color_for_category)
+                        detected_color_source = 'prenda' if detected_color_norm else None
+
+                        if not detected_color_norm:
+                            inferred_query_color, inferred_query_conf = _infer_color_from_clip_embedding(query_embedding)
+                            if inferred_query_color:
+                                detected_color_norm = inferred_query_color
+                                detected_color_source = 'clip_query'
+                                railway_log(
+                                    f"   🎨 Color inferido por CLIP (query) en '{category_name}': color='{detected_color_norm}', score={inferred_query_conf:.4f}"
+                                )
+
+                        if detected_color_norm:
                             color_boost = 0.12
                             boosted_count = 0
+                            inferred_catalog_color_count = 0
 
                             for prod in products_data:
-                                product_color = prod.get('__product_color')
-                                if not product_color:
-                                    continue
+                                product_color_norm = _canonicalize_color_local(prod.get('__product_color'))
 
-                                product_color_norm = normalize_color(str(product_color), client_id=str(client.id))
                                 if not product_color_norm:
-                                    product_color_norm = str(product_color).strip().lower()
+                                    inferred_product_color, inferred_product_conf = _infer_color_from_clip_embedding(
+                                        top_image_embeddings.get(prod.get('id'))
+                                    )
+                                    if inferred_product_color:
+                                        product_color_norm = inferred_product_color
+                                        inferred_catalog_color_count += 1
+                                        prod['__product_color_inferred'] = {
+                                            'color': inferred_product_color,
+                                            'score': round(inferred_product_conf, 4)
+                                        }
+
+                                if not product_color_norm:
+                                    continue
 
                                 if product_color_norm == detected_color_norm:
                                     prod['similarity_score'] = min(1.0, float(prod.get('similarity_score', 0.0)) + color_boost)
@@ -2540,7 +2684,7 @@ def gpt4v_unified_search():
                             if boosted_count > 0:
                                 products_data.sort(key=lambda x: x.get('similarity_score', 0.0), reverse=True)
                                 railway_log(
-                                    f"   🎨 Prioridad color activa en '{category_name}': color='{detected_color_norm}', boost={color_boost}, afectados={boosted_count}"
+                                    f"   🎨 Prioridad color activa en '{category_name}': color='{detected_color_norm}', fuente='{detected_color_source}', boost={color_boost}, afectados={boosted_count}, inferidos_catalogo={inferred_catalog_color_count}"
                                 )
                     except Exception as color_priority_error:
                         railway_log(f"⚠️ Error aplicando prioridad por color: {color_priority_error}")
@@ -2556,6 +2700,7 @@ def gpt4v_unified_search():
                 # Limpiar campos internos de cálculo antes de responder
                 for prod in products_data:
                     prod.pop('__product_color', None)
+                    prod.pop('__product_color_inferred', None)
 
                 total_products_found += len(products_data)
 
