@@ -2612,33 +2612,6 @@ def gpt4v_unified_search():
                                 if detected_color_for_category:
                                     break
 
-                        # Fallback para Goody: inferir color desde descripción si GPT no lo devuelve en prenda.color
-                        if not detected_color_for_category and client.name.lower() == 'goody':
-                            try:
-                                from app.search_modules import has_custom_module, get_client_module
-
-                                if has_custom_module(client.name.lower()):
-                                    module = get_client_module(client.name.lower())
-                                    if hasattr(module, 'extract_keywords_from_description'):
-                                        description_for_color = (detected_description_for_category or '').strip()
-                                        user_message = (gpt4v_result.get('mensaje_usuario') or '').strip()
-
-                                        if user_message and user_message not in description_for_color:
-                                            if description_for_color:
-                                                description_for_color = f"{description_for_color}. {user_message}"
-                                            else:
-                                                description_for_color = user_message
-
-                                        if description_for_color:
-                                            extracted = module.extract_keywords_from_description(description_for_color)
-                                            detected_color_for_category = extracted.get('color')
-                                            if detected_color_for_category:
-                                                railway_log(
-                                                    f"   🎨 Color inferido (Goody) en '{category_name}': {detected_color_for_category}"
-                                                )
-                            except Exception as color_inference_error:
-                                railway_log(f"⚠️ Error infiriendo color para Goody: {color_inference_error}")
-
                         detected_color_norm = _canonicalize_color_local(detected_color_for_category)
                         detected_color_source = 'prenda' if detected_color_norm else None
 
@@ -2655,6 +2628,7 @@ def gpt4v_unified_search():
                             color_boost = 0.12
                             boosted_count = 0
                             inferred_catalog_color_count = 0
+                            name_fallback_color_count = 0
 
                             for prod in products_data:
                                 product_color_norm = _canonicalize_color_local(prod.get('__product_color'))
@@ -2672,6 +2646,11 @@ def gpt4v_unified_search():
                                         }
 
                                 if not product_color_norm:
+                                    product_color_norm = _canonicalize_color_local(prod.get('name'))
+                                    if product_color_norm:
+                                        name_fallback_color_count += 1
+
+                                if not product_color_norm:
                                     continue
 
                                 if product_color_norm == detected_color_norm:
@@ -2681,7 +2660,7 @@ def gpt4v_unified_search():
                             if boosted_count > 0:
                                 products_data.sort(key=lambda x: x.get('similarity_score', 0.0), reverse=True)
                                 railway_log(
-                                    f"   🎨 Prioridad color activa en '{category_name}': color='{detected_color_norm}', fuente='{detected_color_source}', boost={color_boost}, afectados={boosted_count}, inferidos_catalogo={inferred_catalog_color_count}"
+                                    f"   🎨 Prioridad color activa en '{category_name}': color='{detected_color_norm}', fuente='{detected_color_source}', boost={color_boost}, afectados={boosted_count}, inferidos_catalogo={inferred_catalog_color_count}, fallback_nombre={name_fallback_color_count}"
                                 )
                     except Exception as color_priority_error:
                         railway_log(f"⚠️ Error aplicando prioridad por color: {color_priority_error}")
