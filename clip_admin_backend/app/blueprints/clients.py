@@ -271,7 +271,9 @@ def edit(client_id):
     if request.method == "POST":
         client.name = request.form.get("name", client.name)
         client.email = request.form.get("email", client.email)
-        client.description = request.form.get("description", client.description)
+        # Compatibilidad: en BD real no existe columna description para Client
+        if hasattr(client, "description"):
+            client.description = request.form.get("description", getattr(client, "description", None))
         client.industry = request.form.get("industry", client.industry)
 
         # Switch de configuración por cliente (solo super admin): priorizar color en ranking visual
