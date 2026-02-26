@@ -2213,10 +2213,6 @@ def gpt4v_unified_search():
                 for idx, (product, img) in enumerate(product_refs):
                     sim = float(similarities[idx])
 
-                    # Log detallado solo en modo VERBOSE
-                    from app.utils.logging_config import log, LogCategory
-                    log(LogCategory.SEARCH, f"      → {product.name} (SKU: {product.sku}): similarity={sim:.4f}, threshold={threshold:.4f}, pass={'✅' if sim >= threshold else '❌'}")
-
                     # Aplicar threshold
                     if sim >= threshold:
                         product_similarities.append({
@@ -2556,16 +2552,6 @@ def gpt4v_unified_search():
                                 pattern = rf'(^|\s){re.escape(alias)}(\s|$)'
                                 if re.search(pattern, normalized):
                                     return canonical
-
-                            try:
-                                llm_norm = normalize_color(str(raw_color), client_id=str(client.id))
-                                llm_norm = _normalize_text_local(llm_norm) if llm_norm else ''
-                                for alias, canonical in color_aliases.items():
-                                    pattern = rf'(^|\s){re.escape(alias)}(\s|$)'
-                                    if llm_norm and re.search(pattern, llm_norm):
-                                        return canonical
-                            except Exception:
-                                pass
 
                             return None
 
