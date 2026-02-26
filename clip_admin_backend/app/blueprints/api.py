@@ -1821,7 +1821,17 @@ def gpt4v_unified_search():
                 "message": "API Key inválido o cliente inactivo"
             }), 401
 
+        # Configuración por cliente (api_settings)
+        try:
+            client_api_settings = json.loads(client.api_settings) if client.api_settings else {}
+            if not isinstance(client_api_settings, dict):
+                client_api_settings = {}
+        except Exception:
+            client_api_settings = {}
+        color_priority_enabled = bool(client_api_settings.get('color_priority_enabled', False))
+
         railway_log(f"✅ Cliente autenticado: {client.name}")
+        railway_log(f"⚙️ Config cliente: color_priority_enabled={color_priority_enabled}")
 
         # Usar product_similarity_threshold del cliente (convertir de % a 0.0-1.0)
         default_threshold = (client.product_similarity_threshold or 30) / 100.0
@@ -2264,8 +2274,27 @@ def gpt4v_unified_search():
                     # Preparar atributos filtrados y extraer product_url
                     product_attrs = {}
                     product_url_value = None
+                    product_color_value = None
                     try:
                         if hasattr(p, 'attributes') and p.attributes:
+                            # Extraer color del producto desde atributos crudos (para re-ranking interno)
+                            for color_key in ('color', 'colour', 'color_principal', 'color_secundario'):
+                                raw_color = p.attributes.get(color_key)
+                                if not raw_color:
+                                    continue
+                                if isinstance(raw_color, dict):
+                                    product_color_value = raw_color.get('value') or raw_color.get('label') or raw_color.get('name')
+                                elif isinstance(raw_color, list) and raw_color:
+                                    first_val = raw_color[0]
+                                    if isinstance(first_val, dict):
+                                        product_color_value = first_val.get('value') or first_val.get('label') or first_val.get('name')
+                                    else:
+                                        product_color_value = first_val
+                                else:
+                                    product_color_value = raw_color
+                                if product_color_value:
+                                    break
+
                             # 1) Extraer url_producto del JSONB (siempre, ignorar filtros)
                             raw_url = p.attributes.get('url_producto')
                             if isinstance(raw_url, dict):
@@ -2301,6 +2330,7 @@ def gpt4v_unified_search():
                         'image_url': image_url,
                         'similarity_score': result['similarity'],
                         'attributes': product_attrs,
+                        '__product_color': product_color_value,
                         'stock': p.stock if hasattr(p, 'stock') and p.stock is not None else 0,
                         'product_url': final_product_url
                     })
@@ -2476,6 +2506,45 @@ def gpt4v_unified_search():
                         traceback.print_exc()
                         # Continuar sin re-ranking
 
+                # Prioridad por color (opcional por cliente)
+                if color_priority_enabled and vision_enabled and prendas and products_data:
+                    try:
+                        detected_color_for_category = None
+                        for prenda in prendas:
+                            if prenda.get('categoria_sugerida') == category_name:
+                                detected_color_for_category = prenda.get('color') or prenda.get('color_detectado')
+                                if detected_color_for_category:
+                                    break
+
+                        if detected_color_for_category:
+                            detected_color_norm = normalize_color(str(detected_color_for_category), client_id=str(client.id))
+                            if not detected_color_norm:
+                                detected_color_norm = str(detected_color_for_category).strip().lower()
+
+                            color_boost = 0.12
+                            boosted_count = 0
+
+                            for prod in products_data:
+                                product_color = prod.get('__product_color')
+                                if not product_color:
+                                    continue
+
+                                product_color_norm = normalize_color(str(product_color), client_id=str(client.id))
+                                if not product_color_norm:
+                                    product_color_norm = str(product_color).strip().lower()
+
+                                if product_color_norm == detected_color_norm:
+                                    prod['similarity_score'] = min(1.0, float(prod.get('similarity_score', 0.0)) + color_boost)
+                                    boosted_count += 1
+
+                            if boosted_count > 0:
+                                products_data.sort(key=lambda x: x.get('similarity_score', 0.0), reverse=True)
+                                railway_log(
+                                    f"   🎨 Prioridad color activa en '{category_name}': color='{detected_color_norm}', boost={color_boost}, afectados={boosted_count}"
+                                )
+                    except Exception as color_priority_error:
+                        railway_log(f"⚠️ Error aplicando prioridad por color: {color_priority_error}")
+
                 # Aplicar límite por categoría SIEMPRE (independiente de la rama de procesamiento)
                 effective_max_results = max(1, int(max_results))
                 if len(products_data) > effective_max_results:
@@ -2483,6 +2552,10 @@ def gpt4v_unified_search():
                         f"   ✂️ Limitar categoría '{category_name}' de {len(products_data)} a {effective_max_results} productos"
                     )
                     products_data = products_data[:effective_max_results]
+
+                # Limpiar campos internos de cálculo antes de responder
+                for prod in products_data:
+                    prod.pop('__product_color', None)
 
                 total_products_found += len(products_data)
 

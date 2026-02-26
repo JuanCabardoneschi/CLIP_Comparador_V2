@@ -13,6 +13,7 @@ from app.utils.permissions import requires_super_admin
 import secrets
 import string
 import threading
+import json
 
 bp = Blueprint("clients", __name__)
 
@@ -260,12 +261,23 @@ def view(client_id):
 def edit(client_id):
     """Editar cliente"""
     client = Client.query.get_or_404(client_id)
+    try:
+        api_settings = json.loads(client.api_settings) if client.api_settings else {}
+        if not isinstance(api_settings, dict):
+            api_settings = {}
+    except Exception:
+        api_settings = {}
 
     if request.method == "POST":
         client.name = request.form.get("name", client.name)
         client.email = request.form.get("email", client.email)
         client.description = request.form.get("description", client.description)
         client.industry = request.form.get("industry", client.industry)
+
+        # Switch de configuración por cliente (solo super admin): priorizar color en ranking visual
+        color_priority_enabled = request.form.get("color_priority_enabled") == "on"
+        api_settings["color_priority_enabled"] = color_priority_enabled
+        client.api_settings = json.dumps(api_settings, ensure_ascii=False)
 
         db.session.commit()
         flash("Cliente actualizado exitosamente", "success")
@@ -279,7 +291,12 @@ def edit(client_id):
         from app.models.tiendanube_integration import TiendaNubeIntegration
         integration = TiendaNubeIntegration.query.filter_by(client_id=client_id, is_active=True).first()
 
-    return render_template("clients/edit.html", client=client, integration=integration)
+    return render_template(
+        "clients/edit.html",
+        client=client,
+        integration=integration,
+        color_priority_enabled=bool(api_settings.get("color_priority_enabled", False))
+    )
 
 
 # COMENTADO: Funciones de API Keys deshabilitadas temporalmente
