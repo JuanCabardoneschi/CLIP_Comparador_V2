@@ -2161,6 +2161,10 @@ def gpt4v_unified_search():
                 cat_id = product.category_id
                 products_by_category.setdefault(cat_id, []).append(product)
 
+            # Cache por request para inferencia de color CLIP (evita recalcular por categoría)
+            color_text_matrix_cache = None
+            color_keys_cache = None
+
             # ===================================================================
             # OPTIMIZACIÓN 4: Vectorización - Calcular similitudes en batch
             # ===================================================================
@@ -2555,22 +2559,26 @@ def gpt4v_unified_search():
 
                             return None
 
-                        color_texts = [
-                            f"a photo of a {en_name} garment"
-                            for _, en_name in canonical_palette.items()
-                        ]
-                        color_keys = list(canonical_palette.keys())
+                        if color_text_matrix_cache is None or color_keys_cache is None:
+                            color_texts = [
+                                f"a photo of a {en_name} garment"
+                                for _, en_name in canonical_palette.items()
+                            ]
+                            color_keys_cache = list(canonical_palette.keys())
 
-                        with torch.no_grad():
-                            color_text_inputs = processor(
-                                text=color_texts,
-                                return_tensors="pt",
-                                padding=True,
-                                truncation=True
-                            )
-                            color_text_features = model.get_text_features(**color_text_inputs)
-                            color_text_features = color_text_features / color_text_features.norm(dim=-1, keepdim=True)
-                            color_text_matrix = color_text_features.cpu().numpy().astype(np.float32)
+                            with torch.no_grad():
+                                color_text_inputs = processor(
+                                    text=color_texts,
+                                    return_tensors="pt",
+                                    padding=True,
+                                    truncation=True
+                                )
+                                color_text_features = model.get_text_features(**color_text_inputs)
+                                color_text_features = color_text_features / color_text_features.norm(dim=-1, keepdim=True)
+                                color_text_matrix_cache = color_text_features.cpu().numpy().astype(np.float32)
+
+                        color_text_matrix = color_text_matrix_cache
+                        color_keys = color_keys_cache
 
                         def _infer_color_from_clip_embedding(embedding_vector):
                             if embedding_vector is None:
