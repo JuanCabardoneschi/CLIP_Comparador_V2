@@ -2494,9 +2494,6 @@ def gpt4v_unified_search():
                                                 f"boost={boost_info.get('factor', 1.0):.2f} "
                                                 f"[{matches_str[:60]}]"
                                             )
-
-                                        # Limitar a max_results tras el re-ranking
-                                        products_data = products_data[:max_results]
                             except ImportError:
                                 # Módulos custom no disponibles, continuar sin re-ranking
                                 pass
