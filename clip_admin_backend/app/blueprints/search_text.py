@@ -1099,6 +1099,13 @@ def text_search():
         # Obtener límite del sistema (igual que en api.py)
         default_max_results = system_config.get('search', 'max_results', 10)
         limit = min(int(data.get('limit', default_max_results)), default_max_results)
+        # Límite por categoría configurable por request/cliente (fallback: limit)
+        per_category_limit = min(
+            int(data.get('max_results_per_category', limit)),
+            default_max_results
+        )
+        if per_category_limit < 1:
+            per_category_limit = 1
 
         log_search(f"[TEXT_SEARCH] Query original recibida: '{query_text}'")
 
@@ -1643,7 +1650,7 @@ def text_search():
                         fallback_products = no_matches
 
                         # 🔄 FALLBACK: Si resultados < mínimo de categoría, agregar productos Tier 3
-                        MIN_CATEGORY_RESULTS = 3
+                        MIN_CATEGORY_RESULTS = per_category_limit
                         fallback_product_ids = set()  # IDs de productos agregados como fallback
 
                         if len(filtered_products) < MIN_CATEGORY_RESULTS and fallback_products:
@@ -2020,7 +2027,7 @@ def text_search():
                 # ⭐ AGRUPACIÓN POR CATEGORÍAS HERMANAS (si hay múltiples categorías detectadas)
                 results_by_category = {}
                 group_by_category = False
-                MIN_CATEGORY_RESULTS = 3
+                MIN_CATEGORY_RESULTS = per_category_limit
 
                 # Construir detection_metadata con matched_categories
                 detection_metadata = {
@@ -3141,7 +3148,7 @@ def text_search():
 
         results_by_category = {}
         group_by_category = False
-        MIN_CATEGORY_RESULTS = 3  # TOP 3 de cada categoría
+        MIN_CATEGORY_RESULTS = per_category_limit  # límite configurable por categoría
 
         # LOG CRÍTICO: Diagnosticar por qué no se agrupa
         import sys

@@ -2476,6 +2476,14 @@ def gpt4v_unified_search():
                         traceback.print_exc()
                         # Continuar sin re-ranking
 
+                # Aplicar límite por categoría SIEMPRE (independiente de la rama de procesamiento)
+                effective_max_results = max(1, int(max_results))
+                if len(products_data) > effective_max_results:
+                    railway_log(
+                        f"   ✂️ Limitar categoría '{category_name}' de {len(products_data)} a {effective_max_results} productos"
+                    )
+                    products_data = products_data[:effective_max_results]
+
                 total_products_found += len(products_data)
 
                 results_by_category[category_name] = {
