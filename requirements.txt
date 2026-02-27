@@ -40,7 +40,6 @@ scikit-learn==1.3.2                 # Cosine similarity calculations
 spacy==3.7.2                        # Lematización española (OBLIGATORIO)
 # Modelos spaCy español (md como principal, sm como fallback)
 es_core_news_md @ https://github.com/explosion/spacy-models/releases/download/es_core_news_md-3.7.0/es_core_news_md-3.7.0-py3-none-any.whl
-es_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.7.0/es_core_news_sm-3.7.0-py3-none-any.whl
 
 # ============================================================================
 # IMAGE STORAGE & PROCESSING

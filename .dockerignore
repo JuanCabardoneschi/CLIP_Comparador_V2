@@ -1,0 +1,34 @@
+# Git / entorno local
+.git
+.gitignore
+.githooks
+
+# Entornos y cachés
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs y backups locales
+logs/
+backups/
+
+# Configuración/editor local
+.vscode/
+.copilot-memory/
+*.code-workspace
+
+# Archivos de entorno locales
+.env
+.env.*
+!.env.example
+
+# Artefactos temporales
+*.log
+*.tmp
+*.bak
+*.swp

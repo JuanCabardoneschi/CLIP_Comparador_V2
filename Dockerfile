@@ -13,7 +13,6 @@ RUN mkdir -p /app/.cache/huggingface
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
-    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements
@@ -21,7 +20,7 @@ COPY requirements.txt .
 
 # Instalar dependencias Python (incluyendo spaCy y el modelo vía pip) y verificar instalación
 RUN pip install --no-cache-dir -r requirements.txt && \
-    python -c "import spacy; spacy.load('es_core_news_sm'); print('✅ spaCy instalado correctamente')" && \
+    python -c "import spacy; spacy.load('es_core_news_md'); print('✅ spaCy instalado correctamente')" && \
     python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'); print('✅ MiniLM precargado en imagen Docker')" && \
     python -c "from transformers import CLIPModel, CLIPProcessor; CLIPModel.from_pretrained('openai/clip-vit-base-patch16'); CLIPProcessor.from_pretrained('openai/clip-vit-base-patch16'); print('✅ CLIP precargado en imagen Docker')"
 
@@ -36,6 +35,7 @@ WORKDIR /app/clip_admin_backend
 # Variables de entorno por defecto
 ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
+ENV SPACY_MODEL=es_core_news_md
 ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
 ENV HF_HOME=/app/.cache/huggingface
 ENV TRANSFORMERS_OFFLINE=1
