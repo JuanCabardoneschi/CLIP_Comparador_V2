@@ -280,6 +280,12 @@ def semantic_colors_save():
             except Exception as e:
                 print(f"⚠️ No se pudo invalidar cache colores: {e}")
 
+            try:
+                from app.utils import colors as colors_module
+                colors_module._llm_color_cache.clear()
+            except Exception as e:
+                print(f"⚠️ No se pudo invalidar cache normalize_color: {e}")
+
             flash('Configuración de colores semánticos guardada', 'success')
             return jsonify({'success': True})
         else:

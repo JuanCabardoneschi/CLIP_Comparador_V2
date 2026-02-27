@@ -3,7 +3,8 @@
     {
       "token": "chocolate",
       "aliases": ["chocolate"],
-      "notes": "Tonalidad marrón/caramelo"
+      "notes": "Tonalidad marrón/caramelo",
+      "preferred_matches": ["marron", "marrón", "brown", "habano", "tostado", "camel", "caramelo", "beige"]
     },
     {
       "token": "turquesa",

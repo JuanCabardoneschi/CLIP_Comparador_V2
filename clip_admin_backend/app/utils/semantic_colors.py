@@ -115,6 +115,12 @@ def map_semantic_colors(adjectives: List[str], client_color_values: List[str]) -
     client_colors_norm = [_normalize(c) for c in client_color_values]
     results: Dict[str, List[Tuple[str, float]]] = {}
 
+    color_entries = {
+        _normalize(item.get('token', '')): item
+        for item in data.get('colors', [])
+        if item.get('token')
+    }
+
     # Embeddings colores cliente cacheados
     for raw_color, norm_color in zip(client_color_values, client_colors_norm):
         if norm_color not in _COLOR_EMB_CACHE:
@@ -138,6 +144,22 @@ def map_semantic_colors(adjectives: List[str], client_color_values: List[str]) -
         filtered = [p for p in sims if p[1] >= thr]
         if not filtered and sims and sims[0][1] >= thr_fb:
             filtered = [sims[0]]  # Fallback top1
+
+        # Fallback léxico controlado por configuración (ej: chocolate -> familia marrón)
+        if not filtered:
+            entry = color_entries.get(adj_norm, {})
+            preferred_matches = [
+                _normalize(v) for v in entry.get('preferred_matches', [])
+                if isinstance(v, str) and v.strip()
+            ]
+            if preferred_matches:
+                lexical = []
+                for raw_color, norm_color in zip(client_color_values, client_colors_norm):
+                    if any(pref in norm_color for pref in preferred_matches):
+                        lexical.append((raw_color, 1.0))
+                if lexical:
+                    filtered = lexical
+
         filtered = filtered[:top_k]
         # Recorte final
         filtered = filtered[:max_final]

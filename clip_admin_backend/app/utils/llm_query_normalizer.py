@@ -1034,9 +1034,10 @@ def normaliza_color(color_query: str, client_id: int | None = None) -> str | Non
         # Prioridad para adjetivos sistémicos (ej: "chocolate"): usar mapeo semántico
         # contra colores reales del cliente y evitar matches espurios del fallback genérico.
         try:
-            from app.utils.semantic_colors import SYSTEM_COLOR_ADJECTIVES, map_semantic_colors
+            from app.utils.semantic_colors import map_semantic_colors, get_system_color_adjectives
             q_norm = q_lower.strip()
-            if q_norm in SYSTEM_COLOR_ADJECTIVES:
+            system_color_adjectives = set(get_system_color_adjectives())
+            if q_norm in system_color_adjectives:
                 mapped = map_semantic_colors([q_norm], colores).get(q_norm, [])
                 if mapped:
                     best_color = str(mapped[0][0]).strip().lower()

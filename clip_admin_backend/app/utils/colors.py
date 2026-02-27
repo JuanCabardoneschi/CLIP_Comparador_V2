@@ -29,7 +29,8 @@ def _normalize_color_llm(color_str: str, client_id: Optional[str] = None) -> Opt
     Cachea resultados para performance.
     """
     # Revisar caché primero
-    cache_key = color_str.lower().strip()
+    client_scope = str(client_id).strip().lower() if client_id is not None else "global"
+    cache_key = f"{client_scope}:{color_str.lower().strip()}"
     if cache_key in _llm_color_cache:
         return _llm_color_cache[cache_key]
 
@@ -42,13 +43,15 @@ def _normalize_color_llm(color_str: str, client_id: Optional[str] = None) -> Opt
         # Normalizar a lowercase para comparaciones case-insensitive
         normalized = detected.lower() if detected else None
 
-        # Cachear resultado
-        _llm_color_cache[cache_key] = normalized
+        # Cachear solo resultados válidos para evitar congelar falsos negativos
+        if normalized:
+            _llm_color_cache[cache_key] = normalized
         return normalized
 
     except Exception as e:
         print(f"Error normalize_color LLM: {e}")
-        _llm_color_cache[cache_key] = None
+        # No cachear errores para permitir reintentos en próximas búsquedas
+        _llm_color_cache.pop(cache_key, None)
         return None
 
 

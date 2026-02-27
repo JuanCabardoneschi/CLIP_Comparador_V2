@@ -1244,7 +1244,8 @@ def text_search():
 
                 # === MAPE0 SEMÁNTICO DE COLORES SISTÉMICOS (ANTES DE CLASIFICAR ATRIBUTOS) ===
                 try:
-                    from app.utils.semantic_colors import SYSTEM_COLOR_ADJECTIVES, map_semantic_colors, get_system_color_adjectives
+                    from app.utils.semantic_colors import map_semantic_colors, get_system_color_adjectives
+                    system_color_adjectives = set(get_system_color_adjectives())
                     # Detectar adjetivos sistémicos presentes en la query original (aunque no hayan quedado como modificadores)
                     nlp_colors = _get_nlp_es()
                     sys_color_tokens = []
@@ -1252,7 +1253,7 @@ def text_search():
                         doc_colors = nlp_colors(query_text)
                         for tok in doc_colors:
                             tl = tok.text.lower()
-                            if tl in SYSTEM_COLOR_ADJECTIVES:
+                            if tl in system_color_adjectives:
                                 sys_color_tokens.append(tl)
                     if sys_color_tokens:
                         print(f"\n🎨 [SEMANTIC COLOR] Adjetivos sistémicos detectados en query: {sys_color_tokens}")
@@ -2599,9 +2600,17 @@ def text_search():
             raw_tokens = [t.strip(".,;:!?") for t in query_text.lower().split() if t.strip()]
             extracted_category_token = (extraction_result.get('category') or '').strip().lower()
 
-            system_color_adjectives = {
-                str(c).strip().lower() for c in _NLP_CONFIG.get('color_adjectives', []) if c
-            }
+            system_color_adjectives = set()
+            try:
+                from app.utils.semantic_colors import get_system_color_adjectives
+                system_color_adjectives = {
+                    str(c).strip().lower() for c in get_system_color_adjectives() if c
+                }
+            except Exception:
+                # Fallback defensivo para mantener compatibilidad
+                system_color_adjectives = {
+                    str(c).strip().lower() for c in _NLP_CONFIG.get('color_adjectives', []) if c
+                }
 
             if can_run_semantic_color:
                 for tok in raw_tokens:
