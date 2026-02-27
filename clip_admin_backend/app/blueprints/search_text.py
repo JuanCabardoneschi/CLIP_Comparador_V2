@@ -2931,8 +2931,8 @@ def text_search():
 
                 # Requerir confianza mínima para evitar asignaciones espurias
                 # sobre imágenes sin color dominante claro.
-                min_sim = 0.20
-                min_margin = 0.01
+                min_sim = 0.28
+                min_margin = 0.04
                 if best_sim < min_sim or (best_sim - second_sim) < min_margin:
                     return None
 
