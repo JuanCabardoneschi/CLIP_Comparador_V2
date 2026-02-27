@@ -3112,10 +3112,37 @@ def text_search():
                 base_anchor = base_colors[0] if base_colors else color_value_normalized
                 print(f"🎨 Filtrando por color: token='{color_search_token}', base={base_colors}")
 
+                def _product_matches_base_colors(row) -> bool:
+                    # 1) atributo JSON configurado
+                    attrs_raw = row.get('attributes') or {}
+                    attrs_lower = {str(k).strip().lower(): v for k, v in attrs_raw.items()} if isinstance(attrs_raw, dict) else {}
+                    for ck in configured_color_keys:
+                        if ck in attrs_lower:
+                            raw_attr = _extract_scalar_color_value(attrs_lower.get(ck))
+                            if raw_attr:
+                                norm_attr = normalize_color(str(raw_attr), client_id=client.id)
+                                candidate_attr = (norm_attr or str(raw_attr)).strip().lower()
+                                if candidate_attr in base_set or any(b in candidate_attr for b in base_set):
+                                    return True
+
+                    # 2) embedding de imagen
+                    emb_color = _infer_color_from_product_embedding(row.get('id'))
+                    if emb_color:
+                        emb_norm = str(emb_color).strip().lower()
+                        if emb_norm in base_set or any(b in emb_norm for b in base_set):
+                            return True
+
+                    # 3) nombre de producto
+                    name_txt = str(row.get('name') or '').strip().lower()
+                    if name_txt and any(b in name_txt for b in base_set):
+                        return True
+
+                    return False
+
                 # 1) Exactos primero (color base/familia)
                 filtered_results = [
                     r for r in formatted_results
-                    if (_resolve_product_color_norm(r) in base_set)
+                    if _product_matches_base_colors(r)
                 ]
                 _hang_trace(f"exact/base color matches={len(filtered_results)}")
 
