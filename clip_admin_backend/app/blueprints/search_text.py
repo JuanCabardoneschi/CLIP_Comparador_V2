@@ -2711,9 +2711,9 @@ def text_search():
             if detection_metadata and isinstance(detection_metadata.get('matched_categories'), list):
                 detected_cats = len(detection_metadata.get('matched_categories'))
             rerank_limit = limit * detected_cats if detected_cats and detected_cats > 1 else limit
-            # Si hay intención de color sin mapeo aún, ampliar candidatos para que el filtro
-            # posterior por color tenga mayor recall (evita decidir sobre solo 3 productos).
-            if detected_color_intent and not detected_color_normalized:
+            # Si hay intención de color, ampliar candidatos para que el filtro
+            # posterior por color tenga mayor recall (evita decidir sobre muy pocos productos).
+            if detected_color_intent:
                 rerank_limit = max(rerank_limit, limit * 10)
         except Exception:
             rerank_limit = limit
