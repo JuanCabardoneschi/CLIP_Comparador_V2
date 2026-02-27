@@ -3204,10 +3204,30 @@ def text_search():
                         detected_color_normalized = recovered_color
                         color_filter_value = recovered_color
                         pre_color_results = list(formatted_results)
-                        filtered_results = [
-                            r for r in formatted_results
-                            if _resolve_product_color_norm(r) == recovered_color
-                        ]
+                        try:
+                            from app.utils.colors import colors_are_similar
+                            filtered_results = []
+                            for r in formatted_results:
+                                resolved_color = _resolve_product_color_norm(r)
+                                if not resolved_color:
+                                    continue
+                                if str(resolved_color).strip().lower() == recovered_color:
+                                    filtered_results.append(r)
+                                    continue
+                                if colors_are_similar(
+                                    str(resolved_color),
+                                    str(recovered_color),
+                                    threshold=0.72,
+                                    client_id=client.id
+                                ):
+                                    filtered_results.append(r)
+                        except Exception:
+                            filtered_results = [
+                                r for r in formatted_results
+                                if _resolve_product_color_norm(r) == recovered_color
+                            ]
+
+                        print(f"🎨 Filtrado color recuperado '{recovered_color}': {len(filtered_results)} resultados (exactos + cercanos)")
                         if filtered_results:
                             formatted_results = filtered_results
                             requested_attrs['color'] = recovered_color
