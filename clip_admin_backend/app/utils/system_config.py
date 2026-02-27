@@ -40,7 +40,7 @@ class SystemConfig:
                     "model_name": "ViT-B/16"
                 },
                 "search": {
-                    "max_results": 3,
+                    "max_results": 5,
                     "enable_category_detection": True,
                     "enable_visual_search": True,
                     "enable_inferred_tags": True,

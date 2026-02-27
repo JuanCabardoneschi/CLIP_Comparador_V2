@@ -493,6 +493,19 @@ def _extract_key_terms_with_dependency_parsing(text: str, client_profile: dict =
                             log_verbose(LogCategory.NLP, f"    ⛔ Descartando {len(nivel2_terms)} modificadores nivel 2 de '{term}': {nivel2_terms}")
 
     # === PASO 3: Fallback para términos mal etiquetados ===
+    # Incluir también colores semánticos del diccionario sistémico
+    # aunque no vengan etiquetados como NOUN/PROPN (ej: "chocolate").
+    semantic_color_tokens = set()
+    try:
+        from app.utils.semantic_colors import get_system_color_adjectives
+        semantic_color_tokens = {
+            str(c).strip().lower()
+            for c in get_system_color_adjectives()
+            if str(c).strip()
+        }
+    except Exception:
+        semantic_color_tokens = set()
+
     fallback_added = []
     processed_lemmas = {e.lower() for e in elementos_extraidos}
     processed_lemmas.update(nivel2_discarded)  # Excluir términos nivel 2 del fallback
@@ -500,7 +513,11 @@ def _extract_key_terms_with_dependency_parsing(text: str, client_profile: dict =
     for token in doc:
         if not token.is_alpha or token.is_stop or token.pos_ == 'VERB':
             continue
-        if token.pos_ not in ('NOUN', 'PROPN') and token.text.lower() not in FASHION_TERMS:
+        token_lower = token.text.lower()
+        is_fashion_or_noun = token.pos_ in ('NOUN', 'PROPN') or token_lower in FASHION_TERMS
+        is_semantic_color = token_lower in semantic_color_tokens
+
+        if not is_fashion_or_noun and not is_semantic_color:
             continue
 
         term = _to_singular(token, variants_map)
@@ -2944,30 +2961,8 @@ def text_search():
             matched_count = len(matched)
             match_ratio = float(matched_count / requested_count) if requested_count > 0 else 0.0
 
-            # Forzar base64 y loguear si falta
-            try:
-                if primary_image and not getattr(primary_image, 'base64_data', None):
-                    from app.utils.logging_config import log_error
-                    log_error(f"Imagen sin base64 en BD (text search): {primary_image.id} - regenerando")
-                    from app.services.image_manager import image_manager
-                    _ = image_manager.get_image_base64(primary_image)
-            except Exception:
-                pass
-
-            # Si aún no hay base64, usar placeholder (NUNCA Cloudinary)
-            try:
-                if primary_image:
-                    img_url_tmp = primary_image.base64_data
-                    if not (img_url_tmp and img_url_tmp.startswith('data:image')):
-                        from app.utils.logging_config import log_error
-                        log_error(f"Respuesta (text) sin base64, usando placeholder. Producto={product.id} Imagen={primary_image.id if primary_image else 'NA'}")
-                        # 1x1 PNG transparente
-                        primary_image.base64_data = (
-                            'data:image/png;base64,'
-                            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
-                        )
-            except Exception:
-                pass
+            # CRÍTICO: búsqueda de texto NO debe mutar imágenes/base64 en BD.
+            # Este flujo debe ser estrictamente read-only.
 
             # Priorizar external_url (Tiendanube/externo) sobre url_producto (atributo custom)
             final_product_url = None
