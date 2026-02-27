@@ -2527,8 +2527,11 @@ def text_search():
 
             # 🆕 Construir set de atributos configurados para excluir términos que sean atributos
             configured_attr_tokens = set()
+            can_run_semantic_color = False
             try:
                 from app.models.product_attribute_config import ProductAttributeConfig
+                import json
+                import ast
                 configs = ProductAttributeConfig.query.filter_by(client_id=client.id).all()
                 for cfg in configs:
                     key = (cfg.key or '').strip().lower()
@@ -2541,31 +2544,66 @@ def text_search():
                         # Agregar plural común
                         configured_attr_tokens.add(base + 's')
                     configured_attr_tokens.add(key)
+
+                    # Solo habilitar MiniLM de color si hay vocabulario de color real cargado
+                    if 'color' in key:
+                        raw_options = cfg.options
+                        parsed_options = []
+                        if isinstance(raw_options, list):
+                            parsed_options = raw_options
+                        elif isinstance(raw_options, dict):
+                            if isinstance(raw_options.get('values'), list):
+                                parsed_options = raw_options.get('values')
+                            else:
+                                parsed_options = list(raw_options.keys())
+                        elif isinstance(raw_options, str) and raw_options.strip():
+                            try:
+                                decoded = json.loads(raw_options)
+                            except Exception:
+                                try:
+                                    decoded = ast.literal_eval(raw_options)
+                                except Exception:
+                                    decoded = None
+
+                            if isinstance(decoded, list):
+                                parsed_options = decoded
+                            elif isinstance(decoded, dict):
+                                if isinstance(decoded.get('values'), list):
+                                    parsed_options = decoded.get('values')
+                                else:
+                                    parsed_options = list(decoded.keys())
+
+                        parsed_options = [str(v).strip() for v in parsed_options if str(v).strip()]
+                        if parsed_options:
+                            can_run_semantic_color = True
             except Exception:
                 pass
 
             raw_tokens = [t.strip(".,;:!?") for t in query_text.lower().split() if t.strip()]
             extracted_category_token = (extraction_result.get('category') or '').strip().lower()
 
-            for tok in raw_tokens:
-                if len(tok) < 3:
-                    continue
-                # Saltar token de categoría principal extraída (evita normalizar color sobre categoría)
-                if extracted_category_token and tok == extracted_category_token:
-                    continue
-                # Saltar si es una categoría conocida
-                if tok in category_tokens:
-                    continue
-                # 🆕 Saltar si es un atributo configurado (evita interpretar "bolsillos" como color)
-                if tok in configured_attr_tokens:
-                    continue
+            if can_run_semantic_color:
+                for tok in raw_tokens:
+                    if len(tok) < 3:
+                        continue
+                    # Saltar token de categoría principal extraída (evita normalizar color sobre categoría)
+                    if extracted_category_token and tok == extracted_category_token:
+                        continue
+                    # Saltar si es una categoría conocida
+                    if tok in category_tokens:
+                        continue
+                    # 🆕 Saltar si es un atributo configurado (evita interpretar "bolsillos" como color)
+                    if tok in configured_attr_tokens:
+                        continue
 
-                c = normalize_color(tok, client_id=client.id)
-                if c:
-                    detected_color_token = tok
-                    detected_color_normalized = c
-                    print(f"🎨 Color detectado: '{tok}' → '{c}'")
-                    break
+                    c = normalize_color(tok, client_id=client.id)
+                    if c:
+                        detected_color_token = tok
+                        detected_color_normalized = c
+                        print(f"🎨 Color detectado: '{tok}' → '{c}'")
+                        break
+            else:
+                print("🎨 Semántica de color omitida: cliente sin vocabulario de color utilizable")
 
             # NO agregamos a requested_attrs aquí - se manejará en el filtrado
         except Exception as _e:
