@@ -161,6 +161,11 @@ def map_semantic_colors(adjectives: List[str], client_color_values: List[str]) -
                     filtered = lexical
 
         filtered = filtered[:top_k]
+        # Fallback final: si hay token sistémico configurado pero ningún match por umbral,
+        # usar top-1 disponible para no descartar intención de color (ej: chocolate).
+        if not filtered and sims:
+            filtered = [sims[0]]
+
         # Recorte final
         filtered = filtered[:max_final]
         results[adj_norm] = filtered

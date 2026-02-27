@@ -3362,7 +3362,16 @@ def text_search():
                                     continue
 
                                 # 3) Si no hubo match por embedding: fallback por nombre
-                                name_color = normalize_color(str(r.get('name') or ''), client_id=client.id)
+                                #    Primero buscar términos explícitos de familia de color en el nombre.
+                                name_txt = str(r.get('name') or '').strip().lower()
+                                if name_txt and any(pref in name_txt for pref in preferred_set):
+                                    filtered_results.append(r)
+                                    if rid:
+                                        existing_ids.add(rid)
+                                    continue
+
+                                #    Si no hay término explícito, intentar normalización semántica del nombre.
+                                name_color = normalize_color(name_txt, client_id=client.id)
                                 if name_color and _matches_target_family(name_color):
                                     filtered_results.append(r)
                                     if rid:
