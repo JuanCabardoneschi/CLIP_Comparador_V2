@@ -484,27 +484,63 @@ def _extract_client_vocabulary(client_id: int) -> dict:
 
     # 1A. COLORES DESDE CONFIGURACIÓN JSONB: Leer opciones definidas en attribute_configs
     try:
-        color_configs = ProductAttributeConfig.query.filter_by(
-            client_id=client_id,
-            key='color'
+        color_configs = ProductAttributeConfig.query.filter(
+            ProductAttributeConfig.client_id == client_id,
+            ProductAttributeConfig.key.isnot(None)
         ).all()
 
-        for config in color_configs:
-            if config.type == 'list' and config.options:
-                # Opciones es JSONB, puede ser lista o string JSON
-                if isinstance(config.options, list):
-                    for option in config.options:
-                        if option and len(option) > 2:
-                            vocabulary['colores_especificos'].add(option.lower().strip())
-                elif isinstance(config.options, str):
-                    import json
+        def _extract_color_options(raw_options):
+            values = []
+            if isinstance(raw_options, list):
+                values = raw_options
+            elif isinstance(raw_options, dict):
+                if isinstance(raw_options.get('values'), list):
+                    values = raw_options.get('values')
+                else:
+                    values = list(raw_options.keys())
+            elif isinstance(raw_options, str):
+                try:
+                    parsed = json.loads(raw_options)
+                    if isinstance(parsed, list):
+                        values = parsed
+                    elif isinstance(parsed, dict):
+                        if isinstance(parsed.get('values'), list):
+                            values = parsed.get('values')
+                        else:
+                            values = list(parsed.keys())
+                except Exception:
+                    values = [raw_options]
+
+            flattened = []
+            for value in values:
+                if value is None:
+                    continue
+                value_str = str(value).strip()
+                if not value_str:
+                    continue
+                # Caso frecuente: "['Blanco', 'Negro']" guardado como string dentro de lista
+                if value_str.startswith('[') and value_str.endswith(']'):
                     try:
-                        options_list = json.loads(config.options)
-                        for option in options_list:
-                            if option and len(option) > 2:
-                                vocabulary['colores_especificos'].add(option.lower().strip())
-                    except:
+                        parsed_inner = json.loads(value_str.replace("'", '"'))
+                        if isinstance(parsed_inner, list):
+                            flattened.extend([str(x).strip() for x in parsed_inner if str(x).strip()])
+                            continue
+                    except Exception:
                         pass
+                flattened.append(value_str)
+
+            return flattened
+
+        for config in color_configs:
+            key_norm = (config.key or '').strip().lower()
+            if 'color' not in key_norm:
+                continue
+            if config.type == 'list' and config.options:
+                options_list = _extract_color_options(config.options)
+                for option in options_list:
+                    option_norm = option.lower().strip()
+                    if len(option_norm) > 2:
+                        vocabulary['colores_especificos'].add(option_norm)
 
         if vocabulary['colores_especificos']:
             print(f"📋 Colores desde config JSONB: {len(vocabulary['colores_especificos'])} opciones")

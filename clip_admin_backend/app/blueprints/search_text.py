@@ -3021,7 +3021,10 @@ def text_search():
                 except Exception:
                     target_total = len(pre_color_results)
 
-                if len(filtered_results) < target_total:
+                # Si hubo intención explícita de color y no hubo matches reales,
+                # NO rellenar con fallbacks irrelevantes.
+                had_color_intent = bool(color_filter_value)
+                if len(filtered_results) < target_total and not (had_color_intent and not filtered_results):
                     needed = target_total - len(filtered_results)
                     # Mantener orden original, agregando productos que no pasaron el filtro de color
                     fallback_candidates = [r for r in pre_color_results if r not in filtered_results]
