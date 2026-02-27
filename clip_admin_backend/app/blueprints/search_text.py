@@ -2931,8 +2931,8 @@ def text_search():
 
                 # Requerir confianza mínima para evitar asignaciones espurias
                 # sobre imágenes sin color dominante claro.
-                min_sim = 0.28
-                min_margin = 0.04
+                min_sim = 0.24
+                min_margin = 0.02
                 if best_sim < min_sim or (best_sim - second_sim) < min_margin:
                     return None
 
@@ -3305,7 +3305,7 @@ def text_search():
                                 if denom == 0:
                                     return False
                                 sim = float(np.dot(target_emb_local, emb_c) / denom)
-                                return sim >= 0.72
+                                return sim >= 0.64
 
                             filtered_results = []
                             for r in formatted_results:
