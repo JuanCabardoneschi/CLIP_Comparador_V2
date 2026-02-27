@@ -11,6 +11,7 @@ import time
 import json
 import threading
 import os
+import inspect
 
 # Modelo liviano multilingüe
 MODEL_NAME = 'paraphrase-multilingual-MiniLM-L12-v2'
@@ -20,6 +21,12 @@ _model_cleanup_thread_started = False
 _model_lock = threading.Lock()
 _model_load_block_until = 0.0  # Cooldown tras fallo de carga para evitar reintentos costosos
 _model_last_load_error = None
+_minilm_cache_dir = os.getenv("MINILM_CACHE_DIR", "/app/.cache/huggingface")
+
+try:
+    os.makedirs(_minilm_cache_dir, exist_ok=True)
+except Exception:
+    pass
 
 # Caché de vocabulario por cliente (evita queries repetidas)
 _VOCABULARY_CACHE = {}
@@ -133,9 +140,17 @@ def get_model():
             print(f"🔄 [MiniLM] Cargando modelo {MODEL_NAME} desde disco...", flush=True)
             local_only = os.getenv("MINILM_LOCAL_FILES_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
             try:
-                _model = SentenceTransformer(MODEL_NAME, local_files_only=local_only)
-            except TypeError:
-                _model = SentenceTransformer(MODEL_NAME)
+                if local_only and not os.getenv("HF_HUB_OFFLINE"):
+                    os.environ["HF_HUB_OFFLINE"] = "1"
+
+                ctor_params = inspect.signature(SentenceTransformer.__init__).parameters
+                kwargs = {}
+                if "cache_folder" in ctor_params:
+                    kwargs["cache_folder"] = _minilm_cache_dir
+                if "local_files_only" in ctor_params:
+                    kwargs["local_files_only"] = local_only
+
+                _model = SentenceTransformer(MODEL_NAME, **kwargs)
             except Exception as e:
                 _model = None
                 _model_last_load_error = str(e)
