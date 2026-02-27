@@ -1031,6 +1031,22 @@ def normaliza_color(color_query: str, client_id: int | None = None) -> str | Non
         if not colores:
             return None
 
+        # Prioridad para adjetivos sistémicos (ej: "chocolate"): usar mapeo semántico
+        # contra colores reales del cliente y evitar matches espurios del fallback genérico.
+        try:
+            from app.utils.semantic_colors import SYSTEM_COLOR_ADJECTIVES, map_semantic_colors
+            q_norm = q_lower.strip()
+            if q_norm in SYSTEM_COLOR_ADJECTIVES:
+                mapped = map_semantic_colors([q_norm], colores).get(q_norm, [])
+                if mapped:
+                    best_color = str(mapped[0][0]).strip().lower()
+                    print(f"🎨 [normaliza_color] Mapeo sistémico: '{q_norm}' → '{best_color}'")
+                    return best_color
+                print(f"🎨 [normaliza_color] Sin mapeo sistémico para '{q_norm}' con colores cliente")
+                return None
+        except Exception as e_sem:
+            print(f"⚠️ [normaliza_color] Error en mapeo sistémico: {e_sem}")
+
         # Solo matching de color (sin tipo ni contexto)
         color = _semantic_match(q, colores, client_id, threshold=0.45, query_emb=emb)
         return color

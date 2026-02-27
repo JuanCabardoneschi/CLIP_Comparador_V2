@@ -2871,7 +2871,7 @@ def text_search():
             resolved_color_cache[cache_key] = resolved
             return resolved
 
-        if requested_count > 0:
+        if requested_count > 0 or detected_color_normalized:
             # Antes de filtrar, recopilar todos los valores disponibles para cada atributo solicitado
             all_available_values = {}
             for attr_key in requested_attrs.keys():
