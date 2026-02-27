@@ -866,15 +866,8 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
     # STAGE 1: Broad Recall - PostgreSQL SIMILAR TO (sin docstring multiline para evitar errores)
     start_time = time.time()
 
-    hang_trace_state = {'step': 0}
-
     def _hang_trace(msg: str):
-        try:
-            hang_trace_state['step'] += 1
-            elapsed_trace = time.time() - start_time
-            print(f"[HANG_TRACE][{hang_trace_state['step']:03d}][t+{elapsed_trace:.3f}s] {msg}")
-        except Exception:
-            pass
+        return None
 
     # 1️⃣ Expandir query con sinónimos (ahora usa proveedor de perfiles)
     expanded_tokens = expand_query_with_synonyms(query_text, client_id, client_slug)
@@ -1081,15 +1074,8 @@ def text_search():
 
     start_time = time.time()
 
-    hang_trace_state = {'step': 0}
-
     def _hang_trace(msg: str):
-        try:
-            hang_trace_state['step'] += 1
-            elapsed_trace = time.time() - start_time
-            print(f"[HANG_TRACE][{hang_trace_state['step']:03d}][t+{elapsed_trace:.3f}s] {msg}")
-        except Exception:
-            pass
+        return None
 
     # Rollback defensivo inicial para limpiar cualquier transacción abortada previa
     try:
