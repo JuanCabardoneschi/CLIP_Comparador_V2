@@ -1158,10 +1158,12 @@ def text_search():
         log_verbose(LogCategory.SEARCH, f"[TEXT_SEARCH] Llamando a extractor...")
         extraction_result = _extract_key_terms_with_dependency_parsing(query_text, client_profile)
         log_verbose(LogCategory.SEARCH, f"[TEXT_SEARCH] Extractor devolvió: {extraction_result}")
+        _hang_trace("POST extractor: resultado recibido")
 
         cleaned_query = extraction_result.get('text', '')
         if cleaned_query and cleaned_query.strip() and extraction_result.get('success'):
             classification_done = False  # Flag para evitar doble clasificación contradictoria
+            _hang_trace("PRE-STAGE1 bloque diagnóstico: inicio")
             log_verbose(LogCategory.NLP, f"[TEXT_SEARCH] Preprocesamiento exitoso: '{query_text}' → '{cleaned_query}'")
             log_verbose(LogCategory.NLP, f"   📦 Categoría extraída: '{extraction_result.get('category')}'")
             log_verbose(LogCategory.NLP, f"   🏷️  Modificadores extraídos: {extraction_result.get('modifiers')}")
@@ -1169,7 +1171,9 @@ def text_search():
             # 🛑 PUNTO DE CORTE PARA TESTING
             # Obtener categorías del cliente
             try:
+                _hang_trace("PRE-STAGE1: consultando categorías activas del cliente")
                 client_categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
+                _hang_trace(f"PRE-STAGE1: categorías activas cargadas={len(client_categories)}")
                 log_verbose(LogCategory.SEARCH, "="*60)
                 log_verbose(LogCategory.CATEGORY_DETECTION, f"🔍 DETECCIÓN DE CATEGORÍAS DEL CLIENTE")
                 log_verbose(LogCategory.NLP, "="*60)
@@ -1228,6 +1232,8 @@ def text_search():
                         matched_category_ids.append(cat.id)
                         log_verbose(LogCategory.CATEGORY_DETECTION, f"✅ Match encontrado: '{cat.name}' (id: {cat.id}) via '{matched_variant}' - tokens: {cat_tokens}")
 
+                    _hang_trace(f"PRE-STAGE1: category matching listo, matched_categories={len(matched_categories)}")
+
                 print(f"\n📊 RESUMEN DE DETECCIÓN:")
                 log_verbose(LogCategory.CATEGORY_DETECTION, f"   Categoría en query: '{categoria_extraida}'")
                 log_verbose(LogCategory.CATEGORY_DETECTION, f"   Categorías coincidentes: {len(matched_categories)}")
@@ -1273,6 +1279,7 @@ def text_search():
 
                 # === MAPE0 SEMÁNTICO DE COLORES SISTÉMICOS (ANTES DE CLASIFICAR ATRIBUTOS) ===
                 try:
+                    _hang_trace("PRE-STAGE1: inicio mapeo semántico de colores")
                     from app.utils.semantic_colors import map_semantic_colors, get_system_color_adjectives
                     system_color_adjectives = set(get_system_color_adjectives())
                     # Detectar adjetivos sistémicos presentes en la query original (aunque no hayan quedado como modificadores)
@@ -1337,14 +1344,18 @@ def text_search():
                             print("[SEMANTIC COLOR] ⚠️ Cliente sin valores de color configurados, se omite similitud")
                     else:
                         print("[SEMANTIC COLOR] No hay adjetivos sistémicos en la query")
+                    _hang_trace("PRE-STAGE1: fin mapeo semántico de colores")
                 except Exception as e_sem_col:
                     print(f"[SEMANTIC COLOR] ⚠️ Error en mapeo semántico de colores: {e_sem_col}")
+                    _hang_trace("PRE-STAGE1: excepción en mapeo semántico de colores")
 
                 # Cargar atributos configurados para este cliente
                 from app.models.product_attribute_config import ProductAttributeConfig
+                _hang_trace("PRE-STAGE1: consultando atributos configurados")
                 configured_attributes = ProductAttributeConfig.query.filter_by(
                     client_id=client.id
                 ).order_by(ProductAttributeConfig.field_order).all()
+                _hang_trace(f"PRE-STAGE1: atributos configurados cargados={len(configured_attributes)}")
 
                 # Crear mapa de atributos: key -> label (para identificación)
                 attribute_keys = {}  # key normalizado -> objeto config
@@ -1365,8 +1376,10 @@ def text_search():
                 modificadores_no_configurados = []  # Modificadores que NO son atributos
 
                 print(f"\n🔍 Comparando modificadores contra atributos configurados:")
+                _hang_trace(f"PRE-STAGE1: inicio clasificación de modificadores total={len(modificadores)}")
                 for mod in modificadores:
                     mod_norm = mod.strip().lower()
+                    _hang_trace(f"PRE-STAGE1: clasificando modificador='{mod_norm}'")
 
                     # Buscar coincidencia flexible (key o label, con variaciones)
                     matched = False
@@ -1491,6 +1504,11 @@ def text_search():
                     else:
                         modificadores_no_configurados.append(mod)
                         print(f"   ❌ '{mod}' → NO es un atributo configurado")
+
+                _hang_trace(
+                    f"PRE-STAGE1: clasificación de modificadores lista matched={len(atributos_encontrados)} "
+                    f"unmatched={len(modificadores_no_configurados)}"
+                )
 
                 print(f"\n📊 RESULTADO CLASIFICACIÓN:")
                 print(f"   ✅ Atributos encontrados: {len(atributos_encontrados)}")
@@ -2384,12 +2402,14 @@ def text_search():
                 productos_analizados = 0
 
                 if matched_category_ids:
+                    _hang_trace(f"PRE-STAGE1: consultando productos por categorías matched={len(matched_category_ids)}")
                     # Query productos de las categorías detectadas
                     productos_en_categorias = Product.query.filter(
                         Product.client_id == client.id,
                         Product.category_id.in_(matched_category_ids),
                         Product.is_active == True
                     ).all()
+                    _hang_trace(f"PRE-STAGE1: productos_en_categorias cargados={len(productos_en_categorias)}")
 
                     productos_analizados = len(productos_en_categorias)
                     print(f"Total productos en categorías detectadas: {productos_analizados}")
@@ -2398,6 +2418,7 @@ def text_search():
                     for attr_config in configured_attributes:
                         key = attr_config.key
                         valores_unicos = set()
+                        _hang_trace(f"PRE-STAGE1: escaneando valores para atributo key='{key}'")
 
                         for producto in productos_en_categorias:
                             if producto.attributes and isinstance(producto.attributes, dict):
@@ -2414,6 +2435,8 @@ def text_search():
                                 log_verbose(LogCategory.NLP, f"      Valores: {', '.join(sorted(list(valores_unicos)))}")
                             else:
                                 log_verbose(LogCategory.NLP, f"      Valores: {', '.join(sorted(list(valores_unicos))[:5])} ...")
+
+                    _hang_trace("PRE-STAGE1: extracción de valores por atributo finalizada")
 
                 log_verbose(LogCategory.SEARCH, "="*60)
                 log_verbose(LogCategory.CATEGORY_DETECTION, f"📊 RESUMEN FINAL")
@@ -2440,6 +2463,7 @@ def text_search():
 
             except Exception as e:
                 print(f"⚠️ Error en detección de categorías: {e}")
+                _hang_trace("PRE-STAGE1: excepción en bloque diagnóstico")
                 import traceback
                 traceback.print_exc()
 
@@ -2479,7 +2503,12 @@ def text_search():
         client_slug = getattr(client, 'slug', None)
 
         # STAGE 1: Broad Recall (SQL) con delegación a módulo custom
+        _hang_trace("PRE-STAGE1: invocando stage1_broad_recall")
         candidates, detection_metadata = stage1_broad_recall(query_text, client.id, client_slug, top_n=50)
+        _hang_trace(
+            f"POST-STAGE1: candidates={len(candidates) if candidates is not None else -1}, "
+            f"matched_categories={len(detection_metadata.get('matched_categories', [])) if detection_metadata else 0}"
+        )
 
         # Guardar expanded_terms para la respuesta (ya se calculó en stage1)
         expanded_terms_cache = expand_query_with_synonyms(query_text, client.id, client_slug)
