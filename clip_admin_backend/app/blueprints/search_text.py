@@ -995,43 +995,51 @@ def stage2_precise_rerank(query_text: str, candidates: list, limit: int = 10):
         query_embedding = query_embedding / query_embedding.norm(dim=-1, keepdim=True)
         query_vec = query_embedding.cpu().numpy()[0]
 
-    # 3️⃣ Calcular similitud con TEXTO de cada producto
+    # 3️⃣ Calcular similitud con TEXTO de cada producto (BATCH para performance en CPU)
     scored_candidates = []
 
+    product_texts = []
+    product_prompts = []
     for product in candidates:
-        # Construir descripción textual del producto
         product_parts = [product.name]
 
-        # Agregar atributos relevantes
         if product.attributes:
             for key in ['color', 'tipo', 'material', 'talla']:
                 if key in product.attributes and product.attributes[key]:
                     product_parts.append(str(product.attributes[key]))
 
-        # Agregar categoría
         if product.category:
             product_parts.append(product.category.name)
             if product.category.name_en:
                 product_parts.append(product.category.name_en)
 
         product_text = " ".join(product_parts)
-        product_prompt = f"a photo of {product_text}"
+        product_texts.append(product_text)
+        product_prompts.append(f"a photo of {product_text}")
 
-        # Generar embedding del producto
-        with torch.no_grad():
-            prod_inputs = clip_processor(text=[product_prompt], return_tensors="pt", padding=True).to(device)
-            prod_embedding = clip_model.get_text_features(**prod_inputs)
-            prod_embedding = prod_embedding / prod_embedding.norm(dim=-1, keepdim=True)
-            prod_vec = prod_embedding.cpu().numpy()[0]
+    all_prod_vecs = []
+    batch_size = 64
+    with torch.no_grad():
+        for i in range(0, len(product_prompts), batch_size):
+            prompt_batch = product_prompts[i:i + batch_size]
+            prod_inputs = clip_processor(text=prompt_batch, return_tensors="pt", padding=True).to(device)
+            prod_embeddings = clip_model.get_text_features(**prod_inputs)
+            prod_embeddings = prod_embeddings / prod_embeddings.norm(dim=-1, keepdim=True)
+            all_prod_vecs.append(prod_embeddings.cpu().numpy())
 
-        # Similitud coseno
-        similarity = float(np.dot(query_vec, prod_vec))
+    if all_prod_vecs:
+        prod_matrix = np.vstack(all_prod_vecs)
+    else:
+        prod_matrix = np.array([])
 
-        scored_candidates.append({
-            'product': product,
-            'similarity': similarity,
-            'product_text': product_text
-        })
+    if len(prod_matrix) > 0:
+        similarities = np.dot(prod_matrix, query_vec)
+        for idx, product in enumerate(candidates):
+            scored_candidates.append({
+                'product': product,
+                'similarity': float(similarities[idx]),
+                'product_text': product_texts[idx]
+            })
 
     # 4️⃣ Ordenar por similitud
     scored_candidates.sort(key=lambda x: x['similarity'], reverse=True)
@@ -1250,7 +1258,15 @@ def text_search():
                         print(f"\n🎨 [SEMANTIC COLOR] Adjetivos sistémicos detectados en query: {sys_color_tokens}")
                         # Obtener lista de valores de color del cliente para similitud
                         from app.models.product_attribute_config import ProductAttributeConfig as _PAC_SM
-                        color_cfg = _PAC_SM.query.filter_by(client_id=client.id, key='color').first()
+                        cfgs_color = _PAC_SM.query.filter_by(client_id=client.id).all()
+                        color_cfg = next(
+                            (
+                                cfg for cfg in cfgs_color
+                                if (cfg.key or '').strip().lower() == 'color'
+                                or 'color' in (cfg.key or '').strip().lower()
+                            ),
+                            None
+                        )
                         client_color_values = []
                         if color_cfg and color_cfg.options:
                             raw_opt = color_cfg.options
