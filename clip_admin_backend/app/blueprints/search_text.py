@@ -3116,7 +3116,20 @@ def text_search():
         try:
             print(f"🔍 ANALYTICS: Iniciando registro de búsqueda para client={client.id}", flush=True)
             # Extraer categorías
-            cats_detected = [c['name'] for c in detection_metadata.get('matched_categories', [])] if detection_metadata else []
+            cats_detected = []
+            if detection_metadata:
+                raw_matched_categories = detection_metadata.get('matched_categories', [])
+                for cat_item in raw_matched_categories:
+                    cat_name = None
+                    if isinstance(cat_item, dict):
+                        cat_name = cat_item.get('name') or cat_item.get('slug')
+                    elif isinstance(cat_item, str):
+                        cat_name = cat_item
+                    else:
+                        cat_name = getattr(cat_item, 'name', None) or getattr(cat_item, 'slug', None)
+
+                    if cat_name:
+                        cats_detected.append(str(cat_name))
             cats_matched = list(results_by_category.keys()) if group_by_category and results_by_category else (
                 [cats_detected[0]] if cats_detected and formatted_results else []
             )
