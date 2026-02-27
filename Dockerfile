@@ -24,8 +24,10 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'); print('✅ MiniLM precargado en imagen Docker')" && \
     python -c "from transformers import CLIPModel, CLIPProcessor; CLIPModel.from_pretrained('openai/clip-vit-base-patch16'); CLIPProcessor.from_pretrained('openai/clip-vit-base-patch16'); print('✅ CLIP precargado en imagen Docker')"
 
-# Copiar código fuente
-COPY clip_admin_backend/ ./clip_admin_backend/
+# Copiar solo runtime del backend (evitar logs, tools y tests)
+COPY clip_admin_backend/app/ ./clip_admin_backend/app/
+COPY clip_admin_backend/app.py ./clip_admin_backend/app.py
+COPY clip_admin_backend/wsgi.py ./clip_admin_backend/wsgi.py
 COPY shared/ ./shared/
 COPY system_config.json ./system_config.json
 

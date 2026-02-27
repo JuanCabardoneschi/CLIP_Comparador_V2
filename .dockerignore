@@ -16,6 +16,19 @@ __pycache__/
 # Logs y backups locales
 logs/
 backups/
+clip_admin_backend/logs/
+
+# Documentación y archivos no runtime
+docs/
+*.md
+*.txt
+
+# Scripts y utilidades fuera de runtime
+*.ps1
+clip_admin_backend/tools/
+clip_admin_backend/test_*.py
+clip_admin_backend/clean_webhooks_cli.py
+clip_admin_backend/reset_user_password.py
 
 # Configuración/editor local
 .vscode/
