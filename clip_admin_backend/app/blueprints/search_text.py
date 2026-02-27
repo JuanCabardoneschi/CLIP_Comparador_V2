@@ -2995,7 +2995,30 @@ def text_search():
             if not resolved:
                 resolved = _infer_color_from_product_embedding(result_id)
 
-            # 3) NO inferir color por nombre de producto aquí:
+            # 3) Fallback léxico por familia semántica (atributos/nombre) cuando hay intención de color
+            if not resolved and detected_color_intent and semantic_related_colors:
+                related_set = {
+                    str(v).strip().lower()
+                    for v in semantic_related_colors
+                    if str(v).strip()
+                }
+
+                # Buscar en cualquier atributo textual del producto
+                for raw_v in attrs_lower.values():
+                    raw_txt = str(_extract_scalar_color_value(raw_v) or raw_v).strip().lower()
+                    if raw_txt and (raw_txt in related_set or any(rel in raw_txt for rel in related_set)):
+                        resolved = next((rel for rel in related_set if rel in raw_txt), raw_txt)
+                        break
+
+                # Buscar en nombre del producto
+                if not resolved:
+                    name_txt = str(result_row.get('name') or '').strip().lower()
+                    if name_txt:
+                        hit = next((rel for rel in related_set if rel in name_txt), None)
+                        if hit:
+                            resolved = hit
+
+            # 4) NO inferir color por nombre de producto aquí:
             # evita falsos positivos semánticos (ej: "food" -> "sushi").
 
             resolved_color_cache[cache_key] = resolved
@@ -3113,6 +3136,28 @@ def text_search():
                 base_anchor = base_colors[0] if base_colors else color_value_normalized
                 print(f"🎨 Filtrando por color: token='{color_search_token}', base={base_colors}")
 
+                alias_map = {
+                    'azul': {'azul', 'celeste', 'marino', 'navy'},
+                    'celeste': {'celeste', 'azul', 'marino', 'navy'},
+                    'marron': {'marron', 'marrón', 'brown', 'habano', 'tostado', 'camel', 'caramelo', 'beige', 'baige', 'tierra', 'terra'},
+                    'marrón': {'marron', 'marrón', 'brown', 'habano', 'tostado', 'camel', 'caramelo', 'beige', 'baige', 'tierra', 'terra'},
+                }
+
+                backfill_tokens = set(base_set)
+                for bc in list(base_set):
+                    backfill_tokens.update(alias_map.get(str(bc).strip().lower(), set()))
+
+                def _row_text_for_color_backfill(row) -> str:
+                    attrs = row.get('attributes') or {}
+                    attrs_txt = []
+                    if isinstance(attrs, dict):
+                        for v in attrs.values():
+                            vv = _extract_scalar_color_value(v)
+                            if vv is None:
+                                vv = v
+                            attrs_txt.append(str(vv))
+                    return (str(row.get('name') or '') + ' ' + ' '.join(attrs_txt)).strip().lower()
+
                 def _product_matches_base_colors(row) -> bool:
                     # 1) atributo JSON configurado
                     attrs_raw = row.get('attributes') or {}
@@ -3194,6 +3239,17 @@ def text_search():
                                     continue
                                 rc = _resolve_product_color_norm(r)
                                 if rc in similar_set:
+                                    filtered_results.append(r)
+                                if len(filtered_results) >= target_total:
+                                    break
+
+                        # Backfill léxico: si aún faltan resultados, completar por términos de color en nombre/atributos.
+                        if len(filtered_results) < target_total:
+                            for r in pre_color_results:
+                                if r in filtered_results:
+                                    continue
+                                row_txt = _row_text_for_color_backfill(r)
+                                if row_txt and any(tok in row_txt for tok in backfill_tokens):
                                     filtered_results.append(r)
                                 if len(filtered_results) >= target_total:
                                     break
