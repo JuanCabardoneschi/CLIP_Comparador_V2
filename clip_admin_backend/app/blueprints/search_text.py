@@ -3053,20 +3053,63 @@ def text_search():
                 formatted_results = filtered_results
             else:
                 # Si hubo intención explícita de color pero no se pudo normalizar/matchear,
-                # no devolver resultados irrelevantes.
+                # intentar resolver color objetivo por similitud CLIP sobre candidatos.
                 if detected_color_intent:
-                    formatted_results = []
-                    print("🎨 Intención de color detectada sin mapeo válido: devolviendo 0 resultados para evitar ruido")
-                    color_key = next((k for k in requested_attrs.keys() if str(k).lower() == 'color'), None)
-                    if color_key:
-                        all_available_values[color_key] = []
-                    elif detected_color_token:
-                        all_available_values['color'] = []
-                    # Saltar filtrado de atributos no-color en este caso
-                    filtered_results = []
+                    recovered_color = None
+                    try:
+                        from app.utils.colors import _get_color_embedding
+                        search_token = detected_color_token or query_text
+                        target_emb = _get_color_embedding(str(search_token), client_id=client.id)
+                        available_product_colors = [
+                            _resolve_product_color_norm(r)
+                            for r in formatted_results
+                        ]
+                        available_product_colors = [c for c in available_product_colors if c]
 
-                    # mantener estructura y continuar con respuesta vacía
-                    pass
+                        if target_emb is not None and available_product_colors:
+                            scored = []
+                            for c in set(available_product_colors):
+                                emb_c = _get_color_embedding(c, client_id=client.id)
+                                if emb_c is None:
+                                    continue
+                                denom = (np.linalg.norm(target_emb) * np.linalg.norm(emb_c))
+                                if denom == 0:
+                                    continue
+                                sim = float(np.dot(target_emb, emb_c) / denom)
+                                scored.append((c, sim))
+
+                            scored.sort(key=lambda x: x[1], reverse=True)
+                            if scored:
+                                recovered_color = scored[0][0]
+                                print(f"🎨 Recuperación color por CLIP: token='{search_token}' → '{recovered_color}' (sim={scored[0][1]:.3f})")
+
+                    except Exception as e_recover:
+                        print(f"⚠️ Recuperación de color por CLIP falló: {e_recover}")
+
+                    if recovered_color:
+                        detected_color_normalized = recovered_color
+                        color_filter_value = recovered_color
+                        pre_color_results = list(formatted_results)
+                        filtered_results = [
+                            r for r in formatted_results
+                            if _resolve_product_color_norm(r) == recovered_color
+                        ]
+                        if filtered_results:
+                            formatted_results = filtered_results
+                            requested_attrs['color'] = recovered_color
+                            all_available_values['color'] = [recovered_color]
+                        else:
+                            formatted_results = []
+                            all_available_values['color'] = []
+                    else:
+                        formatted_results = []
+                        print("🎨 Intención de color detectada sin mapeo ni recuperación CLIP válida: devolviendo 0 resultados")
+                        color_key = next((k for k in requested_attrs.keys() if str(k).lower() == 'color'), None)
+                        if color_key:
+                            all_available_values[color_key] = []
+                        elif detected_color_token:
+                            all_available_values['color'] = []
+                        filtered_results = []
 
                 # Filtrar: mantener solo productos que cumplan AL MENOS 1 atributo solicitado
                 filtered_results = [r for r in formatted_results if r.get("attributes_match_count", 0) > 0]
