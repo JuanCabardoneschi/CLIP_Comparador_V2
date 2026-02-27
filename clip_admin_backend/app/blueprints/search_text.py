@@ -3215,6 +3215,7 @@ def text_search():
                 if detected_color_intent:
                     _hang_trace("detected_color_intent=True -> start recovered_color flow")
                     recovered_color = None
+                    preferred_matches_for_token = []
                     try:
                         from app.utils.colors import _get_color_embedding
                         from app.utils.semantic_colors import _load_system_colors
@@ -3239,6 +3240,7 @@ def text_search():
                                     tok = str(item.get('token', '')).strip().lower()
                                     if tok == token_norm:
                                         preferred = [str(v).strip().lower() for v in item.get('preferred_matches', []) if str(v).strip()]
+                                        preferred_matches_for_token = list(preferred)
                                         break
                                 if preferred:
                                     available_unique = list(dict.fromkeys(available_product_colors))
@@ -3290,6 +3292,24 @@ def text_search():
                             target_emb_local = _get_color_embedding(str(recovered_color), client_id=client.id)
                             emb_cache_local = {}
 
+                            preferred_set = {
+                                str(v).strip().lower()
+                                for v in ([recovered_color] + (preferred_matches_for_token or []))
+                                if str(v).strip()
+                            }
+
+                            def _matches_target_family(color_value: str) -> bool:
+                                if not color_value:
+                                    return False
+                                norm_val = str(color_value).strip().lower()
+                                if norm_val == recovered_color:
+                                    return True
+                                if norm_val in preferred_set:
+                                    return True
+                                if any(pref in norm_val for pref in preferred_set):
+                                    return True
+                                return _is_close_color(norm_val)
+
                             def _is_close_color(candidate_color: str) -> bool:
                                 if not target_emb_local or not candidate_color:
                                     return False
@@ -3308,15 +3328,46 @@ def text_search():
                                 return sim >= 0.64
 
                             filtered_results = []
+                            existing_ids = set()
                             for r in formatted_results:
-                                resolved_color = _resolve_product_color_norm(r)
-                                if not resolved_color:
+                                rid = str(r.get('id')) if r.get('id') is not None else None
+                                if rid and rid in existing_ids:
                                     continue
-                                if str(resolved_color).strip().lower() == recovered_color:
+
+                                # 1) Prioridad: atributo JSON de color
+                                attrs_raw = r.get('attributes') or {}
+                                attrs_lower = {str(k).strip().lower(): v for k, v in attrs_raw.items()} if isinstance(attrs_raw, dict) else {}
+                                attr_color_match = None
+                                for ck in configured_color_keys:
+                                    if ck in attrs_lower:
+                                        raw_attr = _extract_scalar_color_value(attrs_lower.get(ck))
+                                        if raw_attr:
+                                            norm_attr = normalize_color(str(raw_attr), client_id=client.id)
+                                            candidate_attr = norm_attr or str(raw_attr).strip().lower()
+                                            if _matches_target_family(candidate_attr):
+                                                attr_color_match = candidate_attr
+                                                break
+                                if attr_color_match:
                                     filtered_results.append(r)
+                                    if rid:
+                                        existing_ids.add(rid)
                                     continue
-                                if _is_close_color(str(resolved_color)):
+
+                                # 2) Si no hubo match en atributo: inferencia por embedding
+                                emb_color = _infer_color_from_product_embedding(r.get('id'))
+                                if emb_color and _matches_target_family(emb_color):
                                     filtered_results.append(r)
+                                    if rid:
+                                        existing_ids.add(rid)
+                                    continue
+
+                                # 3) Si no hubo match por embedding: fallback por nombre
+                                name_color = normalize_color(str(r.get('name') or ''), client_id=client.id)
+                                if name_color and _matches_target_family(name_color):
+                                    filtered_results.append(r)
+                                    if rid:
+                                        existing_ids.add(rid)
+
                             _hang_trace(f"recovered_color semantic filtering done count={len(filtered_results)}")
                         except Exception:
                             filtered_results = [
@@ -3325,25 +3376,6 @@ def text_search():
                             ]
 
                         print(f"🎨 Filtrado color recuperado '{recovered_color}': {len(filtered_results)} resultados (exactos + cercanos)")
-                        if len(filtered_results) < limit:
-                            try:
-                                existing_ids = {str(r.get('id')) for r in filtered_results if r.get('id') is not None}
-                                for r in pre_color_results:
-                                    rid = str(r.get('id')) if r.get('id') is not None else None
-                                    if rid and rid in existing_ids:
-                                        continue
-                                    name_color = normalize_color(str(r.get('name') or ''), client_id=client.id)
-                                    if not name_color:
-                                        continue
-                                    name_norm = str(name_color).strip().lower()
-                                    if name_norm == recovered_color or _is_close_color(name_norm):
-                                        filtered_results.append(r)
-                                        if rid:
-                                            existing_ids.add(rid)
-                                    if len(filtered_results) >= limit:
-                                        break
-                            except Exception:
-                                pass
 
                         if filtered_results:
                             formatted_results = filtered_results
