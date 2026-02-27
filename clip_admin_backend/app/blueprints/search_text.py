@@ -3370,12 +3370,8 @@ def text_search():
                                         existing_ids.add(rid)
                                     continue
 
-                                #    Si no hay término explícito, intentar normalización semántica del nombre.
-                                name_color = normalize_color(name_txt, client_id=client.id)
-                                if name_color and _matches_target_family(name_color):
-                                    filtered_results.append(r)
-                                    if rid:
-                                        existing_ids.add(rid)
+                                #    Si no hay término explícito, NO inferir color semántico desde nombre completo.
+                                #    Evita latencia alta y falsos positivos en textos largos (ej: nombres de producto).
 
                             _hang_trace(f"recovered_color semantic filtering done count={len(filtered_results)}")
                         except Exception:

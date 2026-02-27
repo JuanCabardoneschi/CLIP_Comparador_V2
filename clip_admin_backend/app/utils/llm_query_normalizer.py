@@ -1043,9 +1043,9 @@ def normaliza_color(color_query: str, client_id: int | None = None) -> str | Non
             return result
 
         # Prioridad para adjetivos sistémicos (ej: "chocolate"): usar mapeo semántico
-        # contra colores reales del cliente y evitar matches espurios del fallback genérico.
+        # contra colores reales del cliente y, si no hay match directo, fallback por similitud.
         try:
-            from app.utils.semantic_colors import map_semantic_colors, get_system_color_adjectives
+            from app.utils.semantic_colors import map_semantic_colors, get_system_color_adjectives, _load_system_colors
             q_norm = q_lower.strip()
             system_color_adjectives = set(get_system_color_adjectives())
             if q_norm in system_color_adjectives:
@@ -1055,9 +1055,35 @@ def normaliza_color(color_query: str, client_id: int | None = None) -> str | Non
                     print(f"🎨 [normaliza_color] Mapeo sistémico: '{q_norm}' → '{best_color}'")
                     _NORMALIZA_COLOR_CACHE[cache_key] = best_color
                     return best_color
-                print(f"🎨 [normaliza_color] Sin mapeo sistémico para '{q_norm}' con colores cliente")
-                _NORMALIZA_COLOR_CACHE[cache_key] = None
-                return None
+
+                print(f"🎨 [normaliza_color] Sin mapeo sistémico directo para '{q_norm}', probando similitud por familia")
+
+                # Si no hubo mapeo directo, intentar similitud usando preferred_matches del token sistémico
+                try:
+                    data_sc = _load_system_colors()
+                    entries = data_sc.get('colors', []) if isinstance(data_sc, dict) else []
+                    preferred = []
+                    for item in entries:
+                        if str(item.get('token', '')).strip().lower() == q_norm:
+                            preferred = [str(v).strip().lower() for v in item.get('preferred_matches', []) if str(v).strip()]
+                            break
+
+                    # 1) exacto léxico sobre vocab cliente
+                    for pref in preferred:
+                        if pref in colors_map:
+                            _NORMALIZA_COLOR_CACHE[cache_key] = colors_map[pref]
+                            return colors_map[pref]
+
+                    # 2) similitud semántica por familia (marron/beige/etc.)
+                    for pref in preferred[:5]:
+                        pref_match = _semantic_match(pref, colores, client_id, threshold=0.35)
+                        if pref_match:
+                            pref_match = str(pref_match).strip().lower()
+                            _NORMALIZA_COLOR_CACHE[cache_key] = pref_match
+                            print(f"🎨 [normaliza_color] Fallback familia: '{q_norm}' → '{pref_match}' (via '{pref}')")
+                            return pref_match
+                except Exception as e_pref:
+                    print(f"⚠️ [normaliza_color] Error fallback familia para '{q_norm}': {e_pref}")
         except Exception as e_sem:
             print(f"⚠️ [normaliza_color] Error en mapeo sistémico: {e_sem}")
 
