@@ -2970,9 +2970,8 @@ def text_search():
             if not resolved:
                 resolved = _infer_color_from_product_embedding(result_id)
 
-            # 3) Nombre de producto
-            if not resolved:
-                resolved = normalize_color(str(result_row.get('name') or ''), client_id=client.id)
+            # 3) NO inferir color por nombre de producto aquí:
+            # evita falsos positivos semánticos (ej: "food" -> "sushi").
 
             resolved_color_cache[cache_key] = resolved
             if color_resolve_stats['cache_miss'] <= 5:
