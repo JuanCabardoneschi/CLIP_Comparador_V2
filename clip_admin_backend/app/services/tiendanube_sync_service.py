@@ -774,6 +774,11 @@ class TiendanubeSyncService:
                 if not source_url:
                     continue
 
+                placeholder_base64 = (
+                    'data:image/png;base64,'
+                    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+                )
+
                 # Calcular hash de la URL para detectar cambios
                 url_hash = hashlib.sha256(source_url.encode()).hexdigest()
 
@@ -784,6 +789,30 @@ class TiendanubeSyncService:
                 ).first()
 
                 if existing_image:
+                    has_valid_base64 = bool(
+                        existing_image.base64_data
+                        and str(existing_image.base64_data).startswith('data:image')
+                        and str(existing_image.base64_data).strip() != placeholder_base64
+                    )
+
+                    if not has_valid_base64:
+                        mime_type_existing = existing_image.mime_type or 'image/jpeg'
+                        if existing_image.base64_thumb:
+                            existing_image.base64_data = f"data:{mime_type_existing};base64,{existing_image.base64_thumb}"
+                            db.session.commit()
+                        else:
+                            base64_full_fix, base64_thumb_fix, mime_type_fix, width_fix, height_fix, size_fix = self._download_and_convert_image(source_url)
+                            if base64_thumb_fix:
+                                final_mime = mime_type_fix or mime_type_existing
+                                existing_image.base64_thumb = base64_thumb_fix
+                                existing_image.base64_data = f"data:{final_mime};base64,{base64_thumb_fix}"
+                                if width_fix and height_fix:
+                                    existing_image.width = width_fix
+                                    existing_image.height = height_fix
+                                if size_fix:
+                                    existing_image.size_bytes = size_fix
+                                db.session.commit()
+
                     # Imagen ya existe y no cambió
                     continue
 
@@ -801,7 +830,7 @@ class TiendanubeSyncService:
                     filename=f"tn_{product.external_id}_{idx}.{mime_type.split('/')[-1]}",
                     original_filename=source_url.split('/')[-1],
                     source_url=source_url,
-                    base64_data=base64_full,  # Opcional: puede ser None para ahorrar espacio
+                    base64_data=f"data:{mime_type or 'image/jpeg'};base64,{base64_thumb}",
                     base64_thumb=base64_thumb,
                     mime_type=mime_type,
                     width=width,

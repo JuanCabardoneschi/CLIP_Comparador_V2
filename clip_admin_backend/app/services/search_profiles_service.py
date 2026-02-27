@@ -25,7 +25,7 @@ _cache_timestamps = {}  # client_id -> timestamp
 
 # spaCy (lemmatización española) - carga perezosa para evitar overhead si falta el modelo
 _spacy_nlp = None
-_SPACY_MODEL = os.getenv("SPACY_MODEL", "es_core_news_sm")
+_SPACY_MODEL = os.getenv("SPACY_MODEL", "es_core_news_md")
 
 
 def _load_spacy_model():
@@ -92,7 +92,7 @@ DEFAULT_PROFILES = {
             "rojo", "verde", "azul", "negro", "blanco", "marron", "gris",
             "beige", "rosa", "amarillo", "violeta", "celeste", "naranja",
             "plateado", "dorado", "plateado", "plateados", "dorados",
-            "turquesa", "fucsia", "bordeaux", "vino", "militar",
+            "turquesa", "fucsia", "bordeaux", "vino", "militar", "chocolate", "cafe",
         },
         "name_en_ignore_modifiers": {
             "short", "long", "high", "low", "rise", "sleeve", "neck", "casual",
@@ -130,7 +130,7 @@ DEFAULT_PROFILES = {
         "color_tokens": {
             "rojo", "verde", "azul", "negro", "blanco", "marron", "gris",
             "beige", "rosa", "amarillo", "violeta", "celeste", "naranja",
-            "plateado", "caramelo", "turquesa", "fucsia",
+            "plateado", "caramelo", "turquesa", "fucsia", "chocolate", "cafe",
         },
         "name_en_ignore_modifiers": {
             "short", "long", "high", "low", "rise", "sleeve", "neck",
@@ -156,6 +156,31 @@ class SearchProfilesService:
     """Servicio para cargar, cachear y aplicar perfiles de búsqueda."""
 
     CACHE_TTL = 3600  # 1 hora
+
+    @staticmethod
+    def _resolve_profile_key(client_industry: Optional[str], client=None) -> str:
+        """Resuelve la clave de perfil base con aliases y fallback por cliente."""
+        industry_raw = (client_industry or '').strip().lower()
+        industry_aliases = {
+            'general': 'generic',
+            'clothing': 'fashion',
+            'apparel': 'fashion',
+            'uniformes': 'uniforms',
+            'workwear': 'uniforms',
+        }
+
+        profile_key = industry_aliases.get(industry_raw, industry_raw or 'generic')
+
+        # Hotfix operativo: Goody usa taxonomía de uniformes; evitar perfil genérico.
+        if client is not None and profile_key == 'generic':
+            client_name = (getattr(client, 'name', '') or '').strip().lower()
+            client_slug = (getattr(client, 'slug', '') or '').strip().lower()
+            if client_name == 'goody' or client_slug == 'goody':
+                profile_key = 'uniforms'
+
+        if profile_key not in DEFAULT_PROFILES:
+            return 'generic'
+        return profile_key
 
     @staticmethod
     def get_profile(client_id: str, client_industry: str = None, force_reload: bool = False) -> Dict:
@@ -188,29 +213,32 @@ class SearchProfilesService:
                 del _profile_cache[cache_key]
                 del _cache_timestamps[cache_key]
 
-        # Si no tenemos industry, obtenerla de BD
-        if not client_industry:
-            from app.models.client import Client
-            client = Client.query.get(client_id)
-            if not client:
-                logger.warning(f"Cliente {client_id} no encontrado")
-                client_industry = "generic"
-            else:
-                client_industry = client.industry or "generic"
+        from app.models.client import Client
 
-        # Obtener perfil base por industria
-        base_profile = DEFAULT_PROFILES.get(client_industry or "generic", DEFAULT_PROFILES["generic"]).copy()
+        client = Client.query.get(client_id)
+        if not client and not client_industry:
+            logger.warning(f"Cliente {client_id} no encontrado")
+
+        resolved_industry = (client_industry or (client.industry if client else None) or 'generic')
+        profile_key = SearchProfilesService._resolve_profile_key(resolved_industry, client)
+
+        # Override explícito por cliente (si existe)
+        if client and client.integration_config:
+            configured_profile = (client.integration_config.get('search_profile') or '').strip().lower()
+            if configured_profile in DEFAULT_PROFILES:
+                profile_key = configured_profile
+
+        # Obtener perfil base por industria resuelta
+        base_profile = DEFAULT_PROFILES.get(profile_key, DEFAULT_PROFILES['generic']).copy()
 
         # Cargar overrides del cliente
         try:
-            from app.models.client import Client
-            client = Client.query.get(client_id)
             if client and client.integration_config:
                 overrides = client.integration_config.get("search_rules", {})
                 if overrides:
                     # Mergear overrides con el perfil base
                     base_profile = SearchProfilesService._merge_profiles(base_profile, overrides)
-                    logger.info(f"Perfil para {client_id} ({client_industry}) con {len(overrides)} overrides")
+                    logger.info(f"Perfil para {client_id} ({profile_key}) con {len(overrides)} overrides")
         except Exception as e:
             logger.warning(f"Error cargando overrides para {client_id}: {e}")
 

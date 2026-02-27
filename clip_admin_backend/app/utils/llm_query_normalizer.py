@@ -11,6 +11,7 @@ import time
 import json
 import threading
 import os
+import unicodedata
 
 # Modelo liviano multilingüe (usar nombre canónico de HuggingFace)
 MODEL_NAME = os.getenv(
@@ -1072,19 +1073,34 @@ def normaliza_color(color_query: str, client_id: int | None = None) -> str | Non
                             preferred = [str(v).strip().lower() for v in item.get('preferred_matches', []) if str(v).strip()]
                             break
 
-                    # 1) exacto léxico sobre vocab cliente
-                    for pref in preferred:
-                        if pref in colors_map:
-                            _NORMALIZA_COLOR_CACHE[cache_key] = colors_map[pref]
-                            return colors_map[pref]
+                    def _norm_lex(s: str) -> str:
+                        txt = str(s or '').strip().lower()
+                        return ''.join(ch for ch in unicodedata.normalize('NFD', txt) if unicodedata.category(ch) != 'Mn')
+
+                    preferred_norm = [_norm_lex(p) for p in preferred if _norm_lex(p)]
+
+                    # 1) exacto léxico sobre vocab cliente (normalizado)
+                    for color_name in colors_map.keys():
+                        color_norm = str(color_name).strip().lower()
+                        color_norm_lex = _norm_lex(color_norm)
+                        if color_norm_lex in preferred_norm:
+                            _NORMALIZA_COLOR_CACHE[cache_key] = color_norm
+                            print(f"🎨 [normaliza_color] Fallback familia exacta: '{q_norm}' → '{color_norm}'")
+                            return color_norm
 
                     # 2) contiene término de familia (ej: 'marron claro', 'beige tostado')
                     for color_name in colors_map.keys():
                         color_norm = str(color_name).strip().lower()
-                        if any(pref in color_norm for pref in preferred):
+                        color_norm_lex = _norm_lex(color_norm)
+                        if any(pref in color_norm_lex for pref in preferred_norm):
                             _NORMALIZA_COLOR_CACHE[cache_key] = color_norm
                             print(f"🎨 [normaliza_color] Fallback familia léxica: '{q_norm}' → '{color_norm}'")
                             return color_norm
+
+                    # 3) Para tokens sistémicos, NO caer al matcher global (evita chocolate -> gris)
+                    print(f"🎨 [normaliza_color] Sin match de familia para '{q_norm}'. Se preserva intención de color sin normalizar")
+                    _NORMALIZA_COLOR_CACHE[cache_key] = None
+                    return None
                 except Exception as e_pref:
                     print(f"⚠️ [normaliza_color] Error fallback familia para '{q_norm}': {e_pref}")
         except Exception as e_sem:

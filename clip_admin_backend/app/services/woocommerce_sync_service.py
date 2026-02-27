@@ -911,6 +911,11 @@ class WooCommerceSyncService:
             if not source_url:
                 raise ValueError(f"Imagen sin src en producto {product.external_id}")
 
+            placeholder_base64 = (
+                'data:image/png;base64,'
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+            )
+
             # ✅ Usar thumbnail que devuelve WooCommerce (300x300)
             image_url = thumbnail_url or source_url
             log_system(f"[WOO SYNC] Imagen {idx + 1}/{len(images_data)} producto {product.external_id}")
@@ -926,7 +931,28 @@ class WooCommerceSyncService:
             ).first()
 
             if existing_image:
-                if existing_image.is_processed and existing_image.clip_embedding:
+                has_valid_base64 = bool(
+                    existing_image.base64_data
+                    and str(existing_image.base64_data).startswith('data:image')
+                    and str(existing_image.base64_data).strip() != placeholder_base64
+                )
+
+                if not has_valid_base64:
+                    mime_type_existing = existing_image.mime_type or 'image/jpeg'
+                    if existing_image.base64_thumb:
+                        existing_image.base64_data = f"data:{mime_type_existing};base64,{existing_image.base64_thumb}"
+                    elif existing_image.source_url:
+                        repaired_base64, repaired_mime, repaired_w, repaired_h, repaired_size = self._download_thumbnail_direct(existing_image.source_url)
+                        if repaired_base64:
+                            final_mime = repaired_mime or mime_type_existing
+                            existing_image.base64_data = f"data:{final_mime};base64,{repaired_base64}"
+                            if repaired_w and repaired_h:
+                                existing_image.width = repaired_w
+                                existing_image.height = repaired_h
+                            if repaired_size:
+                                existing_image.size_bytes = repaired_size
+
+                if existing_image.is_processed and existing_image.clip_embedding and existing_image.base64_data:
                     continue
 
                 if processed == 0:
@@ -974,7 +1000,7 @@ class WooCommerceSyncService:
                 filename=f"wc_{product.external_id}_{idx}.{mime_type.split('/')[-1] if mime_type else 'jpg'}",
                 original_filename=source_url.split('/')[-1],
                 source_url=source_url,
-                base64_data=None,  # 🚀 No guardamos imagen full, solo thumbnail
+                base64_data=f"data:{mime_type or 'image/jpeg'};base64,{base64_thumb}",
                 base64_thumb=base64_thumb,
                 mime_type=mime_type,
                 width=width,
