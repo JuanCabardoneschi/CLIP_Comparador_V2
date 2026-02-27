@@ -1081,6 +1081,16 @@ def text_search():
 
     start_time = time.time()
 
+    hang_trace_state = {'step': 0}
+
+    def _hang_trace(msg: str):
+        try:
+            hang_trace_state['step'] += 1
+            elapsed_trace = time.time() - start_time
+            print(f"[HANG_TRACE][{hang_trace_state['step']:03d}][t+{elapsed_trace:.3f}s] {msg}")
+        except Exception:
+            pass
+
     # Rollback defensivo inicial para limpiar cualquier transacción abortada previa
     try:
         db.session.rollback()
