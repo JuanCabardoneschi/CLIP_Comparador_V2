@@ -729,11 +729,12 @@ def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: flo
         except Exception as e:
             print(f"⚠️ Error guardando embeddings: {e}")
 
-    # Construir matriz de embeddings en el orden original
-    vocab_embs = np.array([vocab_embeddings[v] for v in vocab_lower if v in vocab_embeddings])
+    # Construir matriz de embeddings y términos alineados
+    aligned_terms = [v for v in vocab_lower if v in vocab_embeddings]
+    vocab_embs = np.array([vocab_embeddings[v] for v in aligned_terms])
 
     if len(vocab_embs) == 0:
-        return []
+        return None
 
     # Calcular similitudes
     similarities = cosine_similarity([query_emb], vocab_embs)[0]    # Encontrar el mejor match
@@ -743,8 +744,9 @@ def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: flo
     print(f"⏱️ [_semantic_match] TOTAL: {time.time()-t_start:.3f}s (vocab={len(vocabulary)}, cached={len(vocab_embeddings)}, missing={len(missing_terms)})", flush=True)
 
     if max_sim >= threshold:
-        print(f"  🎯 Match: '{query}' → '{vocabulary[max_idx]}' (sim={max_sim:.3f})")
-        return vocabulary[max_idx]
+        best_term = aligned_terms[max_idx]
+        print(f"  🎯 Match: '{query}' → '{best_term}' (sim={max_sim:.3f})")
+        return best_term
 
     return None
 
@@ -836,8 +838,9 @@ def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, thres
             except Exception as e:
                 print(f"⚠️ Error guardando embeddings: {e}")
 
-    # Construir matriz de embeddings en el orden original
-    vocab_embs = np.array([vocab_embeddings[v] for v in vocab_lower if v in vocab_embeddings])
+    # Construir matriz de embeddings y términos alineados
+    aligned_terms = [v for v in vocab_lower if v in vocab_embeddings]
+    vocab_embs = np.array([vocab_embeddings[v] for v in aligned_terms])
 
     if len(vocab_embs) == 0:
         return []
@@ -849,7 +852,7 @@ def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, thres
     matches = []
     for idx, sim in enumerate(similarities):
         if sim >= threshold:
-            matches.append((vocabulary[idx], sim))
+            matches.append((aligned_terms[idx], sim))
 
     # Ordenar por similitud descendente y tomar top_k
     matches.sort(key=lambda x: x[1], reverse=True)
@@ -1058,7 +1061,8 @@ def normaliza_color(color_query: str, client_id: int | None = None) -> str | Non
 
                 print(f"🎨 [normaliza_color] Sin mapeo sistémico directo para '{q_norm}', probando similitud por familia")
 
-                # Si no hubo mapeo directo, intentar similitud usando preferred_matches del token sistémico
+                # Si no hubo mapeo directo, usar SOLO familia léxica controlada
+                # (evita desvíos semánticos como 'marron' -> 'fucsia').
                 try:
                     data_sc = _load_system_colors()
                     entries = data_sc.get('colors', []) if isinstance(data_sc, dict) else []
@@ -1074,14 +1078,13 @@ def normaliza_color(color_query: str, client_id: int | None = None) -> str | Non
                             _NORMALIZA_COLOR_CACHE[cache_key] = colors_map[pref]
                             return colors_map[pref]
 
-                    # 2) similitud semántica por familia (marron/beige/etc.)
-                    for pref in preferred[:5]:
-                        pref_match = _semantic_match(pref, colores, client_id, threshold=0.35)
-                        if pref_match:
-                            pref_match = str(pref_match).strip().lower()
-                            _NORMALIZA_COLOR_CACHE[cache_key] = pref_match
-                            print(f"🎨 [normaliza_color] Fallback familia: '{q_norm}' → '{pref_match}' (via '{pref}')")
-                            return pref_match
+                    # 2) contiene término de familia (ej: 'marron claro', 'beige tostado')
+                    for color_name in colors_map.keys():
+                        color_norm = str(color_name).strip().lower()
+                        if any(pref in color_norm for pref in preferred):
+                            _NORMALIZA_COLOR_CACHE[cache_key] = color_norm
+                            print(f"🎨 [normaliza_color] Fallback familia léxica: '{q_norm}' → '{color_norm}'")
+                            return color_norm
                 except Exception as e_pref:
                     print(f"⚠️ [normaliza_color] Error fallback familia para '{q_norm}': {e_pref}")
         except Exception as e_sem:
