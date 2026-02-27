@@ -2504,8 +2504,21 @@ def text_search():
         client_slug = getattr(client, 'slug', None)
 
         # STAGE 1: Broad Recall (SQL) con delegación a módulo custom
-        _hang_trace("PRE-STAGE1: invocando stage1_broad_recall")
-        candidates, detection_metadata = stage1_broad_recall(query_text, client.id, client_slug, top_n=50)
+        stage1_top_n = 50
+        try:
+            q_tokens_stage1 = {t.strip(".,;:!?").lower() for t in query_text.split() if t.strip()}
+            basic_color_tokens = {
+                'negro', 'blanco', 'gris', 'azul', 'celeste', 'verde', 'rojo',
+                'rosa', 'marron', 'marrón', 'beige', 'amarillo', 'violeta', 'naranja',
+                'brown', 'navy', 'coral', 'chocolate', 'turquesa', 'lavanda', 'mostaza'
+            }
+            if q_tokens_stage1 & basic_color_tokens:
+                stage1_top_n = 120
+        except Exception:
+            stage1_top_n = 50
+
+        _hang_trace(f"PRE-STAGE1: invocando stage1_broad_recall top_n={stage1_top_n}")
+        candidates, detection_metadata = stage1_broad_recall(query_text, client.id, client_slug, top_n=stage1_top_n)
         _hang_trace(
             f"POST-STAGE1: candidates={len(candidates) if candidates is not None else -1}, "
             f"matched_categories={len(detection_metadata.get('matched_categories', [])) if detection_metadata else 0}"
@@ -2739,7 +2752,8 @@ def text_search():
             # Si hay intención de color, ampliar candidatos para que el filtro
             # posterior por color tenga mayor recall (evita decidir sobre muy pocos productos).
             if detected_color_intent:
-                rerank_limit = max(rerank_limit, limit * 10)
+                rerank_limit = max(rerank_limit, limit * 20)
+                rerank_limit = min(rerank_limit, len(candidates))
         except Exception:
             rerank_limit = limit
 
@@ -3194,10 +3208,10 @@ def text_search():
 
                 # 2) Si faltan resultados, completar con colores similares
                 try:
-                    target_total = rerank_limit if 'rerank_limit' in locals() else limit
+                    target_total = limit
                     target_total = min(target_total, len(pre_color_results))
                 except Exception:
-                    target_total = len(pre_color_results)
+                    target_total = limit
 
                 if len(filtered_results) < target_total:
                     print(f"🔍 Exactos insuficientes ({len(filtered_results)}/{target_total}), buscando colores similares a '{base_anchor}'...")
@@ -3229,6 +3243,9 @@ def text_search():
                             THRESH = 0.50
                             TOPK = 4
                             similar_colors = [c for c, s in scored if s >= THRESH][:TOPK]
+                            if not similar_colors:
+                                THRESH = 0.35
+                                similar_colors = [c for c, s in scored if s >= THRESH][:TOPK]
                             print(f"🎨 Similares a '{base_anchor}': {[(c, round(s,3)) for c,s in scored[:5]]}")
                             print(f"✅ Top similares (>{THRESH}): {similar_colors}")
 
