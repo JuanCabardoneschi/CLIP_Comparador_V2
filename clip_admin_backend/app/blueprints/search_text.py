@@ -2653,6 +2653,10 @@ def text_search():
             if detection_metadata and isinstance(detection_metadata.get('matched_categories'), list):
                 detected_cats = len(detection_metadata.get('matched_categories'))
             rerank_limit = limit * detected_cats if detected_cats and detected_cats > 1 else limit
+            # Si hay intención de color sin mapeo aún, ampliar candidatos para que el filtro
+            # posterior por color tenga mayor recall (evita decidir sobre solo 3 productos).
+            if detected_color_intent and not detected_color_normalized:
+                rerank_limit = max(rerank_limit, limit * 10)
         except Exception:
             rerank_limit = limit
 
@@ -3058,6 +3062,7 @@ def text_search():
                     recovered_color = None
                     try:
                         from app.utils.colors import _get_color_embedding
+                        from app.utils.semantic_colors import _load_system_colors
                         search_token = detected_color_token or query_text
                         target_emb = _get_color_embedding(str(search_token), client_id=client.id)
                         available_product_colors = [
@@ -3066,7 +3071,33 @@ def text_search():
                         ]
                         available_product_colors = [c for c in available_product_colors if c]
 
-                        if target_emb is not None and available_product_colors:
+                        # 1) Priorizar matches léxicos declarados en configuración semántica
+                        #    (ej: chocolate -> familia marrón) si existen en candidatos.
+                        if available_product_colors and detected_color_token:
+                            try:
+                                data_sc = _load_system_colors()
+                                entries = data_sc.get('colors', []) if isinstance(data_sc, dict) else []
+                                token_norm = str(detected_color_token).strip().lower()
+                                preferred = []
+                                for item in entries:
+                                    tok = str(item.get('token', '')).strip().lower()
+                                    if tok == token_norm:
+                                        preferred = [str(v).strip().lower() for v in item.get('preferred_matches', []) if str(v).strip()]
+                                        break
+                                if preferred:
+                                    available_unique = list(dict.fromkeys(available_product_colors))
+                                    lexical_hits = [
+                                        c for c in available_unique
+                                        if any(p in str(c).lower() for p in preferred)
+                                    ]
+                                    if lexical_hits:
+                                        recovered_color = lexical_hits[0]
+                                        print(f"🎨 Recuperación color léxica: token='{search_token}' → '{recovered_color}'")
+                            except Exception as e_pref:
+                                print(f"⚠️ Recuperación léxica por preferred_matches falló: {e_pref}")
+
+                        # 2) Fallback por similitud CLIP con umbral mínimo de confianza.
+                        if recovered_color is None and target_emb is not None and available_product_colors:
                             scored = []
                             for c in set(available_product_colors):
                                 emb_c = _get_color_embedding(c, client_id=client.id)
@@ -3080,8 +3111,12 @@ def text_search():
 
                             scored.sort(key=lambda x: x[1], reverse=True)
                             if scored:
-                                recovered_color = scored[0][0]
-                                print(f"🎨 Recuperación color por CLIP: token='{search_token}' → '{recovered_color}' (sim={scored[0][1]:.3f})")
+                                best_color, best_sim = scored[0]
+                                if best_sim >= 0.50:
+                                    recovered_color = best_color
+                                    print(f"🎨 Recuperación color por CLIP: token='{search_token}' → '{recovered_color}' (sim={best_sim:.3f})")
+                                else:
+                                    print(f"🎨 Recuperación color CLIP descartada por baja similitud: top='{best_color}' sim={best_sim:.3f}")
 
                     except Exception as e_recover:
                         print(f"⚠️ Recuperación de color por CLIP falló: {e_recover}")
