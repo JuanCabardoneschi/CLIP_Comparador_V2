@@ -1336,6 +1336,20 @@
             const matchedCriteria = strongMatches + weakMatches;
             const matchPercentage = totalCriteria > 0 ? Math.round((matchedCriteria / totalCriteria) * 100) : 0;
 
+            const similarityRaw = Number(
+                prod.similarity_score ?? prod.final_score ?? prod.similarity ?? prod.clip_similarity ?? 0
+            );
+            const similarityPercentage = Number.isFinite(similarityRaw)
+                ? Math.max(0, Math.min(100, Math.round(similarityRaw * 100)))
+                : 0;
+
+            let badgePercentage = matchPercentage;
+            if (totalCriteria === 0) {
+                badgePercentage = similarityPercentage;
+            } else if (badgePercentage === 0 && similarityPercentage > 0) {
+                badgePercentage = similarityPercentage;
+            }
+
             // Construir link de producto (si viene en la respuesta)
             let productUrl = '';
             let productLinkHtml = '';
@@ -1418,7 +1432,7 @@
                 <div class="clip-product">
                     <div class="clip-product-img-wrap">
                         ${imgHtml}
-                        <span class="clip-badge-percentage">${matchPercentage}%</span>
+                        <span class="clip-badge-percentage">${badgePercentage}%</span>
                     </div>
                     <div class="clip-product-info">
                         <div class="clip-product-meta">
