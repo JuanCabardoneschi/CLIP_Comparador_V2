@@ -917,7 +917,7 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
                 system_colors = {str(c).strip().lower() for c in get_system_color_adjectives() if c}
             except Exception:
                 system_colors = {"rojo", "verde", "azul", "negro", "blanco", "marron", "gris", "beige", "rosa", "amarillo", "violeta"}
-            
+
             original_tokens = _normalize_tokens_es(query_text)
             filtered_query_tokens = [t for t in original_tokens if t not in system_colors]
 
@@ -941,7 +941,7 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
     # Normalizar category_filter_ids para SQL
     if not category_filter_ids:
         category_filter_ids = []
-    
+
     # 🔧 LÓGICA DE LÍMITE INTELIGENTE:
     # Si tenemos categoría detectada válida, traemos TODOS los productos de esa categoría
     # Si es búsqueda de color sin categoría válida, traemos más candidatos (500)
@@ -969,11 +969,14 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
         "AND p.is_active = TRUE "
         "AND ((:use_filter = FALSE) OR p.category_id = ANY(:category_ids)) "
         "AND ("
-        "  LOWER(p.name) SIMILAR TO :pattern "
-        "  OR (p.attributes IS NOT NULL AND jsonb_typeof(p.attributes) = 'object' AND EXISTS ("
-        "       SELECT 1 FROM jsonb_each_text(p.attributes) attr WHERE LOWER(attr.value) SIMILAR TO :pattern"
-        "     )) "
-        "  OR (LOWER(c.name) SIMILAR TO :pattern OR LOWER(c.name_en) SIMILAR TO :pattern OR LOWER(c.alternative_terms) SIMILAR TO :pattern) "
+        "  :skip_pattern = TRUE "
+        "  OR ("
+        "    LOWER(p.name) SIMILAR TO :pattern "
+        "    OR (p.attributes IS NOT NULL AND jsonb_typeof(p.attributes) = 'object' AND EXISTS ("
+        "         SELECT 1 FROM jsonb_each_text(p.attributes) attr WHERE LOWER(attr.value) SIMILAR TO :pattern"
+        "       )) "
+        "    OR (LOWER(c.name) SIMILAR TO :pattern OR LOWER(c.name_en) SIMILAR TO :pattern OR LOWER(c.alternative_terms) SIMILAR TO :pattern) "
+        "  )"
         ") "
         "LIMIT :limit"
     )
@@ -983,6 +986,7 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
         "client_id": client_id,
         "pattern": pattern,
         "limit": sql_limit,
+        "skip_pattern": has_valid_category,
         "use_filter": bool(category_filter_ids),
         "category_ids": category_filter_ids if category_filter_ids else [None]
     }).fetchall()
@@ -1001,8 +1005,8 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
     return products, detection_metadata
 
 
-def stage2_precise_rerank(query_text: str, candidates: list, limit: int = 10):
-    # STAGE 2: Precise Reranking - usa similitud CLIP text-to-text
+def stage2_precise_rerank_legacy(query_text: str, candidates: list, limit: int = 10):
+    # LEGACY: STAGE 2 previo (text-to-text). Se mantiene por compatibilidad.
     if not candidates:
         return []
 
@@ -1077,6 +1081,119 @@ def stage2_precise_rerank(query_text: str, candidates: list, limit: int = 10):
     log_search(f"STAGE 2: Top {len(top_results)} rerankeados en {elapsed:.3f}s")
 
     # Log top 3
+    for i, result in enumerate(top_results[:3], 1):
+        log_verbose(LogCategory.SEARCH, f"   {i}. {result['product'].name} (sim: {result['similarity']:.3f})")
+
+    return top_results
+
+
+def _build_clip_query_from_extraction(extraction_result: dict, client_id: str) -> str:
+    """Construye frase CLIP nueva: sustantivo + modificadores directos.
+
+    - Si encuentra color sistémico (ej. chocolate), lo transforma al preferido principal
+      antes de generar embedding (ej. delantal chocolate -> delantal marron).
+    - Si no hay categoría extraída, devuelve cadena vacía.
+    """
+    if not isinstance(extraction_result, dict):
+        return ""
+
+    category = str(extraction_result.get('category') or '').strip().lower()
+    modifiers = extraction_result.get('modifiers') or []
+    if not category:
+        return ""
+
+    normalized_modifiers = []
+    systemic_map = {}
+    try:
+        from app.utils.semantic_colors import _load_system_colors
+        data_sc = _load_system_colors()
+        entries = data_sc.get('colors', []) if isinstance(data_sc, dict) else []
+        for item in entries:
+            token = str(item.get('token', '')).strip().lower()
+            if not token:
+                continue
+            preferred = [
+                str(v).strip().lower()
+                for v in (item.get('preferred_matches', []) or [])
+                if str(v).strip()
+            ]
+            if preferred:
+                systemic_map[token] = preferred[0]
+    except Exception:
+        systemic_map = {}
+
+    for raw_mod in modifiers:
+        mod = str(raw_mod or '').strip().lower()
+        if not mod:
+            continue
+        mapped = systemic_map.get(mod, mod)
+        if mapped != mod:
+            print(f"🎨 Normalización sistémica pre-CLIP: '{mod}' -> '{mapped}'")
+        normalized_modifiers.append(mapped)
+
+    phrase_tokens = [category] + normalized_modifiers
+    phrase_tokens = [t for t in phrase_tokens if t]
+    phrase_tokens = list(dict.fromkeys(phrase_tokens))
+    return " ".join(phrase_tokens).strip()
+
+
+def stage2_precise_rerank(query_text: str, candidates: list, limit: int = 10):
+    # STAGE 2 NUEVO: CLIP query(text) vs embeddings de imágenes de productos.
+    if not candidates:
+        return []
+
+    start_time = time.time()
+    clip_model, clip_processor = get_clip_model()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    with torch.no_grad():
+        text_inputs = clip_processor(
+            text=[query_text],
+            return_tensors="pt",
+            padding=True,
+            truncation=True
+        ).to(device)
+        query_embedding = clip_model.get_text_features(**text_inputs)
+        query_embedding = query_embedding / query_embedding.norm(dim=-1, keepdim=True)
+        query_vec = query_embedding.squeeze(0).cpu().numpy().astype(np.float32)
+
+    scored_candidates = []
+
+    for product in candidates:
+        best_similarity = -1.0
+        best_image = None
+
+        for img in (product.images or []):
+            if not img.clip_embedding:
+                continue
+            try:
+                import json
+                img_vec = np.array(json.loads(img.clip_embedding), dtype=np.float32)
+                img_norm = np.linalg.norm(img_vec)
+                if img_norm == 0:
+                    continue
+                img_vec = img_vec / img_norm
+                similarity = float(np.dot(query_vec, img_vec))
+                if similarity > best_similarity:
+                    best_similarity = similarity
+                    best_image = img
+            except Exception:
+                continue
+
+        if best_image is None:
+            continue
+
+        scored_candidates.append({
+            'product': product,
+            'similarity': best_similarity,
+            'image': best_image
+        })
+
+    scored_candidates.sort(key=lambda x: x['similarity'], reverse=True)
+    top_results = scored_candidates[:limit]
+
+    elapsed = time.time() - start_time
+    log_search(f"STAGE 2 (NUEVO CLIP img): Top {len(top_results)} rerankeados en {elapsed:.3f}s")
     for i, result in enumerate(top_results[:3], 1):
         log_verbose(LogCategory.SEARCH, f"   {i}. {result['product'].name} (sim: {result['similarity']:.3f})")
 
@@ -2763,23 +2880,17 @@ def text_search():
         except Exception as _e:
             print(f"⚠️ Inferencia semántica de color falló: {_e}")
 
-        # STAGE 2: Precise Reranking (CLIP)
-        # Si hay múltiples categorías hermanas detectadas, ampliamos el límite de rerank
-        # para poder luego devolver hasta `limit` por categoría sin quedarnos cortos.
-        try:
-            detected_cats = 0
-            if detection_metadata and isinstance(detection_metadata.get('matched_categories'), list):
-                detected_cats = len(detection_metadata.get('matched_categories'))
-            rerank_limit = limit * detected_cats if detected_cats and detected_cats > 1 else limit
-            # Si hay intención de color, ampliar candidatos para que el filtro
-            # posterior por color tenga mayor recall (evita decidir sobre muy pocos productos).
-            if detected_color_intent:
-                rerank_limit = max(rerank_limit, limit * 20)
-                rerank_limit = min(rerank_limit, len(candidates))
-        except Exception:
-            rerank_limit = limit
+        # STAGE 2 NUEVO: construir frase CLIP (sustantivo + modificadores directos)
+        # con normalización sistémica de color previa (ej. chocolate->marron).
+        clip_query_text = _build_clip_query_from_extraction(extraction_result, client.id)
+        if not clip_query_text:
+            # Fallback defensivo: usar query_text vigente si no pudo construirse frase.
+            clip_query_text = query_text
+        print(f"🧠 Frase CLIP final: '{clip_query_text}'")
 
-        scored_results = stage2_precise_rerank(query_text, candidates, limit=rerank_limit)
+        # N siempre es el límite configurado del sistema para el cliente/request.
+        rerank_limit = limit
+        scored_results = stage2_precise_rerank(clip_query_text, candidates, limit=rerank_limit)
 
         # Calcular cumplimiento de atributos por producto
         requested_attrs = attr_info.get('attributes', {})
@@ -2890,7 +3001,17 @@ def text_search():
                 "product_url": final_product_url  # URL para Tiendanube (prioriza external_url)
             })
 
-        # 🔍 FILTRADO POR ATRIBUTOS SOLICITADOS
+        # --- LEGACY MODE (no usado en flujo nuevo) ---
+        # Conservamos este bloque para referencia/rollback, pero en el flujo nuevo
+        # no filtramos por JSON ni por nombre para color.
+        use_legacy_post_filter = False
+        if not use_legacy_post_filter:
+            requested_attrs = {}
+            requested_count = 0
+            detected_color_intent = False
+            detected_color_normalized = None
+
+        # 🔍 FILTRADO POR ATRIBUTOS SOLICITADOS (LEGACY)
         # Si se solicitaron atributos, mostrar productos que cumplan:
         # - Si se pidió color: preferir coincidencia estricta por color
         # - En caso contrario: al menos 1 atributo solicitado
@@ -3580,6 +3701,15 @@ def text_search():
                 reverse=True
             )
             _hang_trace(f"else branch final sort done count={len(formatted_results)}")
+
+        # Flujo nuevo CLIP-first: orden final estrictamente por similitud CLIP y top N.
+        try:
+            formatted_results.sort(key=lambda r: r.get("similarity", 0.0), reverse=True)
+            formatted_results = formatted_results[:limit]
+            all_available_values = {}
+            print(f"🎯 Flujo CLIP-first activo: devolviendo {len(formatted_results)} resultados (top {limit})")
+        except Exception as e_new_rank:
+            print(f"⚠️ Error aplicando ranking final CLIP-first: {e_new_rank}")
 
         # Respuesta final
         elapsed = time.time() - start_time
