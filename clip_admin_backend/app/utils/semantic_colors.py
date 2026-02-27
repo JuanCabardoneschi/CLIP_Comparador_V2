@@ -20,9 +20,23 @@ def _load_embedding_model():
     global _MODEL
     if _MODEL is not None:
         return _MODEL
+    # Reutilizar MiniLM singleton ya gestionado por llm_query_normalizer
+    # para evitar doble carga de modelo y picos de memoria.
+    try:
+        from app.utils.llm_query_normalizer import get_model as _get_shared_minilm
+        _MODEL = _get_shared_minilm()
+        if _MODEL is not None:
+            print("[SEMANTIC_COLORS] Reutilizando modelo MiniLM compartido (llm_query_normalizer)")
+            return _MODEL
+    except Exception as e_shared:
+        print(f"[SEMANTIC_COLORS] ⚠️ No se pudo reutilizar MiniLM compartido ({e_shared})")
+
     try:
         from sentence_transformers import SentenceTransformer  # type: ignore
-        model_name = os.getenv("SEMANTIC_COLOR_ST_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+        model_name = os.getenv(
+            "SEMANTIC_COLOR_ST_MODEL",
+            os.getenv("MINILM_MODEL_NAME", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+        )
         _MODEL = SentenceTransformer(model_name)
         print(f"[SEMANTIC_COLORS] Modelo SentenceTransformer cargado: {model_name}")
     except Exception as e:
