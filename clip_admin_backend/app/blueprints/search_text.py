@@ -3325,6 +3325,26 @@ def text_search():
                             ]
 
                         print(f"🎨 Filtrado color recuperado '{recovered_color}': {len(filtered_results)} resultados (exactos + cercanos)")
+                        if len(filtered_results) < limit:
+                            try:
+                                existing_ids = {str(r.get('id')) for r in filtered_results if r.get('id') is not None}
+                                for r in pre_color_results:
+                                    rid = str(r.get('id')) if r.get('id') is not None else None
+                                    if rid and rid in existing_ids:
+                                        continue
+                                    name_color = normalize_color(str(r.get('name') or ''), client_id=client.id)
+                                    if not name_color:
+                                        continue
+                                    name_norm = str(name_color).strip().lower()
+                                    if name_norm == recovered_color or _is_close_color(name_norm):
+                                        filtered_results.append(r)
+                                        if rid:
+                                            existing_ids.add(rid)
+                                    if len(filtered_results) >= limit:
+                                        break
+                            except Exception:
+                                pass
+
                         if filtered_results:
                             formatted_results = filtered_results
                             requested_attrs['color'] = recovered_color
