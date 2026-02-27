@@ -35,7 +35,7 @@ class SystemConfig:
         if not self.config_path.exists():
             default_config = {
                 "clip": {
-                    "preload": False,
+                    "preload": True,
                     "idle_timeout_minutes": 5,
                     "model_name": "ViT-B/16"
                 },
