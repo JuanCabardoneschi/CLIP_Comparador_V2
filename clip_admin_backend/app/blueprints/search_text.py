@@ -2277,6 +2277,7 @@ def text_search():
                 return _resp
 
             except Exception as e:
+                attribute_keys = {}  # key normalizado -> objeto config
                 attribute_labels = {}  # label normalizado -> objeto config
 
                 # Evitar reclasificación si ya la hicimos exitosamente arriba
