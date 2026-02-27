@@ -26,6 +26,9 @@ _model_lock = threading.Lock()
 _VOCABULARY_CACHE = {}
 _VOCABULARY_CACHE_TTL = 300  # 5 minutos de TTL
 
+# Caché específico de normalización de color por cliente/query
+_NORMALIZA_COLOR_CACHE = {}
+
 
 def _now_ts() -> float:
     return time.time()
@@ -1013,13 +1016,13 @@ def normaliza_color(color_query: str, client_id: int | None = None) -> str | Non
 
         print(f"🔍 [normaliza_color] INICIO para '{q}'")
 
-        model = get_model()
-        print(f"🔍 [normaliza_color] get_model() listo en {_t.time()-t0:.2f}s")
+        q_lower = q.lower().strip()
 
-        q_lower = q.lower()
-        t_encode = _t.time()
-        emb = model.encode(q_lower)
-        print(f"🔍 [normaliza_color] encode() tomó {_t.time()-t_encode:.2f}s (t={_t.time()-t0:.2f}s)")
+        # Cache por cliente/query para evitar recomputar en loops de filtrado
+        cache_client = str(client_id) if client_id is not None else "global"
+        cache_key = f"{cache_client}:{q_lower}"
+        if cache_key in _NORMALIZA_COLOR_CACHE:
+            return _NORMALIZA_COLOR_CACHE[cache_key]
 
         colores = []
         if client_id:
@@ -1029,7 +1032,15 @@ def normaliza_color(color_query: str, client_id: int | None = None) -> str | Non
             print(f"📚 [normaliza_color] VOCAB: {len(colores)} colores")
 
         if not colores:
+            _NORMALIZA_COLOR_CACHE[cache_key] = None
             return None
+
+        # Atajo léxico (exacto) para evitar encode en colores obvios del vocabulario cliente
+        colors_map = {str(c).strip().lower(): str(c).strip().lower() for c in colores if str(c).strip()}
+        if q_lower in colors_map:
+            result = colors_map[q_lower]
+            _NORMALIZA_COLOR_CACHE[cache_key] = result
+            return result
 
         # Prioridad para adjetivos sistémicos (ej: "chocolate"): usar mapeo semántico
         # contra colores reales del cliente y evitar matches espurios del fallback genérico.
@@ -1042,14 +1053,24 @@ def normaliza_color(color_query: str, client_id: int | None = None) -> str | Non
                 if mapped:
                     best_color = str(mapped[0][0]).strip().lower()
                     print(f"🎨 [normaliza_color] Mapeo sistémico: '{q_norm}' → '{best_color}'")
+                    _NORMALIZA_COLOR_CACHE[cache_key] = best_color
                     return best_color
                 print(f"🎨 [normaliza_color] Sin mapeo sistémico para '{q_norm}' con colores cliente")
+                _NORMALIZA_COLOR_CACHE[cache_key] = None
                 return None
         except Exception as e_sem:
             print(f"⚠️ [normaliza_color] Error en mapeo sistémico: {e_sem}")
 
+        model = get_model()
+        print(f"🔍 [normaliza_color] get_model() listo en {_t.time()-t0:.2f}s")
+
+        t_encode = _t.time()
+        emb = model.encode(q_lower)
+        print(f"🔍 [normaliza_color] encode() tomó {_t.time()-t_encode:.2f}s (t={_t.time()-t0:.2f}s)")
+
         # Solo matching de color (sin tipo ni contexto)
         color = _semantic_match(q, colores, client_id, threshold=0.45, query_emb=emb)
+        _NORMALIZA_COLOR_CACHE[cache_key] = color
         return color
     except Exception as _e:
         print(f"⚠️ [normaliza_color] Error: {_e}")

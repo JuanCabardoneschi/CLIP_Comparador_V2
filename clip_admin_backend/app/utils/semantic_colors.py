@@ -89,6 +89,35 @@ def _embed(text: str) -> List[float]:
     return list(map(float, model(text).vector))
 
 
+def _embed_many(texts: List[str]) -> Dict[str, List[float]]:
+    model = _load_embedding_model()
+    if model is None:
+        return {t: [] for t in texts}
+
+    unique_texts = []
+    seen = set()
+    for text in texts:
+        if text and text not in seen:
+            unique_texts.append(text)
+            seen.add(text)
+
+    if not unique_texts:
+        return {}
+
+    if hasattr(model, 'encode'):
+        vectors = model.encode(unique_texts)
+        return {
+            text: list(map(float, vectors[idx]))
+            for idx, text in enumerate(unique_texts)
+        }
+
+    # spaCy fallback
+    return {
+        text: list(map(float, model(text).vector))
+        for text in unique_texts
+    }
+
+
 def _cosine(a: List[float], b: List[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
@@ -121,17 +150,49 @@ def map_semantic_colors(adjectives: List[str], client_color_values: List[str]) -
         if item.get('token')
     }
 
-    # Embeddings colores cliente cacheados
-    for raw_color, norm_color in zip(client_color_values, client_colors_norm):
-        if norm_color not in _COLOR_EMB_CACHE:
-            _COLOR_EMB_CACHE[norm_color] = _embed(norm_color)
+    # Embeddings colores cliente cacheados (batch para reducir latencia)
+    missing_colors = [
+        norm_color
+        for norm_color in client_colors_norm
+        if norm_color not in _COLOR_EMB_CACHE
+    ]
+    if missing_colors:
+        color_batch = _embed_many(missing_colors)
+        for norm_color in missing_colors:
+            _COLOR_EMB_CACHE[norm_color] = color_batch.get(norm_color, [])
+
+    # Embeddings de adjetivos faltantes (batch)
+    missing_adjs = []
+    for adj in adjectives:
+        adj_norm = _normalize(adj)
+        if adj_norm and adj_norm not in _ADJ_EMB_CACHE:
+            missing_adjs.append(adj_norm)
+    if missing_adjs:
+        adj_batch = _embed_many(missing_adjs)
+        for adj_norm in missing_adjs:
+            _ADJ_EMB_CACHE[adj_norm] = adj_batch.get(adj_norm, [])
 
     for adj in adjectives:
         adj_norm = _normalize(adj)
         if adj_norm in results:
             continue
-        if adj_norm not in _ADJ_EMB_CACHE:
-            _ADJ_EMB_CACHE[adj_norm] = _embed(adj_norm)
+
+        # Prioridad 1: fallback léxico por configuración (ej: chocolate -> familia marrón)
+        # Se aplica ANTES de embeddings para evitar desvíos semánticos (ej: chocolate -> gris).
+        entry = color_entries.get(adj_norm, {})
+        preferred_matches = [
+            _normalize(v) for v in entry.get('preferred_matches', [])
+            if isinstance(v, str) and v.strip()
+        ]
+        if preferred_matches:
+            lexical = []
+            for raw_color, norm_color in zip(client_color_values, client_colors_norm):
+                if any(pref in norm_color for pref in preferred_matches):
+                    lexical.append((raw_color, 1.0))
+            if lexical:
+                results[adj_norm] = lexical[:max_final]
+                continue
+
         emb_adj = _ADJ_EMB_CACHE[adj_norm]
         sims = []
         for raw_color, norm_color in zip(client_color_values, client_colors_norm):
@@ -145,26 +206,7 @@ def map_semantic_colors(adjectives: List[str], client_color_values: List[str]) -
         if not filtered and sims and sims[0][1] >= thr_fb:
             filtered = [sims[0]]  # Fallback top1
 
-        # Fallback léxico controlado por configuración (ej: chocolate -> familia marrón)
-        if not filtered:
-            entry = color_entries.get(adj_norm, {})
-            preferred_matches = [
-                _normalize(v) for v in entry.get('preferred_matches', [])
-                if isinstance(v, str) and v.strip()
-            ]
-            if preferred_matches:
-                lexical = []
-                for raw_color, norm_color in zip(client_color_values, client_colors_norm):
-                    if any(pref in norm_color for pref in preferred_matches):
-                        lexical.append((raw_color, 1.0))
-                if lexical:
-                    filtered = lexical
-
         filtered = filtered[:top_k]
-        # Fallback final: si hay token sistémico configurado pero ningún match por umbral,
-        # usar top-1 disponible para no descartar intención de color (ej: chocolate).
-        if not filtered and sims:
-            filtered = [sims[0]]
 
         # Recorte final
         filtered = filtered[:max_final]
