@@ -2518,6 +2518,7 @@ def text_search():
         # Lo usaremos solo para calcular similares en el filtrado
         detected_color_token = None  # Token original que fue reconocido como color
         detected_color_normalized = None  # Color normalizado por LLM
+        detected_color_intent = False  # Se detectó intención de color aunque no haya mapeo válido
 
         try:
             requested_attrs = attr_info.get('attributes', {}) or {}
@@ -2598,6 +2599,10 @@ def text_search():
             raw_tokens = [t.strip(".,;:!?") for t in query_text.lower().split() if t.strip()]
             extracted_category_token = (extraction_result.get('category') or '').strip().lower()
 
+            system_color_adjectives = {
+                str(c).strip().lower() for c in _NLP_CONFIG.get('color_adjectives', []) if c
+            }
+
             if can_run_semantic_color:
                 for tok in raw_tokens:
                     if len(tok) < 3:
@@ -2611,6 +2616,12 @@ def text_search():
                     # 🆕 Saltar si es un atributo configurado (evita interpretar "bolsillos" como color)
                     if tok in configured_attr_tokens:
                         continue
+
+                    # Marcar intención de color para adjetivos sistémicos aun si no hay mapeo
+                    if tok in system_color_adjectives:
+                        detected_color_intent = True
+                        if not detected_color_token:
+                            detected_color_token = tok
 
                     c = normalize_color(tok, client_id=client.id)
                     if c:
@@ -2871,7 +2882,7 @@ def text_search():
             resolved_color_cache[cache_key] = resolved
             return resolved
 
-        if requested_count > 0 or detected_color_normalized:
+        if requested_count > 0 or detected_color_normalized or detected_color_intent:
             # Antes de filtrar, recopilar todos los valores disponibles para cada atributo solicitado
             all_available_values = {}
             for attr_key in requested_attrs.keys():
@@ -3032,6 +3043,22 @@ def text_search():
 
                 formatted_results = filtered_results
             else:
+                # Si hubo intención explícita de color pero no se pudo normalizar/matchear,
+                # no devolver resultados irrelevantes.
+                if detected_color_intent:
+                    formatted_results = []
+                    print("🎨 Intención de color detectada sin mapeo válido: devolviendo 0 resultados para evitar ruido")
+                    color_key = next((k for k in requested_attrs.keys() if str(k).lower() == 'color'), None)
+                    if color_key:
+                        all_available_values[color_key] = []
+                    elif detected_color_token:
+                        all_available_values['color'] = []
+                    # Saltar filtrado de atributos no-color en este caso
+                    filtered_results = []
+
+                    # mantener estructura y continuar con respuesta vacía
+                    pass
+
                 # Filtrar: mantener solo productos que cumplan AL MENOS 1 atributo solicitado
                 filtered_results = [r for r in formatted_results if r.get("attributes_match_count", 0) > 0]
                 # Para otros atributos, mantener fallback de no filtrar si quedaría vacío
