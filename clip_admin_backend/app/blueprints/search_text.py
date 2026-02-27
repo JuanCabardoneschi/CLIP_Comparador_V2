@@ -866,6 +866,16 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
     # STAGE 1: Broad Recall - PostgreSQL SIMILAR TO (sin docstring multiline para evitar errores)
     start_time = time.time()
 
+    hang_trace_state = {'step': 0}
+
+    def _hang_trace(msg: str):
+        try:
+            hang_trace_state['step'] += 1
+            elapsed_trace = time.time() - start_time
+            print(f"[HANG_TRACE][{hang_trace_state['step']:03d}][t+{elapsed_trace:.3f}s] {msg}")
+        except Exception:
+            pass
+
     # 1️⃣ Expandir query con sinónimos (ahora usa proveedor de perfiles)
     expanded_tokens = expand_query_with_synonyms(query_text, client_id, client_slug)
 
@@ -2822,6 +2832,7 @@ def text_search():
         }
 
         configured_color_keys = ['color']
+        _hang_trace("INIT color pipeline: cargando configured_color_keys")
         try:
             from app.models.product_attribute_config import ProductAttributeConfig
             cfgs = ProductAttributeConfig.query.filter_by(client_id=client.id).all()
@@ -2842,6 +2853,13 @@ def text_search():
                     configured_color_keys = contains_color_keys
         except Exception:
             pass
+        _hang_trace(f"configured_color_keys={configured_color_keys}")
+
+        color_resolve_stats = {
+            'calls': 0,
+            'cache_hits': 0,
+            'cache_miss': 0,
+        }
 
         def _infer_color_from_product_embedding(product_id):
             nonlocal color_text_matrix
@@ -2884,10 +2902,16 @@ def text_search():
                 return None
 
         def _resolve_product_color_norm(result_row):
+            color_resolve_stats['calls'] += 1
             result_id = result_row.get('id')
             cache_key = str(result_id)
             if cache_key in resolved_color_cache:
+                color_resolve_stats['cache_hits'] += 1
                 return resolved_color_cache[cache_key]
+
+            color_resolve_stats['cache_miss'] += 1
+            if color_resolve_stats['cache_miss'] <= 5:
+                _hang_trace(f"resolve_color miss product_id={result_id}")
 
             product_attrs = result_row.get('attributes') or {}
             attrs_lower = {str(k).strip().lower(): v for k, v in product_attrs.items()}
@@ -2912,6 +2936,8 @@ def text_search():
                 resolved = normalize_color(str(result_row.get('name') or ''), client_id=client.id)
 
             resolved_color_cache[cache_key] = resolved
+            if color_resolve_stats['cache_miss'] <= 5:
+                _hang_trace(f"resolve_color result product_id={result_id} -> {resolved}")
             return resolved
 
         def _build_color_priority_score_fn(requested_attrs_dict, detected_color_norm):
@@ -2975,6 +3001,11 @@ def text_search():
             return _score, target_color
 
         if requested_count > 0 or detected_color_normalized or detected_color_intent:
+            _hang_trace(
+                f"ENTER filter branch requested_count={requested_count}, "
+                f"detected_color_normalized={detected_color_normalized}, detected_color_intent={detected_color_intent}, "
+                f"formatted_results={len(formatted_results)}"
+            )
             # Antes de filtrar, recopilar todos los valores disponibles para cada atributo solicitado
             all_available_values = {}
             for attr_key in requested_attrs.keys():
@@ -3005,6 +3036,7 @@ def text_search():
                 color_filter_value = str(detected_color_normalized).lower()
 
             if color_filter_value:
+                _hang_trace(f"color_filter_value='{color_filter_value}' token='{detected_color_token}'")
                 # Mantener una copia de todos los resultados antes del filtro de color
                 pre_color_results = list(formatted_results)
                 # Usar el token ORIGINAL detectado si existe, sino el valor normalizado
@@ -3018,6 +3050,7 @@ def text_search():
                     r for r in formatted_results
                     if _resolve_product_color_norm(r) == color_value_normalized
                 ]
+                _hang_trace(f"exact color matches={len(exact_matches)}")
 
                 if exact_matches:
                     filtered_results = exact_matches
@@ -3028,6 +3061,7 @@ def text_search():
                     print(f"🔍 No hay color exacto, buscando similares a '{color_search_token}'...")
                     try:
                         from app.utils.colors import _get_color_embedding
+                        _hang_trace("search similar colors: start")
                         # Calcular embedding del TOKEN ORIGINAL (ej: "grices")
                         target_emb = _get_color_embedding(color_search_token, client_id=client.id)
                         similar_colors = []
@@ -3056,6 +3090,7 @@ def text_search():
                             similar_colors = [c for c, s in scored if s >= THRESH][:TOPK]
                             print(f"🎨 Colores similares a '{color_search_token}': {[(c,round(s,3)) for c,s in scored[:5]]}")
                             print(f"✅ Top similares (>{THRESH}): {similar_colors}")
+                        _hang_trace(f"search similar colors: done similar_colors={similar_colors}")
 
                         if similar_colors:
                             similar_set = set(similar_colors)
@@ -3134,10 +3169,13 @@ def text_search():
                     filtered_results.extend(fallback_candidates[:needed])
 
                 formatted_results = filtered_results
+                _hang_trace(f"after color_filter_value branch formatted_results={len(formatted_results)}")
             else:
+                _hang_trace("ENTER no-color-filter branch")
                 # Si hubo intención explícita de color pero no se pudo normalizar/matchear,
                 # intentar resolver color objetivo por similitud CLIP sobre candidatos.
                 if detected_color_intent:
+                    _hang_trace("detected_color_intent=True -> start recovered_color flow")
                     recovered_color = None
                     try:
                         from app.utils.colors import _get_color_embedding
@@ -3149,6 +3187,7 @@ def text_search():
                             for r in formatted_results
                         ]
                         available_product_colors = [c for c in available_product_colors if c]
+                        _hang_trace(f"recovered_color flow: available_product_colors={len(available_product_colors)}")
 
                         # 1) Priorizar matches léxicos declarados en configuración semántica
                         #    (ej: chocolate -> familia marrón) si existen en candidatos.
@@ -3172,6 +3211,7 @@ def text_search():
                                     if lexical_hits:
                                         recovered_color = lexical_hits[0]
                                         print(f"🎨 Recuperación color léxica: token='{search_token}' → '{recovered_color}'")
+                                        _hang_trace(f"recovered_color lexical={recovered_color}")
                             except Exception as e_pref:
                                 print(f"⚠️ Recuperación léxica por preferred_matches falló: {e_pref}")
 
@@ -3194,13 +3234,16 @@ def text_search():
                                 if best_sim >= 0.50:
                                     recovered_color = best_color
                                     print(f"🎨 Recuperación color por CLIP: token='{search_token}' → '{recovered_color}' (sim={best_sim:.3f})")
+                                    _hang_trace(f"recovered_color clip={recovered_color} sim={best_sim:.3f}")
                                 else:
                                     print(f"🎨 Recuperación color CLIP descartada por baja similitud: top='{best_color}' sim={best_sim:.3f}")
+                                    _hang_trace(f"recovered_color clip discarded sim={best_sim:.3f}")
 
                     except Exception as e_recover:
                         print(f"⚠️ Recuperación de color por CLIP falló: {e_recover}")
 
                     if recovered_color:
+                        _hang_trace(f"apply recovered_color={recovered_color}")
                         detected_color_normalized = recovered_color
                         color_filter_value = recovered_color
                         pre_color_results = list(formatted_results)
@@ -3236,6 +3279,7 @@ def text_search():
                                     continue
                                 if _is_close_color(str(resolved_color)):
                                     filtered_results.append(r)
+                            _hang_trace(f"recovered_color semantic filtering done count={len(filtered_results)}")
                         except Exception:
                             filtered_results = [
                                 r for r in formatted_results
@@ -3253,6 +3297,7 @@ def text_search():
                     else:
                         formatted_results = []
                         print("🎨 Intención de color detectada sin mapeo ni recuperación CLIP válida: devolviendo 0 resultados")
+                        _hang_trace("recovered_color flow -> no valid color, formatted_results=0")
                         color_key = next((k for k in requested_attrs.keys() if str(k).lower() == 'color'), None)
                         if color_key:
                             all_available_values[color_key] = []
@@ -3262,6 +3307,7 @@ def text_search():
 
                 # Filtrar: mantener solo productos que cumplan AL MENOS 1 atributo solicitado
                 filtered_results = [r for r in formatted_results if r.get("attributes_match_count", 0) > 0]
+                _hang_trace(f"non-color attr filter count={len(filtered_results)}")
                 # Para otros atributos, mantener fallback de no filtrar si quedaría vacío
                 if filtered_results:
                     formatted_results = filtered_results
@@ -3279,6 +3325,7 @@ def text_search():
             )
             for r in formatted_results:
                 r['_color_priority_score'] = color_priority_score_fn(r)
+            _hang_trace(f"color priority scoring done count={len(formatted_results)} target={color_priority_target}")
             if color_priority_enabled and color_priority_target:
                 print(f"🎨 Color priority textual activo: target='{color_priority_target}'")
 
@@ -3292,12 +3339,14 @@ def text_search():
                 ),
                 reverse=True
             )
+            _hang_trace(f"final sort done count={len(formatted_results)}")
         else:
             # Si no hubo atributos solicitados, priorizar stock disponible y luego similitud
             all_available_values = {}
             color_priority_score_fn, color_priority_target = _build_color_priority_score_fn({}, detected_color_normalized)
             for r in formatted_results:
                 r['_color_priority_score'] = color_priority_score_fn(r)
+            _hang_trace(f"else branch color priority scoring done count={len(formatted_results)} target={color_priority_target}")
             if color_priority_enabled and color_priority_target:
                 print(f"🎨 Color priority textual activo: target='{color_priority_target}'")
             formatted_results.sort(
@@ -3308,6 +3357,7 @@ def text_search():
                 ),
                 reverse=True
             )
+            _hang_trace(f"else branch final sort done count={len(formatted_results)}")
 
         # Respuesta final
         elapsed = time.time() - start_time
