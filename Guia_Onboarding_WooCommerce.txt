@@ -1,0 +1,82 @@
+Guia paso a paso para conectar un nuevo cliente WooCommerce (no tecnico)
+
+Este documento explica como conectar una tienda WooCommerce con CLIP Comparador V2 y dejar la integracion funcionando.
+
+Requisitos previos
+- Acceso de administrador a la tienda WooCommerce.
+- Acceso al panel de CLIP Comparador V2.
+
+1) Crear claves de acceso (REST API) en WooCommerce
+1. Entrar a WordPress.
+2. Ir a WooCommerce > Ajustes > Avanzado > REST API.
+3. Click en "Anadir clave".
+4. Completar:
+   - Descripcion: "CLIP Comparador"
+   - Usuario: administrador
+   - Permisos: Lectura/Escritura
+5. Guardar.
+6. Copiar y guardar:
+   - Consumer Key
+   - Consumer Secret
+
+Importante: estas claves se muestran una sola vez.
+
+2) Conectar la tienda en CLIP Comparador
+1. Entrar al panel: https://clipcomparadorv2-production.up.railway.app
+2. Ir a Clientes.
+3. Crear un nuevo cliente con tipo WooCommerce.
+4. Completar:
+   - URL de la tienda (ej: https://mitienda.com)
+   - Consumer Key
+   - Consumer Secret
+5. Guardar.
+
+3) Verificar la conexion
+1. En el cliente, abrir el Panel WooCommerce.
+2. Verificar estado de integracion.
+3. Si aparece, usar "Verificar estado".
+
+4) Registrar webhooks
+Los webhooks son necesarios para que los cambios se actualicen automaticamente.
+
+4.1) Como ver si estan registrados
+- En el Panel WooCommerce de CLIP hay una seccion "Estado de Webhooks".
+- Si indica que estan registrados, no hay que hacer nada.
+- Si indica que NO estan registrados, hay que registrarlos.
+
+4.2) Si aparece el boton
+- En el Panel WooCommerce, puede aparecer un boton para "Registrar webhooks".
+- Hacer click y esperar la confirmacion.
+- Esto crea los webhooks necesarios:
+  - product.created
+  - product.updated
+  - product.deleted
+  - product.restored
+
+4.3) Si NO aparece el boton
+- El registro no esta habilitado para el usuario final.
+- No hay que hacer nada tecnico.
+- Avisar a soporte de CLIP para que los registre internamente.
+
+4.4) Como validar que quedaron bien
+En WooCommerce (Ajustes > Avanzado > Webhooks) deben existir:
+- CLIP - product.created
+- CLIP - product.updated
+- CLIP - product.deleted
+- CLIP - product.restored
+
+Todos deben estar Activos y con la URL:
+https://clipcomparadorv2-production.up.railway.app/api/webhooks/woocommerce
+
+5) Sincronizar catalogo
+En el Panel WooCommerce del cliente:
+- Usar "Sincronizar diferencias" (recomendado)
+- Usar "Sincronizar solo stock" si el problema es solo de stock
+- Usar "Re-sincronizar tienda" solo si hay problemas graves o datos corruptos
+
+6) Resultado esperado
+- Los productos se crean y actualizan automaticamente.
+- Los cambios de precio, stock e imagenes se reflejan en CLIP.
+- Si un producto se elimina en WooCommerce, se refleja en CLIP.
+
+Fin.

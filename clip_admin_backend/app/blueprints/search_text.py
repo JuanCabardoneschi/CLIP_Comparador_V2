@@ -2697,6 +2697,126 @@ def text_search():
         # Si se solicitaron atributos, mostrar productos que cumplan:
         # - Si se pidió color: preferir coincidencia estricta por color
         # - En caso contrario: al menos 1 atributo solicitado
+        resolved_color_cache = {}
+
+        def _extract_scalar_color_value(raw_value):
+            if raw_value is None:
+                return None
+            if isinstance(raw_value, dict):
+                return raw_value.get('value') or raw_value.get('label') or raw_value.get('name')
+            if isinstance(raw_value, list) and raw_value:
+                first_val = raw_value[0]
+                if isinstance(first_val, dict):
+                    return first_val.get('value') or first_val.get('label') or first_val.get('name')
+                return first_val
+            if isinstance(raw_value, str):
+                txt = raw_value.strip()
+                if txt.startswith('[') and txt.endswith(']'):
+                    try:
+                        import ast
+                        parsed = ast.literal_eval(txt)
+                        if isinstance(parsed, list) and parsed:
+                            return parsed[0]
+                    except Exception:
+                        pass
+                return txt
+            return raw_value
+
+        color_text_matrix = None
+        color_keys = [
+            'negro', 'blanco', 'gris', 'azul', 'celeste', 'verde', 'rojo',
+            'rosa', 'marron', 'beige', 'amarillo', 'violeta', 'naranja'
+        ]
+        color_prompt_names = {
+            'negro': 'black', 'blanco': 'white', 'gris': 'gray', 'azul': 'blue',
+            'celeste': 'light blue', 'verde': 'green', 'rojo': 'red', 'rosa': 'pink',
+            'marron': 'brown', 'beige': 'beige', 'amarillo': 'yellow',
+            'violeta': 'purple', 'naranja': 'orange'
+        }
+
+        configured_color_keys = ['color']
+        try:
+            from app.models.product_attribute_config import ProductAttributeConfig
+            cfgs = ProductAttributeConfig.query.filter_by(client_id=client.id).all()
+            exact_color_keys = [
+                (cfg.key or '').strip().lower()
+                for cfg in cfgs
+                if (cfg.key or '').strip().lower() == 'color'
+            ]
+            if exact_color_keys:
+                configured_color_keys = exact_color_keys
+            else:
+                contains_color_keys = [
+                    (cfg.key or '').strip().lower()
+                    for cfg in cfgs
+                    if 'color' in (cfg.key or '').strip().lower()
+                ]
+                if contains_color_keys:
+                    configured_color_keys = contains_color_keys
+        except Exception:
+            pass
+
+        def _infer_color_from_product_embedding(product_id):
+            nonlocal color_text_matrix
+            try:
+                primary_image = Image.query.filter_by(product_id=product_id, is_primary=True).first()
+                if not primary_image:
+                    primary_image = Image.query.filter_by(product_id=product_id).first()
+                if not primary_image or not primary_image.embedding_vector:
+                    return None
+
+                emb = np.asarray(primary_image.embedding_vector, dtype=np.float32)
+                emb_norm = np.linalg.norm(emb)
+                if emb_norm == 0:
+                    return None
+                emb = emb / emb_norm
+
+                if color_text_matrix is None:
+                    clip_model, clip_processor = get_clip_model()
+                    prompts = [f"a photo of a {color_prompt_names[k]} garment" for k in color_keys]
+                    with torch.no_grad():
+                        text_inputs = clip_processor(text=prompts, return_tensors="pt", padding=True, truncation=True)
+                        text_features = clip_model.get_text_features(**text_inputs)
+                        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+                        color_text_matrix = text_features.cpu().numpy().astype(np.float32)
+
+                sims = np.dot(color_text_matrix, emb)
+                best_idx = int(np.argmax(sims))
+                return color_keys[best_idx]
+            except Exception:
+                return None
+
+        def _resolve_product_color_norm(result_row):
+            result_id = result_row.get('id')
+            cache_key = str(result_id)
+            if cache_key in resolved_color_cache:
+                return resolved_color_cache[cache_key]
+
+            product_attrs = result_row.get('attributes') or {}
+            attrs_lower = {str(k).strip().lower(): v for k, v in product_attrs.items()}
+
+            resolved = None
+
+            # 1) Atributo configurado
+            for ck in configured_color_keys:
+                if ck in attrs_lower:
+                    raw_attr_color = _extract_scalar_color_value(attrs_lower.get(ck))
+                    if raw_attr_color:
+                        resolved = normalize_color(str(raw_attr_color), client_id=client.id)
+                        if resolved:
+                            break
+
+            # 2) CLIP embedding de imagen
+            if not resolved:
+                resolved = _infer_color_from_product_embedding(result_id)
+
+            # 3) Nombre de producto
+            if not resolved:
+                resolved = normalize_color(str(result_row.get('name') or ''), client_id=client.id)
+
+            resolved_color_cache[cache_key] = resolved
+            return resolved
+
         if requested_count > 0:
             # Antes de filtrar, recopilar todos los valores disponibles para cada atributo solicitado
             all_available_values = {}
@@ -2739,7 +2859,7 @@ def text_search():
                 # 1) Intentar coincidencias con el color NORMALIZADO en los atributos de productos
                 exact_matches = [
                     r for r in formatted_results
-                    if str(r.get('attributes', {}).get('color', '')).lower() == color_value_normalized
+                    if _resolve_product_color_norm(r) == color_value_normalized
                 ]
 
                 if exact_matches:
@@ -2755,11 +2875,12 @@ def text_search():
                         target_emb = _get_color_embedding(color_search_token, client_id=client.id)
                         similar_colors = []
 
-                        # Si no hay 'color' en all_available_values (porque no fue solicitado),
-                        # no podremos sugerir similares; solo intentaremos exactos.
-                        available_vals = all_available_values.get(color_req_key) if color_req_key else None
-                        if target_emb is not None and available_vals:
-                            available_product_colors = [str(v).lower() for v in available_vals]
+                        if target_emb is not None:
+                            available_product_colors = [
+                                _resolve_product_color_norm(r)
+                                for r in formatted_results
+                            ]
+                            available_product_colors = [c for c in available_product_colors if c]
                             scored = []
                             for c in set(available_product_colors):
                                 emb_c = _get_color_embedding(c, client_id=client.id)
@@ -2783,7 +2904,7 @@ def text_search():
                             similar_set = set(similar_colors)
                             filtered_results = [
                                 r for r in formatted_results
-                                if str(r.get('attributes', {}).get('color', '')).lower() in similar_set
+                                if _resolve_product_color_norm(r) in similar_set
                             ]
                             # 🎨 Guardar el mejor color similar encontrado
                             if similar_colors:
@@ -2814,6 +2935,15 @@ def text_search():
                         for k, v in requested_attrs.items():
                             pv = prod_attrs.get(k)
                             if pv is None:
+                                if str(k).lower() == 'color':
+                                    pv = _resolve_product_color_norm(r)
+                                    if pv is None:
+                                        continue
+                                else:
+                                    continue
+                            if str(k).lower() == 'color':
+                                if str(pv).lower() == str(v).lower():
+                                    matched[k] = v
                                 continue
                             if isinstance(pv, list):
                                 if any(str(x).lower() == str(v).lower() for x in pv):
@@ -2882,10 +3012,10 @@ def text_search():
         elapsed = time.time() - start_time
 
         # MARCADOR TEMPRANO: Confirmar que el código llega aquí
-        log_error(f"\n✅✅✅ BÚSQUEDA COMPLETADA - Punto A (ANTES de agrupación) ✅✅✅")
-        log_error(f"   elapsed={elapsed:.3f}s")
-        log_error(f"   formatted_results count: {len(formatted_results)}")
-        log_error(f"   detection_metadata: {bool(detection_metadata)}")
+        print(f"\n✅✅✅ BÚSQUEDA COMPLETADA - Punto A (ANTES de agrupación) ✅✅✅")
+        print(f"   elapsed={elapsed:.3f}s")
+        print(f"   formatted_results count: {len(formatted_results)}")
+        print(f"   detection_metadata: {bool(detection_metadata)}")
 
         print(f"✅ Búsqueda completada: {len(formatted_results)} resultados en {elapsed:.3f}s")
         log_verbose(LogCategory.NLP, "="*60 + "\n")
@@ -2958,16 +3088,16 @@ def text_search():
         sys.stderr.flush()
         sys.stdout.flush()
 
-        log_error(f"\n🎯🎯🎯 AGRUPACIÓN - DIAGNÓSTICO CRÍTICO 🎯🎯🎯")
-        log_error(f"   detection_metadata exists: {bool(detection_metadata)}")
-        log_error(f"   detection_metadata type: {type(detection_metadata)}")
+        print(f"\n🎯🎯🎯 AGRUPACIÓN - DIAGNÓSTICO CRÍTICO 🎯🎯🎯")
+        print(f"   detection_metadata exists: {bool(detection_metadata)}")
+        print(f"   detection_metadata type: {type(detection_metadata)}")
         if detection_metadata:
-            log_error(f"   detection_metadata keys: {detection_metadata.keys() if isinstance(detection_metadata, dict) else 'N/A'}")
+            print(f"   detection_metadata keys: {detection_metadata.keys() if isinstance(detection_metadata, dict) else 'N/A'}")
             matched_cats = detection_metadata.get('matched_categories', [])
-            log_error(f"   matched_categories count: {len(matched_cats)}")
-            log_error(f"   matched_categories: {matched_cats}")
-        log_error(f"   formatted_results count: {len(formatted_results)}")
-        log_error(f"   formatted_results sample: {formatted_results[:2] if formatted_results else 'EMPTY'}")
+            print(f"   matched_categories count: {len(matched_cats)}")
+            print(f"   matched_categories: {matched_cats}")
+        print(f"   formatted_results count: {len(formatted_results)}")
+        print(f"   formatted_results sample: {formatted_results[:2] if formatted_results else 'EMPTY'}")
 
         if detection_metadata and len(detection_metadata.get('matched_categories', [])) > 1:
             group_by_category = True
@@ -3186,8 +3316,8 @@ def text_search():
             import traceback
             print(f"❌ ANALYTICS ERROR: {log_err}", flush=True)
             print(f"   Traceback: {traceback.format_exc()}", flush=True)
-            log_error(f"❌ ERROR logging analytics: {log_err}")
-            log_error(f"   Traceback: {traceback.format_exc()}")
+            print(f"❌ ERROR logging analytics: {log_err}")
+            print(f"   Traceback: {traceback.format_exc()}")
 
         response = jsonify(response_data)
 
