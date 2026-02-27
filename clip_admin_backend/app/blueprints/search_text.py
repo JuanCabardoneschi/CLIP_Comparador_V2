@@ -862,8 +862,9 @@ def _category_tokens(cat: Category) -> Set[str]:
     return {t for t in tokens if t}
 
 
-def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None, top_n: int = 50):
+def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None, is_color_search: bool = False):
     # STAGE 1: Broad Recall - PostgreSQL SIMILAR TO (sin docstring multiline para evitar errores)
+    # 🔧 Ahora recibimos is_color_search para saber si debe traer TODOS los productos de categoría
     start_time = time.time()
 
     def _hang_trace(msg: str):
@@ -876,6 +877,7 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
     categories = Category.query.filter_by(client_id=client_id).all()
     category_filter_ids = []
     detection_metadata = None
+    has_valid_category = False  # 🆕 Bandera: ¿tenemos categoría detectada válida?
 
     try:
         # 🆕 Usar proveedor de perfiles de búsqueda
@@ -891,7 +893,8 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
         )
 
         if category_filter_ids:
-            log_verbose(LogCategory.SEARCH, f"[Perfil de Búsqueda] Filtro de categoría: {len(category_filter_ids)} categorías")
+            has_valid_category = True
+            log_verbose(LogCategory.SEARCH, f"[Perfil de Búsqueda] Filtro de categoría: {len(category_filter_ids)} categorías detectadas")
         else:
             log_verbose(LogCategory.SEARCH, f"[Perfil de Búsqueda] Sin filtro de categoría (búsqueda amplia)")
     except Exception as e:
@@ -908,10 +911,15 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
                 category_filter_ids = result
                 detection_metadata = None
         else:
-            # Fallback genérico
+            # Fallback genérico - ahora usa get_system_color_adjectives()
+            try:
+                from app.utils.semantic_colors import get_system_color_adjectives
+                system_colors = {str(c).strip().lower() for c in get_system_color_adjectives() if c}
+            except Exception:
+                system_colors = {"rojo", "verde", "azul", "negro", "blanco", "marron", "gris", "beige", "rosa", "amarillo", "violeta"}
+            
             original_tokens = _normalize_tokens_es(query_text)
-            color_tokens = {"rojo", "verde", "azul", "negro", "blanco", "marron", "gris", "beige", "rosa", "amarillo", "violeta"}
-            filtered_query_tokens = [t for t in original_tokens if t not in color_tokens]
+            filtered_query_tokens = [t for t in original_tokens if t not in system_colors]
 
             matched_by_name = []
             for cat in categories:
@@ -928,10 +936,25 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
             if len(root_to_cats) == 1:
                 sole_root = next(iter(root_to_cats.keys()))
                 category_filter_ids = root_to_cats[sole_root]
+                has_valid_category = True
 
     # Normalizar category_filter_ids para SQL
     if not category_filter_ids:
         category_filter_ids = []
+    
+    # 🔧 LÓGICA DE LÍMITE INTELIGENTE:
+    # Si tenemos categoría detectada válida, traemos TODOS los productos de esa categoría
+    # Si es búsqueda de color sin categoría válida, traemos más candidatos (500)
+    # Si es búsqueda genérica, limitamos a 50
+    if has_valid_category:
+        sql_limit = 100000  # Traer TODOS (con límite de seguridad)
+        print(f"✅ Categoría válida detectada: retriendo TODOS los productos de la categoría para luego filtrar por color")
+    elif is_color_search:
+        sql_limit = 500  # Color sin categoría: más candidatos
+        print(f"🎨 Búsqueda por color sin categoría específica: traemos top {sql_limit}")
+    else:
+        sql_limit = 50  # Búsqueda genérica: limitado
+        print(f"📎 Búsqueda genérica: traemos top {sql_limit}")
 
     # 2️⃣ Construir pattern para SIMILAR TO
     # SIMILAR TO usa regex-like: %(term1|term2|term3)%
@@ -959,7 +982,7 @@ def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None
     product_ids = db.session.execute(sql, {
         "client_id": client_id,
         "pattern": pattern,
-        "limit": top_n,
+        "limit": sql_limit,
         "use_filter": bool(category_filter_ids),
         "category_ids": category_filter_ids if category_filter_ids else [None]
     }).fetchall()
@@ -2504,21 +2527,20 @@ def text_search():
         client_slug = getattr(client, 'slug', None)
 
         # STAGE 1: Broad Recall (SQL) con delegación a módulo custom
-        stage1_top_n = 50
+        # 🔧 NO usamos lista hardcodeada - usamos get_system_color_adjectives() que carga del JSON
         try:
+            from app.utils.semantic_colors import get_system_color_adjectives
             q_tokens_stage1 = {t.strip(".,;:!?").lower() for t in query_text.split() if t.strip()}
-            basic_color_tokens = {
-                'negro', 'blanco', 'gris', 'azul', 'celeste', 'verde', 'rojo',
-                'rosa', 'marron', 'marrón', 'beige', 'amarillo', 'violeta', 'naranja',
-                'brown', 'navy', 'coral', 'chocolate', 'turquesa', 'lavanda', 'mostaza'
-            }
-            if q_tokens_stage1 & basic_color_tokens:
-                stage1_top_n = 120
-        except Exception:
-            stage1_top_n = 50
+            system_colors = {str(c).strip().lower() for c in get_system_color_adjectives() if c}
+            has_color_token = bool(q_tokens_stage1 & system_colors)
+            print(f"🎨 Color detectado en query: {has_color_token}. Sistema colores totales: {len(system_colors)}")
+        except Exception as e:
+            print(f"⚠️ Error al cargar colores del sistema: {e}")
+            has_color_token = False
 
-        _hang_trace(f"PRE-STAGE1: invocando stage1_broad_recall top_n={stage1_top_n}")
-        candidates, detection_metadata = stage1_broad_recall(query_text, client.id, client_slug, top_n=stage1_top_n)
+        _hang_trace(f"PRE-STAGE1: invocando stage1_broad_recall has_color_token={has_color_token}")
+        # Ahora le pasamos info de si es color para que stage1 decida el LIMIT
+        candidates, detection_metadata = stage1_broad_recall(query_text, client.id, client_slug, is_color_search=has_color_token)
         _hang_trace(
             f"POST-STAGE1: candidates={len(candidates) if candidates is not None else -1}, "
             f"matched_categories={len(detection_metadata.get('matched_categories', [])) if detection_metadata else 0}"
