@@ -1115,6 +1115,15 @@ def text_search():
         if per_category_limit < 1:
             per_category_limit = 1
 
+        # Configuración por cliente (alineada con búsqueda visual)
+        try:
+            client_api_settings = _json_nlp.loads(client.api_settings) if getattr(client, 'api_settings', None) else {}
+            if not isinstance(client_api_settings, dict):
+                client_api_settings = {}
+        except Exception:
+            client_api_settings = {}
+        color_priority_enabled = bool(client_api_settings.get('color_priority_enabled', False))
+
         log_search(f"[TEXT_SEARCH] Query original recibida: '{query_text}'")
 
         # 🆕 Cargar perfil de búsqueda del cliente
@@ -2905,6 +2914,66 @@ def text_search():
             resolved_color_cache[cache_key] = resolved
             return resolved
 
+        def _build_color_priority_score_fn(requested_attrs_dict, detected_color_norm):
+            if not color_priority_enabled:
+                return (lambda _r: 0.0), None
+
+            target_color = None
+            try:
+                color_req_key_local = next(
+                    (k for k in requested_attrs_dict.keys() if str(k).strip().lower() == 'color'),
+                    None
+                )
+                if color_req_key_local and requested_attrs_dict.get(color_req_key_local):
+                    target_color = str(requested_attrs_dict.get(color_req_key_local)).strip().lower()
+                elif detected_color_norm:
+                    target_color = str(detected_color_norm).strip().lower()
+            except Exception:
+                target_color = None
+
+            if not target_color:
+                return (lambda _r: 0.0), None
+
+            try:
+                from app.utils.colors import _get_color_embedding
+                target_emb_local = _get_color_embedding(target_color, client_id=client.id)
+            except Exception:
+                target_emb_local = None
+
+            sim_cache = {}
+
+            def _score(row):
+                try:
+                    resolved_color = _resolve_product_color_norm(row)
+                    if not resolved_color:
+                        return 0.0
+                    resolved_norm = str(resolved_color).strip().lower()
+                    if resolved_norm == target_color:
+                        return 1.0
+                    if target_emb_local is None:
+                        return 0.0
+                    if resolved_norm in sim_cache:
+                        return sim_cache[resolved_norm]
+
+                    emb_color = _get_color_embedding(resolved_norm, client_id=client.id)
+                    if emb_color is None:
+                        sim_cache[resolved_norm] = 0.0
+                        return 0.0
+
+                    denom = (np.linalg.norm(target_emb_local) * np.linalg.norm(emb_color))
+                    if denom == 0:
+                        sim_cache[resolved_norm] = 0.0
+                        return 0.0
+
+                    sim_val = float(np.dot(target_emb_local, emb_color) / denom)
+                    sim_val = max(0.0, min(0.99, sim_val))
+                    sim_cache[resolved_norm] = sim_val
+                    return sim_val
+                except Exception:
+                    return 0.0
+
+            return _score, target_color
+
         if requested_count > 0 or detected_color_normalized or detected_color_intent:
             # Antes de filtrar, recopilar todos los valores disponibles para cada atributo solicitado
             all_available_values = {}
@@ -3169,10 +3238,20 @@ def text_search():
             except NameError:
                 fallback_ids_set = set()
 
+            color_priority_score_fn, color_priority_target = _build_color_priority_score_fn(
+                requested_attrs,
+                detected_color_normalized
+            )
+            for r in formatted_results:
+                r['_color_priority_score'] = color_priority_score_fn(r)
+            if color_priority_enabled and color_priority_target:
+                print(f"🎨 Color priority textual activo: target='{color_priority_target}'")
+
             formatted_results.sort(
                 key=lambda r: (
                     0 if r.get("id") in fallback_ids_set else 1,  # No-fallback=1 (primero), Fallback=0 (después)
                     r.get("attributes_match_count", 0),
+                    r.get("_color_priority_score", 0.0),
                     1 if (r.get("stock") or 0) > 0 else 0,
                     r.get("similarity", 0.0)
                 ),
@@ -3181,8 +3260,14 @@ def text_search():
         else:
             # Si no hubo atributos solicitados, priorizar stock disponible y luego similitud
             all_available_values = {}
+            color_priority_score_fn, color_priority_target = _build_color_priority_score_fn({}, detected_color_normalized)
+            for r in formatted_results:
+                r['_color_priority_score'] = color_priority_score_fn(r)
+            if color_priority_enabled and color_priority_target:
+                print(f"🎨 Color priority textual activo: target='{color_priority_target}'")
             formatted_results.sort(
                 key=lambda r: (
+                    r.get("_color_priority_score", 0.0),
                     1 if (r.get("stock") or 0) > 0 else 0,
                     r.get("similarity", 0.0)
                 ),
