@@ -2860,6 +2860,16 @@ def text_search():
 
                 sims = np.dot(color_text_matrix, emb)
                 best_idx = int(np.argmax(sims))
+                best_sim = float(sims[best_idx])
+                second_sim = float(np.partition(sims, -2)[-2]) if len(sims) > 1 else -1.0
+
+                # Requerir confianza mínima para evitar asignaciones espurias
+                # sobre imágenes sin color dominante claro.
+                min_sim = 0.20
+                min_margin = 0.01
+                if best_sim < min_sim or (best_sim - second_sim) < min_margin:
+                    return None
+
                 return color_keys[best_idx]
             except Exception:
                 return None
