@@ -3205,7 +3205,27 @@ def text_search():
                         color_filter_value = recovered_color
                         pre_color_results = list(formatted_results)
                         try:
-                            from app.utils.colors import colors_are_similar
+                            from app.utils.colors import _get_color_embedding
+                            target_emb_local = _get_color_embedding(str(recovered_color), client_id=client.id)
+                            emb_cache_local = {}
+
+                            def _is_close_color(candidate_color: str) -> bool:
+                                if not target_emb_local or not candidate_color:
+                                    return False
+                                cand_norm = str(candidate_color).strip().lower()
+                                if cand_norm in emb_cache_local:
+                                    emb_c = emb_cache_local[cand_norm]
+                                else:
+                                    emb_c = _get_color_embedding(cand_norm, client_id=client.id)
+                                    emb_cache_local[cand_norm] = emb_c
+                                if emb_c is None:
+                                    return False
+                                denom = (np.linalg.norm(target_emb_local) * np.linalg.norm(emb_c))
+                                if denom == 0:
+                                    return False
+                                sim = float(np.dot(target_emb_local, emb_c) / denom)
+                                return sim >= 0.72
+
                             filtered_results = []
                             for r in formatted_results:
                                 resolved_color = _resolve_product_color_norm(r)
@@ -3214,12 +3234,7 @@ def text_search():
                                 if str(resolved_color).strip().lower() == recovered_color:
                                     filtered_results.append(r)
                                     continue
-                                if colors_are_similar(
-                                    str(resolved_color),
-                                    str(recovered_color),
-                                    threshold=0.72,
-                                    client_id=client.id
-                                ):
+                                if _is_close_color(str(resolved_color)):
                                     filtered_results.append(r)
                         except Exception:
                             filtered_results = [
