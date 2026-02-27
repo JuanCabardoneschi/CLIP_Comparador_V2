@@ -2578,6 +2578,7 @@ def text_search():
         detected_color_token = None  # Token original que fue reconocido como color
         detected_color_normalized = None  # Color normalizado por LLM
         detected_color_intent = False  # Se detectó intención de color aunque no haya mapeo válido
+        semantic_related_colors = []  # Colores relacionados desde definición sistémica
 
         try:
             requested_attrs = attr_info.get('attributes', {}) or {}
@@ -2660,7 +2661,7 @@ def text_search():
 
             system_color_adjectives = set()
             try:
-                from app.utils.semantic_colors import get_system_color_adjectives
+                from app.utils.semantic_colors import get_system_color_adjectives, _load_system_colors
                 system_color_adjectives = {
                     str(c).strip().lower() for c in get_system_color_adjectives() if c
                 }
@@ -2689,6 +2690,29 @@ def text_search():
                         detected_color_intent = True
                         if not detected_color_token:
                             detected_color_token = tok
+
+                        # Resolver relación definida en system_semantic_colors.json
+                        try:
+                            data_sc = _load_system_colors()
+                            entries = data_sc.get('colors', []) if isinstance(data_sc, dict) else []
+                            preferred = []
+                            for item in entries:
+                                if str(item.get('token', '')).strip().lower() == tok:
+                                    preferred = [
+                                        str(v).strip().lower()
+                                        for v in item.get('preferred_matches', [])
+                                        if str(v).strip()
+                                    ]
+                                    break
+
+                            if preferred:
+                                semantic_related_colors = list(dict.fromkeys(preferred))
+                                detected_color_normalized = semantic_related_colors[0]
+                                print(f"🎨 Color sistémico detectado: '{tok}' -> familia {semantic_related_colors}")
+                                # Para términos sistémicos, NO seguir normalización global por embedding
+                                continue
+                        except Exception as e_sc:
+                            print(f"⚠️ Error leyendo definición sistémica para '{tok}': {e_sc}")
 
                     c = normalize_color(tok, client_id=client.id)
                     if c:
@@ -3075,43 +3099,50 @@ def text_search():
 
             if color_filter_value:
                 _hang_trace(f"color_filter_value='{color_filter_value}' token='{detected_color_token}'")
-                # Mantener una copia de todos los resultados antes del filtro de color
                 pre_color_results = list(formatted_results)
-                # Usar el token ORIGINAL detectado si existe, sino el valor normalizado
                 color_search_token = detected_color_token if detected_color_token else color_filter_value
                 color_value_normalized = color_filter_value
+                # Color base: si viene de definición sistémica, usar su familia; si no, el color normalizado.
+                base_colors = [color_value_normalized]
+                if semantic_related_colors:
+                    merged_base = [color_value_normalized] + [str(v).strip().lower() for v in semantic_related_colors if str(v).strip()]
+                    base_colors = list(dict.fromkeys([c for c in merged_base if c]))
 
-                print(f"🎨 Filtrando por color: token='{color_search_token}', normalizado='{color_value_normalized}'")
+                base_set = set(base_colors)
+                base_anchor = base_colors[0] if base_colors else color_value_normalized
+                print(f"🎨 Filtrando por color: token='{color_search_token}', base={base_colors}")
 
-                # 1) Intentar coincidencias con el color NORMALIZADO en los atributos de productos
-                exact_matches = [
+                # 1) Exactos primero (color base/familia)
+                filtered_results = [
                     r for r in formatted_results
-                    if _resolve_product_color_norm(r) == color_value_normalized
+                    if (_resolve_product_color_norm(r) in base_set)
                 ]
-                _hang_trace(f"exact color matches={len(exact_matches)}")
+                _hang_trace(f"exact/base color matches={len(filtered_results)}")
 
-                if exact_matches:
-                    filtered_results = exact_matches
-                    matched_similar_color = color_value_normalized  # Hay match exacto
-                    print(f"✅ Filtrado por color exacto '{color_value_normalized}': {len(exact_matches)} productos")
-                else:
-                    # 2) No hay exactos: buscar colores similares usando el TOKEN ORIGINAL
-                    print(f"🔍 No hay color exacto, buscando similares a '{color_search_token}'...")
+                # 2) Si faltan resultados, completar con colores similares
+                try:
+                    target_total = rerank_limit if 'rerank_limit' in locals() else limit
+                    target_total = min(target_total, len(pre_color_results))
+                except Exception:
+                    target_total = len(pre_color_results)
+
+                if len(filtered_results) < target_total:
+                    print(f"🔍 Exactos insuficientes ({len(filtered_results)}/{target_total}), buscando colores similares a '{base_anchor}'...")
                     try:
                         from app.utils.colors import _get_color_embedding
-                        _hang_trace("search similar colors: start")
-                        # Calcular embedding del TOKEN ORIGINAL (ej: "grices")
-                        target_emb = _get_color_embedding(color_search_token, client_id=client.id)
+                        target_emb = _get_color_embedding(base_anchor, client_id=client.id)
                         similar_colors = []
 
                         if target_emb is not None:
                             available_product_colors = [
                                 _resolve_product_color_norm(r)
-                                for r in formatted_results
+                                for r in pre_color_results
                             ]
                             available_product_colors = [c for c in available_product_colors if c]
                             scored = []
                             for c in set(available_product_colors):
+                                if c in base_set:
+                                    continue
                                 emb_c = _get_color_embedding(c, client_id=client.id)
                                 if emb_c is None:
                                     continue
@@ -3121,93 +3152,66 @@ def text_search():
                                 sim = float(np.dot(target_emb, emb_c) / denom)
                                 scored.append((c, sim))
 
-                            # Ordenar y tomar top-3 con umbral 0.58 (permisivo para captar "grices"→"gris" sim=0.583)
                             scored.sort(key=lambda x: x[1], reverse=True)
-                            THRESH = 0.58
-                            TOPK = 3
+                            THRESH = 0.50
+                            TOPK = 4
                             similar_colors = [c for c, s in scored if s >= THRESH][:TOPK]
-                            print(f"🎨 Colores similares a '{color_search_token}': {[(c,round(s,3)) for c,s in scored[:5]]}")
+                            print(f"🎨 Similares a '{base_anchor}': {[(c, round(s,3)) for c,s in scored[:5]]}")
                             print(f"✅ Top similares (>{THRESH}): {similar_colors}")
-                        _hang_trace(f"search similar colors: done similar_colors={similar_colors}")
 
                         if similar_colors:
                             similar_set = set(similar_colors)
-                            filtered_results = [
-                                r for r in formatted_results
-                                if _resolve_product_color_norm(r) in similar_set
-                            ]
-                            # 🎨 Guardar el mejor color similar encontrado
-                            if similar_colors:
-                                matched_similar_color = similar_colors[0]  # El más similar
-                            print(f"✅ Filtrado por colores similares: {len(filtered_results)} productos")
-                        else:
-                            # 3) Sin similares: devolver vacío
-                            filtered_results = []
-                            print(f"❌ No se encontraron colores similares a '{color_search_token}'")
+                            for r in pre_color_results:
+                                if r in filtered_results:
+                                    continue
+                                rc = _resolve_product_color_norm(r)
+                                if rc in similar_set:
+                                    filtered_results.append(r)
+                                if len(filtered_results) >= target_total:
+                                    break
                     except Exception as e:
                         print(f"⚠️ Error buscando colores similares: {e}")
-                        import traceback
-                        traceback.print_exc()
-                        filtered_results = []
 
-                # 🎨 ACTUALIZAR requested_attrs con el color que realmente matcheó
-                if matched_similar_color:
-                    requested_attrs['color'] = matched_similar_color
-                    # 🎯 ACTUALIZAR también detected_color_normalized para el feedback correcto
-                    if detected_color_token:
-                        detected_color_normalized = matched_similar_color
-                    print(f"🎨 Color para matching actualizado: '{color_value_normalized}' → '{matched_similar_color}'")
+                # Fijar color final usado en matching/feedback
+                matched_similar_color = base_anchor
+                requested_attrs['color'] = matched_similar_color
+                detected_color_normalized = matched_similar_color
+                print(f"🎨 Color para matching fijado: '{matched_similar_color}'")
 
-                    # 🔄 RECALCULAR attributes_match_count con el color actualizado
-                    for r in filtered_results:
-                        prod_attrs = r.get('attributes', {})
-                        matched = {}
-                        for k, v in requested_attrs.items():
-                            pv = prod_attrs.get(k)
-                            if pv is None:
-                                if str(k).lower() == 'color':
-                                    pv = _resolve_product_color_norm(r)
-                                    if pv is None:
-                                        continue
-                                else:
-                                    continue
+                # Recalcular métricas de atributos
+                for r in filtered_results:
+                    prod_attrs = r.get('attributes', {})
+                    matched = {}
+                    for k, v in requested_attrs.items():
+                        pv = prod_attrs.get(k)
+                        if pv is None:
                             if str(k).lower() == 'color':
-                                if str(pv).lower() == str(v).lower():
-                                    matched[k] = v
-                                continue
-                            if isinstance(pv, list):
-                                if any(str(x).lower() == str(v).lower() for x in pv):
-                                    matched[k] = v
+                                pv = _resolve_product_color_norm(r)
+                                if pv is None:
+                                    continue
                             else:
-                                if str(pv).lower() == str(v).lower():
-                                    matched[k] = v
+                                continue
+                        if str(k).lower() == 'color':
+                            if str(pv).lower() in base_set:
+                                matched[k] = matched_similar_color
+                            continue
+                        if isinstance(pv, list):
+                            if any(str(x).lower() == str(v).lower() for x in pv):
+                                matched[k] = v
+                        else:
+                            if str(pv).lower() == str(v).lower():
+                                matched[k] = v
 
-                        matched_count = len(matched)
-                        match_ratio = float(matched_count / len(requested_attrs)) if len(requested_attrs) > 0 else 0.0
-
-                        r['attributes_matched'] = matched
-                        r['attributes_match_count'] = matched_count
-                        r['attributes_match_ratio'] = round(match_ratio, 3)
-
-                # Si el filtrado por color deja pocos resultados, completar con fallbacks
-                try:
-                    # Objetivo total aproximado para mantener buen recall antes de agrupar
-                    target_total = rerank_limit if 'rerank_limit' in locals() else limit
-                    target_total = min(target_total, len(pre_color_results))
-                except Exception:
-                    target_total = len(pre_color_results)
-
-                # Si hubo intención explícita de color y no hubo matches reales,
-                # NO rellenar con fallbacks irrelevantes.
-                had_color_intent = bool(color_filter_value)
-                if len(filtered_results) < target_total and not (had_color_intent and not filtered_results):
-                    needed = target_total - len(filtered_results)
-                    # Mantener orden original, agregando productos que no pasaron el filtro de color
-                    fallback_candidates = [r for r in pre_color_results if r not in filtered_results]
-                    filtered_results.extend(fallback_candidates[:needed])
+                    matched_count = len(matched)
+                    match_ratio = float(matched_count / len(requested_attrs)) if len(requested_attrs) > 0 else 0.0
+                    r['attributes_matched'] = matched
+                    r['attributes_match_count'] = matched_count
+                    r['attributes_match_ratio'] = round(match_ratio, 3)
 
                 formatted_results = filtered_results
-                _hang_trace(f"after color_filter_value branch formatted_results={len(formatted_results)}")
+                if base_colors:
+                    all_available_values['color'] = base_colors
+                _hang_trace(f"after unified color branch formatted_results={len(formatted_results)}")
             else:
                 _hang_trace("ENTER no-color-filter branch")
                 # Si hubo intención explícita de color pero no se pudo normalizar/matchear,
