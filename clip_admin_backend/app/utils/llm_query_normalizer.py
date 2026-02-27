@@ -21,12 +21,13 @@ _model_cleanup_thread_started = False
 _model_lock = threading.Lock()
 _model_load_block_until = 0.0  # Cooldown tras fallo de carga para evitar reintentos costosos
 _model_last_load_error = None
-_minilm_cache_dir = os.getenv("MINILM_CACHE_DIR", "/app/.cache/huggingface")
+_minilm_cache_dir = os.getenv("MINILM_CACHE_DIR")
 
-try:
-    os.makedirs(_minilm_cache_dir, exist_ok=True)
-except Exception:
-    pass
+if _minilm_cache_dir:
+    try:
+        os.makedirs(_minilm_cache_dir, exist_ok=True)
+    except Exception:
+        pass
 
 # Caché de vocabulario por cliente (evita queries repetidas)
 _VOCABULARY_CACHE = {}
@@ -145,7 +146,7 @@ def get_model():
 
                 ctor_params = inspect.signature(SentenceTransformer.__init__).parameters
                 kwargs = {}
-                if "cache_folder" in ctor_params:
+                if _minilm_cache_dir and "cache_folder" in ctor_params:
                     kwargs["cache_folder"] = _minilm_cache_dir
                 if "local_files_only" in ctor_params:
                     kwargs["local_files_only"] = local_only
