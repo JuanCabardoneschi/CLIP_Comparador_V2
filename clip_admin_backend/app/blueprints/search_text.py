@@ -1151,6 +1151,12 @@ def text_search():
             classification_done = False  # Flag para evitar doble clasificación contradictoria
             _hang_trace("PRE-STAGE1 bloque diagnóstico: inicio")
             run_legacy_pre_stage_pipeline = bool(data.get('run_legacy_pre_stage_pipeline', False))
+            configured_attributes = []
+            matched_categories = []
+            matched_category_ids = []
+            modificadores = extraction_result.get('modifiers', []) or []
+            atributos_encontrados = []
+            modificadores_no_configurados = []
             log_verbose(LogCategory.NLP, f"[TEXT_SEARCH] Preprocesamiento exitoso: '{query_text}' → '{cleaned_query}'")
             log_verbose(LogCategory.NLP, f"   📦 Categoría extraída: '{extraction_result.get('category')}'")
             log_verbose(LogCategory.NLP, f"   🏷️  Modificadores extraídos: {extraction_result.get('modifiers')}")
