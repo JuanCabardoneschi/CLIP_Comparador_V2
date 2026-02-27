@@ -18,6 +18,8 @@ _model = None
 _model_last_used_ts = None  # Timestamp de último uso
 _model_cleanup_thread_started = False
 _model_lock = threading.Lock()
+_model_load_block_until = 0.0  # Cooldown tras fallo de carga para evitar reintentos costosos
+_model_last_load_error = None
 
 # Caché de vocabulario por cliente (evita queries repetidas)
 _VOCABULARY_CACHE = {}
@@ -112,7 +114,7 @@ def _start_minilm_cleanup_thread_once():
 
 def get_model():
     """Cargar modelo MiniLM con singleton y auto-descarga por inactividad (mismo sistema que CLIP)."""
-    global _model
+    global _model, _model_load_block_until, _model_last_load_error
     import time
     t_start = time.time()
 
@@ -120,10 +122,30 @@ def get_model():
     _start_minilm_cleanup_thread_once()
 
     with _model_lock:
+        now_ts = _now_ts()
+        if _model is None and now_ts < _model_load_block_until:
+            cooldown_left = int(_model_load_block_until - now_ts)
+            raise RuntimeError(
+                f"MiniLM en cooldown tras fallo de carga ({cooldown_left}s restantes): {_model_last_load_error}"
+            )
+
         if _model is None:
             print(f"🔄 [MiniLM] Cargando modelo {MODEL_NAME} desde disco...", flush=True)
-            _model = SentenceTransformer(MODEL_NAME)
+            local_only = os.getenv("MINILM_LOCAL_FILES_ONLY", "true").strip().lower() in ("1", "true", "yes", "on")
+            try:
+                _model = SentenceTransformer(MODEL_NAME, local_files_only=local_only)
+            except TypeError:
+                _model = SentenceTransformer(MODEL_NAME)
+            except Exception as e:
+                _model = None
+                _model_last_load_error = str(e)
+                retry_cooldown = int(os.getenv("MINILM_RETRY_COOLDOWN_SECONDS", "600"))
+                _model_load_block_until = _now_ts() + retry_cooldown
+                raise
+
             _model.loaded_at = _now_ts()  # Marcar timestamp de carga
+            _model_last_load_error = None
+            _model_load_block_until = 0.0
             print(f"✅ [MiniLM] Modelo cargado en {time.time()-t_start:.2f}s", flush=True)
         else:
             print(f"♻️ [MiniLM] Usando modelo YA CARGADO en memoria (singleton activo)", flush=True)

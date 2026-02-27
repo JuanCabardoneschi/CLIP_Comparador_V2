@@ -2545,9 +2545,13 @@ def text_search():
                 pass
 
             raw_tokens = [t.strip(".,;:!?") for t in query_text.lower().split() if t.strip()]
+            extracted_category_token = (extraction_result.get('category') or '').strip().lower()
 
             for tok in raw_tokens:
                 if len(tok) < 3:
+                    continue
+                # Saltar token de categoría principal extraída (evita normalizar color sobre categoría)
+                if extracted_category_token and tok == extracted_category_token:
                     continue
                 # Saltar si es una categoría conocida
                 if tok in category_tokens:
