@@ -12,8 +12,11 @@ import json
 import threading
 import os
 
-# Modelo liviano multilingüe
-MODEL_NAME = 'paraphrase-multilingual-MiniLM-L12-v2'
+# Modelo liviano multilingüe (usar nombre canónico de HuggingFace)
+MODEL_NAME = os.getenv(
+    'MINILM_MODEL_NAME',
+    'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
+)
 _model = None
 _model_last_used_ts = None  # Timestamp de último uso
 _model_cleanup_thread_started = False

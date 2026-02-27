@@ -2600,7 +2600,7 @@ def text_search():
                     if c:
                         detected_color_token = tok
                         detected_color_normalized = c
-                        print(f"🎨 Color detectado: '{tok}' → '{c}'")
+                        print(f"🎨 Color detectado (MiniLLM): '{tok}' → '{c}'")
                         break
             else:
                 print("🎨 Semántica de color omitida: cliente sin vocabulario de color utilizable")
