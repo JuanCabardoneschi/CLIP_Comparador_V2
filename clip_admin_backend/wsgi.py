@@ -567,6 +567,21 @@ def register_blueprints(app):
 # Crear instancia de la aplicación
 app = create_app()
 
+# Warmup de startup (también aplica bajo Gunicorn, no solo __main__)
+try:
+    from app.utils.system_config import system_config
+    from app.blueprints.api import warmup_clip_color_cache
+
+    # Si no existe clave, por defecto habilitado para evitar cold latency.
+    warmup_enabled = bool(system_config.get('clip', 'preload', True))
+    if warmup_enabled:
+        print("⚡ Warmup startup: CLIP + matriz de colores")
+        warmup_clip_color_cache()
+    else:
+        print("⚡ Warmup startup deshabilitado por configuración (clip.preload=false)")
+except Exception as startup_warmup_error:
+    print(f"⚠️ Warmup startup omitido por error: {startup_warmup_error}")
+
 # Registrar webhooks blueprint AL FINAL (después de todos los demás blueprints)
 # para que tenga prioridad sobre el error handler del api blueprint
 try:

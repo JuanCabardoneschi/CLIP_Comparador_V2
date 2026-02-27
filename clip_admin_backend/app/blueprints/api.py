@@ -6,6 +6,7 @@ Endpoints internos para el admin panel y búsqueda visual
 import sys
 import time
 import re
+import threading
 from app.blueprints.embeddings import _get_idle_timeout_seconds
 import hashlib
 import numpy as np
@@ -62,6 +63,73 @@ CORS(bp, origins=["*"],
 # 🔥 CACHÉ GLOBAL DE EMBEDDINGS (evita recalcular en cada request)
 _CATEGORY_EMBEDDINGS_CACHE = {}
 _COLOR_EMBEDDINGS_CACHE = {}
+_COLOR_TEXT_MATRIX_GLOBAL = None
+_COLOR_KEYS_GLOBAL = None
+_COLOR_TEXT_CACHE_LOCK = threading.Lock()
+
+
+def _build_global_color_text_cache(model=None, processor=None, force_reload: bool = False):
+    """Construye (una sola vez por proceso) la matriz de colores para inferencia CLIP."""
+    global _COLOR_TEXT_MATRIX_GLOBAL, _COLOR_KEYS_GLOBAL
+
+    if _COLOR_TEXT_MATRIX_GLOBAL is not None and _COLOR_KEYS_GLOBAL is not None and not force_reload:
+        return _COLOR_TEXT_MATRIX_GLOBAL, _COLOR_KEYS_GLOBAL
+
+    with _COLOR_TEXT_CACHE_LOCK:
+        if _COLOR_TEXT_MATRIX_GLOBAL is not None and _COLOR_KEYS_GLOBAL is not None and not force_reload:
+            return _COLOR_TEXT_MATRIX_GLOBAL, _COLOR_KEYS_GLOBAL
+
+        canonical_palette = {
+            'negro': 'black',
+            'blanco': 'white',
+            'gris': 'gray',
+            'azul': 'blue',
+            'celeste': 'light blue',
+            'verde': 'green',
+            'rojo': 'red',
+            'rosa': 'pink',
+            'marron': 'brown',
+            'beige': 'beige',
+            'amarillo': 'yellow',
+            'violeta': 'purple',
+            'naranja': 'orange',
+        }
+
+        if model is None or processor is None:
+            model, processor = get_clip_model()
+
+        color_texts = [
+            f"a photo of a {en_name} garment"
+            for _, en_name in canonical_palette.items()
+        ]
+        color_keys = list(canonical_palette.keys())
+
+        with torch.no_grad():
+            color_text_inputs = processor(
+                text=color_texts,
+                return_tensors="pt",
+                padding=True,
+                truncation=True
+            )
+            color_text_features = model.get_text_features(**color_text_inputs)
+            color_text_features = color_text_features / color_text_features.norm(dim=-1, keepdim=True)
+
+        _COLOR_TEXT_MATRIX_GLOBAL = color_text_features.cpu().numpy().astype(np.float32)
+        _COLOR_KEYS_GLOBAL = color_keys
+
+    return _COLOR_TEXT_MATRIX_GLOBAL, _COLOR_KEYS_GLOBAL
+
+
+def warmup_clip_color_cache() -> bool:
+    """Warmup explícito de CLIP + matriz de colores durante startup."""
+    try:
+        model, processor = get_clip_model()
+        _build_global_color_text_cache(model=model, processor=processor)
+        railway_log("✅ Warmup CLIP color cache completado")
+        return True
+    except Exception as e:
+        railway_log(f"⚠️ Warmup CLIP color cache falló: {e}")
+        return False
 
 # spaCy es OBLIGATORIO para tokenización (no opcional)
 _USE_SPACY_NORMALIZER = True  # Siempre activo
@@ -2560,22 +2628,10 @@ def gpt4v_unified_search():
                             return None
 
                         if color_text_matrix_cache is None or color_keys_cache is None:
-                            color_texts = [
-                                f"a photo of a {en_name} garment"
-                                for _, en_name in canonical_palette.items()
-                            ]
-                            color_keys_cache = list(canonical_palette.keys())
-
-                            with torch.no_grad():
-                                color_text_inputs = processor(
-                                    text=color_texts,
-                                    return_tensors="pt",
-                                    padding=True,
-                                    truncation=True
-                                )
-                                color_text_features = model.get_text_features(**color_text_inputs)
-                                color_text_features = color_text_features / color_text_features.norm(dim=-1, keepdim=True)
-                                color_text_matrix_cache = color_text_features.cpu().numpy().astype(np.float32)
+                            color_text_matrix_cache, color_keys_cache = _build_global_color_text_cache(
+                                model=model,
+                                processor=processor
+                            )
 
                         color_text_matrix = color_text_matrix_cache
                         color_keys = color_keys_cache
