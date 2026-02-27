@@ -1164,6 +1164,7 @@ def text_search():
         if cleaned_query and cleaned_query.strip() and extraction_result.get('success'):
             classification_done = False  # Flag para evitar doble clasificación contradictoria
             _hang_trace("PRE-STAGE1 bloque diagnóstico: inicio")
+            run_legacy_pre_stage_pipeline = bool(data.get('run_legacy_pre_stage_pipeline', False))
             log_verbose(LogCategory.NLP, f"[TEXT_SEARCH] Preprocesamiento exitoso: '{query_text}' → '{cleaned_query}'")
             log_verbose(LogCategory.NLP, f"   📦 Categoría extraída: '{extraction_result.get('category')}'")
             log_verbose(LogCategory.NLP, f"   🏷️  Modificadores extraídos: {extraction_result.get('modifiers')}")
@@ -1171,6 +1172,10 @@ def text_search():
             # 🛑 PUNTO DE CORTE PARA TESTING
             # Obtener categorías del cliente
             try:
+                if not run_legacy_pre_stage_pipeline:
+                    _hang_trace("PRE-STAGE1 legacy pipeline omitido (default)")
+                    raise RuntimeError("__SKIP_LEGACY_PRE_STAGE__")
+
                 _hang_trace("PRE-STAGE1: consultando categorías activas del cliente")
                 client_categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
                 _hang_trace(f"PRE-STAGE1: categorías activas cargadas={len(client_categories)}")
@@ -2462,10 +2467,13 @@ def text_search():
                 # Bloque de diagnóstico removido: continuar flujo normal de producción
 
             except Exception as e:
-                print(f"⚠️ Error en detección de categorías: {e}")
-                _hang_trace("PRE-STAGE1: excepción en bloque diagnóstico")
-                import traceback
-                traceback.print_exc()
+                if str(e) == "__SKIP_LEGACY_PRE_STAGE__":
+                    pass
+                else:
+                    print(f"⚠️ Error en detección de categorías: {e}")
+                    _hang_trace("PRE-STAGE1: excepción en bloque diagnóstico")
+                    import traceback
+                    traceback.print_exc()
 
             # (Bloque legacy removido para evitar problemas de comillas triple)
 
