@@ -2529,7 +2529,7 @@ def gpt4v_unified_search():
                                     # Calcular similitud texto↔imagen por producto
                                     fused_count = 0
                                     filtered_count = 0
-                                    text_boost_weight = 0.30  # Boost aditivo del texto (máx +30%)
+                                    text_boost_weight = 0.15  # Boost aditivo del texto (máx +15%)
 
                                     products_after_fusion = []
                                     for p in products_data:
@@ -2812,6 +2812,33 @@ def gpt4v_unified_search():
                             _log_debug_target_products('post_color_priority', products_data)
                     except Exception as color_priority_error:
                         railway_log(f"⚠️ Error aplicando prioridad por color: {color_priority_error}")
+
+                if products_data:
+                    try:
+                        stock_unlimited_boost = 0.02
+                        out_of_stock_penalty = 0.02
+                        boosted_unlimited = 0
+                        penalized_out_of_stock = 0
+
+                        for prod in products_data:
+                            stock_value = prod.get('stock')
+
+                            if stock_value == -1:
+                                prod['similarity_score'] = min(1.0, float(prod.get('similarity_score', 0.0)) + stock_unlimited_boost)
+                                boosted_unlimited += 1
+                            elif stock_value == 0:
+                                prod['similarity_score'] = max(0.0, float(prod.get('similarity_score', 0.0)) - out_of_stock_penalty)
+                                penalized_out_of_stock += 1
+
+                        if boosted_unlimited > 0 or penalized_out_of_stock > 0:
+                            products_data.sort(key=lambda x: x.get('similarity_score', 0.0), reverse=True)
+                            railway_log(
+                                f"   📦 Ajuste stock aplicado en '{category_name}': boost_ilimitado=+{stock_unlimited_boost}, penalizacion_sin_stock=-{out_of_stock_penalty}, ilimitado={boosted_unlimited}, sin_stock={penalized_out_of_stock}"
+                            )
+
+                        _log_debug_target_products('post_stock_priority', products_data)
+                    except Exception as stock_priority_error:
+                        railway_log(f"⚠️ Error aplicando ajuste por stock: {stock_priority_error}")
 
                 # Aplicar límite por categoría SIEMPRE (independiente de la rama de procesamiento)
                 effective_max_results = max(1, int(max_results))
