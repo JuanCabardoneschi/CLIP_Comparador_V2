@@ -2300,12 +2300,21 @@ def gpt4v_unified_search():
                     # Usar imágenes pre-cargadas en lugar de acceso lazy
                     product_images = images_by_product.get(product.id, [])
 
-                    # Seleccionar imagen procesada con embedding válido
+                    # Seleccionar la MEJOR imagen del producto para esta query
+                    # (antes se tomaba la primera válida y eso podía degradar el ranking)
                     img_obj = None
+                    best_img_similarity = float('-inf')
                     for img in product_images:
                         if img.is_processed and img.clip_embedding and img.embedding_vector:
-                            img_obj = img
-                            break
+                            try:
+                                img_vec = np.asarray(img.embedding_vector, dtype=np.float32)
+                                sim = float(np.dot(img_vec, query_embedding))
+                            except Exception:
+                                continue
+
+                            if img_obj is None or sim > best_img_similarity:
+                                img_obj = img
+                                best_img_similarity = sim
 
                     if not img_obj or not img_obj.embedding_vector:
                         continue
