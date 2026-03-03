@@ -22,6 +22,7 @@ clip_admin_backend/logs/
 docs/
 *.md
 *.txt
+!requirements.txt
 
 # Scripts y utilidades fuera de runtime
 *.ps1
