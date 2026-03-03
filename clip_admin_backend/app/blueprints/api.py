@@ -2589,12 +2589,10 @@ def gpt4v_unified_search():
 
                                         _log_debug_target_products('post_text_boost', products_data)
 
-                                        # Expandir pool para re-ranking (8x el límite final = 24 productos)
-                                        # Esto da más oportunidades a productos semánticamente relevantes
-                                        fusion_limit = max_results * 8
-                                        if len(products_data) > fusion_limit:
-                                            railway_log(f"   ✂️ Limitando de {len(products_data)} a {fusion_limit} productos para re-ranking")
-                                            products_data = products_data[:fusion_limit]
+                                        # Sin recorte intermedio: preservar TODO el pool para etapas posteriores
+                                        # (aplica globalmente para todos los clientes/categorías)
+                                        fusion_limit = len(products_data)
+                                        railway_log(f"   ✅ Sin limitación intermedia: pool completo para re-ranking ({fusion_limit} productos)")
 
                                         _log_debug_target_products('post_fusion_limit', products_data)
 
