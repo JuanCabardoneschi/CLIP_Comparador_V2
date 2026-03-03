@@ -1949,6 +1949,7 @@ def gpt4v_unified_search():
         max_results = min(max_results, max_results_config)
 
         railway_log(f"📊 Parámetros: max_results={max_results} (límite sistema: {max_results_config}), threshold={threshold} (config: {default_threshold})")
+        railway_log("🧪 DEBUG TARGET LOGGING activo (gpt4v_unified_search/api.py)")
 
         # ===================================================================
         # PASO 1: Detectar categorías con GPT-4 Vision (opcional)
