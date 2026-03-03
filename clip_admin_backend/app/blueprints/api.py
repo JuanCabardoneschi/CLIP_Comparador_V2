@@ -2233,6 +2233,54 @@ def gpt4v_unified_search():
             color_text_matrix_cache = None
             color_keys_cache = None
 
+            # Debug puntual de ranking para investigar exclusión en Top-N (solo logs)
+            debug_target_product_ids = {
+                '8d112e61-9629-475f-90a7-bd32938fcee9'  # Chaqueta Mao Slim Color Azul
+            }
+            debug_target_name_tokens = (
+                'chaqueta mao slim color azul',
+                'casaca mao color azul slim',
+                'casaca mao slim azul'
+            )
+
+            def _is_debug_target_product(product_id=None, product_name=None):
+                product_id_str = str(product_id or '').strip().lower()
+                if product_id_str and product_id_str in debug_target_product_ids:
+                    return True
+                name_norm = str(product_name or '').strip().lower()
+                return any(token in name_norm for token in debug_target_name_tokens)
+
+            def _log_debug_target_products(stage_label, rows):
+                if client.name.lower() != 'goody':
+                    return
+                if str(category_name or '').upper() != 'CHAQUETAS':
+                    return
+
+                for idx, prod in enumerate(rows, 1):
+                    pid = str(prod.get('id') or '').strip().lower()
+                    pname = prod.get('name')
+                    if not _is_debug_target_product(pid, pname):
+                        continue
+
+                    score = float(prod.get('similarity_score', 0.0) or 0.0)
+                    hybrid = prod.get('_hybrid_similarity', {}) or {}
+                    boost = prod.get('_boost_applied', {}) or {}
+                    inferred = prod.get('__product_color_inferred')
+                    inferred_color = inferred.get('color') if isinstance(inferred, dict) else None
+                    inferred_score = inferred.get('score') if isinstance(inferred, dict) else None
+
+                    railway_log(
+                        f"   🧪 DEBUG TARGET [{stage_label}] pos={idx}/{len(rows)} "
+                        f"id={prod.get('id')} score={score:.4f} "
+                        f"name='{str(pname)[:70]}' raw_color='{prod.get('__product_color')}' "
+                        f"inferred_color='{inferred_color}' inferred_score={inferred_score} "
+                        f"hybrid_visual={hybrid.get('visual')} hybrid_text={hybrid.get('text_image')} "
+                        f"hybrid_boost={hybrid.get('text_boost')} rerank_boost={boost.get('factor')}"
+                    )
+                    return
+
+                railway_log(f"   🧪 DEBUG TARGET [{stage_label}] fuera del pool ({len(rows)} items)")
+
             # ===================================================================
             # OPTIMIZACIÓN 4: Vectorización - Calcular similitudes en batch
             # ===================================================================
@@ -2280,6 +2328,23 @@ def gpt4v_unified_search():
                 # Calcular TODAS las similitudes a la vez (vectorizado)
                 similarities = np.dot(embeddings_matrix, query_embedding)
 
+                if client.name.lower() == 'goody' and str(category_name or '').upper() == 'CHAQUETAS':
+                    found_any_target = False
+                    for idx, (product, _) in enumerate(product_refs):
+                        if not _is_debug_target_product(product.id, product.name):
+                            continue
+
+                        found_any_target = True
+                        raw_sim = float(similarities[idx])
+                        railway_log(
+                            f"   🧪 DEBUG TARGET [raw_similarity] id={product.id} "
+                            f"name='{str(product.name)[:70]}' raw_similarity={raw_sim:.4f} "
+                            f"threshold={threshold:.4f} passes={raw_sim >= threshold}"
+                        )
+
+                    if not found_any_target:
+                        railway_log("   🧪 DEBUG TARGET [raw_similarity] no encontrado en product_refs de CHAQUETAS")
+
                 # Crear lista de resultados con similitud
                 product_similarities = []
                 for idx, (product, img) in enumerate(product_refs):
@@ -2308,6 +2373,18 @@ def gpt4v_unified_search():
 
                 # Ordenar por similitud descendente
                 product_similarities.sort(key=lambda x: x['similarity'], reverse=True)
+
+                _log_debug_target_products(
+                    'post_threshold',
+                    [
+                        {
+                            'id': str(item['product'].id),
+                            'name': item['product'].name,
+                            'similarity_score': item['similarity']
+                        }
+                        for item in product_similarities
+                    ]
+                )
 
                 # NO limitar aún - aplicar fusión a TODOS los que pasan threshold
                 # Esto permite que productos semánticamente relevantes (ej: "medio delantal")
@@ -2402,6 +2479,8 @@ def gpt4v_unified_search():
                         'stock': p.stock if hasattr(p, 'stock') and p.stock is not None else 0,
                         'product_url': final_product_url
                     })
+
+                _log_debug_target_products('post_serialize', products_data)
 
                 # ===================================================================
                 # RE-RANKING POR DESCRIPCIÓN DE GPT-4V (si Vision está habilitado)
@@ -2498,12 +2577,16 @@ def gpt4v_unified_search():
                                                 f"boost={hybrid.get('text_boost', 0):.4f})"
                                             )
 
+                                        _log_debug_target_products('post_text_boost', products_data)
+
                                         # Expandir pool para re-ranking (8x el límite final = 24 productos)
                                         # Esto da más oportunidades a productos semánticamente relevantes
                                         fusion_limit = max_results * 8
                                         if len(products_data) > fusion_limit:
                                             railway_log(f"   ✂️ Limitando de {len(products_data)} a {fusion_limit} productos para re-ranking")
                                             products_data = products_data[:fusion_limit]
+
+                                        _log_debug_target_products('post_fusion_limit', products_data)
 
                                 except Exception as fusion_error:
                                     railway_log(f"⚠️ Error en fusión visual+texto: {fusion_error}")
@@ -2562,6 +2645,8 @@ def gpt4v_unified_search():
                                                 f"boost={boost_info.get('factor', 1.0):.2f} "
                                                 f"[{matches_str[:60]}]"
                                             )
+
+                                        _log_debug_target_products('post_rerank', products_data)
                             except ImportError:
                                 # Módulos custom no disponibles, continuar sin re-ranking
                                 pass
@@ -2712,16 +2797,21 @@ def gpt4v_unified_search():
                                 railway_log(
                                     f"   🎨 Prioridad color activa en '{category_name}': color='{detected_color_norm}', fuente='{detected_color_source}', boost={color_boost}, afectados={boosted_count}, inferidos_catalogo={inferred_catalog_color_count}, fallback_nombre={name_fallback_color_count}"
                                 )
+
+                            _log_debug_target_products('post_color_priority', products_data)
                     except Exception as color_priority_error:
                         railway_log(f"⚠️ Error aplicando prioridad por color: {color_priority_error}")
 
                 # Aplicar límite por categoría SIEMPRE (independiente de la rama de procesamiento)
                 effective_max_results = max(1, int(max_results))
                 if len(products_data) > effective_max_results:
+                    _log_debug_target_products('pre_final_limit', products_data)
                     railway_log(
                         f"   ✂️ Limitar categoría '{category_name}' de {len(products_data)} a {effective_max_results} productos"
                     )
                     products_data = products_data[:effective_max_results]
+
+                _log_debug_target_products('post_final_limit', products_data)
 
                 # Limpiar campos internos de cálculo antes de responder
                 for prod in products_data:
