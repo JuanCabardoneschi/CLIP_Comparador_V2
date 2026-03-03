@@ -2603,12 +2603,13 @@ def gpt4v_unified_search():
 
                                 # 2) Re-ranking custom por descripción (tokens en nombres)
                                 from app.search_modules import has_custom_module, get_client_module
+                                name_based_rerank_enabled = False  # Deshabilitado temporalmente por decisión operativa
 
                                 if has_custom_module(client.name.lower()):
                                     module = get_client_module(client.name.lower())
 
                                     # Llamar a función de re-ranking si existe
-                                    if hasattr(module, 'rerank_visual_results_by_description'):
+                                    if hasattr(module, 'rerank_visual_results_by_description') and name_based_rerank_enabled:
                                         railway_log(f"   🎯 Re-ranking visual por descripción: '{gpt4v_description[:60]}...'")
 
                                         # Convertir products_data al formato para re-ranking
@@ -2657,6 +2658,8 @@ def gpt4v_unified_search():
                                             )
 
                                         _log_debug_target_products('post_rerank', products_data)
+                                    elif hasattr(module, 'rerank_visual_results_by_description') and not name_based_rerank_enabled:
+                                        railway_log("   ⏸️ Re-ranking por nombre de producto deshabilitado temporalmente")
                             except ImportError:
                                 # Módulos custom no disponibles, continuar sin re-ranking
                                 pass
