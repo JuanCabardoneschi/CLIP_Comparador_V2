@@ -1,6 +1,7 @@
 """
 Blueprint para manejar OAuth con Tiendanube
 Flujo completo: OAuth → Crear Cliente → Registrar Integración → Webhooks → Widget
+[v4 - API 2025-03]
 """
 from flask import Blueprint, request, jsonify, render_template_string
 import requests
