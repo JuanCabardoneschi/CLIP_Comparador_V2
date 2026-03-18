@@ -97,12 +97,17 @@ def get_integration(integration_id):
 
                 # Intentar detectar si ya existe el script para evitar duplicados innecesarios.
                 existing_script_id = None
+                list_url = f'https://api.tiendanube.com/2025-03/{integration.store_id}/scripts'
+                logger.info(f"🔍 Listando scripts - URL: {list_url}")
                 list_response = requests.get(
-                    f'https://api.tiendanube.com/2025-03/{integration.store_id}/scripts',
+                    list_url,
                     headers=headers,
                     timeout=10,
                     verify=False
                 )
+                logger.info(f"📡 GET /scripts status: {list_response.status_code}")
+                if list_response.status_code != 200:
+                    logger.warning(f"⚠️  GET /scripts falló: {list_response.status_code} - {list_response.text[:300]}")
                 if list_response.status_code == 200:
                     response_data = list_response.json()
                     # Asegurar que obtenemos una lista de scripts
@@ -139,13 +144,18 @@ def get_integration(integration_id):
                     'event': 'onfirstinteraction',
                     'where': 'footer'
                 }
+                post_url = f'https://api.tiendanube.com/2025-03/{integration.store_id}/scripts'
+                logger.info(f"📤 POST /scripts - URL: {post_url}")
+                logger.info(f"📤 POST payload: {payload}")
                 post_response = requests.post(
-                    f'https://api.tiendanube.com/2025-03/{integration.store_id}/scripts',
+                    post_url,
                     headers=headers,
                     json=payload,
                     timeout=10,
                     verify=False
                 )
+                logger.info(f"📥 POST /scripts status: {post_response.status_code}")
+                logger.info(f"📥 POST response: {post_response.text[:500]}")
 
                 if post_response.status_code in (200, 201):
                     script_id = post_response.json().get('id')
@@ -161,14 +171,18 @@ def get_integration(integration_id):
                         },
                         debug_product_id=''
                     )
-
+                
+                # Status 404 o error - fallback a enlace directo
+                logger.warning(f"⚠️  No se pudo crear script (HTTP {post_response.status_code}). Usando fallback de enlace.")
+                widget_url = f'https://clipcomparadorv2-production.up.railway.app/tiendanube/widget?api_key={integration.client.api_key}'
                 return render_template(
                     'tiendanube_admin/integration_detail.html',
                     integration=integration,
                     widget_result={
                         'success': False,
-                        'message': f'No se pudo activar el modal (HTTP {post_response.status_code}).',
-                        'details': post_response.text[:400],
+                        'message': 'El plan de Tiendanube no soporta inyección automática de scripts. Usa el enlace directo abajo:',
+                        'fallback_url': widget_url,
+                        'details': f'HTTP {post_response.status_code}: {post_response.text[:200]}'
                     },
                     debug_product_id=''
                 )

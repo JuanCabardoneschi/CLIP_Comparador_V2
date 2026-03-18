@@ -45,13 +45,23 @@
     {% endif %}
     {% if widget_result %}
     {% set ok_widget = widget_result.get('success') %}
-    <div class="alert {{ 'alert-success' if ok_widget else 'alert-danger' }}" role="alert">
+    <div class="alert {{ 'alert-success' if ok_widget else 'alert-warning' }}" role="alert">
         <strong>{{ widget_result.get('message') }}</strong>
         {% if widget_result.get('script_id') %}
             <span class="ms-2">Script ID: <code>{{ widget_result.get('script_id') }}</code></span>
         {% endif %}
+        {% if widget_result.get('fallback_url') %}
+            <div class="mt-3">
+                <p class="mb-2"><strong>Alternativa - Agregar enlace al menú:</strong></p>
+                <div class="input-group mb-2">
+                    <input type="text" class="form-control" value="{{ widget_result.get('fallback_url') }}" readonly>
+                    <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('URL copiada al portapapeles')">Copiar</button>
+                </div>
+                <small class="text-muted">Copia este enlace y agrégalo como "Buscar con IA" en el menú de tu tienda Tiendanube.</small>
+            </div>
+        {% endif %}
         {% if widget_result.get('details') %}
-            <div class="small mt-2"><code>{{ widget_result.get('details') }}</code></div>
+            <div class="small mt-2 text-muted"><code>{{ widget_result.get('details') }}</code></div>
         {% endif %}
     </div>
     {% endif %}
