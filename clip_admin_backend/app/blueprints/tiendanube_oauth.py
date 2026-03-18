@@ -357,7 +357,7 @@ def register_webhooks(store_id, access_token):
 def inject_widget_script(store_id, access_token, api_key):
     """
     Intenta inyectar el script del widget en la tienda.
-    Retorna script_id si tiene éxito, None si falla (plan no soporta scripts).
+    Retorna script_id si tiene exito, None si falla.
     """
     try:
         headers = {
@@ -366,11 +366,11 @@ def inject_widget_script(store_id, access_token, api_key):
             'Content-Type': 'application/json'
         }
 
-        script_src = f'https://clipcomparadorv2-production.up.railway.app/static/widget/clip-widget-embed-unified.js?api_key={api_key}'
+        script_src = f'https://clipcomparadorv2-production.up.railway.app/static/tiendanube-floating-button.js?api_key={api_key}'
 
         script_data = {
             'src': script_src,
-            'event': 'onload',  # Script se ejecuta al cargar la página
+            'event': 'onfirstinteraction',  # Recomendado para no bloquear carga inicial
             'where': 'footer'   # Cargar en footer
         }
 
@@ -388,7 +388,7 @@ def inject_widget_script(store_id, access_token, api_key):
             logger.info(f"Script inyectado exitosamente: {script_id}")
             return script_id
         else:
-            logger.warning(f"No se pudo inyectar script (plan puede no soportarlo): {response.status_code}")
+            logger.warning(f"No se pudo inyectar script automaticamente: {response.status_code} - {response.text[:200]}")
             return None
     except Exception as e:
         logger.error(f"Error inyectando script: {str(e)}")
@@ -424,9 +424,9 @@ def render_success_page(store_name, store_id, scope, api_key, has_script=False, 
             <span class="info-label">Widget:</span> ⚠️ Configuración manual requerida
         </div>
         <div class="alert alert-warning">
-            <strong>Tu plan no permite scripts automáticos.</strong><br>
-            Podés agregar el widget manualmente desde tu panel de administración:<br>
-            <code>Menú → Agregar enlace → https://clipcomparadorv2-production.up.railway.app/tiendanube/widget?api_key={api_key}</code>
+            <strong>No se pudo activar el modal automáticamente.</strong><br>
+            Para mostrar CLIP dentro de tu tienda (sin salir a Railway), agregá este script en tu tema:<br>
+            <code>&lt;script src="https://clipcomparadorv2-production.up.railway.app/static/tiendanube-floating-button.js?api_key={api_key}"&gt;&lt;/script&gt;</code>
         </div>
     """
 

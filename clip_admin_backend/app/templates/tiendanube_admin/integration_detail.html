@@ -43,6 +43,33 @@
         {% endif %}
     </div>
     {% endif %}
+    {% if widget_result %}
+    {% set ok_widget = widget_result.get('success') %}
+    <div class="alert {{ 'alert-success' if ok_widget else 'alert-danger' }}" role="alert">
+        <strong>{{ widget_result.get('message') }}</strong>
+        {% if widget_result.get('script_id') %}
+            <span class="ms-2">Script ID: <code>{{ widget_result.get('script_id') }}</code></span>
+        {% endif %}
+        {% if widget_result.get('details') %}
+            <div class="small mt-2"><code>{{ widget_result.get('details') }}</code></div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('tiendanube_admin.get_integration', integration_id=integration.id) }}">
+        <input type="hidden" name="action" value="install_widget_script">
+        <div class="card mb-4 border-primary">
+            <div class="card-body">
+                <h5 class="card-title">Activar modal en storefront (sin reinstalar app)</h5>
+                <p class="mb-2 text-muted">
+                    Este botón intenta crear/reusar el script de Tiendanube para abrir CLIP como modal dentro de la tienda.
+                </p>
+                <p class="mb-3"><strong>Script actual:</strong> <code>{{ integration.script_id or 'No configurado' }}</code></p>
+                <button type="submit" class="btn btn-outline-primary">Activar o reintentar modal</button>
+            </div>
+        </div>
+    </form>
+
     <div class="card mb-4">
         <div class="card-body">
             <h5 class="card-title">{{ integration.store_name or 'Tienda' }}</h5>

@@ -9,6 +9,7 @@ from app.models.client import Client
 from app.models.tiendanube_integration import TiendanubeIntegration
 from app.services.tiendanube_sync_service import start_full_sync, start_single_product_sync
 from app import db
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,101 @@ def get_integration(integration_id):
         return render_template("errors/403.html", message="Acceso denegado"), 403
 
     if request.method == 'POST':
+        action = (request.form.get('action') or '').strip()
+
+        if action == 'install_widget_script':
+            try:
+                access_token = integration.get_access_token()
+                script_src = (
+                    'https://clipcomparadorv2-production.up.railway.app/static/tiendanube-floating-button.js'
+                    f'?api_key={integration.client.api_key}'
+                )
+
+                headers = {
+                    'Authentication': f'bearer {access_token}',
+                    'User-Agent': 'CLIP Comparador V2 (info@clipcomparador.com)',
+                    'Content-Type': 'application/json'
+                }
+
+                # Intentar detectar si ya existe el script para evitar duplicados innecesarios.
+                existing_script_id = None
+                list_response = requests.get(
+                    f'https://api.tiendanube.com/v1/{integration.store_id}/scripts',
+                    headers=headers,
+                    timeout=10,
+                    verify=False
+                )
+                if list_response.status_code == 200:
+                    scripts = list_response.json()
+                    for script in scripts:
+                        if (script.get('src') or '') == script_src:
+                            existing_script_id = script.get('id')
+                            break
+
+                if existing_script_id:
+                    integration.script_id = existing_script_id
+                    db.session.commit()
+                    return render_template(
+                        'tiendanube_admin/integration_detail.html',
+                        integration=integration,
+                        widget_result={
+                            'success': True,
+                            'message': 'El modal ya estaba activo en la tienda.',
+                            'script_id': existing_script_id,
+                        },
+                        debug_product_id=''
+                    )
+
+                payload = {
+                    'src': script_src,
+                    'event': 'onfirstinteraction',
+                    'where': 'footer'
+                }
+                post_response = requests.post(
+                    f'https://api.tiendanube.com/v1/{integration.store_id}/scripts',
+                    headers=headers,
+                    json=payload,
+                    timeout=10,
+                    verify=False
+                )
+
+                if post_response.status_code in (200, 201):
+                    script_id = post_response.json().get('id')
+                    integration.script_id = script_id
+                    db.session.commit()
+                    return render_template(
+                        'tiendanube_admin/integration_detail.html',
+                        integration=integration,
+                        widget_result={
+                            'success': True,
+                            'message': 'Modal activado correctamente en Tiendanube.',
+                            'script_id': script_id,
+                        },
+                        debug_product_id=''
+                    )
+
+                return render_template(
+                    'tiendanube_admin/integration_detail.html',
+                    integration=integration,
+                    widget_result={
+                        'success': False,
+                        'message': f'No se pudo activar el modal (HTTP {post_response.status_code}).',
+                        'details': post_response.text[:400],
+                    },
+                    debug_product_id=''
+                )
+            except Exception as e:
+                logger.error(f"Error activando script modal para integración {integration_id}: {str(e)}")
+                return render_template(
+                    'tiendanube_admin/integration_detail.html',
+                    integration=integration,
+                    widget_result={
+                        'success': False,
+                        'message': f'Error activando modal: {str(e)}',
+                    },
+                    debug_product_id=''
+                )
+
         if integration.sync_status == 'in_progress':
             debug_product_id = (request.form.get('debug_product_id') or '').strip()
             return render_template(
