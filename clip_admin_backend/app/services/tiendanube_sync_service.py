@@ -9,7 +9,7 @@ import hashlib
 import io
 from PIL import Image as PILImage
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import json
 import time
 
@@ -217,6 +217,7 @@ class TiendanubeSyncService:
         """Sincroniza una categoría individual"""
         try:
             external_id = str(cat_data['id'])
+            parent_external_id = self._extract_parent_external_id(cat_data)
 
             # Buscar categoría existente
             category = Category.query.filter_by(
@@ -231,6 +232,7 @@ class TiendanubeSyncService:
                 # Actualizar existente - NO tocar campos propietarios (name_en, clip_prompt, etc)
                 category.name = name
                 category.description = description
+                category.parent_external_id = parent_external_id
                 category.last_sync_at = datetime.utcnow()
                 category.sync_status = 'synced'
                 self.stats['categories_updated'] += 1
@@ -263,6 +265,7 @@ class TiendanubeSyncService:
                     clip_prompt=clip_prompt,
                     alternative_terms=alternative_terms,
                     external_id=external_id,
+                    parent_external_id=parent_external_id,
                     last_sync_at=datetime.utcnow(),
                     sync_status='synced'
                 )
@@ -1026,17 +1029,59 @@ class TiendanubeSyncService:
         if not categories_data:
             return None
 
-        # Tomar primera categoría
-        cat_data = categories_data[0]
-        external_id = str(cat_data['id'])
+        valid_categories = []
+        for cat_data in categories_data:
+            ext_id_raw = cat_data.get('id')
+            if ext_id_raw is None:
+                continue
 
-        # Buscar categoría local por external_id
-        category = Category.query.filter_by(
-            client_id=self.client.id,
-            external_id=external_id
-        ).first()
+            external_id = str(ext_id_raw)
+            category = Category.query.filter_by(
+                client_id=self.client.id,
+                external_id=external_id
+            ).first()
+            if category:
+                valid_categories.append(category)
 
-        return category
+        if not valid_categories:
+            return None
+
+        if len(valid_categories) == 1:
+            return valid_categories[0]
+
+        # Múltiples categorías: elegir la hoja (la que no es padre de otra)
+        for candidate in valid_categories:
+            is_parent_of_another = any(
+                other.parent_external_id == candidate.external_id
+                for other in valid_categories
+                if other.id != candidate.id
+            )
+            if not is_parent_of_another:
+                return candidate
+
+        return valid_categories[0]
+
+    def _extract_parent_external_id(self, cat_data: Dict[str, Any]) -> Optional[str]:
+        """Extrae el ID de categoría padre desde distintos formatos de payload."""
+        parent_value = cat_data.get('parent')
+
+        if isinstance(parent_value, dict):
+            parent_id = parent_value.get('id')
+        elif parent_value in (None, '', 0, '0'):
+            parent_id = None
+        else:
+            parent_id = parent_value
+
+        if parent_id is None:
+            parent_id = cat_data.get('parent_id')
+
+        if parent_id is None:
+            parent_id = cat_data.get('parent_category_id')
+
+        if parent_id in (None, '', 0, '0'):
+            return None
+
+        return str(parent_id)
 
     def _get_or_create_default_category(self) -> Category:
         """Obtiene o crea categoría 'Sin categoría'"""

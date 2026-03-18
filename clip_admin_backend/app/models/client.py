@@ -15,7 +15,7 @@ class Client(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(255), nullable=False)
     slug = db.Column(db.String(100), unique=True, nullable=False)
-    email = db.Column(db.String(255), unique=True, nullable=False)
+    email = db.Column(db.String(255), nullable=False)
     industry = db.Column(db.String(100), default='general')  # Rubro/Industria del cliente
     # description = db.Column(db.Text)  # COMENTADO: Esta columna no existe en la BD real
     is_active = db.Column(db.Boolean, default=True)
