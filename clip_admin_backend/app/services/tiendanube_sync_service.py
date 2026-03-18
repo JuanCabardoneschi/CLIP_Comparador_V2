@@ -71,6 +71,9 @@ class TiendanubeSyncService:
             'Content-Type': 'application/json'
         }
 
+        # Debug temporal: si está seteado, loguea payload completo de ese producto.
+        self.debug_product_id: Optional[str] = None
+
         # Stats de sincronización
         self.stats = {
             'categories_created': 0,
@@ -99,6 +102,11 @@ class TiendanubeSyncService:
                     'attributes': True,
                     'embeddings': True
                 }
+
+            debug_product_id = (sync_options.get('debug_product_id') or '').strip()
+            self.debug_product_id = debug_product_id or None
+            if self.debug_product_id:
+                logger.warning(f"[TN DEBUG] Payload completo habilitado para product_id={self.debug_product_id}")
 
             logger.info(f"Iniciando sincronización para store_id={self.store_id}")
             logger.info(f"Opciones: {sync_options}")
@@ -668,6 +676,13 @@ class TiendanubeSyncService:
         try:
             external_id = str(prod_data['id'])
 
+            if self.debug_product_id and external_id == self.debug_product_id:
+                logger.warning(f"[TN DEBUG] Producto objetivo detectado: {external_id}")
+                logger.warning("[TN DEBUG] Payload completo de producto recibido desde Tiendanube:")
+                logger.warning(json.dumps(prod_data, ensure_ascii=False, indent=2, default=str))
+                logger.warning("[TN DEBUG] Campo categories del producto:")
+                logger.warning(json.dumps(prod_data.get('categories', []), ensure_ascii=False, indent=2, default=str))
+
             # Mapear categoría
             category = self._map_category(prod_data.get('categories'))
             if not category:
@@ -1133,6 +1148,48 @@ class TiendanubeSyncService:
 
         return None
 
+    def sync_single_product(self, product_id: str, debug_product_id: Optional[str] = None) -> Dict:
+        """Sincroniza un único producto y actualiza estado de integración."""
+        try:
+            self.integration.sync_status = 'in_progress'
+            self.integration.sync_error = None
+            db.session.commit()
+
+            effective_debug_id = (debug_product_id or product_id or '').strip()
+            self.debug_product_id = effective_debug_id or None
+            if self.debug_product_id:
+                logger.warning(f"[TN DEBUG] Sync individual con payload completo para product_id={self.debug_product_id}")
+
+            product = self._sync_single_product(product_id)
+            if not product:
+                raise ValueError(f"No se pudo sincronizar el producto {product_id}")
+
+            self.integration.sync_status = 'completed'
+            self.integration.sync_error = None
+            self.integration.last_sync_at = datetime.utcnow()
+            db.session.commit()
+
+            return {
+                'success': True,
+                'product': {
+                    'id': str(product.id),
+                    'external_id': str(product.external_id),
+                    'name': product.name,
+                    'category_id': str(product.category_id) if product.category_id else None
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Error en sync individual de producto {product_id}: {str(e)}", exc_info=True)
+            self.integration.sync_status = 'error'
+            self.integration.sync_error = str(e)
+            db.session.commit()
+
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
 
     def _sync_single_product(self, product_id: str) -> Optional[Product]:
         """
@@ -1392,6 +1449,19 @@ def start_full_sync(client_id: str, sync_options: Dict = None) -> Dict:
         return service.full_sync(sync_options)
     except Exception as e:
         logger.error(f"Error iniciando sincronización para cliente {client_id}: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def start_single_product_sync(client_id: str, product_id: str, debug_product_id: Optional[str] = None) -> Dict:
+    """Función auxiliar para sincronizar un único producto por ID externo."""
+    try:
+        service = TiendanubeSyncService(client_id)
+        return service.sync_single_product(product_id, debug_product_id=debug_product_id)
+    except Exception as e:
+        logger.error(f"Error iniciando sync individual para cliente {client_id}, producto {product_id}: {str(e)}")
         return {
             'success': False,
             'error': str(e)

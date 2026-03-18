@@ -31,6 +31,18 @@
         {% endif %}
     </div>
     {% endif %}
+    {% if single_result %}
+    {% set ok_single = single_result.get('success') %}
+    <div class="alert {{ 'alert-success' if ok_single else 'alert-danger' }}" role="alert">
+        {% if ok_single %}
+            <strong>Sincronización de producto completada.</strong>
+            {% set p = single_result.get('product', {}) %}
+            <span>Producto: {{ p.get('name') }} (external_id: {{ p.get('external_id') }})</span>
+        {% else %}
+            <strong>Error en sincronización de producto:</strong> {{ single_result.get('error') or 'Error desconocido' }}
+        {% endif %}
+    </div>
+    {% endif %}
     <div class="card mb-4">
         <div class="card-body">
             <h5 class="card-title">{{ integration.store_name or 'Tienda' }}</h5>
@@ -71,10 +83,27 @@
                     <input class="form-check-input" type="checkbox" name="sync_embeddings" id="sync_embeddings">
                     <label class="form-check-label" for="sync_embeddings">Embeddings y centroides</label>
                 </div>
+                <div class="mt-3">
+                    <label for="debug_product_id" class="form-label">Debug temporal: log payload completo para Product ID</label>
+                    <input type="text" class="form-control" id="debug_product_id" name="debug_product_id" value="{{ debug_product_id or '' }}" placeholder="Ej: 123456789">
+                    <div class="form-text">Si completas este campo, al sincronizar se loguea el JSON completo de ese producto.</div>
+                </div>
                 <button type="submit" class="btn btn-primary mt-3" id="sync-btn" {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>Iniciar sincronización</button>
                 {% if integration.sync_status == 'in_progress' %}
                 <span class="badge bg-warning text-dark ms-2">Sincronización en progreso...</span>
                 {% endif %}
+            </div>
+        </div>
+    </form>
+
+    <form method="post" action="{{ url_for('tiendanube_admin.sync_single_product', integration_id=integration.id) }}">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Sincronizar un solo producto (temporal)</h5>
+                <label for="product_id" class="form-label">Product ID de Tiendanube</label>
+                <input type="text" class="form-control" id="product_id" name="product_id" value="{{ debug_product_id or '' }}" placeholder="Ej: 123456789" required>
+                <div class="form-text">Este botón dispara sync de 1 producto y loguea su payload completo para analizar categorías.</div>
+                <button type="submit" class="btn btn-outline-primary mt-3" {% if integration.sync_status == 'in_progress' %}disabled{% endif %}>Sincronizar solo este producto</button>
             </div>
         </div>
     </form>

@@ -7,7 +7,7 @@ import logging
 
 from app.models.client import Client
 from app.models.tiendanube_integration import TiendanubeIntegration
-from app.services.tiendanube_sync_service import start_full_sync
+from app.services.tiendanube_sync_service import start_full_sync, start_single_product_sync
 from app import db
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,13 @@ def get_integration(integration_id):
 
     if request.method == 'POST':
         if integration.sync_status == 'in_progress':
-            return render_template("tiendanube_admin/integration_detail.html", integration=integration, error="Ya hay una sincronización en progreso")
+            debug_product_id = (request.form.get('debug_product_id') or '').strip()
+            return render_template(
+                "tiendanube_admin/integration_detail.html",
+                integration=integration,
+                error="Ya hay una sincronización en progreso",
+                debug_product_id=debug_product_id
+            )
 
         # Leer opciones del formulario
         sync_options = {
@@ -89,6 +95,10 @@ def get_integration(integration_id):
             'attributes': bool(request.form.get('sync_attributes')),
             'embeddings': bool(request.form.get('sync_embeddings')),
         }
+        debug_product_id = (request.form.get('debug_product_id') or '').strip()
+        if debug_product_id:
+            sync_options['debug_product_id'] = debug_product_id
+
         # Llama al servicio de sync con las opciones
         from app.services.tiendanube_sync_service import start_full_sync
         result = start_full_sync(str(integration.client_id), sync_options)
@@ -96,9 +106,57 @@ def get_integration(integration_id):
         db.session.expire(integration)
         integration = TiendanubeIntegration.query.get(integration_id)
         logger.info(f"POST sync completado - Estado actual en BD: {integration.sync_status}")
-        return render_template("tiendanube_admin/integration_detail.html", integration=integration, result=result)
+        return render_template(
+            "tiendanube_admin/integration_detail.html",
+            integration=integration,
+            result=result,
+            debug_product_id=debug_product_id
+        )
 
-    return render_template("tiendanube_admin/integration_detail.html", integration=integration)
+    return render_template("tiendanube_admin/integration_detail.html", integration=integration, debug_product_id='')
+
+
+@bp.route('/integrations/<integration_id>/sync-single-product', methods=['POST'])
+@login_required
+def sync_single_product(integration_id):
+    """Sincroniza manualmente un único producto por ID externo de Tiendanube."""
+    integration = TiendanubeIntegration.query.get(integration_id)
+    if not integration:
+        return render_template("errors/404.html", message="Integración no encontrada"), 404
+
+    if current_user.role != 'SUPER_ADMIN' and integration.client_id != current_user.client_id:
+        return render_template("errors/403.html", message="Acceso denegado"), 403
+
+    if integration.sync_status == 'in_progress':
+        return render_template(
+            "tiendanube_admin/integration_detail.html",
+            integration=integration,
+            error="Ya hay una sincronización en progreso"
+        )
+
+    product_id = (request.form.get('product_id') or '').strip()
+    if not product_id:
+        return render_template(
+            "tiendanube_admin/integration_detail.html",
+            integration=integration,
+            error="Debes indicar un Product ID de Tiendanube"
+        )
+
+    result = start_single_product_sync(
+        str(integration.client_id),
+        product_id,
+        debug_product_id=product_id
+    )
+
+    db.session.expire(integration)
+    integration = TiendanubeIntegration.query.get(integration_id)
+
+    return render_template(
+        "tiendanube_admin/integration_detail.html",
+        integration=integration,
+        single_result=result,
+        debug_product_id=product_id
+    )
 
 
 @bp.route('/integrations/<integration_id>/sync', methods=['POST'])
