@@ -799,14 +799,14 @@ class TiendanubeSyncService:
                 stock = 0
 
             # Extraer atributos desde variantes con nombres reales
-            product_attributes = self._extract_product_attributes(
+            extracted_attributes = self._extract_product_attributes(
                 variants,
                 attribute_names,
                 product_external_id=external_id,
             )
 
             # Normalizar atributos y agregar nuevos valores a la configuración
-            product_attributes = self._normalize_and_sync_attribute_values(product_attributes)
+            product_attributes = self._normalize_and_sync_attribute_values(extracted_attributes)
 
             # Construir external_url correctamente
             handle_data = prod_data.get('handle', {})
@@ -823,7 +823,13 @@ class TiendanubeSyncService:
                 if update_attributes_only:
                     # Solo actualizar atributos dinámicos
                     logger.info(f"📝 Actualizando solo atributos de '{name}'")
-                    product.attributes = product_attributes if product_attributes else None
+                    if product_attributes:
+                        product.attributes = product_attributes
+                    else:
+                        logger.warning(
+                            f"[TN ATTR] Producto {external_id} sin atributos válidos en sync estricto; "
+                            f"se preservan atributos existentes."
+                        )
                     product.last_sync_at = datetime.utcnow()
                 else:
                     # Actualización completa
@@ -835,7 +841,13 @@ class TiendanubeSyncService:
                     product.stock = stock
                     product.category_id = category.id
                     product.external_url = external_url
-                    product.attributes = product_attributes if product_attributes else None
+                    if product_attributes:
+                        product.attributes = product_attributes
+                    else:
+                        logger.warning(
+                            f"[TN ATTR] Producto {external_id} sin atributos válidos en sync estricto; "
+                            f"se preservan atributos existentes."
+                        )
                     product.last_sync_at = datetime.utcnow()
                     product.sync_status = 'synced'
                 self.stats['products_updated'] += 1
