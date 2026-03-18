@@ -2509,8 +2509,8 @@ def gpt4v_unified_search():
                                 )
                                 break
 
-                        # Si hay descripción y cliente es Goody, aplicar re-ranking custom
-                        if gpt4v_description and client.name.lower() == 'goody':
+                        # Si hay descripción, aplicar re-ranking custom (para cualquier cliente)
+                        if gpt4v_description:
                             try:
                                 # 1) Fusionar similitud visual (imagen↔imagen) con texto↔imagen usando CLIP
                                 try:
