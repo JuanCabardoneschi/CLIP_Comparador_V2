@@ -1,6 +1,7 @@
 ﻿"""
 Blueprint de API
 Endpoints internos para el admin panel y búsqueda visual
+v2.1.0 - Re-ranking universalizado
 """
 
 import sys
