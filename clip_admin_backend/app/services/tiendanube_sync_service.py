@@ -1064,17 +1064,49 @@ class TiendanubeSyncService:
         if len(valid_categories) == 1:
             return valid_categories[0]
 
-        # Múltiples categorías: elegir la hoja (la que no es padre de otra)
-        for candidate in valid_categories:
-            is_parent_of_another = any(
-                other.parent_external_id == candidate.external_id
-                for other in valid_categories
-                if other.id != candidate.id
-            )
-            if not is_parent_of_another:
-                return candidate
+        # Múltiples categorías: priorizar la más específica (mayor profundidad).
+        best_category = valid_categories[0]
+        best_depth = self._get_category_depth(best_category)
 
-        return valid_categories[0]
+        for candidate in valid_categories[1:]:
+            candidate_depth = self._get_category_depth(candidate)
+
+            if candidate_depth > best_depth:
+                best_category = candidate
+                best_depth = candidate_depth
+                continue
+
+            # Desempate: si están al mismo nivel, priorizar la que tenga padre.
+            if (
+                candidate_depth == best_depth
+                and candidate.parent_external_id
+                and not best_category.parent_external_id
+            ):
+                best_category = candidate
+
+        return best_category
+
+    def _get_category_depth(self, category: Category) -> int:
+        """Calcula profundidad jerárquica de una categoría (raíz=0, hija=1, etc.)."""
+        depth = 0
+        seen = set()
+        parent_external_id = category.parent_external_id
+
+        while parent_external_id and parent_external_id not in seen:
+            seen.add(parent_external_id)
+
+            parent_category = Category.query.filter_by(
+                client_id=self.client.id,
+                external_id=parent_external_id
+            ).first()
+
+            if not parent_category:
+                break
+
+            depth += 1
+            parent_external_id = parent_category.parent_external_id
+
+        return depth
 
     def _extract_parent_external_id(self, cat_data: Dict[str, Any]) -> Optional[str]:
         """Extrae el ID de categoría padre desde distintos formatos de payload."""
