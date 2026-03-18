@@ -1,5 +1,6 @@
 """
 Blueprint para gestión de integraciones Tiendanube desde admin
+v3: API 2025-03 con script_id y validación de respuesta
 """
 from flask import Blueprint, request, jsonify, render_template, flash, redirect, url_for
 from flask_login import login_required, current_user
