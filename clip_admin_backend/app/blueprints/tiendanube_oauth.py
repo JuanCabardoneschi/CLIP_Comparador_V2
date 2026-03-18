@@ -360,6 +360,8 @@ def inject_widget_script(store_id, access_token, api_key):
     Retorna script_id si tiene exito, None si falla.
     """
     try:
+        import hashlib
+
         headers = {
             'Authentication': f'bearer {access_token}',
             'User-Agent': 'CLIP Comparador V2 (info@clipcomparador.com)',
@@ -368,7 +370,12 @@ def inject_widget_script(store_id, access_token, api_key):
 
         script_src = f'https://clipcomparadorv2-production.up.railway.app/static/tiendanube-floating-button.js?api_key={api_key}'
 
+        # Generar script_id único basado en store_id + api_key
+        script_id_base = f'clip-{store_id}-{api_key}'
+        script_id_hash = int(hashlib.md5(script_id_base.encode()).hexdigest()[:8], 16)
+
         script_data = {
+            'script_id': script_id_hash,
             'src': script_src,
             'event': 'onfirstinteraction',  # Recomendado para no bloquear carga inicial
             'where': 'footer'   # Cargar en footer

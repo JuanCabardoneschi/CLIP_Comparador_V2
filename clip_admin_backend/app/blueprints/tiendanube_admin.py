@@ -127,7 +127,13 @@ def get_integration(integration_id):
                         debug_product_id=''
                     )
 
+                import hashlib
+                # Generar script_id único basado en store_id + api_key
+                script_id_base = f'clip-{integration.store_id}-{integration.client.api_key}'
+                script_id_hash = int(hashlib.md5(script_id_base.encode()).hexdigest()[:8], 16)
+
                 payload = {
+                    'script_id': script_id_hash,
                     'src': script_src,
                     'event': 'onfirstinteraction',
                     'where': 'footer'
