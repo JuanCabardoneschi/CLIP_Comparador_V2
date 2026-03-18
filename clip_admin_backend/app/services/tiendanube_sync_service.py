@@ -718,8 +718,28 @@ class TiendanubeSyncService:
             # Precio: usar promocional si existe, sino regular
             price = self._get_best_price(variants)
 
-            # Stock: sumar todas las variantes (manejar None como 0)
-            stock = sum(v.get('stock') or 0 for v in variants)
+            # Stock: sumar todas las variantes o detectar si es infinito
+            # 🔍 DETECCIÓN DE STOCK INFINITO:
+            #    - Si TODAS las variantes tienen manage_stock=False → stock ilimitado (-1)
+            #    - Si TODAS las variantes tienen stock=null/None → stock ilimitado (-1)
+            #    - Sino: sumar stock de las variantes
+            if variants:
+                # Verificar si todos tienen manage_stock = False (indicador de stock ilimitado)
+                all_unmanaged = all(v.get('manage_stock') is False for v in variants)
+
+                # Verificar si todos tienen stock = None (Tiendanube no devuelve stock en la respuesta)
+                all_null_stock = all(v.get('stock') is None for v in variants)
+
+                # Si al menos uno está marcado como no gestionado o todos tienen stock nulo → infinito
+                if all_unmanaged or all_null_stock:
+                    stock = -1  # Stock ILIMITADO (mismo indicador que WooCommerce)
+                    logger.info(f"📊 Stock ilimitado detectado en '{name}': manage_stock={all_unmanaged}, null_stock={all_null_stock}")
+                else:
+                    # Sumar stock de variantes (manejar None como 0)
+                    stock = sum(v.get('stock') or 0 for v in variants)
+            else:
+                # Sin variantes → sin stock
+                stock = 0
 
             # Extraer atributos desde variantes con nombres reales
             product_attributes = self._extract_product_attributes(variants, attribute_names)
