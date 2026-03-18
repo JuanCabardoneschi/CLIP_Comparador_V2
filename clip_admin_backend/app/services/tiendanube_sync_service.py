@@ -71,7 +71,7 @@ class TiendanubeSyncService:
             'Content-Type': 'application/json'
         }
 
-        # Debug temporal: si está seteado, loguea payload completo de ese producto.
+        # Debug temporal: si está seteado, loguea un resumen del producto objetivo.
         self.debug_product_id: Optional[str] = None
 
         # Stats de sincronización
@@ -106,7 +106,7 @@ class TiendanubeSyncService:
             debug_product_id = (sync_options.get('debug_product_id') or '').strip()
             self.debug_product_id = debug_product_id or None
             if self.debug_product_id:
-                logger.warning(f"[TN DEBUG] Payload completo habilitado para product_id={self.debug_product_id}")
+                logger.warning(f"[TN DEBUG] Debug de categorías habilitado para product_id={self.debug_product_id}")
 
             logger.info(f"Iniciando sincronización para store_id={self.store_id}")
             logger.info(f"Opciones: {sync_options}")
@@ -677,11 +677,23 @@ class TiendanubeSyncService:
             external_id = str(prod_data['id'])
 
             if self.debug_product_id and external_id == self.debug_product_id:
-                logger.warning(f"[TN DEBUG] Producto objetivo detectado: {external_id}")
-                logger.warning("[TN DEBUG] Payload completo de producto recibido desde Tiendanube:")
-                logger.warning(json.dumps(prod_data, ensure_ascii=False, indent=2, default=str))
-                logger.warning("[TN DEBUG] Campo categories del producto:")
-                logger.warning(json.dumps(prod_data.get('categories', []), ensure_ascii=False, indent=2, default=str))
+                categories_data = prod_data.get('categories', []) or []
+                categories_summary = []
+                for cat in categories_data:
+                    if not isinstance(cat, dict):
+                        continue
+                    cat_name = cat.get('name')
+                    if isinstance(cat_name, dict):
+                        cat_name = cat_name.get('es') or cat_name.get('pt')
+                    categories_summary.append({
+                        'id': cat.get('id'),
+                        'name': cat_name,
+                        'parent': cat.get('parent'),
+                    })
+
+                logger.warning(
+                    f"[TN DEBUG] Producto objetivo detectado: {external_id} | categories_count={len(categories_data)} | categories={categories_summary}"
+                )
 
             # Mapear categoría
             category = self._map_category(prod_data.get('categories'))
@@ -1190,7 +1202,7 @@ class TiendanubeSyncService:
             effective_debug_id = (debug_product_id or product_id or '').strip()
             self.debug_product_id = effective_debug_id or None
             if self.debug_product_id:
-                logger.warning(f"[TN DEBUG] Sync individual con payload completo para product_id={self.debug_product_id}")
+                logger.warning(f"[TN DEBUG] Sync individual con debug de categorías para product_id={self.debug_product_id}")
 
             product = self._sync_single_product(product_id)
             if not product:
