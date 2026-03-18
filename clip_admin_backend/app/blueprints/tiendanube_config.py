@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 bp = Blueprint('tiendanube_config', __name__, url_prefix='/tiendanube')
 
 # Configuración de Tiendanube
-TIENDANUBE_API_BASE = 'https://api.tiendanube.com/v1'
+TIENDANUBE_API_BASE = 'https://api.tiendanube.com/2025-03'
 SCRIPT_URL = 'https://clipcomparadorv2-production.up.railway.app/static/tiendanube-floating-button.js'
 ALLOWED_REFERER_DOMAINS = ['.mitiendanube.com']  # Solo desde TiendaNube
 

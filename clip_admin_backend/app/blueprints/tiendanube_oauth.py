@@ -23,7 +23,7 @@ TIENDANUBE_CLIENT_ID = '22436'
 TIENDANUBE_CLIENT_SECRET = 'd2d37cc732c511993531d58e8a3d354b14de11a92a29313d'
 TIENDANUBE_REDIRECT_URI = 'https://clipcomparadorv2-production.up.railway.app/oauth/callback'
 TIENDANUBE_TOKEN_URL = 'https://www.tiendanube.com/apps/authorize/token'
-TIENDANUBE_API_BASE = 'https://api.tiendanube.com/v1'
+TIENDANUBE_API_BASE = 'https://api.tiendanube.com/2025-03'
 
 @bp.route('/callback', methods=['GET'])
 def oauth_callback():

@@ -97,7 +97,7 @@ def get_integration(integration_id):
                 # Intentar detectar si ya existe el script para evitar duplicados innecesarios.
                 existing_script_id = None
                 list_response = requests.get(
-                    f'https://api.tiendanube.com/v1/{integration.store_id}/scripts',
+                    f'https://api.tiendanube.com/2025-03/{integration.store_id}/scripts',
                     headers=headers,
                     timeout=10,
                     verify=False
@@ -139,7 +139,7 @@ def get_integration(integration_id):
                     'where': 'footer'
                 }
                 post_response = requests.post(
-                    f'https://api.tiendanube.com/v1/{integration.store_id}/scripts',
+                    f'https://api.tiendanube.com/2025-03/{integration.store_id}/scripts',
                     headers=headers,
                     json=payload,
                     timeout=10,
