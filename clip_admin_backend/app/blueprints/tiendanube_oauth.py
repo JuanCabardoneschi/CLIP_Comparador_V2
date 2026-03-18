@@ -384,9 +384,14 @@ def inject_widget_script(store_id, access_token, api_key):
 
         if response.status_code in [200, 201]:
             data = response.json()
-            script_id = data.get('id')
-            logger.info(f"Script inyectado exitosamente: {script_id}")
-            return script_id
+            # Asegurar que data es diccionario antes de llamar .get()
+            if isinstance(data, dict):
+                script_id = data.get('id')
+                logger.info(f"Script inyectado exitosamente: {script_id}")
+                return script_id
+            else:
+                logger.error(f"Respuesta inesperada de API al crear script: {type(data)} - {data}")
+                return None
         else:
             logger.warning(f"No se pudo inyectar script automaticamente: {response.status_code} - {response.text[:200]}")
             return None

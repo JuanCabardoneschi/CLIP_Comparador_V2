@@ -205,10 +205,14 @@ def install_floating_button(store_id, access_token):
         )
 
         if response.status_code == 200:
-            scripts = response.json()
+            response_data = response.json()
+            # Asegurar que obtenemos una lista de scripts
+            scripts = response_data if isinstance(response_data, list) else (
+                response_data.get('response', []) if isinstance(response_data, dict) else []
+            )
             # Verificar si nuestro script ya está instalado
             for script in scripts:
-                if script.get('src') == SCRIPT_URL:
+                if isinstance(script, dict) and script.get('src') == SCRIPT_URL:
                     logger.info(f"Script ya instalado en tienda {store_id}")
                     return True
 
