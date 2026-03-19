@@ -20,7 +20,9 @@
 
     let apiKey = '';
     let serverUrl = DEFAULT_SERVER_URL;
+    let storeId = '';
     let isLoadingWidget = false;
+    let apiKeyPromise = null;
 
     if (scriptTag && scriptTag.src) {
         try {
@@ -28,6 +30,9 @@
             apiKey = scriptUrl.searchParams.get('api_key') ||
                 scriptUrl.searchParams.get('apikey') ||
                 scriptUrl.searchParams.get('key') ||
+                '';
+            storeId = scriptUrl.searchParams.get('store') ||
+                scriptUrl.searchParams.get('store_id') ||
                 '';
 
             const customServerUrl = scriptUrl.searchParams.get('server_url');
@@ -39,9 +44,57 @@
         }
     }
 
-    if (!apiKey) {
-        console.error('[CLIP] No se encontro api_key en el script de Tiendanube.');
-        return;
+    function resolveStoreId() {
+        if (storeId) {
+            return storeId;
+        }
+
+        if (window.LS && window.LS.store && window.LS.store.id) {
+            storeId = String(window.LS.store.id);
+        }
+
+        return storeId;
+    }
+
+    function ensureApiKey() {
+        if (apiKey) {
+            return Promise.resolve(true);
+        }
+
+        if (apiKeyPromise) {
+            return apiKeyPromise;
+        }
+
+        const resolvedStoreId = resolveStoreId();
+        if (!resolvedStoreId) {
+            console.error('[CLIP] No se encontro store_id para resolver api_key del widget.');
+            return Promise.resolve(false);
+        }
+
+        const configUrl = `${serverUrl}/tiendanube/widget-config?store_id=${encodeURIComponent(resolvedStoreId)}`;
+        apiKeyPromise = fetch(configUrl, { credentials: 'omit' })
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return response.json();
+            })
+            .then((data) => {
+                if (data && data.success && data.api_key) {
+                    apiKey = data.api_key;
+                    return true;
+                }
+                throw new Error('Respuesta sin api_key');
+            })
+            .catch((error) => {
+                console.error('[CLIP] No se pudo resolver api_key desde backend:', error);
+                return false;
+            })
+            .finally(() => {
+                apiKeyPromise = null;
+            });
+
+        return apiKeyPromise;
     }
 
     function waitForOverlay(onReady) {
@@ -65,48 +118,54 @@
     }
 
     function loadWidgetAndOpen() {
-        if (window.CLIPV2 && window.CLIPV2.overlay && typeof window.CLIPV2.overlay.open === 'function') {
-            window.CLIPV2.overlay.open();
-            return;
-        }
+        ensureApiKey().then((hasApiKey) => {
+            if (!hasApiKey) {
+                return;
+            }
 
-        if (isLoadingWidget) {
-            return;
-        }
-
-        isLoadingWidget = true;
-
-        window.CLIPWidget = window.CLIPWidget || {};
-        window.CLIPWidget.apiKey = apiKey;
-        window.CLIPWidget.serverUrl = serverUrl;
-
-        const existingWidgetScript = Array.from(document.getElementsByTagName('script')).find((s) =>
-            s.src && s.src.indexOf(WIDGET_SCRIPT_PATH) !== -1
-        );
-
-        if (existingWidgetScript) {
-            waitForOverlay(() => {
-                isLoadingWidget = false;
+            if (window.CLIPV2 && window.CLIPV2.overlay && typeof window.CLIPV2.overlay.open === 'function') {
                 window.CLIPV2.overlay.open();
-            });
-            return;
-        }
+                return;
+            }
 
-        const widgetScript = document.createElement('script');
-        widgetScript.src = `${serverUrl}${WIDGET_SCRIPT_PATH}`;
-        widgetScript.async = true;
-        widgetScript.onload = () => {
-            waitForOverlay(() => {
+            if (isLoadingWidget) {
+                return;
+            }
+
+            isLoadingWidget = true;
+
+            window.CLIPWidget = window.CLIPWidget || {};
+            window.CLIPWidget.apiKey = apiKey;
+            window.CLIPWidget.serverUrl = serverUrl;
+
+            const existingWidgetScript = Array.from(document.getElementsByTagName('script')).find((s) =>
+                s.src && s.src.indexOf(WIDGET_SCRIPT_PATH) !== -1
+            );
+
+            if (existingWidgetScript) {
+                waitForOverlay(() => {
+                    isLoadingWidget = false;
+                    window.CLIPV2.overlay.open();
+                });
+                return;
+            }
+
+            const widgetScript = document.createElement('script');
+            widgetScript.src = `${serverUrl}${WIDGET_SCRIPT_PATH}`;
+            widgetScript.async = true;
+            widgetScript.onload = () => {
+                waitForOverlay(() => {
+                    isLoadingWidget = false;
+                    window.CLIPV2.overlay.open();
+                });
+            };
+            widgetScript.onerror = () => {
                 isLoadingWidget = false;
-                window.CLIPV2.overlay.open();
-            });
-        };
-        widgetScript.onerror = () => {
-            isLoadingWidget = false;
-            console.error('[CLIP] Error cargando el script del widget.');
-        };
+                console.error('[CLIP] Error cargando el script del widget.');
+            };
 
-        document.head.appendChild(widgetScript);
+            document.head.appendChild(widgetScript);
+        });
     }
 
     // Crear estilos del boton

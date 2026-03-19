@@ -198,6 +198,21 @@ def get_integration(integration_id):
                     )
 
                 logger.warning(f"⚠️  No se pudo asociar script (HTTP {post_response.status_code}).")
+
+                if post_response.status_code == 404:
+                    return render_template(
+                        'tiendanube_admin/integration_detail.html',
+                        integration=integration,
+                        widget_result={
+                            'success': False,
+                            'message': 'Tiendanube respondió 404 al endpoint de asociación. Esto suele pasar cuando el script está configurado como auto-instalado: en ese caso no hace falta asociarlo por API.',
+                            'fallback_url': widget_url,
+                            'details': 'Si el script #3740 está activo (no borrador) en Partners, probá directamente en storefront. Si querés asociar por API con query_params, el script debe ser no auto-instalado.'
+                        },
+                        configured_partner_script_id=configured_partner_script_id,
+                        debug_product_id=''
+                    )
+
                 return render_template(
                     'tiendanube_admin/integration_detail.html',
                     integration=integration,

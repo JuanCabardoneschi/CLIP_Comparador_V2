@@ -85,6 +85,37 @@ def widget():
     referer = request.headers.get('Referer')
     return render_template('tiendanube_widget.html', api_key=api_key, referer=referer)
 
+
+@bp.route('/widget-config', methods=['GET'])
+def widget_config():
+    """Devuelve configuración pública mínima del widget para una tienda Tiendanube."""
+    store_id = (request.args.get('store_id') or request.args.get('store') or '').strip()
+    if not store_id:
+        return jsonify({'success': False, 'error': 'store_id es requerido'}), 400
+
+    try:
+        integration = TiendanubeIntegration.query.filter_by(
+            store_id=store_id,
+            is_active=True
+        ).first()
+
+        if not integration or not integration.client:
+            return jsonify({'success': False, 'error': 'Integración no encontrada'}), 404
+
+        api_key = getattr(integration.client, 'api_key', None)
+        if not api_key:
+            return jsonify({'success': False, 'error': 'api_key no configurada'}), 404
+
+        return jsonify({
+            'success': True,
+            'store_id': store_id,
+            'api_key': api_key,
+            'server_url': 'https://clipcomparadorv2-production.up.railway.app'
+        })
+    except Exception as e:
+        logger.error(f"Error resolviendo widget-config para store_id={store_id}: {str(e)}")
+        return jsonify({'success': False, 'error': 'Error interno'}), 500
+
 @bp.route('/config')
 def config():
     """
