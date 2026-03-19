@@ -3,6 +3,9 @@ Blueprint para manejar OAuth con Tiendanube
 Flujo completo: OAuth → Crear Cliente → Registrar Integración → Webhooks → Widget
 [v4 - API 2025-03]
 """
+import json
+import os
+
 from flask import Blueprint, request, jsonify, render_template_string
 import requests
 import logging
@@ -25,6 +28,19 @@ TIENDANUBE_CLIENT_SECRET = 'd2d37cc732c511993531d58e8a3d354b14de11a92a29313d'
 TIENDANUBE_REDIRECT_URI = 'https://clipcomparadorv2-production.up.railway.app/oauth/callback'
 TIENDANUBE_TOKEN_URL = 'https://www.tiendanube.com/apps/authorize/token'
 TIENDANUBE_API_BASE = 'https://api.tiendanube.com/2025-03'
+
+
+def get_partner_script_id():
+    """Obtiene el script_id oficial de Tiendanube desde variables de entorno."""
+    raw_value = os.environ.get('TIENDANUBE_PARTNER_SCRIPT_ID', '').strip()
+    if not raw_value:
+        return None
+
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        logger.error(f"TIENDANUBE_PARTNER_SCRIPT_ID inválido: {raw_value}")
+        return None
 
 @bp.route('/callback', methods=['GET'])
 def oauth_callback():
@@ -357,11 +373,14 @@ def register_webhooks(store_id, access_token):
 
 def inject_widget_script(store_id, access_token, api_key):
     """
-    Intenta inyectar el script del widget en la tienda.
+    Asocia a la tienda un script ya creado en el Partner Portal de Tiendanube.
     Retorna script_id si tiene exito, None si falla.
     """
     try:
-        import hashlib
+        partner_script_id = get_partner_script_id()
+        if not partner_script_id:
+            logger.warning('No se intentó asociar script Tiendanube: falta TIENDANUBE_PARTNER_SCRIPT_ID')
+            return None
 
         headers = {
             'Authentication': f'bearer {access_token}',
@@ -369,17 +388,9 @@ def inject_widget_script(store_id, access_token, api_key):
             'Content-Type': 'application/json'
         }
 
-        script_src = f'https://clipcomparadorv2-production.up.railway.app/static/tiendanube-floating-button.js?api_key={api_key}'
-
-        # Generar script_id único basado en store_id + api_key
-        script_id_base = f'clip-{store_id}-{api_key}'
-        script_id_hash = int(hashlib.md5(script_id_base.encode()).hexdigest()[:8], 16)
-
         script_data = {
-            'script_id': script_id_hash,
-            'src': script_src,
-            'event': 'onfirstinteraction',  # Recomendado para no bloquear carga inicial
-            'where': 'footer'   # Cargar en footer
+            'script_id': partner_script_id,
+            'query_params': json.dumps({'api_key': api_key})
         }
 
         response = requests.post(
@@ -392,14 +403,13 @@ def inject_widget_script(store_id, access_token, api_key):
 
         if response.status_code in [200, 201]:
             data = response.json()
-            # Asegurar que data es diccionario antes de llamar .get()
             if isinstance(data, dict):
-                script_id = data.get('id')
+                script_id = data.get('id', partner_script_id)
                 logger.info(f"Script inyectado exitosamente: {script_id}")
                 return script_id
             else:
-                logger.error(f"Respuesta inesperada de API al crear script: {type(data)} - {data}")
-                return None
+                logger.error(f"Respuesta inesperada de API al asociar script: {type(data)} - {data}")
+                return partner_script_id
         else:
             logger.warning(f"No se pudo inyectar script automaticamente: {response.status_code} - {response.text[:200]}")
             return None

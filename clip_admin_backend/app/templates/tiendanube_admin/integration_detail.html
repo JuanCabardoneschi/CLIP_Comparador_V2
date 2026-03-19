@@ -72,9 +72,23 @@
             <div class="card-body">
                 <h5 class="card-title">Activar modal en storefront (sin reinstalar app)</h5>
                 <p class="mb-2 text-muted">
-                    Este botón intenta crear/reusar el script de Tiendanube para abrir CLIP como modal dentro de la tienda.
+                    Este botón asocia a la tienda un script ya creado en el Partner Portal de Tiendanube para abrir CLIP como modal dentro de la tienda.
                 </p>
-                <p class="mb-3"><strong>Script actual:</strong> <code>{{ integration.script_id or 'No configurado' }}</code></p>
+                <div class="mb-3">
+                    <label for="partner_script_id" class="form-label"><strong>Script ID oficial de Tiendanube</strong></label>
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="partner_script_id"
+                        name="partner_script_id"
+                        value="{{ configured_partner_script_id or integration.script_id or '' }}"
+                        placeholder="Ej: 12345"
+                    >
+                    <div class="form-text">
+                        Es el ID numérico del script creado y deployado en Partners Portal. Si lo dejás vacío, se usa <code>TIENDANUBE_PARTNER_SCRIPT_ID</code> en Railway.
+                    </div>
+                </div>
+                <p class="mb-3"><strong>Script configurado en integración:</strong> <code>{{ integration.script_id or 'No configurado' }}</code></p>
                 <button type="submit" class="btn btn-outline-primary">Activar o reintentar modal</button>
             </div>
         </div>

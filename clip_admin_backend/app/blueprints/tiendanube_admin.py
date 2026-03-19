@@ -2,6 +2,9 @@
 Blueprint para gestión de integraciones Tiendanube desde admin
 v3: API 2025-03 con script_id y validación de respuesta
 """
+import json
+import os
+
 from flask import Blueprint, request, jsonify, render_template, flash, redirect, url_for
 from flask_login import login_required, current_user
 import logging
@@ -15,6 +18,19 @@ import requests
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('tiendanube_admin', __name__, url_prefix='/admin/tiendanube')
+
+
+def get_partner_script_id(override_value=None):
+    """Obtiene el script_id oficial de Tiendanube desde override o variable de entorno."""
+    raw_value = str(override_value or os.environ.get('TIENDANUBE_PARTNER_SCRIPT_ID', '')).strip()
+    if not raw_value:
+        return None
+
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        logger.error(f"TIENDANUBE_PARTNER_SCRIPT_ID inválido: {raw_value}")
+        return None
 
 logger.info("🔧 [tiendanube_admin] Blueprint inicializado con url_prefix='/admin/tiendanube'")
 
@@ -78,16 +94,30 @@ def get_integration(integration_id):
     if current_user.role != 'SUPER_ADMIN' and integration.client_id != current_user.client_id:
         return render_template("errors/403.html", message="Acceso denegado"), 403
 
+    configured_partner_script_id = get_partner_script_id()
+
     if request.method == 'POST':
         action = (request.form.get('action') or '').strip()
 
         if action == 'install_widget_script':
             try:
                 access_token = integration.get_access_token()
-                script_src = (
-                    'https://clipcomparadorv2-production.up.railway.app/static/tiendanube-floating-button.js'
-                    f'?api_key={integration.client.api_key}'
-                )
+                partner_script_id = get_partner_script_id(request.form.get('partner_script_id')) or integration.script_id
+                widget_url = f'https://clipcomparadorv2-production.up.railway.app/tiendanube/widget?api_key={integration.client.api_key}'
+
+                if not partner_script_id:
+                    return render_template(
+                        'tiendanube_admin/integration_detail.html',
+                        integration=integration,
+                        widget_result={
+                            'success': False,
+                            'message': 'Falta el script_id oficial de Tiendanube. La API no crea scripts nuevos: solo asocia a la tienda un script ya creado en el Partner Portal.',
+                            'fallback_url': widget_url,
+                            'details': 'Creá/publicá el script en Partners Portal y luego configurá TIENDANUBE_PARTNER_SCRIPT_ID en Railway o pegá el ID numérico en este formulario.'
+                        },
+                        configured_partner_script_id=configured_partner_script_id,
+                        debug_product_id=''
+                    )
 
                 headers = {
                     'Authentication': f'bearer {access_token}',
@@ -110,12 +140,11 @@ def get_integration(integration_id):
                     logger.warning(f"⚠️  GET /scripts falló: {list_response.status_code} - {list_response.text[:300]}")
                 if list_response.status_code == 200:
                     response_data = list_response.json()
-                    # Asegurar que obtenemos una lista de scripts
                     scripts = response_data if isinstance(response_data, list) else (
-                        response_data.get('response', []) if isinstance(response_data, dict) else []
+                        response_data.get('result', []) if isinstance(response_data, dict) else []
                     )
                     for script in scripts:
-                        if isinstance(script, dict) and (script.get('src') or '') == script_src:
+                        if isinstance(script, dict) and script.get('id') == partner_script_id:
                             existing_script_id = script.get('id')
                             break
 
@@ -127,22 +156,16 @@ def get_integration(integration_id):
                         integration=integration,
                         widget_result={
                             'success': True,
-                            'message': 'El modal ya estaba activo en la tienda.',
+                            'message': 'El script ya estaba asociado a la tienda.',
                             'script_id': existing_script_id,
                         },
+                        configured_partner_script_id=configured_partner_script_id,
                         debug_product_id=''
                     )
 
-                import hashlib
-                # Generar script_id único basado en store_id + api_key
-                script_id_base = f'clip-{integration.store_id}-{integration.client.api_key}'
-                script_id_hash = int(hashlib.md5(script_id_base.encode()).hexdigest()[:8], 16)
-
                 payload = {
-                    'script_id': script_id_hash,
-                    'src': script_src,
-                    'event': 'onfirstinteraction',
-                    'where': 'footer'
+                    'script_id': partner_script_id,
+                    'query_params': json.dumps({'api_key': integration.client.api_key})
                 }
                 post_url = f'https://api.tiendanube.com/2025-03/{integration.store_id}/scripts'
                 logger.info(f"📤 POST /scripts - URL: {post_url}")
@@ -158,32 +181,33 @@ def get_integration(integration_id):
                 logger.info(f"📥 POST response: {post_response.text[:500]}")
 
                 if post_response.status_code in (200, 201):
-                    script_id = post_response.json().get('id')
-                    integration.script_id = script_id
+                    response_data = post_response.json()
+                    script_id = response_data.get('id') if isinstance(response_data, dict) else partner_script_id
+                    integration.script_id = partner_script_id
                     db.session.commit()
                     return render_template(
                         'tiendanube_admin/integration_detail.html',
                         integration=integration,
                         widget_result={
                             'success': True,
-                            'message': 'Modal activado correctamente en Tiendanube.',
+                            'message': 'Script asociado correctamente a la tienda en Tiendanube.',
                             'script_id': script_id,
                         },
+                        configured_partner_script_id=configured_partner_script_id,
                         debug_product_id=''
                     )
-                
-                # Status 404 o error - fallback a enlace directo
-                logger.warning(f"⚠️  No se pudo crear script (HTTP {post_response.status_code}). Usando fallback de enlace.")
-                widget_url = f'https://clipcomparadorv2-production.up.railway.app/tiendanube/widget?api_key={integration.client.api_key}'
+
+                logger.warning(f"⚠️  No se pudo asociar script (HTTP {post_response.status_code}).")
                 return render_template(
                     'tiendanube_admin/integration_detail.html',
                     integration=integration,
                     widget_result={
                         'success': False,
-                        'message': 'El plan de Tiendanube no soporta inyección automática de scripts. Usa el enlace directo abajo:',
+                        'message': 'No se pudo asociar el script oficial de Tiendanube a la tienda.',
                         'fallback_url': widget_url,
-                        'details': f'HTTP {post_response.status_code}: {post_response.text[:200]}'
+                        'details': f'HTTP {post_response.status_code}: {post_response.text[:300]}\nVerificá que la app tenga scope scripts, que el script exista en Partners Portal, tenga una versión deployada y que el script_id sea el correcto.'
                     },
+                    configured_partner_script_id=configured_partner_script_id,
                     debug_product_id=''
                 )
             except Exception as e:
@@ -195,6 +219,7 @@ def get_integration(integration_id):
                         'success': False,
                         'message': f'Error activando modal: {str(e)}',
                     },
+                    configured_partner_script_id=configured_partner_script_id,
                     debug_product_id=''
                 )
 
@@ -204,6 +229,7 @@ def get_integration(integration_id):
                 "tiendanube_admin/integration_detail.html",
                 integration=integration,
                 error="Ya hay una sincronización en progreso",
+                configured_partner_script_id=configured_partner_script_id,
                 debug_product_id=debug_product_id
             )
 
@@ -231,10 +257,16 @@ def get_integration(integration_id):
             "tiendanube_admin/integration_detail.html",
             integration=integration,
             result=result,
+            configured_partner_script_id=configured_partner_script_id,
             debug_product_id=debug_product_id
         )
 
-    return render_template("tiendanube_admin/integration_detail.html", integration=integration, debug_product_id='')
+    return render_template(
+        "tiendanube_admin/integration_detail.html",
+        integration=integration,
+        configured_partner_script_id=configured_partner_script_id,
+        debug_product_id=''
+    )
 
 
 @bp.route('/integrations/<integration_id>/sync-single-product', methods=['POST'])
