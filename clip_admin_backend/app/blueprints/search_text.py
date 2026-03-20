@@ -4797,6 +4797,47 @@ def _product_matches_color_lexically_v3(attributes, target_color, related_colors
     return False
 
 
+def _extract_text_color_signals_v3(text, client_id=None, color_terms=None):
+    raw_text = str(text or '').strip()
+    if not raw_text:
+        return set()
+
+    known_terms = {
+        _normalize_color_token_v3(term)
+        for term in (color_terms or [])
+        if str(term).strip()
+    }
+    if not known_terms and client_id:
+        known_terms = {
+            _normalize_color_token_v3(term)
+            for term in _get_client_color_terms_v3(client_id)
+            if str(term).strip()
+        }
+
+    if not known_terms:
+        return set()
+
+    tokens = _tokenize_color_text_v3(raw_text)
+    if not tokens:
+        return set()
+
+    # Detecta colores de una y dos palabras (ej: "azul marino").
+    chunks = list(tokens)
+    for idx in range(len(tokens) - 1):
+        chunks.append(f"{tokens[idx]} {tokens[idx + 1]}")
+
+    detected = set()
+    for chunk in chunks:
+        chunk_norm = _normalize_color_token_v3(chunk)
+        if chunk_norm not in known_terms:
+            continue
+        normalized = _normalize_color_semantic_v3(chunk_norm, client_id=client_id)
+        if normalized:
+            detected.add(normalized)
+
+    return detected
+
+
 def _detect_color_intent_v3(query_text, requested_attrs, client_id):
     from app.utils.colors import normalize_color
 
@@ -5101,12 +5142,23 @@ def text_search():
 
         strict_color_min_score = 0.30
         dynamic_color_terms = []
+        target_color_norms = set()
         if detected_color_intent and detected_color_normalized:
             dynamic_color_terms = _build_color_terms_v3(
                 client.id,
                 detected_color_normalized,
                 semantic_related_colors,
             )
+            target_color_norms.add(
+                _normalize_color_semantic_v3(detected_color_normalized, client_id=client.id)
+            )
+            for token in _tokenize_color_text_v3(detected_color_normalized):
+                target_color_norms.add(_normalize_color_semantic_v3(token, client_id=client.id))
+            for rel in semantic_related_colors:
+                target_color_norms.add(_normalize_color_semantic_v3(rel, client_id=client.id))
+                for token in _tokenize_color_text_v3(rel):
+                    target_color_norms.add(_normalize_color_semantic_v3(token, client_id=client.id))
+            target_color_norms = {v for v in target_color_norms if v}
 
         formatted_results = []
         for result in scored_results:
@@ -5132,7 +5184,9 @@ def text_search():
             match_ratio = float(matched_count / requested_count) if requested_count > 0 else 0.0
 
             color_visual_score = 0.0
-            color_lexical_match = False
+            color_attr_lexical_match = False
+            color_name_lexical_match = False
+            color_match_priority = 0
             if detected_color_intent and detected_color_normalized:
                 has_color_attr_value = any(
                     'color' in _normalize_color_token_v3(attr_key)
@@ -5147,20 +5201,40 @@ def text_search():
                     client_id=client.id,
                     color_terms=dynamic_color_terms,
                 )
-                color_lexical_match = _product_matches_color_lexically_v3(
+                color_attr_lexical_match = _product_matches_color_lexically_v3(
                     prod_attrs,
                     detected_color_normalized,
                     semantic_related_colors,
                     client_id=client.id,
                     color_terms=dynamic_color_terms,
                 )
-                if not color_lexical_match:
-                    # Si el producto declara color explícito y no matchea, excluirlo.
-                    # Solo usamos fallback visual cuando el producto no tiene color declarado.
-                    if has_color_attr_value:
+                name_color_signals = _extract_text_color_signals_v3(
+                    getattr(product, 'name', ''),
+                    client_id=client.id,
+                    color_terms=dynamic_color_terms,
+                )
+                color_name_lexical_match = bool(name_color_signals & target_color_norms)
+                has_non_target_name_color = bool(
+                    name_color_signals and any(sig not in target_color_norms for sig in name_color_signals)
+                )
+
+                # Si en el nombre hay color mixto/contradictorio y no hay match en atributo color,
+                # evitamos tomar el nombre como evidencia fuerte (ej: "Blue Note Beige").
+                if has_non_target_name_color and not color_attr_lexical_match:
+                    color_name_lexical_match = False
+
+                # Prioridad estricta pedida:
+                # 1) atributo configurado, 2) embedding visual, 3) nombre (solo fallback).
+                if has_color_attr_value:
+                    if not color_attr_lexical_match:
                         continue
-                    if color_visual_score < strict_color_min_score:
-                        continue
+                    color_match_priority = 3
+                elif color_visual_score >= strict_color_min_score:
+                    color_match_priority = 2
+                elif color_name_lexical_match:
+                    color_match_priority = 1
+                else:
+                    continue
 
             final_product_url = None
             if hasattr(product, 'external_url') and product.external_url:
@@ -5174,7 +5248,7 @@ def text_search():
 
             similarity = float(result.get('similarity') or 0.0)
             color_priority_score = color_visual_score
-            if color_lexical_match:
+            if color_match_priority == 3:
                 color_priority_score = max(color_priority_score, 0.95)
 
             formatted_results.append({
@@ -5194,13 +5268,13 @@ def text_search():
                 'stock': product.stock,
                 'product_url': final_product_url,
                 '_color_priority_score': round(color_priority_score, 4),
-                '_color_lexical_match': bool(color_lexical_match),
+                '_color_match_priority': int(color_match_priority),
             })
 
         if detected_color_intent:
             formatted_results.sort(
                 key=lambda row: (
-                    1 if row.get('_color_lexical_match') else 0,
+                    int(row.get('_color_match_priority', 0)),
                     float(row.get('_color_priority_score', 0.0)),
                     float(row.get('attributes_match_ratio', 0.0)),
                     float(row.get('similarity', 0.0)),
@@ -5234,7 +5308,7 @@ def text_search():
 
         for row in limited_results:
             row.pop('_color_priority_score', None)
-            row.pop('_color_lexical_match', None)
+            row.pop('_color_match_priority', None)
 
         detected_category_info = {
             'requested_term': extraction_result.get('category'),
