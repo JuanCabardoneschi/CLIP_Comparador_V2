@@ -5220,9 +5220,13 @@ def text_search():
                 # Prioridad estricta pedida:
                 # 1) atributo configurado, 2) embedding visual, 3) nombre (solo fallback).
                 if has_color_attr_value:
-                    if not color_attr_lexical_match:
+                    if color_attr_lexical_match:
+                        color_match_priority = 3
+                    elif color_visual_score >= strict_color_min_score:
+                        # Fallback: si atributo existe pero léxico falla, intentar visual
+                        color_match_priority = 2
+                    else:
                         continue
-                    color_match_priority = 3
                 elif color_visual_score >= strict_color_min_score:
                     color_match_priority = 2
                 elif color_name_lexical_match:
