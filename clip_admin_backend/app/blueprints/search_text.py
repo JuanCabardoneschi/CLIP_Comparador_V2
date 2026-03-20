@@ -3217,6 +3217,7 @@ def text_search():
             'cache_hits': 0,
             'cache_miss': 0,
         }
+        color_visual_score_cache = {}
 
         def _infer_color_from_product_embedding(product_id):
             nonlocal color_text_matrix
@@ -3257,6 +3258,60 @@ def text_search():
                 return color_keys[best_idx]
             except Exception:
                 return None
+
+        def _get_product_color_similarity(product_id, target_color):
+            nonlocal color_text_matrix
+            cache_key = f"{product_id}:{str(target_color).strip().lower()}"
+            if cache_key in color_visual_score_cache:
+                return color_visual_score_cache[cache_key]
+
+            try:
+                primary_image = Image.query.filter_by(product_id=product_id, is_primary=True).first()
+                if not primary_image:
+                    primary_image = Image.query.filter_by(product_id=product_id).first()
+                if not primary_image or not primary_image.embedding_vector:
+                    color_visual_score_cache[cache_key] = 0.0
+                    return 0.0
+
+                emb = np.asarray(primary_image.embedding_vector, dtype=np.float32)
+                emb_norm = np.linalg.norm(emb)
+                if emb_norm == 0:
+                    color_visual_score_cache[cache_key] = 0.0
+                    return 0.0
+                emb = emb / emb_norm
+
+                if color_text_matrix is None:
+                    clip_model, clip_processor = get_clip_model()
+                    prompts = [f"a photo of a {color_prompt_names[k]} garment" for k in color_keys]
+                    with torch.no_grad():
+                        text_inputs = clip_processor(text=prompts, return_tensors="pt", padding=True, truncation=True)
+                        text_features = clip_model.get_text_features(**text_inputs)
+                        text_features = text_features / text_features.norm(dim=-1, keepdim=True)
+                        color_text_matrix = text_features.cpu().numpy().astype(np.float32)
+
+                target_norm = str(target_color or '').strip().lower()
+                target_aliases = {
+                    'azul': ['azul', 'celeste'],
+                    'celeste': ['celeste', 'azul'],
+                    'marron': ['marron', 'beige'],
+                    'marrón': ['marron', 'beige'],
+                }
+                candidate_keys = target_aliases.get(target_norm, [target_norm])
+                candidate_indexes = [idx for idx, key in enumerate(color_keys) if key in candidate_keys]
+                if not candidate_indexes:
+                    candidate_indexes = [idx for idx, key in enumerate(color_keys) if key == target_norm]
+                if not candidate_indexes:
+                    color_visual_score_cache[cache_key] = 0.0
+                    return 0.0
+
+                sims = np.dot(color_text_matrix, emb)
+                score = max(float(sims[idx]) for idx in candidate_indexes)
+                score = max(0.0, min(0.99, score))
+                color_visual_score_cache[cache_key] = score
+                return score
+            except Exception:
+                color_visual_score_cache[cache_key] = 0.0
+                return 0.0
 
         def _resolve_product_color_norm(result_row):
             color_resolve_stats['calls'] += 1
@@ -3356,7 +3411,7 @@ def text_search():
                     if resolved_norm == target_color:
                         return 1.0
                     if strict_exact_match:
-                        return 0.0
+                        return _get_product_color_similarity(row.get('id'), target_color)
                     if target_emb_local is None:
                         return 0.0
                     if resolved_norm in sim_cache:
@@ -3608,6 +3663,28 @@ def text_search():
                     else:
                         print(f"🔍 Exactos insuficientes ({len(filtered_results)}/{target_total}), buscando colores similares a '{base_anchor}'...")
                     try:
+                        if strict_color_search and len(filtered_results) < target_total:
+                            visual_candidates = []
+                            for r in pre_color_results:
+                                if r in filtered_results:
+                                    continue
+                                visual_score = _get_product_color_similarity(r.get('id'), base_anchor)
+                                visual_candidates.append((r, visual_score))
+
+                            visual_candidates.sort(key=lambda item: item[1], reverse=True)
+                            print(
+                                f"🎨 Top score visual '{base_anchor}': "
+                                f"{[(item[0].get('name'), round(item[1], 3)) for item in visual_candidates[:5]]}"
+                            )
+
+                            min_visual_score = 0.20
+                            for row, visual_score in visual_candidates:
+                                if visual_score < min_visual_score:
+                                    continue
+                                filtered_results.append(row)
+                                if len(filtered_results) >= target_total:
+                                    break
+
                         if not strict_color_search:
                             from app.utils.colors import _get_color_embedding
                             target_emb = _get_color_embedding(base_anchor, client_id=client.id)
