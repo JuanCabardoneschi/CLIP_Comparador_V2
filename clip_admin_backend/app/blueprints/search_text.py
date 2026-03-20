@@ -879,6 +879,26 @@ def _category_tokens(cat: Category) -> Set[str]:
     return {t for t in tokens if t}
 
 
+_CLIENT_CATEGORY_TOKENS_CACHE = {}
+
+
+def _get_client_category_tokens_for_clip(client_id: str) -> Set[str]:
+    cache_key = str(client_id)
+    if cache_key in _CLIENT_CATEGORY_TOKENS_CACHE:
+        return set(_CLIENT_CATEGORY_TOKENS_CACHE[cache_key])
+
+    tokens: Set[str] = set()
+    try:
+        categories = Category.query.filter_by(client_id=client_id, is_active=True).all()
+        for category in categories:
+            tokens.update(_category_tokens(category))
+    except Exception:
+        return set()
+
+    _CLIENT_CATEGORY_TOKENS_CACHE[cache_key] = tuple(sorted(tokens))
+    return set(tokens)
+
+
 def stage1_broad_recall(query_text: str, client_id: str, client_slug: str = None, is_color_search: bool = False):
     # STAGE 1: Broad Recall - PostgreSQL SIMILAR TO (sin docstring multiline para evitar errores)
     # 🔧 Ahora recibimos is_color_search para saber si debe traer TODOS los productos de categoría
@@ -1124,6 +1144,16 @@ def _build_clip_query_from_extraction(
     if not category:
         return ""
 
+    client_category_tokens = _get_client_category_tokens_for_clip(client_id)
+    normalized_category_tokens = set(_normalize_tokens_es(category)) if category else set()
+    category_matches_client_vocab = (
+        True if not client_category_tokens else bool(normalized_category_tokens & client_category_tokens)
+    )
+
+    if not category_matches_client_vocab:
+        print(f"🧠 CLIP query: categoría descartada por no pertenecer al vocabulario del cliente: '{category}'")
+        category = ""
+
     normalized_modifiers = []
     systemic_map = {}
     excluded_tokens = set()
@@ -1174,7 +1204,14 @@ def _build_clip_query_from_extraction(
         if explicit_color not in normalized_modifiers:
             normalized_modifiers.append(explicit_color)
 
-    phrase_tokens = [category] + normalized_modifiers
+    # Si la categoría extraída no pertenece al vocabulario real del cliente,
+    # no la enviamos a CLIP. Cuando además hay color explícito, priorizamos ese
+    # color por encima de modificadores ruidosos.
+    if not category_matches_client_vocab and explicit_color:
+        phrase_tokens = [explicit_color]
+    else:
+        phrase_tokens = ([category] if category else []) + normalized_modifiers
+
     phrase_tokens = [t for t in phrase_tokens if t]
     phrase_tokens = list(dict.fromkeys(phrase_tokens))
     return " ".join(phrase_tokens).strip()
