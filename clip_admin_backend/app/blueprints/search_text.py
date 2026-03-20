@@ -4957,6 +4957,9 @@ def text_search():
         limit = min(int(data.get('limit', default_max_results)), default_max_results)
         if limit < 1:
             limit = 1
+        per_category_limit = min(int(data.get('max_results_per_category', 5)), default_max_results)
+        if per_category_limit < 1:
+            per_category_limit = 1
 
         client_slug = getattr(client, 'slug', None)
 
@@ -4996,7 +4999,29 @@ def text_search():
         if isinstance(detection_metadata, dict):
             matched_categories = detection_metadata.get('matched_categories') or []
 
+        no_explicit_category = not detection_metadata or not matched_categories
+        available_names_for_guidance = []
+        if no_explicit_category:
+            try:
+                available_categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
+                available_names_for_guidance = [cat.name for cat in available_categories if getattr(cat, 'name', None)]
+            except Exception:
+                available_names_for_guidance = []
+
         if not candidates:
+            if no_explicit_category:
+                user_feedback = {
+                    'message': 'No detectamos una categoría exacta en tu descripción. Si nos indicas el tipo de prenda o categoría, refinamos mejor la búsqueda.',
+                    'has_results': False,
+                    'categories_available': available_names_for_guidance,
+                    'suggestion': "Ejemplo: 'chaqueta azul para cocina' o 'delantal azul'.",
+                }
+            else:
+                user_feedback = {
+                    'message': 'No se encontraron productos para la búsqueda solicitada.',
+                    'has_results': False,
+                }
+
             return _json_response_with_cors_v3({
                 'success': True,
                 'query': query_text,
@@ -5005,13 +5030,11 @@ def text_search():
                 'total_results': 0,
                 'processing_time': round(time.time() - start_time, 3),
                 'search_module': 'custom' if (client_slug and has_custom_module(client_slug)) else 'generic',
-                'user_feedback': {
-                    'message': 'No se encontraron productos para la búsqueda solicitada.',
-                    'has_results': False,
-                },
+                'user_feedback': user_feedback,
                 'results': [],
                 'results_by_category': {},
                 'group_by_category': False,
+                'categories_searched': available_names_for_guidance if no_explicit_category else [],
                 'detection': {
                     'categorias_matched': matched_categories,
                     'tiene_match': bool(matched_categories),
@@ -5111,6 +5134,12 @@ def text_search():
             color_visual_score = 0.0
             color_lexical_match = False
             if detected_color_intent and detected_color_normalized:
+                has_color_attr_value = any(
+                    'color' in _normalize_color_token_v3(attr_key)
+                    and any(str(v).strip() for v in _flatten_attribute_values_v3(attr_val))
+                    for attr_key, attr_val in (prod_attrs or {}).items()
+                )
+
                 color_visual_score = _score_image_color_similarity_v3(
                     primary_image,
                     detected_color_normalized,
@@ -5125,8 +5154,13 @@ def text_search():
                     client_id=client.id,
                     color_terms=dynamic_color_terms,
                 )
-                if not color_lexical_match and color_visual_score < strict_color_min_score:
-                    continue
+                if not color_lexical_match:
+                    # Si el producto declara color explícito y no matchea, excluirlo.
+                    # Solo usamos fallback visual cuando el producto no tiene color declarado.
+                    if has_color_attr_value:
+                        continue
+                    if color_visual_score < strict_color_min_score:
+                        continue
 
             final_product_url = None
             if hasattr(product, 'external_url') and product.external_url:
@@ -5160,11 +5194,13 @@ def text_search():
                 'stock': product.stock,
                 'product_url': final_product_url,
                 '_color_priority_score': round(color_priority_score, 4),
+                '_color_lexical_match': bool(color_lexical_match),
             })
 
         if detected_color_intent:
             formatted_results.sort(
                 key=lambda row: (
+                    1 if row.get('_color_lexical_match') else 0,
                     float(row.get('_color_priority_score', 0.0)),
                     float(row.get('attributes_match_ratio', 0.0)),
                     float(row.get('similarity', 0.0)),
@@ -5180,9 +5216,25 @@ def text_search():
                 reverse=True,
             )
 
-        limited_results = formatted_results[:limit]
+        results_by_category = {}
+        if no_explicit_category:
+            for row in formatted_results:
+                category_name = row.get('category') or 'Sin categoría'
+                bucket = results_by_category.setdefault(category_name, [])
+                if len(bucket) < per_category_limit:
+                    bucket.append(row)
+        group_by_category = bool(no_explicit_category and results_by_category)
+
+        if group_by_category:
+            limited_results = []
+            for _, items in results_by_category.items():
+                limited_results.extend(items)
+        else:
+            limited_results = formatted_results[:limit]
+
         for row in limited_results:
             row.pop('_color_priority_score', None)
+            row.pop('_color_lexical_match', None)
 
         detected_category_info = {
             'requested_term': extraction_result.get('category'),
@@ -5205,6 +5257,37 @@ def text_search():
             detected_color_normalized=detected_color_normalized,
         )
 
+        if no_explicit_category:
+            shown_categories = []
+            for result in limited_results:
+                cat_name = result.get('category')
+                if cat_name and cat_name not in shown_categories:
+                    shown_categories.append(cat_name)
+
+            if shown_categories:
+                if len(shown_categories) == 1:
+                    shown_text = shown_categories[0]
+                elif len(shown_categories) == 2:
+                    shown_text = f"{shown_categories[0]} y {shown_categories[1]}"
+                else:
+                    shown_text = f"{', '.join(shown_categories[:-1])} y {shown_categories[-1]}"
+
+                feedback['message'] = (
+                    "No detectamos una categoría exacta en tu descripción. "
+                    f"Te mostramos resultados aproximados en: {shown_text}. "
+                    "Si nos indicas el tipo de prenda o categoría, refinamos mejor la búsqueda."
+                )
+                feedback['has_results'] = True
+                feedback['categories_shown'] = shown_categories
+            else:
+                feedback['message'] = (
+                    "No detectamos una categoría exacta en tu descripción y no encontramos coincidencias aproximadas. "
+                    "Si nos indicas el tipo de prenda o categoría, refinamos mejor la búsqueda."
+                )
+                feedback['has_results'] = False
+
+            feedback['categories_available'] = available_names_for_guidance
+
         elapsed = time.time() - start_time
         response_data = {
             'success': True,
@@ -5216,8 +5299,9 @@ def text_search():
             'search_module': 'custom' if (client_slug and has_custom_module(client_slug)) else 'generic',
             'user_feedback': feedback,
             'results': limited_results,
-            'results_by_category': {},
-            'group_by_category': False,
+            'results_by_category': results_by_category if group_by_category else {},
+            'group_by_category': group_by_category,
+            'categories_searched': feedback.get('categories_shown') or available_names_for_guidance,
             'detection': {
                 'categorias_matched': matched_categories,
                 'tiene_match': bool(matched_categories),
