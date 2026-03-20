@@ -2737,6 +2737,7 @@ def text_search():
         detected_color_normalized = None  # Color normalizado por LLM
         detected_color_intent = False  # Se detectó intención de color aunque no haya mapeo válido
         semantic_related_colors = []  # Colores relacionados desde definición sistémica
+        color_detected_from_attr = False  # Color detectado a partir de intención extraída (LLM/extractor)
 
         try:
             requested_attrs = attr_info.get('attributes', {}) or {}
@@ -2762,11 +2763,18 @@ def text_search():
 
             # 🆕 Construir set de atributos configurados para excluir términos que sean atributos
             configured_attr_tokens = set()
+            configured_color_values_norm = set()
             can_run_semantic_color = False
             try:
                 from app.models.product_attribute_config import ProductAttributeConfig
                 import json
                 import ast
+                import unicodedata as _ud_color
+
+                def _norm_color_value(val):
+                    txt = str(val or '').strip().lower()
+                    return ''.join(ch for ch in _ud_color.normalize('NFD', txt) if _ud_color.category(ch) != 'Mn')
+
                 configs = ProductAttributeConfig.query.filter_by(client_id=client.id).all()
                 for cfg in configs:
                     key = (cfg.key or '').strip().lower()
@@ -2811,6 +2819,10 @@ def text_search():
                         parsed_options = [str(v).strip() for v in parsed_options if str(v).strip()]
                         if parsed_options:
                             can_run_semantic_color = True
+                            for opt in parsed_options:
+                                norm_opt = _norm_color_value(opt)
+                                if norm_opt:
+                                    configured_color_values_norm.add(norm_opt)
             except Exception:
                 pass
 
@@ -2829,8 +2841,69 @@ def text_search():
                     str(c).strip().lower() for c in _NLP_CONFIG.get('color_adjectives', []) if c
                 }
 
+            # Construir candidatos de color SIN hardcodear vocabulario:
+            # 1) intención extraída por LLM/normalizador (attr_info['color'])
+            # 2) términos útiles del extractor sintáctico
+            # 3) fallback por POS (ADJ/NOUN/PROPN)
+            requested_color_candidates = []
+            requested_color_key = next(
+                (k for k in requested_attrs.keys() if str(k).strip().lower() == 'color'),
+                None
+            )
+            if requested_color_key and requested_attrs.get(requested_color_key) is not None:
+                detected_color_intent = True
+                raw_requested_color = requested_attrs.get(requested_color_key)
+                raw_color_values = raw_requested_color if isinstance(raw_requested_color, list) else [raw_requested_color]
+                for raw_val in raw_color_values:
+                    if raw_val is None:
+                        continue
+                    txt = str(raw_val).strip().lower()
+                    for part in txt.replace('/', ' ').replace(',', ' ').split():
+                        token = part.strip(".,;:!?")
+                        if token and token.isalpha() and len(token) >= 3:
+                            requested_color_candidates.append(token)
+
+            candidate_color_tokens = []
+            for tok in requested_color_candidates:
+                candidate_color_tokens.append((tok, 'attr'))
+
+            for tok in extraction_result.get('modifiers', []) or []:
+                tl = str(tok).strip().lower().strip(".,;:!?")
+                if tl and tl.isalpha() and len(tl) >= 3:
+                    candidate_color_tokens.append((tl, 'extractor'))
+
+            for tok in (extraction_result.get('text', '') or '').split():
+                tl = str(tok).strip().lower().strip(".,;:!?")
+                if tl and tl.isalpha() and len(tl) >= 3:
+                    candidate_color_tokens.append((tl, 'extractor'))
+
+            try:
+                nlp_for_color = _get_nlp_es()
+                if nlp_for_color is not None:
+                    doc_color = nlp_for_color(query_text)
+                    for token in doc_color:
+                        tl = token.text.lower().strip(".,;:!?")
+                        if not tl or len(tl) < 3 or not tl.isalpha():
+                            continue
+                        if token.is_stop:
+                            continue
+                        if token.pos_ in ('ADJ', 'NOUN', 'PROPN'):
+                            candidate_color_tokens.append((tl, 'nlp'))
+            except Exception:
+                pass
+
+            # Dedupe preservando orden (por token)
+            _seen_color_tokens = set()
+            ordered_candidates = []
+            for tok, source in candidate_color_tokens:
+                if tok in _seen_color_tokens:
+                    continue
+                _seen_color_tokens.add(tok)
+                ordered_candidates.append((tok, source))
+            candidate_color_tokens = ordered_candidates
+
             if can_run_semantic_color:
-                for tok in raw_tokens:
+                for tok, source in candidate_color_tokens:
                     if len(tok) < 3:
                         continue
                     # Saltar token de categoría principal extraída (evita normalizar color sobre categoría)
@@ -2842,6 +2915,21 @@ def text_search():
                     # 🆕 Saltar si es un atributo configurado (evita interpretar "bolsillos" como color)
                     if tok in configured_attr_tokens:
                         continue
+
+                    # Coincidencia léxica directa contra opciones de color del cliente
+                    tok_norm = tok
+                    try:
+                        import unicodedata as _ud_tok
+                        tok_norm = ''.join(ch for ch in _ud_tok.normalize('NFD', tok) if _ud_tok.category(ch) != 'Mn')
+                    except Exception:
+                        tok_norm = tok
+                    if tok_norm in configured_color_values_norm:
+                        detected_color_intent = True
+                        detected_color_token = tok
+                        detected_color_normalized = tok_norm
+                        color_detected_from_attr = (source == 'attr')
+                        print(f"🎨 Color detectado (léxico cliente): '{tok}'")
+                        break
 
                     # Marcar intención de color para adjetivos sistémicos aun si no hay mapeo
                     if tok in system_color_adjectives:
@@ -2866,6 +2954,7 @@ def text_search():
                             if preferred:
                                 semantic_related_colors = list(dict.fromkeys(preferred))
                                 detected_color_normalized = semantic_related_colors[0]
+                                color_detected_from_attr = (source == 'attr')
                                 print(f"🎨 Color sistémico detectado: '{tok}' -> familia {semantic_related_colors}")
                                 # Para términos sistémicos, NO seguir normalización global por embedding
                                 continue
@@ -2874,12 +2963,22 @@ def text_search():
 
                     c = normalize_color(tok, client_id=client.id)
                     if c:
+                        detected_color_intent = True
                         detected_color_token = tok
                         detected_color_normalized = c
+                        color_detected_from_attr = (source == 'attr')
                         print(f"🎨 Color detectado (MiniLLM): '{tok}' → '{c}'")
                         break
             else:
-                print("🎨 Semántica de color omitida: cliente sin vocabulario de color utilizable")
+                # Sin vocabulario de color utilizable, usar intención extraída por LLM/extractor.
+                if requested_color_candidates:
+                    detected_color_intent = True
+                    detected_color_token = requested_color_candidates[0]
+                    detected_color_normalized = requested_color_candidates[0]
+                    color_detected_from_attr = True
+                    print(f"🎨 Color detectado por intención extraída: '{detected_color_token}'")
+                else:
+                    print("🎨 Semántica de color omitida: cliente sin vocabulario de color utilizable")
 
             # NO agregamos a requested_attrs aquí - se manejará en el filtrado
         except Exception as _e:
@@ -3351,7 +3450,16 @@ def text_search():
             # Determinar valor de color a filtrar (desde requested o desde detección)
             color_filter_value = None
             if color_req_key:
-                color_filter_value = str(requested_attrs.get(color_req_key, '')).lower()
+                requested_color_value = str(requested_attrs.get(color_req_key, '')).lower()
+                requested_color_conf = str(requested_attrs_confidence.get(color_req_key, '')).lower()
+                if color_detected_from_attr and detected_color_normalized:
+                    color_filter_value = str(detected_color_normalized).lower()
+                    requested_attrs[color_req_key] = color_filter_value
+                elif requested_color_conf == 'semantic' and detected_color_normalized:
+                    color_filter_value = str(detected_color_normalized).lower()
+                    requested_attrs[color_req_key] = color_filter_value
+                else:
+                    color_filter_value = requested_color_value
             elif detected_color_normalized:
                 color_filter_value = str(detected_color_normalized).lower()
 
@@ -3488,6 +3596,16 @@ def text_search():
                                 row_txt = _row_text_for_color_backfill(r)
                                 if row_txt and any(tok in row_txt for tok in backfill_tokens):
                                     filtered_results.append(r)
+                                if len(filtered_results) >= target_total:
+                                    break
+
+                        # No reducir cantidad de resultados por un filtro de color incompleto:
+                        # si faltan items para el límite, completar con el resto del top original.
+                        if len(filtered_results) < target_total:
+                            for r in pre_color_results:
+                                if r in filtered_results:
+                                    continue
+                                filtered_results.append(r)
                                 if len(filtered_results) >= target_total:
                                     break
                     except Exception as e:
