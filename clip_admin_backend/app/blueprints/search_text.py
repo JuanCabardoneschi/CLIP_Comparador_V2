@@ -2683,18 +2683,31 @@ def text_search():
         # Guardar expanded_terms para la respuesta (ya se calculó en stage1)
         expanded_terms_cache = expand_query_with_synonyms(query_text, client.id, client_slug)
 
-        # 🚫 VALIDACIÓN CRÍTICA: Si no hay categoría válida detectada, NO continuar
-        if not detection_metadata or not detection_metadata.get('matched_categories'):
-            # Obtener todas las categorías comercializables del cliente
-            available_categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
-            available_names = [cat.name for cat in available_categories]
-            # Mensaje especial para el usuario y datos para UI (chips "Buscando en:")
-            user_feedback = {
-                "message": f"La categoría solicitada no se encuentra entre las comercializables.",
-                "has_results": False,
-                "categories_available": available_names
-            }
-            # Incluir 'categories_searched' para que el frontend muestre chips tipo "Buscando en: ..."
+        # Si no se detecta categoría explícita, NO cortar: continuar con búsqueda amplia.
+        no_explicit_category = not detection_metadata or not detection_metadata.get('matched_categories')
+        available_names_for_guidance = []
+        if no_explicit_category:
+            try:
+                available_categories = Category.query.filter_by(client_id=client.id, is_active=True).all()
+                available_names_for_guidance = [cat.name for cat in available_categories]
+            except Exception:
+                available_names_for_guidance = []
+            print("⚠️ [TEXT_SEARCH] Sin categoría explícita: se continúa en modo búsqueda amplia")
+
+        if not candidates:
+            if no_explicit_category:
+                user_feedback = {
+                    "message": "No detectamos una categoría exacta en tu descripción. Si nos indicas el tipo de prenda o categoría, refinamos mejor la búsqueda.",
+                    "has_results": False,
+                    "categories_available": available_names_for_guidance,
+                    "suggestion": "Ejemplo: 'chaqueta azul para cocina' o 'delantal azul'."
+                }
+            else:
+                # Si hay categoría válida pero no hay candidatos (caso raro)
+                user_feedback = {
+                    "message": "No se encontraron productos en las categorías detectadas.",
+                    "has_results": False
+                }
             response_data = {
                 "success": True,
                 "query": query_text,
@@ -2707,32 +2720,7 @@ def text_search():
                 "results": [],
                 "results_by_category": {},
                 "group_by_category": False,
-                "categories_searched": available_names
-            }
-            response = jsonify(response_data)
-            response.headers['Access-Control-Allow-Origin'] = '*'
-            response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
-            return response
-
-        if not candidates:
-            # Si hay categoría válida pero no hay candidatos (caso raro)
-            user_feedback = {
-                "message": "No se encontraron productos en las categorías detectadas.",
-                "has_results": False
-            }
-            response_data = {
-                "success": True,
-                "query": query_text,
-                "expanded_terms": expanded_terms_cache,
-                "stage1_candidates": 0,
-                "total_results": 0,
-                "processing_time": round(time.time() - start_time, 3),
-                "search_module": "custom" if (client_slug and has_custom_module(client_slug)) else "generic",
-                "user_feedback": user_feedback,
-                "results": [],
-                "results_by_category": {},
-                "group_by_category": False
+                "categories_searched": available_names_for_guidance if no_explicit_category else []
             }
             response = jsonify(response_data)
             response.headers['Access-Control-Allow-Origin'] = '*'
@@ -3732,6 +3720,37 @@ def text_search():
             detected_color_normalized=detected_color_normalized  # Color normalizado por LLM
         )
 
+        if no_explicit_category:
+            shown_categories = []
+            for result in formatted_results:
+                cat_name = result.get('category')
+                if cat_name and cat_name not in shown_categories:
+                    shown_categories.append(cat_name)
+
+            if shown_categories:
+                if len(shown_categories) == 1:
+                    shown_text = shown_categories[0]
+                elif len(shown_categories) == 2:
+                    shown_text = f"{shown_categories[0]} y {shown_categories[1]}"
+                else:
+                    shown_text = f"{', '.join(shown_categories[:-1])} y {shown_categories[-1]}"
+
+                user_feedback['message'] = (
+                    "No detectamos una categoría exacta en tu descripción. "
+                    f"Te mostramos resultados aproximados en: {shown_text}. "
+                    "Si nos indicas el tipo de prenda o categoría, refinamos mejor la búsqueda."
+                )
+                user_feedback['has_results'] = True
+                user_feedback['categories_shown'] = shown_categories
+            else:
+                user_feedback['message'] = (
+                    "No detectamos una categoría exacta en tu descripción y no encontramos coincidencias aproximadas. "
+                    "Si nos indicas el tipo de prenda o categoría, refinamos mejor la búsqueda."
+                )
+                user_feedback['has_results'] = False
+
+            user_feedback['categories_available'] = available_names_for_guidance
+
         # Cargar atributos configurados para mapear etiquetas en el frontend
         # - exposed_attribute_keys: solo los marcados como visibles (comportamiento original)
         # - exposed_attribute_labels: mapa key->etiqueta para TODOS los atributos configurados (no depende de visible)
@@ -3932,6 +3951,7 @@ def text_search():
             "search_module": "custom" if (client_slug and has_custom_module(client_slug)) else "generic",
             "user_feedback": user_feedback,
             "group_by_category": group_by_category,
+            "categories_searched": user_feedback.get('categories_shown') or available_names_for_guidance,
             "exposed_attribute_keys": exposed_attribute_keys,
             "exposed_attribute_labels": exposed_attribute_labels
         }

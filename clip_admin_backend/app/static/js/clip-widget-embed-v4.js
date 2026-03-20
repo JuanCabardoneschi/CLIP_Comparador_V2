@@ -1282,6 +1282,7 @@
         const requiredStrongKeys = Object.keys(requiredStrong);
 
         const bannerHtml = renderTestingBanner(data);
+        const userFeedbackBannerHtml = renderTextUserFeedbackBanner(data.user_feedback);
 
         const productosPorCategoria = {};
         productos.forEach(prod => {
@@ -1469,8 +1470,42 @@
             `;
         }).join('');
 
-        resultsDiv.innerHTML = `${bannerHtml}${categorySectionsHtml}`;
+        resultsDiv.innerHTML = `${bannerHtml}${userFeedbackBannerHtml}${categorySectionsHtml}`;
         resultsDiv.classList.add('active');
+    }
+
+    function renderTextUserFeedbackBanner(userFeedback) {
+        if (!userFeedback || !userFeedback.message) {
+            return '';
+        }
+
+        const categoriesList = userFeedback.categories_shown || userFeedback.categories_available || [];
+        const categoriesText = categoriesList.length > 0
+            ? `<div style="font-size: 14px; margin-top: 10px; line-height: 1.6;">
+                Categorias consideradas: <strong>${categoriesList.join(', ')}</strong>
+               </div>`
+            : '';
+
+        const suggestionText = userFeedback.suggestion
+            ? `<div style="font-size: 14px; margin-top: 8px;">${userFeedback.suggestion}</div>`
+            : '';
+
+        return `
+            <div class="clip-no-results-message" style="
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 20px;
+                border-radius: 12px;
+                margin-bottom: 20px;
+                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            ">
+                <div style="font-size: 18px; font-weight: 600; margin-bottom: 10px;">
+                    ${userFeedback.message}
+                </div>
+                ${categoriesText}
+                ${suggestionText}
+            </div>
+        `;
     }
 
     function renderTestingBanner(data) {

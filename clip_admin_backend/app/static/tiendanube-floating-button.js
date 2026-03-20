@@ -2,6 +2,7 @@
  * CLIP Comparador - Botón Flotante para Tiendanube
  * Se inyecta automaticamente en todas las paginas de la tienda
  * y abre el modal de CLIP dentro del storefront.
+ * Versión: v2.0 | Actualizado: 2026-03-19
  */
 (function() {
     'use strict';
@@ -12,6 +13,7 @@
 
     const DEFAULT_SERVER_URL = 'https://clipcomparadorv2-production.up.railway.app';
     const WIDGET_SCRIPT_PATH = '/static/js/clip-widget-embed-v4.js';
+    const MENU_OPEN_PATH = '/clip-open';
 
     const scriptTag = document.currentScript ||
         Array.from(document.getElementsByTagName('script')).find((s) =>
@@ -168,12 +170,65 @@
         });
     }
 
+    function normalizePath(path) {
+        if (!path) {
+            return '/';
+        }
+
+        const normalizedPath = path.replace(/\/+$/, '');
+        return normalizedPath || '/';
+    }
+
+    function isClipOpenUrl(href) {
+        if (!href) {
+            return false;
+        }
+
+        try {
+            const parsedUrl = new URL(href, window.location.origin);
+            return parsedUrl.origin === window.location.origin &&
+                normalizePath(parsedUrl.pathname) === MENU_OPEN_PATH;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function bindMenuOpenTrigger() {
+        document.addEventListener('click', (event) => {
+            const linkElement = event.target && event.target.closest
+                ? event.target.closest('a')
+                : null;
+
+            if (!linkElement || !isClipOpenUrl(linkElement.href || linkElement.getAttribute('href'))) {
+                return;
+            }
+
+            event.preventDefault();
+            loadWidgetAndOpen();
+        });
+    }
+
+    function openFromMenuPath() {
+        if (normalizePath(window.location.pathname) !== MENU_OPEN_PATH) {
+            return;
+        }
+
+        loadWidgetAndOpen();
+
+        if (window.history && typeof window.history.replaceState === 'function') {
+            window.history.replaceState(null, '', '/');
+        }
+    }
+
+    bindMenuOpenTrigger();
+    openFromMenuPath();
+
     // Crear estilos del boton
     const styles = `
         #clip-floating-button {
             position: fixed;
             bottom: 20px;
-            right: 20px;
+            left: 20px;
             width: 60px;
             height: 60px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -204,7 +259,7 @@
                 width: 50px;
                 height: 50px;
                 bottom: 15px;
-                right: 15px;
+                left: 15px;
             }
 
             #clip-floating-button svg {
