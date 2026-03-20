@@ -1243,8 +1243,8 @@ def stage2_precise_rerank(query_text: str, candidates: list, limit: int = 10):
     return top_results
 
 
-@bp.route("/search/text", methods=["POST", "OPTIONS"])
-def text_search():
+@bp.route("/search/text/legacy", methods=["POST", "OPTIONS"])
+def text_search_legacy():
     # Endpoint de búsqueda textual V2 (Broad Recall + CLIP Reranking).
     # Documentación extendida movida a README o docs para evitar errores de comillas.
     # Manejar preflight OPTIONS
@@ -3218,6 +3218,7 @@ def text_search():
             'cache_miss': 0,
         }
         color_visual_score_cache = {}
+        strict_color_min_score = 0.30
 
         def _get_color_family_keys(target_color):
             target_norm = str(target_color or '').strip().lower()
@@ -3414,7 +3415,11 @@ def text_search():
                             resolved_norm = str(resolved_color).strip().lower()
                             if resolved_norm == target_color:
                                 return 1.0
-                        return _get_product_color_similarity(row.get('id'), target_color)
+                        visual_score = _get_product_color_similarity(row.get('id'), target_color)
+                        if visual_score < strict_color_min_score:
+                            return 0.0
+                        # Reescalar score estricto para que similitudes bajas no compitan con matches reales.
+                        return (visual_score - strict_color_min_score) / max(1e-6, (0.99 - strict_color_min_score))
 
                     resolved_color = _resolve_product_color_norm(row)
                     if not resolved_color:
@@ -3606,7 +3611,7 @@ def text_search():
                     'marron': {'marron', 'marrón', 'brown', 'habano', 'tostado', 'camel', 'caramelo', 'beige', 'baige', 'tierra', 'terra'},
                     'marrón': {'marron', 'marrón', 'brown', 'habano', 'tostado', 'camel', 'caramelo', 'beige', 'baige', 'tierra', 'terra'},
                 }
-                exact_color_visual_threshold = 0.22
+                exact_color_visual_threshold = strict_color_min_score
 
                 backfill_tokens = set(base_set)
                 for bc in list(base_set):
@@ -3686,7 +3691,7 @@ def text_search():
                                 f"{[(item[0].get('name'), round(item[1], 3)) for item in visual_candidates[:5]]}"
                             )
 
-                            min_visual_score = 0.20
+                            min_visual_score = strict_color_min_score
                             for row, visual_score in visual_candidates:
                                 if visual_score < min_visual_score:
                                     continue
@@ -4468,3 +4473,751 @@ def text_search():
         })
         response.headers['Access-Control-Allow-Origin'] = '*'
         return response, 500
+
+
+_STRICT_COLOR_CONFIG_CACHE_V3 = {}
+_STRICT_COLOR_PROMPT_CACHE_V3 = {}
+_STRICT_COLOR_NORM_CACHE_V3 = {}
+
+
+def _normalize_color_token_v3(value):
+    import unicodedata as _ud
+
+    txt = str(value or '').strip().lower()
+    return ''.join(ch for ch in _ud.normalize('NFD', txt) if _ud.category(ch) != 'Mn')
+
+
+def _tokenize_color_text_v3(value):
+    txt = _normalize_color_token_v3(value)
+    parts = []
+    for chunk in txt.replace('/', ' ').replace(',', ' ').replace('-', ' ').split():
+        token = chunk.strip(".,;:!?()[]{}\"'")
+        if token:
+            parts.append(token)
+    return parts
+
+
+def _flatten_attribute_values_v3(raw_value):
+    if raw_value is None:
+        return []
+    if isinstance(raw_value, dict):
+        values = []
+        for val in raw_value.values():
+            values.extend(_flatten_attribute_values_v3(val))
+        return values
+    if isinstance(raw_value, list):
+        values = []
+        for val in raw_value:
+            values.extend(_flatten_attribute_values_v3(val))
+        return values
+    return [str(raw_value)]
+
+
+def _attribute_value_matches_v3(product_value, requested_value):
+    product_values = {
+        _normalize_color_token_v3(v)
+        for v in _flatten_attribute_values_v3(product_value)
+        if str(v).strip()
+    }
+    requested_values = {
+        _normalize_color_token_v3(v)
+        for v in _flatten_attribute_values_v3(requested_value)
+        if str(v).strip()
+    }
+    if not product_values or not requested_values:
+        return False
+    return bool(product_values & requested_values)
+
+
+def _get_color_family_keys_v3(target_color):
+    target_norm = _normalize_color_token_v3(target_color)
+    return [target_norm] if target_norm else []
+
+
+def _normalize_color_semantic_v3(value, client_id=None):
+    cache_key = f"{str(client_id)}:{_normalize_color_token_v3(value)}"
+    if cache_key in _STRICT_COLOR_NORM_CACHE_V3:
+        return _STRICT_COLOR_NORM_CACHE_V3[cache_key]
+
+    resolved = _normalize_color_token_v3(value)
+    try:
+        from app.utils.colors import normalize_color
+
+        llm_color = normalize_color(str(value or ''), client_id=client_id)
+        if llm_color:
+            resolved = _normalize_color_token_v3(llm_color)
+    except Exception:
+        pass
+
+    _STRICT_COLOR_NORM_CACHE_V3[cache_key] = resolved
+    return resolved
+
+
+def _extract_option_terms_v3(raw_options):
+    terms = []
+    decoded = raw_options
+
+    if isinstance(raw_options, str) and raw_options.strip():
+        try:
+            decoded = _json_nlp.loads(raw_options)
+        except Exception:
+            try:
+                import ast
+                decoded = ast.literal_eval(raw_options)
+            except Exception:
+                decoded = raw_options
+
+    if isinstance(decoded, dict):
+        if isinstance(decoded.get('values'), list):
+            decoded = decoded.get('values')
+        else:
+            decoded = list(decoded.keys())
+
+    if isinstance(decoded, list):
+        for item in decoded:
+            if isinstance(item, dict):
+                candidate = item.get('value') or item.get('label') or item.get('name')
+                if candidate is not None:
+                    terms.append(str(candidate))
+            elif item is not None:
+                terms.append(str(item))
+    elif decoded is not None:
+        terms.append(str(decoded))
+
+    return terms
+
+
+def _get_client_color_terms_v3(client_id):
+    cache_key = str(client_id)
+    if cache_key in _STRICT_COLOR_CONFIG_CACHE_V3:
+        return list(_STRICT_COLOR_CONFIG_CACHE_V3[cache_key])
+
+    terms = set()
+
+    try:
+        from app.models.product_attribute_config import ProductAttributeConfig
+
+        configs = ProductAttributeConfig.query.filter_by(client_id=client_id).all()
+        for cfg in configs:
+            cfg_key = _normalize_color_token_v3(getattr(cfg, 'key', ''))
+            if 'color' not in cfg_key:
+                continue
+
+            for option_term in _extract_option_terms_v3(getattr(cfg, 'options', None)):
+                norm = _normalize_color_token_v3(option_term)
+                if norm:
+                    terms.add(norm)
+                for token in _tokenize_color_text_v3(option_term):
+                    terms.add(token)
+    except Exception:
+        pass
+
+    try:
+        from app.utils.semantic_colors import get_system_color_adjectives, _load_system_colors
+
+        for token in get_system_color_adjectives():
+            norm = _normalize_color_token_v3(token)
+            if norm:
+                terms.add(norm)
+
+        data_sc = _load_system_colors()
+        entries = data_sc.get('colors', []) if isinstance(data_sc, dict) else []
+        for item in entries:
+            token = _normalize_color_token_v3(item.get('token', ''))
+            if token:
+                terms.add(token)
+            for alias in item.get('aliases', []) or []:
+                norm_alias = _normalize_color_token_v3(alias)
+                if norm_alias:
+                    terms.add(norm_alias)
+            for preferred in item.get('preferred_matches', []) or []:
+                norm_pref = _normalize_color_token_v3(preferred)
+                if norm_pref:
+                    terms.add(norm_pref)
+    except Exception:
+        pass
+
+    _STRICT_COLOR_CONFIG_CACHE_V3[cache_key] = sorted(terms)
+    return list(_STRICT_COLOR_CONFIG_CACHE_V3[cache_key])
+
+
+def _build_color_terms_v3(client_id, target_color=None, related_colors=None):
+    terms = set(_get_client_color_terms_v3(client_id))
+
+    def _extend_from_value(raw_value):
+        norm = _normalize_color_token_v3(raw_value)
+        if norm:
+            terms.add(norm)
+        for token in _tokenize_color_text_v3(raw_value):
+            terms.add(token)
+
+    if target_color:
+        _extend_from_value(target_color)
+    for rel in (related_colors or []):
+        _extend_from_value(rel)
+
+    return sorted(t for t in terms if t and len(t) >= 3)
+
+
+def _ensure_color_prompt_matrix_v3(color_terms):
+    key = tuple(sorted(set(color_terms or [])))
+    if key in _STRICT_COLOR_PROMPT_CACHE_V3:
+        return _STRICT_COLOR_PROMPT_CACHE_V3[key]
+
+    if not key:
+        return [], np.array([])
+
+    clip_model, clip_processor = get_clip_model()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    prompts = []
+    prompt_terms = []
+    for term in key:
+        prompts.append(f"a photo of a {term} garment")
+        prompt_terms.append(term)
+        prompts.append(f"una prenda color {term}")
+        prompt_terms.append(term)
+
+    with torch.no_grad():
+        text_inputs = clip_processor(
+            text=prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True
+        ).to(device)
+        text_embeddings = clip_model.get_text_features(**text_inputs)
+        text_embeddings = text_embeddings / text_embeddings.norm(dim=-1, keepdim=True)
+
+    matrix = text_embeddings.cpu().numpy().astype(np.float32)
+    _STRICT_COLOR_PROMPT_CACHE_V3[key] = (prompt_terms, matrix)
+    return _STRICT_COLOR_PROMPT_CACHE_V3[key]
+
+
+def _score_image_color_similarity_v3(image_obj, target_color, related_colors=None, client_id=None, color_terms=None):
+    if image_obj is None or not getattr(image_obj, 'clip_embedding', None):
+        return 0.0
+
+    try:
+        dynamic_terms = color_terms or _build_color_terms_v3(client_id, target_color, related_colors)
+        prompt_terms, matrix = _ensure_color_prompt_matrix_v3(dynamic_terms)
+    except Exception:
+        return 0.0
+
+    if not prompt_terms or getattr(matrix, 'size', 0) == 0:
+        return 0.0
+
+    try:
+        raw_embedding = image_obj.clip_embedding
+        if isinstance(raw_embedding, str):
+            image_vec = np.asarray(_json_nlp.loads(raw_embedding), dtype=np.float32)
+        elif isinstance(raw_embedding, list):
+            image_vec = np.asarray(raw_embedding, dtype=np.float32)
+        else:
+            return 0.0
+    except Exception:
+        return 0.0
+
+    if image_vec.ndim != 1:
+        image_vec = image_vec.reshape(-1)
+    if matrix.shape[1] != image_vec.shape[0]:
+        return 0.0
+
+    image_norm = np.linalg.norm(image_vec)
+    if image_norm == 0:
+        return 0.0
+    image_vec = image_vec / image_norm
+
+    target_norm = _normalize_color_semantic_v3(target_color, client_id=client_id)
+    candidate_norms = {target_norm}
+    for token in _tokenize_color_text_v3(target_color):
+        candidate_norms.add(_normalize_color_semantic_v3(token, client_id=client_id))
+    if related_colors:
+        for item in related_colors:
+            candidate_norms.add(_normalize_color_semantic_v3(item, client_id=client_id))
+            for token in _tokenize_color_text_v3(item):
+                candidate_norms.add(_normalize_color_semantic_v3(token, client_id=client_id))
+
+    candidate_indexes = []
+    for idx, term in enumerate(prompt_terms):
+        term_norm = _normalize_color_semantic_v3(term, client_id=client_id)
+        if term_norm in candidate_norms:
+            candidate_indexes.append(idx)
+
+    if not candidate_indexes:
+        return 0.0
+
+    sims = np.dot(matrix, image_vec)
+    best = max(float(sims[idx]) for idx in candidate_indexes)
+    return max(0.0, min(0.99, best))
+
+
+def _product_matches_color_lexically_v3(attributes, target_color, related_colors=None, client_id=None, color_terms=None):
+    if not isinstance(attributes, dict):
+        return False
+
+    target_norms = {_normalize_color_semantic_v3(target_color, client_id=client_id)}
+    for token in _tokenize_color_text_v3(target_color):
+        target_norms.add(_normalize_color_semantic_v3(token, client_id=client_id))
+
+    if related_colors:
+        for item in related_colors:
+            target_norms.add(_normalize_color_semantic_v3(item, client_id=client_id))
+            for token in _tokenize_color_text_v3(item):
+                target_norms.add(_normalize_color_semantic_v3(token, client_id=client_id))
+
+    candidate_tokens = set()
+    for term in (color_terms or []):
+        term_norm = _normalize_color_semantic_v3(term, client_id=client_id)
+        if term_norm in target_norms:
+            candidate_tokens.add(_normalize_color_token_v3(term))
+            for tok in _tokenize_color_text_v3(term):
+                candidate_tokens.add(tok)
+
+    if not candidate_tokens:
+        candidate_tokens.update(_tokenize_color_text_v3(target_color))
+        candidate_tokens.add(_normalize_color_token_v3(target_color))
+        for item in (related_colors or []):
+            candidate_tokens.update(_tokenize_color_text_v3(item))
+            candidate_tokens.add(_normalize_color_token_v3(item))
+
+    for key, raw_value in attributes.items():
+        key_norm = _normalize_color_token_v3(key)
+        if 'color' not in key_norm:
+            continue
+        raw_tokens = []
+        for value in _flatten_attribute_values_v3(raw_value):
+            raw_tokens.extend(_tokenize_color_text_v3(value))
+        for token in raw_tokens:
+            if token in candidate_tokens:
+                return True
+            token_norm = _normalize_color_semantic_v3(token, client_id=client_id)
+            if token_norm in target_norms:
+                return True
+
+    return False
+
+
+def _detect_color_intent_v3(query_text, requested_attrs, client_id):
+    from app.utils.colors import normalize_color
+
+    detected_color_token = None
+    detected_color_normalized = None
+    detected_color_intent = False
+    semantic_related_colors = []
+
+    preferred_map = {}
+    excluded_tokens = set()
+    system_color_adjectives = set()
+
+    try:
+        from app.utils.semantic_colors import get_system_color_adjectives, _load_system_colors
+
+        system_color_adjectives = {
+            _normalize_color_token_v3(c)
+            for c in get_system_color_adjectives()
+            if str(c).strip()
+        }
+        data_sc = _load_system_colors()
+        entries = data_sc.get('colors', []) if isinstance(data_sc, dict) else []
+        for item in entries:
+            token = _normalize_color_token_v3(item.get('token', ''))
+            if not token:
+                continue
+            preferred = [
+                _normalize_color_token_v3(v)
+                for v in (item.get('preferred_matches') or [])
+                if str(v).strip()
+            ]
+            if preferred:
+                preferred_map[token] = preferred
+        excluded_cfg = data_sc.get('excluded_tokens', {}) if isinstance(data_sc, dict) else {}
+        if isinstance(excluded_cfg, dict):
+            for cfg_key, cfg_values in excluded_cfg.items():
+                if cfg_key in ('description', 'min_token_length', 'require_adj_pos'):
+                    continue
+                if isinstance(cfg_values, list):
+                    for value in cfg_values:
+                        token = _normalize_color_token_v3(value)
+                        if token:
+                            excluded_tokens.add(token)
+    except Exception:
+        system_color_adjectives = set()
+
+    raw_color_values = []
+    if isinstance(requested_attrs, dict):
+        for key, value in requested_attrs.items():
+            if _normalize_color_token_v3(key) == 'color':
+                raw_color_values.extend(_flatten_attribute_values_v3(value))
+
+    if raw_color_values:
+        detected_color_intent = True
+        detected_color_token = _normalize_color_token_v3(raw_color_values[0])
+        normalized = normalize_color(detected_color_token, client_id=client_id)
+        if normalized:
+            detected_color_normalized = _normalize_color_token_v3(normalized)
+        elif detected_color_token in preferred_map:
+            semantic_related_colors = preferred_map[detected_color_token]
+            detected_color_normalized = semantic_related_colors[0]
+        else:
+            detected_color_normalized = detected_color_token
+
+    query_tokens = _tokenize_color_text_v3(query_text)
+    for token in query_tokens:
+        if token in excluded_tokens:
+            continue
+
+        if token in preferred_map:
+            detected_color_intent = True
+            detected_color_token = token
+            semantic_related_colors = preferred_map[token]
+            detected_color_normalized = semantic_related_colors[0]
+            break
+
+        normalized = normalize_color(token, client_id=client_id)
+        if normalized:
+            detected_color_intent = True
+            detected_color_token = token
+            detected_color_normalized = _normalize_color_token_v3(normalized)
+            break
+
+        if token in system_color_adjectives:
+            detected_color_intent = True
+            detected_color_token = token
+            if not detected_color_normalized:
+                detected_color_normalized = token
+
+    return {
+        'detected_color_token': detected_color_token,
+        'detected_color_normalized': detected_color_normalized,
+        'detected_color_intent': detected_color_intent,
+        'semantic_related_colors': semantic_related_colors,
+    }
+
+
+def _json_response_with_cors_v3(payload, status_code=200):
+    response = jsonify(payload)
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+    response.status_code = status_code
+    return response
+
+
+@bp.route("/search/text", methods=["POST", "OPTIONS"])
+def text_search():
+    if request.method == 'OPTIONS':
+        return _json_response_with_cors_v3({'status': 'ok'})
+
+    start_time = time.time()
+
+    try:
+        client, error = verify_api_key()
+        if error:
+            return _json_response_with_cors_v3({
+                'success': False,
+                'error': 'invalid_api_key',
+                'message': error,
+            }, 401)
+
+        data = request.get_json(silent=True) or {}
+        query_text = str(data.get('query', '')).strip()
+        if not query_text:
+            return _json_response_with_cors_v3({
+                'success': False,
+                'error': 'invalid_request',
+                'message': 'query requerida',
+            }, 400)
+
+        default_max_results = system_config.get('search', 'max_results', 10)
+        limit = min(int(data.get('limit', default_max_results)), default_max_results)
+        if limit < 1:
+            limit = 1
+
+        client_slug = getattr(client, 'slug', None)
+
+        try:
+            client_profile = SearchProfilesService.get_profile(str(client.id), client.industry)
+        except Exception:
+            client_profile = None
+
+        extraction_result = _extract_key_terms_with_dependency_parsing(query_text, client_profile)
+        cleaned_query = str(extraction_result.get('text') or '').strip()
+
+        attr_info = extract_query_attributes(query_text, client.id) or {}
+        requested_attrs = attr_info.get('attributes', {}) or {}
+        not_configured_attrs = [str(v).strip().lower() for v in (attr_info.get('not_configured', []) or []) if str(v).strip()]
+        if not_configured_attrs:
+            requested_attrs = {
+                key: value
+                for key, value in requested_attrs.items()
+                if _normalize_color_token_v3(key) not in not_configured_attrs
+            }
+
+        color_detection = _detect_color_intent_v3(query_text, requested_attrs, client.id)
+        detected_color_token = color_detection.get('detected_color_token')
+        detected_color_normalized = color_detection.get('detected_color_normalized')
+        detected_color_intent = bool(color_detection.get('detected_color_intent'))
+        semantic_related_colors = color_detection.get('semantic_related_colors') or []
+
+        candidates, detection_metadata = stage1_broad_recall(
+            query_text,
+            client.id,
+            client_slug,
+            is_color_search=detected_color_intent,
+        )
+        expanded_terms_cache = expand_query_with_synonyms(query_text, client.id, client_slug)
+
+        matched_categories = []
+        if isinstance(detection_metadata, dict):
+            matched_categories = detection_metadata.get('matched_categories') or []
+
+        if not candidates:
+            return _json_response_with_cors_v3({
+                'success': True,
+                'query': query_text,
+                'expanded_terms': expanded_terms_cache,
+                'stage1_candidates': 0,
+                'total_results': 0,
+                'processing_time': round(time.time() - start_time, 3),
+                'search_module': 'custom' if (client_slug and has_custom_module(client_slug)) else 'generic',
+                'user_feedback': {
+                    'message': 'No se encontraron productos para la búsqueda solicitada.',
+                    'has_results': False,
+                },
+                'results': [],
+                'results_by_category': {},
+                'group_by_category': False,
+                'detection': {
+                    'categorias_matched': matched_categories,
+                    'tiene_match': bool(matched_categories),
+                },
+                'analysis': {
+                    'atributos_encontrados': list(requested_attrs.keys()),
+                    'modificadores_no_configurados': not_configured_attrs,
+                },
+            })
+
+        clip_query_text = _build_clip_query_from_extraction(
+            extraction_result,
+            client.id,
+            detected_color_token=detected_color_token,
+            detected_color_normalized=detected_color_normalized,
+        )
+        if not clip_query_text:
+            clip_query_text = cleaned_query or query_text
+
+        rerank_limit = min(len(candidates), max(limit * 10, 50)) if detected_color_intent else limit
+        scored_results = stage2_precise_rerank(clip_query_text, candidates, limit=rerank_limit)
+
+        requested_attrs_for_match = {
+            key: value for key, value in requested_attrs.items()
+            if _normalize_color_token_v3(key) != 'color'
+        }
+        requested_count = len(requested_attrs_for_match)
+
+        strict_color_min_score = 0.30
+        dynamic_color_terms = []
+        if detected_color_intent and detected_color_normalized:
+            dynamic_color_terms = _build_color_terms_v3(
+                client.id,
+                detected_color_normalized,
+                semantic_related_colors,
+            )
+
+        formatted_results = []
+        for result in scored_results:
+            product = result.get('product')
+            if product is None:
+                continue
+
+            primary_image = result.get('image')
+            if not primary_image:
+                primary_image = Image.query.filter_by(product_id=product.id, is_primary=True).first()
+            if not primary_image:
+                primary_image = Image.query.filter_by(product_id=product.id).first()
+
+            prod_attrs = product.attributes or {}
+            matched = {}
+            for key, value in requested_attrs_for_match.items():
+                if key not in prod_attrs:
+                    continue
+                if _attribute_value_matches_v3(prod_attrs.get(key), value):
+                    matched[key] = value
+
+            matched_count = len(matched)
+            match_ratio = float(matched_count / requested_count) if requested_count > 0 else 0.0
+
+            color_visual_score = 0.0
+            color_lexical_match = False
+            if detected_color_intent and detected_color_normalized:
+                color_visual_score = _score_image_color_similarity_v3(
+                    primary_image,
+                    detected_color_normalized,
+                    semantic_related_colors,
+                    client_id=client.id,
+                    color_terms=dynamic_color_terms,
+                )
+                color_lexical_match = _product_matches_color_lexically_v3(
+                    prod_attrs,
+                    detected_color_normalized,
+                    semantic_related_colors,
+                    client_id=client.id,
+                    color_terms=dynamic_color_terms,
+                )
+                if not color_lexical_match and color_visual_score < strict_color_min_score:
+                    continue
+
+            final_product_url = None
+            if hasattr(product, 'external_url') and product.external_url:
+                final_product_url = product.external_url
+            elif prod_attrs.get('url_producto'):
+                raw_url = prod_attrs.get('url_producto')
+                if isinstance(raw_url, dict):
+                    final_product_url = raw_url.get('value') or raw_url.get('url') or None
+                else:
+                    final_product_url = raw_url
+
+            similarity = float(result.get('similarity') or 0.0)
+            color_priority_score = color_visual_score
+            if color_lexical_match:
+                color_priority_score = max(color_priority_score, 0.95)
+
+            formatted_results.append({
+                'id': product.id,
+                'name': product.name,
+                'price': float(product.price) if product.price is not None else None,
+                'similarity': round(similarity, 3),
+                'final_score': round(similarity, 3),
+                'image': primary_image.display_url if primary_image else '/static/images/placeholder.svg',
+                'image_url': primary_image.display_url if primary_image else '/static/images/placeholder.svg',
+                'category': product.category.name if product.category else None,
+                'attributes': prod_attrs,
+                'attributes_matched': matched,
+                'attributes_match_count': matched_count,
+                'attributes_match_ratio': round(match_ratio, 3),
+                'sku': product.sku,
+                'stock': product.stock,
+                'product_url': final_product_url,
+                '_color_priority_score': round(color_priority_score, 4),
+            })
+
+        if detected_color_intent:
+            formatted_results.sort(
+                key=lambda row: (
+                    float(row.get('_color_priority_score', 0.0)),
+                    float(row.get('attributes_match_ratio', 0.0)),
+                    float(row.get('similarity', 0.0)),
+                ),
+                reverse=True,
+            )
+        else:
+            formatted_results.sort(
+                key=lambda row: (
+                    float(row.get('attributes_match_ratio', 0.0)),
+                    float(row.get('similarity', 0.0)),
+                ),
+                reverse=True,
+            )
+
+        limited_results = formatted_results[:limit]
+        for row in limited_results:
+            row.pop('_color_priority_score', None)
+
+        detected_category_info = {
+            'requested_term': extraction_result.get('category'),
+            'matched_categories': [
+                c.get('name') if isinstance(c, dict) else getattr(c, 'name', None)
+                for c in matched_categories
+            ]
+        }
+
+        feedback = _build_user_feedback(
+            query_text=query_text,
+            formatted_results=limited_results,
+            detected_category_info=detected_category_info,
+            client_id=client.id,
+            attrs_requested=requested_attrs,
+            contradictions=[],
+            not_configured=not_configured_attrs,
+            all_available_values={},
+            detected_color_token=detected_color_token,
+            detected_color_normalized=detected_color_normalized,
+        )
+
+        elapsed = time.time() - start_time
+        response_data = {
+            'success': True,
+            'query': query_text,
+            'expanded_terms': expanded_terms_cache,
+            'stage1_candidates': len(candidates),
+            'total_results': len(limited_results),
+            'processing_time': round(elapsed, 3),
+            'search_module': 'custom' if (client_slug and has_custom_module(client_slug)) else 'generic',
+            'user_feedback': feedback,
+            'results': limited_results,
+            'results_by_category': {},
+            'group_by_category': False,
+            'detection': {
+                'categorias_matched': matched_categories,
+                'tiene_match': bool(matched_categories),
+            },
+            'analysis': {
+                'atributos_encontrados': list(requested_attrs.keys()),
+                'modificadores_no_configurados': not_configured_attrs,
+                'color_detectado': detected_color_normalized,
+                'intencion_color': detected_color_intent,
+            },
+        }
+
+        try:
+            detected_categories = [
+                c.get('name') if isinstance(c, dict) else getattr(c, 'name', None)
+                for c in matched_categories
+            ]
+            detected_categories = [c for c in detected_categories if c]
+
+            extracted_terms = [
+                str(v).strip().lower()
+                for v in (extraction_result.get('modifiers') or [])
+                if str(v).strip()
+            ]
+            matched_terms = []
+            unmatched_terms = list(extracted_terms)
+            for row in limited_results:
+                attrs = row.get('attributes') or {}
+                attrs_values = ' '.join(
+                    str(v).lower() for v in attrs.values() if v is not None
+                )
+                for term in list(unmatched_terms):
+                    if term in attrs_values:
+                        if term not in matched_terms:
+                            matched_terms.append(term)
+                        unmatched_terms.remove(term)
+
+            SearchLog.log_search(
+                client_id=client.id,
+                search_type='text',
+                query_text=query_text,
+                image_url=None,
+                categories_detected=detected_categories or None,
+                categories_matched=detected_categories or None,
+                categories_missing=None,
+                terms_extracted=extracted_terms or None,
+                terms_matched=matched_terms or None,
+                terms_unmatched=unmatched_terms or None,
+                results_count=len(limited_results),
+                had_results=bool(limited_results),
+                response_time_ms=int(elapsed * 1000),
+            )
+        except Exception as analytics_error:
+            log_error(f"Error registrando analytics en text_search nuevo: {analytics_error}")
+
+        return _json_response_with_cors_v3(response_data)
+
+    except Exception as e:
+        log_error(f"Error en text_search nuevo: {e}")
+        return _json_response_with_cors_v3({
+            'success': False,
+            'error': 'internal_error',
+            'message': str(e),
+        }, 500)
