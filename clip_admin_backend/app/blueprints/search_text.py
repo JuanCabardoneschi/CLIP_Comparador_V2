@@ -3185,9 +3185,10 @@ def text_search_legacy():
         elapsed = time.time() - start_time
         results_by_category = {}
         group_by_category = False
+        has_explicit_category = bool(detection_metadata and detection_metadata.get('matched_categories'))
 
         unique_categories = list(set(r.get('category') or 'Sin categoría' for r in formatted_results))
-        should_group = len(unique_categories) > 1
+        should_group = has_explicit_category and len(unique_categories) > 1
 
         if should_group:
             group_by_category = True
