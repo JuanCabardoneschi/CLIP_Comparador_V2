@@ -4808,6 +4808,7 @@ def _detect_color_intent_v3(query_text, requested_attrs, client_id):
     preferred_map = {}
     excluded_tokens = set()
     system_color_adjectives = set()
+    client_color_terms = set()
 
     try:
         from app.utils.semantic_colors import get_system_color_adjectives, _load_system_colors
@@ -4861,9 +4862,33 @@ def _detect_color_intent_v3(query_text, requested_attrs, client_id):
         else:
             detected_color_normalized = detected_color_token
 
+    # Si el color ya viene explícitamente del extractor/atributo, no lo pisamos
+    # con tokens sueltos del texto libre (ej: "estoy" -> beige).
+    if detected_color_normalized:
+        return {
+            'detected_color_token': detected_color_token,
+            'detected_color_normalized': detected_color_normalized,
+            'detected_color_intent': detected_color_intent,
+            'semantic_related_colors': semantic_related_colors,
+        }
+
+    try:
+        client_color_terms = {
+            _normalize_color_token_v3(t)
+            for t in _get_client_color_terms_v3(client_id)
+            if str(t).strip()
+        }
+    except Exception:
+        client_color_terms = set()
+
     query_tokens = _tokenize_color_text_v3(query_text)
     for token in query_tokens:
         if token in excluded_tokens:
+            continue
+
+        # Evita normalizar cualquier token de la frase como color.
+        # Solo procesamos tokens plausibles de color según vocabulario/config.
+        if token not in preferred_map and token not in system_color_adjectives and token not in client_color_terms:
             continue
 
         if token in preferred_map:
@@ -5015,6 +5040,42 @@ def text_search():
         }
         requested_count = len(requested_attrs_for_match)
 
+        # Labels para que el widget renderice correctamente "Filtrando".
+        attribute_labels = {}
+        try:
+            from app.models.product_attribute_config import ProductAttributeConfig
+
+            cfgs = ProductAttributeConfig.query.filter_by(client_id=client.id).all()
+            for cfg in cfgs:
+                key_norm = _normalize_color_token_v3(getattr(cfg, 'key', ''))
+                if key_norm:
+                    attribute_labels[key_norm] = (getattr(cfg, 'label', None) or getattr(cfg, 'key', key_norm))
+        except Exception:
+            attribute_labels = {}
+
+        def _scalar_for_analysis(raw_value):
+            values = [v for v in _flatten_attribute_values_v3(raw_value) if str(v).strip()]
+            return values[0] if values else None
+
+        analysis_attrs = []
+        for key, value in requested_attrs.items():
+            key_norm = _normalize_color_token_v3(key)
+            analysis_attrs.append({
+                'atributo_key': key_norm,
+                'atributo_label': attribute_labels.get(key_norm, key_norm),
+                'valor_detectado': _scalar_for_analysis(value),
+            })
+
+        if detected_color_intent and detected_color_normalized and not any(
+            _normalize_color_token_v3(item.get('atributo_key', '')) == 'color'
+            for item in analysis_attrs
+        ):
+            analysis_attrs.append({
+                'atributo_key': 'color',
+                'atributo_label': attribute_labels.get('color', 'color'),
+                'valor_detectado': detected_color_normalized,
+            })
+
         strict_color_min_score = 0.30
         dynamic_color_terms = []
         if detected_color_intent and detected_color_normalized:
@@ -5162,7 +5223,7 @@ def text_search():
                 'tiene_match': bool(matched_categories),
             },
             'analysis': {
-                'atributos_encontrados': list(requested_attrs.keys()),
+                'atributos_encontrados': analysis_attrs,
                 'modificadores_no_configurados': not_configured_attrs,
                 'color_detectado': detected_color_normalized,
                 'intencion_color': detected_color_intent,

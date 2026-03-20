@@ -31,6 +31,18 @@ _VOCABULARY_CACHE_TTL = 300  # 5 minutos de TTL
 _NORMALIZA_COLOR_CACHE = {}
 
 
+def _allow_embedding_persistence(persist_embeddings: bool = False) -> bool:
+    """Controla si se permite persistir embeddings calculados durante matching."""
+    if not persist_embeddings:
+        return False
+
+    try:
+        flag = str(os.getenv("ALLOW_QUERY_EMBEDDING_WRITES", "false")).strip().lower()
+        return flag in ("1", "true", "yes", "on")
+    except Exception:
+        return False
+
+
 def _now_ts() -> float:
     return time.time()
 
@@ -644,7 +656,14 @@ def _extract_client_vocabulary(client_id: int) -> dict:
     return result
 
 
-def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: float = 0.5, query_emb=None) -> str:
+def _semantic_match(
+    query: str,
+    vocabulary: list,
+    client_id: int,
+    threshold: float = 0.5,
+    query_emb=None,
+    persist_embeddings: bool = False,
+) -> str:
     """
     Encuentra la mejor coincidencia semántica usando embeddings cacheados.
 
@@ -723,12 +742,15 @@ def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: flo
         for term, emb in zip(missing_terms, missing_embs):
             vocab_embeddings[term] = emb
 
-        # Guardar embeddings nuevos en la BD para futuras búsquedas
-        try:
-            _save_color_embeddings(client_id, {term: emb.tolist() for term, emb in zip(missing_terms, missing_embs)})
-            print(f"✅ {len(missing_terms)} embeddings guardados en BD para futuras búsquedas")
-        except Exception as e:
-            print(f"⚠️ Error guardando embeddings: {e}")
+        # En modo read-only no persistimos embeddings durante búsquedas online.
+        if client_id and _allow_embedding_persistence(persist_embeddings):
+            try:
+                _save_color_embeddings(client_id, {term: emb.tolist() for term, emb in zip(missing_terms, missing_embs)})
+                print(f"✅ {len(missing_terms)} embeddings guardados en BD para futuras búsquedas")
+            except Exception as e:
+                print(f"⚠️ Error guardando embeddings: {e}")
+        else:
+            print(f"ℹ️ Read-only: {len(missing_terms)} embeddings calculados en memoria (sin guardar en BD)")
 
     # Construir matriz de embeddings y términos alineados
     aligned_terms = [v for v in vocab_lower if v in vocab_embeddings]
@@ -752,7 +774,15 @@ def _semantic_match(query: str, vocabulary: list, client_id: int, threshold: flo
     return None
 
 
-def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, threshold: float = 0.4, top_k: int = 3, query_emb=None) -> list:
+def _semantic_match_multiple(
+    query: str,
+    vocabulary: list,
+    client_id: int,
+    threshold: float = 0.4,
+    top_k: int = 3,
+    query_emb=None,
+    persist_embeddings: bool = False,
+) -> list:
     """
     Encuentra múltiples coincidencias semánticas usando embeddings cacheados.
 
@@ -831,13 +861,15 @@ def _semantic_match_multiple(query: str, vocabulary: list, client_id: int, thres
         for term, emb in zip(missing_terms, missing_embs):
             vocab_embeddings[term] = emb
 
-        # Guardar embeddings nuevos en la BD para futuras búsquedas (solo si client_id válido)
-        if client_id:
+        # En modo read-only no persistimos embeddings durante búsquedas online.
+        if client_id and _allow_embedding_persistence(persist_embeddings):
             try:
                 _save_color_embeddings(client_id, {term: emb.tolist() for term, emb in zip(missing_terms, missing_embs)})
                 print(f"✅ {len(missing_terms)} embeddings guardados en BD para futuras búsquedas")
             except Exception as e:
                 print(f"⚠️ Error guardando embeddings: {e}")
+        else:
+            print(f"ℹ️ Read-only: {len(missing_terms)} embeddings calculados en memoria (sin guardar en BD)")
 
     # Construir matriz de embeddings y términos alineados
     aligned_terms = [v for v in vocab_lower if v in vocab_embeddings]
