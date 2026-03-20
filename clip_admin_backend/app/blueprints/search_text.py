@@ -3143,6 +3143,69 @@ def text_search_legacy():
                 "product_url": final_product_url  # URL para Tiendanube (prioriza external_url)
             })
 
+        # RESPUESTA DIRECTA POST-STAGE2
+        # Desactiva el filtrado/reordenamiento legacy posterior para preservar ranking CLIP.
+        elapsed = time.time() - start_time
+        results_by_category = {}
+        group_by_category = False
+
+        unique_categories = list(set(r.get('category') or 'Sin categoría' for r in formatted_results))
+        should_group = len(unique_categories) > 1
+
+        if should_group:
+            group_by_category = True
+            for row in formatted_results:
+                cat = row.get('category') or 'Sin categoría'
+                if cat not in results_by_category:
+                    results_by_category[cat] = []
+                if len(results_by_category[cat]) < per_category_limit:
+                    results_by_category[cat].append(row)
+            final_results = [item for items in results_by_category.values() for item in items]
+        else:
+            final_results = formatted_results[:limit]
+
+        exposed_attribute_keys = []
+        exposed_attribute_labels = {}
+        try:
+            from app.models.product_attribute_config import ProductAttributeConfig
+            configs = ProductAttributeConfig.query.filter_by(client_id=client.id).all()
+            for cfg in configs:
+                key_l = (cfg.key or '').strip().lower()
+                if not key_l:
+                    continue
+                if cfg.expose_in_search:
+                    exposed_attribute_keys.append(key_l)
+                exposed_attribute_labels[key_l] = (cfg.label or cfg.key or key_l)
+        except Exception:
+            pass
+
+        response_data = {
+            "success": True,
+            "query": query_text,
+            "expanded_terms": expanded_terms_cache,
+            "stage1_candidates": len(candidates),
+            "total_results": len(final_results),
+            "processing_time": round(elapsed, 3),
+            "search_module": "custom" if (client_slug and has_custom_module(client_slug)) else "generic",
+            "user_feedback": user_feedback,
+            "group_by_category": group_by_category,
+            "categories_searched": user_feedback.get('categories_shown') or available_names_for_guidance,
+            "exposed_attribute_keys": exposed_attribute_keys,
+            "exposed_attribute_labels": exposed_attribute_labels
+        }
+
+        if group_by_category:
+            response_data["results_by_category"] = results_by_category
+            response_data["results"] = []
+        else:
+            response_data["results"] = final_results
+
+        response = jsonify(response_data)
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
+        return response
+
         # IMPORTANTE: conservar la intención explícita de atributos/color para el
         # ranking final. Si se limpia aquí, se pierde la priorización solicitada
         # por el usuario (ej: "azul", "manga corta").
