@@ -5213,15 +5213,8 @@ def text_search():
                     client_id=client.id,
                     color_terms=dynamic_color_terms,
                 )
-                color_name_lexical_match = bool(name_color_signals & target_color_norms)
-                has_non_target_name_color = bool(
-                    name_color_signals and any(sig not in target_color_norms for sig in name_color_signals)
-                )
-
-                # Si en el nombre hay color mixto/contradictorio y no hay match en atributo color,
-                # evitamos tomar el nombre como evidencia fuerte (ej: "Blue Note Beige").
-                if has_non_target_name_color and not color_attr_lexical_match:
-                    color_name_lexical_match = False
+                has_target_name_color = bool(name_color_signals & target_color_norms)
+                color_name_lexical_match = has_target_name_color
 
                 # Prioridad estricta pedida:
                 # 1) atributo configurado, 2) embedding visual, 3) nombre (solo fallback).
@@ -5291,13 +5284,21 @@ def text_search():
             )
 
         results_by_category = {}
-        if no_explicit_category:
+        category_order = []
+        for row in formatted_results:
+            category_name = row.get('category') or 'Sin categoría'
+            if category_name not in category_order:
+                category_order.append(category_name)
+
+        should_group_by_category = len(category_order) > 1
+        if should_group_by_category:
             for row in formatted_results:
                 category_name = row.get('category') or 'Sin categoría'
                 bucket = results_by_category.setdefault(category_name, [])
                 if len(bucket) < per_category_limit:
                     bucket.append(row)
-        group_by_category = bool(no_explicit_category and results_by_category)
+
+        group_by_category = bool(should_group_by_category and results_by_category)
 
         if group_by_category:
             limited_results = []
