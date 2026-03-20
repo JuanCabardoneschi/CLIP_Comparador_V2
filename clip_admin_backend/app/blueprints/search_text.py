@@ -3219,6 +3219,16 @@ def text_search():
         }
         color_visual_score_cache = {}
 
+        def _get_color_family_keys(target_color):
+            target_norm = str(target_color or '').strip().lower()
+            target_aliases = {
+                'azul': ['azul', 'celeste'],
+                'celeste': ['celeste', 'azul'],
+                'marron': ['marron', 'beige'],
+                'marrón': ['marron', 'beige'],
+            }
+            return target_aliases.get(target_norm, [target_norm])
+
         def _infer_color_from_product_embedding(product_id):
             nonlocal color_text_matrix
             try:
@@ -3290,13 +3300,7 @@ def text_search():
                         color_text_matrix = text_features.cpu().numpy().astype(np.float32)
 
                 target_norm = str(target_color or '').strip().lower()
-                target_aliases = {
-                    'azul': ['azul', 'celeste'],
-                    'celeste': ['celeste', 'azul'],
-                    'marron': ['marron', 'beige'],
-                    'marrón': ['marron', 'beige'],
-                }
-                candidate_keys = target_aliases.get(target_norm, [target_norm])
+                candidate_keys = _get_color_family_keys(target_norm)
                 candidate_indexes = [idx for idx, key in enumerate(color_keys) if key in candidate_keys]
                 if not candidate_indexes:
                     candidate_indexes = [idx for idx, key in enumerate(color_keys) if key == target_norm]
@@ -3404,14 +3408,20 @@ def text_search():
 
             def _score(row):
                 try:
+                    if strict_exact_match:
+                        resolved_color = _resolve_product_color_norm(row)
+                        if resolved_color:
+                            resolved_norm = str(resolved_color).strip().lower()
+                            if resolved_norm == target_color:
+                                return 1.0
+                        return _get_product_color_similarity(row.get('id'), target_color)
+
                     resolved_color = _resolve_product_color_norm(row)
                     if not resolved_color:
                         return 0.0
                     resolved_norm = str(resolved_color).strip().lower()
                     if resolved_norm == target_color:
                         return 1.0
-                    if strict_exact_match:
-                        return _get_product_color_similarity(row.get('id'), target_color)
                     if target_emb_local is None:
                         return 0.0
                     if resolved_norm in sim_cache:
@@ -3591,11 +3601,12 @@ def text_search():
                 print(f"🎨 Filtrando por color: token='{color_search_token}', base={base_colors}")
 
                 alias_map = {
-                    'azul': {'azul', 'celeste', 'marino', 'navy'},
+                    'azul': {'azul', 'celeste', 'marino', 'navy', 'blue'},
                     'celeste': {'celeste', 'azul', 'marino', 'navy'},
                     'marron': {'marron', 'marrón', 'brown', 'habano', 'tostado', 'camel', 'caramelo', 'beige', 'baige', 'tierra', 'terra'},
                     'marrón': {'marron', 'marrón', 'brown', 'habano', 'tostado', 'camel', 'caramelo', 'beige', 'baige', 'tierra', 'terra'},
                 }
+                exact_color_visual_threshold = 0.22
 
                 backfill_tokens = set(base_set)
                 for bc in list(base_set):
@@ -3625,16 +3636,14 @@ def text_search():
                                 if candidate_attr in base_set or any(b in candidate_attr for b in base_set):
                                     return True
 
-                    # 2) embedding de imagen
-                    emb_color = _infer_color_from_product_embedding(row.get('id'))
-                    if emb_color:
-                        emb_norm = str(emb_color).strip().lower()
-                        if emb_norm in base_set or any(b in emb_norm for b in base_set):
-                            return True
+                    # 2) embedding de imagen por score continuo de familia, no por top-1.
+                    visual_score = _get_product_color_similarity(row.get('id'), base_anchor)
+                    if visual_score >= exact_color_visual_threshold:
+                        return True
 
                     # 3) nombre de producto
                     name_txt = str(row.get('name') or '').strip().lower()
-                    if name_txt and any(b in name_txt for b in base_set):
+                    if name_txt and any(tok in name_txt for tok in backfill_tokens):
                         return True
 
                     return False
