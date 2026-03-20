@@ -3218,7 +3218,7 @@ def text_search_legacy():
             'cache_miss': 0,
         }
         color_visual_score_cache = {}
-        strict_color_min_score = 0.30
+        strict_color_min_score = 0.25
 
         def _get_color_family_keys(target_color):
             target_norm = str(target_color or '').strip().lower()
@@ -5140,7 +5140,8 @@ def text_search():
                 'valor_detectado': detected_color_normalized,
             })
 
-        strict_color_min_score = 0.30
+        # Umbral más permisivo: CLIP detecta azul a 0.25+ incluso sin atributo configurado
+        strict_color_min_score = 0.25
         dynamic_color_terms = []
         target_color_norms = set()
         if detected_color_intent and detected_color_normalized:
