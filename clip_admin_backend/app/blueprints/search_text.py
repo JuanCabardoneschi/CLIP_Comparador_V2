@@ -1104,7 +1104,12 @@ def stage2_precise_rerank_legacy(query_text: str, candidates: list, limit: int =
     return top_results
 
 
-def _build_clip_query_from_extraction(extraction_result: dict, client_id: str) -> str:
+def _build_clip_query_from_extraction(
+    extraction_result: dict,
+    client_id: str,
+    detected_color_token: str = None,
+    detected_color_normalized: str = None,
+) -> str:
     """Construye frase CLIP nueva: sustantivo + modificadores directos.
 
     - Si encuentra color sistémico (ej. chocolate), lo transforma al preferido principal
@@ -1121,6 +1126,7 @@ def _build_clip_query_from_extraction(extraction_result: dict, client_id: str) -
 
     normalized_modifiers = []
     systemic_map = {}
+    excluded_tokens = set()
     try:
         from app.utils.semantic_colors import _load_system_colors
         data_sc = _load_system_colors()
@@ -1136,17 +1142,37 @@ def _build_clip_query_from_extraction(extraction_result: dict, client_id: str) -
             ]
             if preferred:
                 systemic_map[token] = preferred[0]
+        excluded_cfg = data_sc.get('excluded_tokens', {}) if isinstance(data_sc, dict) else {}
+        if isinstance(excluded_cfg, dict):
+            for key, values in excluded_cfg.items():
+                if key in ('description', 'min_token_length', 'require_adj_pos'):
+                    continue
+                if isinstance(values, list):
+                    excluded_tokens.update(
+                        str(value).strip().lower()
+                        for value in values
+                        if str(value).strip()
+                    )
     except Exception:
         systemic_map = {}
+        excluded_tokens = set()
 
     for raw_mod in modifiers:
         mod = str(raw_mod or '').strip().lower()
         if not mod:
             continue
+        if mod == 'color' or mod in excluded_tokens:
+            continue
         mapped = systemic_map.get(mod, mod)
         if mapped != mod:
             print(f"🎨 Normalización sistémica pre-CLIP: '{mod}' -> '{mapped}'")
         normalized_modifiers.append(mapped)
+
+    explicit_color = str(detected_color_token or detected_color_normalized or '').strip().lower()
+    if explicit_color:
+        explicit_color = systemic_map.get(explicit_color, explicit_color)
+        if explicit_color not in normalized_modifiers:
+            normalized_modifiers.append(explicit_color)
 
     phrase_tokens = [category] + normalized_modifiers
     phrase_tokens = [t for t in phrase_tokens if t]
@@ -3006,14 +3032,23 @@ def text_search():
 
         # STAGE 2 NUEVO: construir frase CLIP (sustantivo + modificadores directos)
         # con normalización sistémica de color previa (ej. chocolate->marron).
-        clip_query_text = _build_clip_query_from_extraction(extraction_result, client.id)
+        clip_query_text = _build_clip_query_from_extraction(
+            extraction_result,
+            client.id,
+            detected_color_token=detected_color_token,
+            detected_color_normalized=detected_color_normalized,
+        )
         if not clip_query_text:
             # Fallback defensivo: usar query_text vigente si no pudo construirse frase.
             clip_query_text = query_text
         print(f"🧠 Frase CLIP final: '{clip_query_text}'")
 
-        # N siempre es el límite configurado del sistema para el cliente/request.
-        rerank_limit = limit
+        # Cuando hay intención explícita de color, ampliar el pool para que el filtro
+        # posterior por embedding trabaje sobre más candidatos antes del corte final.
+        if detected_color_intent:
+            rerank_limit = min(len(candidates), max(limit * 10, 50)) if candidates else limit
+        else:
+            rerank_limit = limit
         scored_results = stage2_precise_rerank(clip_query_text, candidates, limit=rerank_limit)
 
         # Calcular cumplimiento de atributos por producto
@@ -3284,7 +3319,7 @@ def text_search():
                 _hang_trace(f"resolve_color result product_id={result_id} -> {resolved}")
             return resolved
 
-        def _build_color_priority_score_fn(requested_attrs_dict, detected_color_norm):
+        def _build_color_priority_score_fn(requested_attrs_dict, detected_color_norm, strict_exact_match=False):
             if not color_priority_enabled:
                 return (lambda _r: 0.0), None
 
@@ -3320,6 +3355,8 @@ def text_search():
                     resolved_norm = str(resolved_color).strip().lower()
                     if resolved_norm == target_color:
                         return 1.0
+                    if strict_exact_match:
+                        return 0.0
                     if target_emb_local is None:
                         return 0.0
                     if resolved_norm in sim_cache:
@@ -3562,51 +3599,59 @@ def text_search():
                     target_total = limit
 
                 if len(filtered_results) < target_total:
-                    print(f"🔍 Exactos insuficientes ({len(filtered_results)}/{target_total}), buscando colores similares a '{base_anchor}'...")
+                    strict_color_search = bool(detected_color_token)
+                    if strict_color_search:
+                        print(
+                            f"🔍 Exactos insuficientes ({len(filtered_results)}/{target_total}), "
+                            f"manteniendo búsqueda estricta para '{base_anchor}' por CLIP/léxico..."
+                        )
+                    else:
+                        print(f"🔍 Exactos insuficientes ({len(filtered_results)}/{target_total}), buscando colores similares a '{base_anchor}'...")
                     try:
-                        from app.utils.colors import _get_color_embedding
-                        target_emb = _get_color_embedding(base_anchor, client_id=client.id)
-                        similar_colors = []
+                        if not strict_color_search:
+                            from app.utils.colors import _get_color_embedding
+                            target_emb = _get_color_embedding(base_anchor, client_id=client.id)
+                            similar_colors = []
 
-                        if target_emb is not None:
-                            available_product_colors = [
-                                _resolve_product_color_norm(r)
-                                for r in pre_color_results
-                            ]
-                            available_product_colors = [c for c in available_product_colors if c]
-                            scored = []
-                            for c in set(available_product_colors):
-                                if c in base_set:
-                                    continue
-                                emb_c = _get_color_embedding(c, client_id=client.id)
-                                if emb_c is None:
-                                    continue
-                                denom = (np.linalg.norm(target_emb) * np.linalg.norm(emb_c))
-                                if denom == 0:
-                                    continue
-                                sim = float(np.dot(target_emb, emb_c) / denom)
-                                scored.append((c, sim))
+                            if target_emb is not None:
+                                available_product_colors = [
+                                    _resolve_product_color_norm(r)
+                                    for r in pre_color_results
+                                ]
+                                available_product_colors = [c for c in available_product_colors if c]
+                                scored = []
+                                for c in set(available_product_colors):
+                                    if c in base_set:
+                                        continue
+                                    emb_c = _get_color_embedding(c, client_id=client.id)
+                                    if emb_c is None:
+                                        continue
+                                    denom = (np.linalg.norm(target_emb) * np.linalg.norm(emb_c))
+                                    if denom == 0:
+                                        continue
+                                    sim = float(np.dot(target_emb, emb_c) / denom)
+                                    scored.append((c, sim))
 
-                            scored.sort(key=lambda x: x[1], reverse=True)
-                            THRESH = 0.50
-                            TOPK = 4
-                            similar_colors = [c for c, s in scored if s >= THRESH][:TOPK]
-                            if not similar_colors:
-                                THRESH = 0.35
+                                scored.sort(key=lambda x: x[1], reverse=True)
+                                THRESH = 0.50
+                                TOPK = 4
                                 similar_colors = [c for c, s in scored if s >= THRESH][:TOPK]
-                            print(f"🎨 Similares a '{base_anchor}': {[(c, round(s,3)) for c,s in scored[:5]]}")
-                            print(f"✅ Top similares (>{THRESH}): {similar_colors}")
+                                if not similar_colors:
+                                    THRESH = 0.35
+                                    similar_colors = [c for c, s in scored if s >= THRESH][:TOPK]
+                                print(f"🎨 Similares a '{base_anchor}': {[(c, round(s,3)) for c,s in scored[:5]]}")
+                                print(f"✅ Top similares (>{THRESH}): {similar_colors}")
 
-                        if similar_colors:
-                            similar_set = set(similar_colors)
-                            for r in pre_color_results:
-                                if r in filtered_results:
-                                    continue
-                                rc = _resolve_product_color_norm(r)
-                                if rc in similar_set:
-                                    filtered_results.append(r)
-                                if len(filtered_results) >= target_total:
-                                    break
+                            if similar_colors:
+                                similar_set = set(similar_colors)
+                                for r in pre_color_results:
+                                    if r in filtered_results:
+                                        continue
+                                    rc = _resolve_product_color_norm(r)
+                                    if rc in similar_set:
+                                        filtered_results.append(r)
+                                    if len(filtered_results) >= target_total:
+                                        break
 
                         # Backfill léxico: si aún faltan resultados, completar por términos de color en nombre/atributos.
                         if len(filtered_results) < target_total:
@@ -3879,7 +3924,8 @@ def text_search():
 
             color_priority_score_fn, color_priority_target = _build_color_priority_score_fn(
                 requested_attrs,
-                detected_color_normalized
+                detected_color_normalized,
+                strict_exact_match=bool(detected_color_token)
             )
             for r in formatted_results:
                 r['_color_priority_score'] = color_priority_score_fn(r)
@@ -3901,7 +3947,11 @@ def text_search():
         else:
             # Si no hubo atributos solicitados, priorizar stock disponible y luego similitud
             all_available_values = {}
-            color_priority_score_fn, color_priority_target = _build_color_priority_score_fn({}, detected_color_normalized)
+            color_priority_score_fn, color_priority_target = _build_color_priority_score_fn(
+                {},
+                detected_color_normalized,
+                strict_exact_match=bool(detected_color_token)
+            )
             for r in formatted_results:
                 r['_color_priority_score'] = color_priority_score_fn(r)
             _hang_trace(f"else branch color priority scoring done count={len(formatted_results)} target={color_priority_target}")
