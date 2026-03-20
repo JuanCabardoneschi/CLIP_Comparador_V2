@@ -2899,6 +2899,7 @@ def text_search():
 
         # Calcular cumplimiento de atributos por producto
         requested_attrs = attr_info.get('attributes', {})
+        requested_attrs_confidence = attr_info.get('attributes_confidence', {}) or {}
         not_configured_attrs = attr_info.get('not_configured', [])  # 🆕 Obtener atributos no configurados
 
         # 🆕 FILTRADO CRÍTICO: Excluir atributos no configurados de requested_attrs
@@ -2906,6 +2907,10 @@ def text_search():
         # Esto permite que el sistema haga búsqueda semántica sin fallar por atributos ausentes
         if not_configured_attrs:
             requested_attrs = {k: v for k, v in requested_attrs.items() if k.lower() not in [nc.lower() for nc in not_configured_attrs]}
+            requested_attrs_confidence = {
+                k: v for k, v in requested_attrs_confidence.items()
+                if str(k).lower() not in [nc.lower() for nc in not_configured_attrs]
+            }
             log_verbose(LogCategory.SEARCH, f"🔄 Atributos no configurados excluidos: {not_configured_attrs}. Filtrando por: {list(requested_attrs.keys())}")
 
         requested_count = int(attr_info.get('requested_count', 0))
@@ -2984,15 +2989,9 @@ def text_search():
                 "product_url": final_product_url  # URL para Tiendanube (prioriza external_url)
             })
 
-        # --- LEGACY MODE (no usado en flujo nuevo) ---
-        # Conservamos este bloque para referencia/rollback, pero en el flujo nuevo
-        # no filtramos por JSON ni por nombre para color.
-        use_legacy_post_filter = False
-        if not use_legacy_post_filter:
-            requested_attrs = {}
-            requested_count = 0
-            detected_color_intent = False
-            detected_color_normalized = None
+        # IMPORTANTE: conservar la intención explícita de atributos/color para el
+        # ranking final. Si se limpia aquí, se pierde la priorización solicitada
+        # por el usuario (ej: "azul", "manga corta").
 
         # 🔍 FILTRADO POR ATRIBUTOS SOLICITADOS (LEGACY)
         # Si se solicitaron atributos, mostrar productos que cumplan:
@@ -3225,6 +3224,101 @@ def text_search():
                     return 0.0
 
             return _score, target_color
+
+        def _build_attribute_priority_score_fn(requested_attrs_dict, attrs_confidence_dict):
+            """Crea un score dinamico (0-1) segun atributos explicitamente pedidos."""
+            if not isinstance(requested_attrs_dict, dict) or not requested_attrs_dict:
+                return (lambda _r: 0.0), {}
+
+            import unicodedata as _ud
+
+            def _norm_txt(value):
+                if value is None:
+                    return ''
+                txt = str(value).strip().lower()
+                return ''.join(ch for ch in _ud.normalize('NFD', txt) if _ud.category(ch) != 'Mn')
+
+            def _to_norm_list(value):
+                if value is None:
+                    return []
+                raw_vals = []
+                if isinstance(value, list):
+                    raw_vals = value
+                elif isinstance(value, dict):
+                    raw_vals = [value.get('value') or value.get('label') or value.get('name')]
+                else:
+                    raw_vals = [value]
+                return [_norm_txt(v) for v in raw_vals if str(v).strip()]
+
+            requested_by_key = {}
+            for key, value in requested_attrs_dict.items():
+                k_norm = _norm_txt(key)
+                if not k_norm:
+                    continue
+                requested_by_key[k_norm] = value
+
+            if not requested_by_key:
+                return (lambda _r: 0.0), {}
+
+            confidence_lookup = {}
+            if isinstance(attrs_confidence_dict, dict):
+                for key, value in attrs_confidence_dict.items():
+                    confidence_lookup[_norm_txt(key)] = _norm_txt(value)
+
+            # Ponderacion generica por calidad de deteccion (no depende de keys hardcodeadas)
+            confidence_weight = {
+                'boolean': 1.20,
+                'lexical': 1.15,
+                'semantic': 1.00,
+            }
+
+            weights = {}
+            requested_values_norm = {}
+            for key_norm, req_value in requested_by_key.items():
+                conf = confidence_lookup.get(key_norm, '')
+                weights[key_norm] = confidence_weight.get(conf, 1.0)
+                requested_values_norm[key_norm] = set(_to_norm_list(req_value))
+
+            total_weight = sum(weights.values()) or 1.0
+
+            def _score(row):
+                try:
+                    attrs_raw = row.get('attributes') or {}
+                    attrs_by_key = {
+                        _norm_txt(k): v for k, v in attrs_raw.items()
+                    } if isinstance(attrs_raw, dict) else {}
+
+                    matched_raw = row.get('attributes_matched') or {}
+                    matched_keys = {_norm_txt(k) for k in matched_raw.keys()}
+
+                    matched_weight = 0.0
+                    for key_norm, req_values in requested_values_norm.items():
+                        is_match = False
+
+                        if key_norm in matched_keys:
+                            is_match = True
+                        else:
+                            prod_value = attrs_by_key.get(key_norm)
+                            if prod_value is not None:
+                                prod_values_norm = _to_norm_list(prod_value)
+                                if not req_values:
+                                    is_match = bool(prod_values_norm)
+                                else:
+                                    for pv in prod_values_norm:
+                                        if pv in req_values:
+                                            is_match = True
+                                            break
+                                        if pv.endswith('s') and pv[:-1] in req_values:
+                                            is_match = True
+                                            break
+                        if is_match:
+                            matched_weight += weights.get(key_norm, 1.0)
+
+                    return max(0.0, min(1.0, matched_weight / total_weight))
+                except Exception:
+                    return 0.0
+
+            return _score, weights
 
         if requested_count > 0 or detected_color_normalized or detected_color_intent:
             _hang_trace(
@@ -3685,14 +3779,57 @@ def text_search():
             )
             _hang_trace(f"else branch final sort done count={len(formatted_results)}")
 
-        # Flujo nuevo CLIP-first: orden final estrictamente por similitud CLIP y top N.
+        # Score dinamico por atributos solicitados (ej: color, manga, material, etc.)
+        attr_priority_score_fn, attr_priority_weights = _build_attribute_priority_score_fn(
+            requested_attrs,
+            requested_attrs_confidence
+        )
+        for r in formatted_results:
+            r['_attribute_priority_score'] = attr_priority_score_fn(r)
+
+        if attr_priority_weights:
+            print(f"[TEXT_SEARCH] Attribute priority activo: attrs={list(attr_priority_weights.keys())}")
+
+        # Ranking final compuesto: prioriza fuerte atributos explicitos y color
+        # sin hardcodear claves de negocio por cliente.
         try:
-            formatted_results.sort(key=lambda r: r.get("similarity", 0.0), reverse=True)
+            has_attr_intent = bool(attr_priority_weights)
+            has_color_intent = bool(detected_color_normalized)
+
+            similarity_weight = 0.35 if has_attr_intent else 0.80
+            attr_weight = 0.45 if has_attr_intent else 0.00
+            color_weight = 0.20 if has_color_intent else 0.00
+            total_weight = similarity_weight + attr_weight + color_weight
+            if total_weight <= 0:
+                total_weight = 1.0
+
+            for r in formatted_results:
+                sim_val = float(r.get("similarity", 0.0) or 0.0)
+                attr_val = float(r.get("_attribute_priority_score", 0.0) or 0.0)
+                color_val = float(r.get("_color_priority_score", 0.0) or 0.0)
+                r['_final_rank_score'] = (
+                    (similarity_weight * sim_val) +
+                    (attr_weight * attr_val) +
+                    (color_weight * color_val)
+                ) / total_weight
+
+            formatted_results.sort(
+                key=lambda r: (
+                    r.get("_final_rank_score", 0.0),
+                    r.get("attributes_match_count", 0),
+                    r.get("_color_priority_score", 0.0),
+                    r.get("similarity", 0.0)
+                ),
+                reverse=True
+            )
             formatted_results = formatted_results[:limit]
-            all_available_values = {}
-            print(f"🎯 Flujo CLIP-first activo: devolviendo {len(formatted_results)} resultados (top {limit})")
+            print(
+                f"[TEXT_SEARCH] Ranking compuesto activo: "
+                f"sim_w={similarity_weight:.2f}, attr_w={attr_weight:.2f}, color_w={color_weight:.2f}. "
+                f"Devolviendo {len(formatted_results)} resultados (top {limit})"
+            )
         except Exception as e_new_rank:
-            print(f"⚠️ Error aplicando ranking final CLIP-first: {e_new_rank}")
+            print(f"⚠️ Error aplicando ranking final compuesto: {e_new_rank}")
 
         # Respuesta final
         elapsed = time.time() - start_time
