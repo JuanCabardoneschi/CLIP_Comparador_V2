@@ -5265,7 +5265,19 @@ def text_search():
                 '_color_match_priority': int(color_match_priority),
             })
 
-        if detected_color_intent:
+        # Detectar si habrá grouping ANTES de ordenar
+        results_by_category = {}
+        category_order = []
+        for row in formatted_results:
+            category_name = row.get('category') or 'Sin categoría'
+            if category_name not in category_order:
+                category_order.append(category_name)
+
+        should_group_by_category = len(category_order) > 1
+
+        # Solo reordenar por color si NO hay grouping (búsqueda de color singular).
+        # Si hay múltiples categorías, mantener ranking de CLIP que ya es óptimo.
+        if detected_color_intent and not should_group_by_category:
             formatted_results.sort(
                 key=lambda row: (
                     int(row.get('_color_match_priority', 0)),
@@ -5275,7 +5287,7 @@ def text_search():
                 ),
                 reverse=True,
             )
-        else:
+        elif not detected_color_intent:
             formatted_results.sort(
                 key=lambda row: (
                     float(row.get('attributes_match_ratio', 0.0)),
@@ -5283,15 +5295,6 @@ def text_search():
                 ),
                 reverse=True,
             )
-
-        results_by_category = {}
-        category_order = []
-        for row in formatted_results:
-            category_name = row.get('category') or 'Sin categoría'
-            if category_name not in category_order:
-                category_order.append(category_name)
-
-        should_group_by_category = len(category_order) > 1
         if should_group_by_category:
             for row in formatted_results:
                 category_name = row.get('category') or 'Sin categoría'
