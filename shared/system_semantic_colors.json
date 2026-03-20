@@ -32,5 +32,16 @@
     "fallback_threshold": 0.48,
     "top_k": 3,
     "max_final_colors": 2
+  },
+  "excluded_tokens": {
+    "description": "Palabras que NO deben procesarse como colores even si lo parecen. Evita falsos positivos.",
+    "generic_stop_words": ["color", "tono", "tonos", "colores", "matiz", "sombra"],
+    "body_parts": ["pecho", "cabeza", "cuello", "cintura", "brazo", "brazos", "hombro", "hombros", "espalda"],
+    "locations": ["cocina", "cocinar", "hogar", "casa", "mesa", "piso"],
+    "materials": ["tela", "telas", "paño", "paños", "algodón", "lana", "seda"],
+    "common_nouns": ["cosa", "producto", "prenda", "ropa", "vestido", "item"],
+    "actions": ["mezclar", "combinar", "pintar"],
+    "min_token_length": 3,
+    "require_adj_pos": true
   }
 }

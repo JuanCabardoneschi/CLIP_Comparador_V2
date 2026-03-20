@@ -2841,6 +2841,22 @@ def text_search():
                     str(c).strip().lower() for c in _NLP_CONFIG.get('color_adjectives', []) if c
                 }
 
+            # 🆕 CARGAR TOKENS EXCLUIDOS: Palabras que NO deben procesarse como colores
+            excluded_color_tokens = set()
+            require_adj_for_color = False
+            try:
+                sc_data = _load_system_colors()
+                excluded_cfg = sc_data.get('excluded_tokens', {})
+                if isinstance(excluded_cfg, dict):
+                    for key, val in excluded_cfg.items():
+                        if key == 'description' or key == 'min_token_length' or key == 'require_adj_pos':
+                            continue
+                        if isinstance(val, list):
+                            excluded_color_tokens.update([str(t).strip().lower() for t in val if str(t).strip()])
+                    require_adj_for_color = bool(excluded_cfg.get('require_adj_pos', False))
+            except Exception as e:
+                print(f"⚠️ Error cargando excluded_tokens: {e}")
+
             # Construir candidatos de color SIN hardcodear vocabulario:
             # 1) intención extraída por LLM/normalizador (attr_info['color'])
             # 2) términos útiles del extractor sintáctico
@@ -2914,6 +2930,10 @@ def text_search():
                         continue
                     # 🆕 Saltar si es un atributo configurado (evita interpretar "bolsillos" como color)
                     if tok in configured_attr_tokens:
+                        continue
+                    # 🆕🆕 Saltar si es un token excluido (pecho, cocina, color, etc - palabras que confunden)
+                    if tok in excluded_color_tokens:
+                        print(f"🚫 Token excluido (no es color): '{tok}'")
                         continue
 
                     # Coincidencia léxica directa contra opciones de color del cliente
