@@ -224,6 +224,35 @@
             color: #64748b;
         }
 
+        /* Mobile source chooser (camera/gallery) */
+        .clip-mobile-source-actions {
+            display: none;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+        .clip-mobile-source-btn {
+            flex: 1;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+            color: #1e293b;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .clip-mobile-source-btn:hover {
+            background: #f8fafc;
+            border-color: #94a3b8;
+        }
+
+        @media (max-width: 768px) {
+            .clip-mobile-source-actions {
+                display: flex;
+            }
+        }
+
         /* Preview */
         .clip-preview {
             display: none;
@@ -701,6 +730,11 @@
                         <div class="clip-upload-icon">📸</div>
                         <div class="clip-upload-text">Arrastra una imagen aquí</div>
                         <div class="clip-upload-hint">o haz clic para seleccionar</div>
+
+                        <div class="clip-mobile-source-actions" id="clip-mobile-source-actions">
+                            <button type="button" class="clip-mobile-source-btn" id="clip-camera-btn">Usar cámara</button>
+                            <button type="button" class="clip-mobile-source-btn" id="clip-gallery-btn">Elegir de galería</button>
+                        </div>
                     </div>
                     <input type="file" id="clip-file-input" accept="image/*" style="display:none;">
 
@@ -757,6 +791,8 @@
         const preview = widgetContainer.querySelector('#clip-preview');
         const previewImg = widgetContainer.querySelector('#clip-preview-img');
         const removeBtn = widgetContainer.querySelector('#clip-remove-btn');
+        const cameraBtn = widgetContainer.querySelector('#clip-camera-btn');
+        const galleryBtn = widgetContainer.querySelector('#clip-gallery-btn');
 
         // Tabs
         widgetContainer.querySelectorAll('.clip-tab').forEach(tab => {
@@ -775,6 +811,23 @@
 
         // Upload area click
         upload.addEventListener('click', () => fileInput.click());
+
+        // Mobile explicit selectors (no afectan escritorio)
+        if (cameraBtn) {
+            cameraBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                fileInput.setAttribute('capture', 'environment');
+                fileInput.click();
+            });
+        }
+
+        if (galleryBtn) {
+            galleryBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                fileInput.removeAttribute('capture');
+                fileInput.click();
+            });
+        }
 
         // Drag & drop
         upload.addEventListener('dragover', (e) => {
