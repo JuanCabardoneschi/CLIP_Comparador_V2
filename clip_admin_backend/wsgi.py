@@ -482,24 +482,6 @@ def register_blueprints(app):
     except Exception as e:
         print(f"✗ Error registrando gpt4v_detection blueprint: {e}")
 
-    # 🆕 Blueprint de búsqueda textual V2 (nuevo sistema con GPT-4 + CLIP)
-    try:
-        from app.blueprints.search_text import bp as search_text_bp
-        app.register_blueprint(search_text_bp, url_prefix="/api")
-        print("✓ Blueprint search_text V2 registrado (🆕 NUEVO)")
-    except ImportError as e:
-        print(f"✗ Error importando search_text blueprint: {e}")
-
-    # 🆕 Blueprint de administración de perfiles de búsqueda
-    try:
-        from app.blueprints.search_profiles_admin import bp as search_profiles_admin_bp
-        app.register_blueprint(search_profiles_admin_bp)
-        print("✓ Blueprint search_profiles_admin registrado (🆕 NUEVO)")
-    except ImportError as e:
-        print(f"✗ Error importando search_profiles_admin blueprint: {e}")
-    except Exception as e:
-        print(f"✗ Error registrando search_text blueprint: {e}")
-
     # Blueprint de OAuth Tiendanube
     try:
         from app.blueprints.tiendanube_oauth import bp as tiendanube_oauth_bp
@@ -624,7 +606,6 @@ if __name__ == "__main__":
         # Leer configuración desde system_config.json
         from app.utils.system_config import system_config
         preload_clip = system_config.get('clip', 'preload', False)
-        preload_text = system_config.get('text', 'preload', False)
 
         if preload_clip:
             from app.blueprints.embeddings import get_clip_model
@@ -634,21 +615,7 @@ if __name__ == "__main__":
         else:
             print("⚡ CLIP se cargará al primer uso (lazy loading configurado)")
 
-        if preload_text:
-            from app.utils.llm_query_normalizer import get_model as get_minilm_model
-            print("⚡ Precargando MiniLM al iniciar (configuración del sistema)")
-            # Validar spaCy solo si se solicitó precarga de texto
-            try:
-                import spacy
-                model_name = os.getenv("SPACY_MODEL", "es_core_news_md")
-                _ = spacy.load(model_name, disable=["parser", "ner", "textcat"])
-                print(f"✅ spaCy validado correctamente ({model_name})")
-            except Exception as spacy_err:
-                print(f"⚠️ spaCy no disponible al inicio: {spacy_err} (se cargará on-demand)")
-            get_minilm_model()
-            print("✅ MiniLM precargado correctamente")
-        else:
-            print("⚡ MiniLM se cargará al primer uso (lazy loading configurado)")
+        print("⚡ Recursos de búsqueda textual deshabilitados")
     except Exception as e:
         # En caso de fallo de lectura de configuración, continuar en lazy
         print(f"⚠️  Error en configuración de precarga, usando lazy loading: {e}")

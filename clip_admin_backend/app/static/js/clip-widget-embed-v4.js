@@ -690,10 +690,6 @@
                         <span class="clip-tab-icon">📸</span>
                         <span>Búsqueda Visual</span>
                     </button>
-                    <button class="clip-tab" data-tab="text">
-                        <span class="clip-tab-icon">💬</span>
-                        <span>Búsqueda por Descripción</span>
-                    </button>
                 </div>
 
                 <!-- Tab Content: Visual Search -->
@@ -723,23 +719,6 @@
                             </div>
                         </div>
                     </div>
-                </div>
-
-                <!-- Tab Content: Text Search -->
-                <div class="clip-tab-content" id="clip-text-tab">
-                    <h2 class="clip-search-title">Describe lo que buscas</h2>
-                    <p class="clip-search-subtitle">Escribe qué producto necesitas y lo encontraremos</p>
-
-                    <input
-                        type="text"
-                        class="clip-text-input"
-                        id="clip-text-input"
-                        placeholder="Ej: remera negra con bolsillo"
-                    >
-
-                    <button class="clip-search-btn" id="clip-text-search-btn">
-                        🔍 Buscar Productos
-                    </button>
                 </div>
 
                 <!-- Loading State -->
@@ -778,8 +757,6 @@
         const preview = widgetContainer.querySelector('#clip-preview');
         const previewImg = widgetContainer.querySelector('#clip-preview-img');
         const removeBtn = widgetContainer.querySelector('#clip-remove-btn');
-        const textSearchBtn = widgetContainer.querySelector('#clip-text-search-btn');
-        const textInput = widgetContainer.querySelector('#clip-text-input');
 
         // Tabs
         widgetContainer.querySelectorAll('.clip-tab').forEach(tab => {
@@ -855,20 +832,6 @@
             resetLoadingSpinner();
         });
 
-        // Text search button
-        textSearchBtn.addEventListener('click', () => {
-            const query = textInput.value.trim();
-            if (!query || isSearching) return;
-            performTextSearch(query);
-        });
-
-        // Text input Enter key
-        textInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                const query = textInput.value.trim();
-                if (query && !isSearching) performTextSearch(query);
-            }
-        });
     }
 
     // ==================== API CALLS ====================
@@ -957,98 +920,6 @@
             hideLoading();
             showError('Error de conexión. Intenta nuevamente.');
             console.error(err);
-        });
-    }
-
-    function performTextSearch(query) {
-        // Marcar búsqueda en progreso
-        isSearching = true;
-
-        // Deshabilitar botón y cambiar texto
-        const textSearchBtn = widgetContainer.querySelector('#clip-text-search-btn');
-        if (textSearchBtn) {
-            textSearchBtn.disabled = true;
-            textSearchBtn.innerHTML = '<div style="width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; display: inline-block; vertical-align: middle; margin-right: 8px; animation: spin 1s linear infinite;"></div> Buscando...';
-        }
-
-        showLoading();
-
-        // Buscar elementos tanto en loading full como compact
-        const loadingText = widgetContainer.querySelector('#clip-loading-text');
-        const loadingSteps = widgetContainer.querySelector('#clip-loading-steps');
-        const loadingTextCompact = widgetContainer.querySelector('#clip-loading-text-compact');
-        const loadingStepsCompact = widgetContainer.querySelector('#clip-loading-steps-compact');
-
-        if (loadingText) loadingText.textContent = 'Buscando productos...';
-        if (loadingSteps) loadingSteps.style.display = 'none';
-        if (loadingTextCompact) loadingTextCompact.textContent = 'Buscando productos...';
-        if (loadingStepsCompact) loadingStepsCompact.style.display = 'none';
-
-        const currentApiKey = window.CLIPWidget?.apiKey || config.apiKey;
-
-        fetch(`${config.serverUrl}/api/search/text`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-Key': currentApiKey
-            },
-            body: JSON.stringify({ query, limit: 20 })
-        })
-        .then(res => res.json())
-        .then(data => {
-            hideLoading();
-
-            if (!data.success) {
-                if (data.categories_available || data.categories_searched) {
-                    showNoResults({
-                        message: data.message || 'No se detectó ninguna categoría válida',
-                        categories_available: data.categories_available || [],
-                        categories_searched: data.categories_searched || []
-                    });
-                } else {
-                    showError(data.message || data.error || 'Error en la búsqueda');
-                }
-                return;
-            }
-
-            widgetContainer.querySelector('#clip-detection').classList.remove('active');
-
-            // Verificar si hay resultados (en formato plano o agrupado)
-            const hasResults = (data.results && data.results.length > 0) ||
-                              (data.filtering?.top_5_productos && data.filtering.top_5_productos.length > 0);
-
-            if (hasResults) {
-                displayTextSearchResults(data);
-            } else {
-                showNoResults(data.user_feedback || data.partial_match_info || { message: 'No se encontraron productos' });
-            }
-        })
-        .catch(err => {
-            hideLoading();
-            showError('Error de conexión. Intenta nuevamente.');
-            console.error(err);
-        })
-        .finally(() => {
-            // Marcar búsqueda completada
-            isSearching = false;
-
-            // Restaurar botón
-            const textSearchBtn = widgetContainer.querySelector('#clip-text-search-btn');
-            if (textSearchBtn) {
-                textSearchBtn.disabled = false;
-                textSearchBtn.innerHTML = '🔍 Buscar Productos';
-            }
-
-            // Restaurar textos originales en ambos loadings
-            const loadingText = widgetContainer.querySelector('#clip-loading-text');
-            const loadingSteps = widgetContainer.querySelector('#clip-loading-steps');
-            const loadingTextCompact = widgetContainer.querySelector('#clip-loading-text-compact');
-            const loadingStepsCompact = widgetContainer.querySelector('#clip-loading-steps-compact');
-
-            if (loadingText) loadingText.textContent = 'Analizando imagen con IA...';
-            if (loadingSteps) loadingSteps.style.display = 'block';
-            if (loadingTextCompact) loadingTextCompact.textContent = 'Analizando imagen con IA...';
-            if (loadingStepsCompact) loadingStepsCompact.style.display = 'block';
         });
     }
 

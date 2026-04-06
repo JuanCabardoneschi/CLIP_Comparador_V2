@@ -1,6 +1,6 @@
 """
 Blueprint de API
-Endpoints internos para el admin panel y búsqueda visual
+Endpoints internos para el admin panel y bï¿½squeda visual
 """
 
 import sys
@@ -59,18 +59,18 @@ CORS(bp, origins=["*"],
      methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
      allow_headers=["Content-Type", "X-API-Key", "Authorization"])
 
-# ?? CACHÉ GLOBAL DE EMBEDDINGS (evita recalcular en cada request)
+# ?? CACHï¿½ GLOBAL DE EMBEDDINGS (evita recalcular en cada request)
 _CATEGORY_EMBEDDINGS_CACHE = {}
 _COLOR_EMBEDDINGS_CACHE = {}
 
-# spaCy es OBLIGATORIO para tokenización (no opcional)
+# spaCy es OBLIGATORIO para tokenizaciï¿½n (no opcional)
 _USE_SPACY_NORMALIZER = True  # Siempre activo
 _SPACY_NLP = None
 
 def _get_spacy_nlp():
-    """Carga perezosa del modelo spaCy español (OBLIGATORIO)."""
+    """Carga perezosa del modelo spaCy espaï¿½ol (OBLIGATORIO)."""
     global _SPACY_NLP
-    # Si ya falló antes, no reintentar
+    # Si ya fallï¿½ antes, no reintentar
     if _SPACY_NLP is False:
         return None
     if _SPACY_NLP is None:
@@ -87,7 +87,7 @@ def _get_spacy_nlp():
 
 def _get_category_embedding(category_name: str, client_id: str):
     """
-    Obtiene embedding de categoría desde BD persistida o lo calcula si no existe.
+    Obtiene embedding de categorï¿½a desde BD persistida o lo calcula si no existe.
     Key: "category:<client_id>:<category_name>"
     """
     cache_key = f"{client_id}:{category_name.lower()}"
@@ -135,8 +135,8 @@ def _clip_prompt_for_category(category) -> str:
 
     Prioridad:
     1. category.clip_prompt (prompt personalizado completo)
-    2. category.name_en (nombre en inglés)
-    3. category.name (nombre en español sin traducción)
+    2. category.name_en (nombre en inglï¿½s)
+    3. category.name (nombre en espaï¿½ol sin traducciï¿½n)
 
     Returns:
         str: Prompt en formato "a photo of <label>"
@@ -147,21 +147,21 @@ def _clip_prompt_for_category(category) -> str:
             label = str(category.clip_prompt).strip().lower()
             return f"a photo of {label}"
 
-        # Prioridad 2: name_en (nombre en inglés)
+        # Prioridad 2: name_en (nombre en inglï¿½s)
         if getattr(category, "name_en", None) and str(category.name_en).strip():
             label = str(category.name_en).strip().lower()
             return f"a photo of {label}"
 
-        # Prioridad 3: name (español como último recurso, sin traducción)
+        # Prioridad 3: name (espaï¿½ol como ï¿½ltimo recurso, sin traducciï¿½n)
         if getattr(category, "name", None) and str(category.name).strip():
             label = str(category.name).strip().lower()
             return f"a photo of {label}"
 
-        # Sin datos: usar genérico
+        # Sin datos: usar genï¿½rico
         return "a photo of clothing"
 
     except Exception as e:
-        print(f"?? Error construyendo CLIP prompt para categoría: {e}")
+        print(f"?? Error construyendo CLIP prompt para categorï¿½a: {e}")
         return "a photo of clothing"
 
 
@@ -293,7 +293,7 @@ def dashboard_stats():
             # "searches_today": SearchLog.query.filter(
             #     func.date(SearchLog.created_at) == func.current_date()
             # ).count()
-            "searches_today": 0  # Deshabilitado - no se registran búsquedas
+            "searches_today": 0  # Deshabilitado - no se registran bï¿½squedas
         },
 
         # Top categorÃ­as por productos
@@ -628,40 +628,40 @@ def _process_image_data(image_file):
     return image_data, limit, threshold, None, None
 
 
-# Función movida a app.blueprints.search_visual
+# Funciï¿½n movida a app.blueprints.search_visual
 
 
-# Función movida a app.blueprints.search_visual
+# Funciï¿½n movida a app.blueprints.search_visual
 
 
-# Función movida a app.blueprints.search_visual
+# Funciï¿½n movida a app.blueprints.search_visual
 
 
-# Función movida a app.blueprints.search_visual
+# Funciï¿½n movida a app.blueprints.search_visual
 
 
-# Función movida a app.blueprints.search_visual
+# Funciï¿½n movida a app.blueprints.search_visual
 
 
-# Función movida a app.blueprints.search_visual
+# Funciï¿½n movida a app.blueprints.search_visual
 
 
-# Función movida a app.blueprints.search_visual
+# Funciï¿½n movida a app.blueprints.search_visual
 
 
-# Función movida a app.blueprints.search_visual
+# Funciï¿½n movida a app.blueprints.search_visual
 
 
-# Función movida a app.blueprints.search_visual
+# Funciï¿½n movida a app.blueprints.search_visual
 
 
-# Función movida a app.blueprints.search_visual
+# Funciï¿½n movida a app.blueprints.search_visual
 
 
-# Función movida a app.blueprints.search_visual
+# Funciï¿½n movida a app.blueprints.search_visual
 
 
-## Función detect_image_category movida a app.blueprints.search_visual
+## Funciï¿½n detect_image_category movida a app.blueprints.search_visual
 
 
 def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75):
@@ -684,7 +684,7 @@ def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75)
         clip_model, clip_processor = get_clip_model()
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Generar embeddings de nombres de categorías (usando nombre tal cual para no hardcodear)
+        # Generar embeddings de nombres de categorï¿½as (usando nombre tal cual para no hardcodear)
         category_names = [cat['category'].name for cat in categories_with_scores]
         texts = [f"a photo of {name}" for name in category_names]
 
@@ -697,18 +697,18 @@ def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75)
         similarity_matrix = torch.mm(text_embeddings, text_embeddings.t()).cpu().numpy()
 
         # Log de similitudes para debugging
-        print(f"\nDIVERSITY FILTER: Matriz de similitud entre {len(category_names)} categorías:")
+        print(f"\nDIVERSITY FILTER: Matriz de similitud entre {len(category_names)} categorï¿½as:")
         for i in range(len(category_names)):
             for j in range(i+1, len(category_names)):
                 sim = similarity_matrix[i][j]
                 if sim > diversity_threshold:
                     print(f"   - {category_names[i]} <-> {category_names[j]}: {sim:.3f} (SIMILAR)")
 
-        # Preparar guardas NUMÉRICAS (agnósticas al dominio) para no colapsar categorías fuertes
-        # Evita hardcodear palabras. Si dos categorías están FUERTES o muy cercanas en confianza,
+        # Preparar guardas NUMï¿½RICAS (agnï¿½sticas al dominio) para no colapsar categorï¿½as fuertes
+        # Evita hardcodear palabras. Si dos categorï¿½as estï¿½n FUERTES o muy cercanas en confianza,
         # no se agrupan aunque el texto sea muy similar (multi-label real).
         confidences = [cat['confidence'] for cat in categories_with_scores]
-        strong_conf_threshold = 0.75  # categorías muy seguras (independiente del rubro)
+        strong_conf_threshold = 0.75  # categorï¿½as muy seguras (independiente del rubro)
         epsilon_conf = 0.06           # si difieren menos del 6% y son razonables, mantener ambas
 
         def is_strong_pair(i: int, j: int) -> bool:
@@ -717,12 +717,12 @@ def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75)
             # Ambos muy fuertes
             if ci >= strong_conf_threshold and cj >= strong_conf_threshold:
                 return True
-            # Muy cercanas entre sí y al menos razonables (>=0.70)
+            # Muy cercanas entre sï¿½ y al menos razonables (>=0.70)
             if abs(ci - cj) <= epsilon_conf and max(ci, cj) >= 0.70:
                 return True
             return False
 
-        # Clustering greedy: agrupar categorías similares SOLO si no violan las guardas numéricas
+        # Clustering greedy: agrupar categorï¿½as similares SOLO si no violan las guardas numï¿½ricas
         groups = []
         used = set()
 
@@ -737,7 +737,7 @@ def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75)
                 if j in used:
                     continue
 
-                # NO agrupar si es un par fuerte o muy cercano en confianza (multi-label válido)
+                # NO agrupar si es un par fuerte o muy cercano en confianza (multi-label vï¿½lido)
                 if is_strong_pair(i, j):
                     continue
 
@@ -757,7 +757,7 @@ def _filter_diverse_categories(categories_with_scores, diversity_threshold=0.75)
                 group_names = [category_names[idx] for idx in group]
                 print(f"DIVERSITY: Agrupadas {group_names} -> seleccionada '{category_names[best_idx]}'")
 
-        print(f"DIVERSITY FILTER: {len(categories_with_scores)} -> {len(filtered)} categorías")
+        print(f"DIVERSITY FILTER: {len(categories_with_scores)} -> {len(filtered)} categorï¿½as")
         return filtered
 
     except Exception as e:
@@ -807,7 +807,7 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
             image_features = image_features / image_features.norm(dim=-1, keepdim=True)
             image_vec = image_features.squeeze(0).cpu().numpy()
 
-        # Similaridad contra centroides de cada categoría (mismo método que SINGLE)
+        # Similaridad contra centroides de cada categorï¿½a (mismo mï¿½todo que SINGLE)
         confidences = []
         for cat in categories:
             centroid = cat.get_centroid_embedding(auto_calculate=False)
@@ -817,7 +817,7 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
             sim = float(np.dot(image_vec, centroid) / (np.linalg.norm(image_vec) * np.linalg.norm(centroid)))
             confidences.append(sim)
 
-        # Probabilidades normalizadas vía softmax de similitudes escaladas
+        # Probabilidades normalizadas vï¿½a softmax de similitudes escaladas
         sims_tensor = torch.tensor(confidences, dtype=torch.float32)
         logits = sims_tensor * 100
         probabilities = torch.nn.functional.softmax(logits, dim=0).cpu().numpy()
@@ -839,15 +839,15 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
         # Ordenar por confidence (similitud real) en lugar de probability (softmax distorsionado)
         candidates.sort(key=lambda x: x['confidence'], reverse=True)
 
-        # FIX: Obtener max_conf de todos los candidatos (máxima confidence global)
+        # FIX: Obtener max_conf de todos los candidatos (mï¿½xima confidence global)
         max_conf = max(c['confidence'] for c in candidates)
-        dominant_threshold = 0.80  # Threshold más alto para considerar "dominante"
+        dominant_threshold = 0.80  # Threshold mï¿½s alto para considerar "dominante"
         is_dominant = max_conf > dominant_threshold
 
         if is_dominant:
-            # Modo ESTRICTO: evitar falsos positivos en imágenes de un solo objeto
+            # Modo ESTRICTO: evitar falsos positivos en imï¿½genes de un solo objeto
             print(f"?? MULTI-CATEGORY: Modo ESTRICTO (max confidence={max_conf:.3f})")
-            strict_conf = 0.75  # 75% de similitud mínima (muy alta)
+            strict_conf = 0.75  # 75% de similitud mï¿½nima (muy alta)
 
             selected = [c for c in candidates if c['confidence'] >= strict_conf]
         else:
@@ -860,18 +860,18 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
         # Limitar a top-K ANTES de filtro de diversidad
         selected = selected[:prelimit_topk]
 
-        print(f"PRELIMIT: {len(selected)} categorías seleccionadas (de {len(categories)} totales)")
+        print(f"PRELIMIT: {len(selected)} categorï¿½as seleccionadas (de {len(categories)} totales)")
         for c in selected:
             print(f"   - {c['category'].name}: prob={c['probability']:.4f}, conf={c['confidence']:.4f}")
 
-        # Filtro de diversidad: más conservador y con salvaguarda
-        # - Si hay 2 o menos categorías, no colapsar: permiten casos claros de 2 prendas (p. ej., top + short)
-        # - Umbral muy alto (0.95) para evitar colapsar categorías con diferencias sutiles pero importantes (p. ej., "tiro alto" vs "tiro bajo")
+        # Filtro de diversidad: mï¿½s conservador y con salvaguarda
+        # - Si hay 2 o menos categorï¿½as, no colapsar: permiten casos claros de 2 prendas (p. ej., top + short)
+        # - Umbral muy alto (0.95) para evitar colapsar categorï¿½as con diferencias sutiles pero importantes (p. ej., "tiro alto" vs "tiro bajo")
         if len(selected) <= 2:
-            railway_log(" DEBUG: Saltando filtro de diversidad (<=2 categorías prelimit)")
+            railway_log(" DEBUG: Saltando filtro de diversidad (<=2 categorï¿½as prelimit)")
         else:
             railway_log(f" DEBUG: Aplicando filtro de diversidad (threshold=0.95)...")
-            # Filtrar por diversidad semántica (evita duplicados muy cercanos)
+            # Filtrar por diversidad semï¿½ntica (evita duplicados muy cercanos)
             selected = _filter_diverse_categories(selected, diversity_threshold=0.95)
 
         railway_log(f" DEBUG: Despues de diversidad: {len(selected)} categorias finales")
@@ -898,7 +898,7 @@ def detect_multiple_categories(image_data, client_id, min_prob_threshold=0.03, m
 @bp.route("/search", methods=["POST", "OPTIONS"])
 def visual_search():
     """
-    DEPRECATED: Endpoint legacy. Usar /api/search/gpt4v-unified o /api/search/text.
+    DEPRECATED: Endpoint legacy. Usar /api/search/gpt4v-unified.
     Se mantiene con 410 para detectar usos residuales sin romper clientes.
     """
     # Manejar preflight OPTIONS request
@@ -912,7 +912,7 @@ def visual_search():
     deprec = jsonify({
         "success": False,
         "error": "DEPRECATED_ENDPOINT",
-        "message": "Este endpoint /api/search (visual) está deprecado. Usa /api/search/gpt4v-unified o /api/search/text."
+        "message": "Este endpoint /api/search (visual) estÃ¡ deprecado. Usa /api/search/gpt4v-unified."
     })
     try:
         deprec.headers['Access-Control-Allow-Origin'] = '*'

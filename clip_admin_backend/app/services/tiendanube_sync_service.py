@@ -330,14 +330,6 @@ class TiendanubeSyncService:
                 self.client.integration_config['industry_inferred'] = 'fashion_from_categories'
                 flag_modified(self.client, 'integration_config')
                 db.session.commit()
-
-                # 🆕 Inicializar perfil de búsqueda para 'fashion' (carga en caché)
-                from app.services.search_profiles_service import SearchProfilesService
-                try:
-                    profile = SearchProfilesService.get_profile(self.client.id, 'fashion', force_reload=True)
-                    logger.info(f"✅ Perfil de búsqueda 'fashion' inicializado para {self.client.slug}")
-                except Exception as e:
-                    logger.warning(f"⚠️ Error inicializando perfil de búsqueda: {e}")
         except Exception as e:
             logger.warning(f"Heurística de industria falló: {e}")
 

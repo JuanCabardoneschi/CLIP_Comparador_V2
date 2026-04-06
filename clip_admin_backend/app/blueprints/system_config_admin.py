@@ -217,14 +217,6 @@ def nlp_vocabulary_save():
 
         # Guardar
         if _save_json_config(_get_nlp_config_path(), data):
-            # Invalidar cache de spaCy para recargar en próximo request
-            try:
-                import app.blueprints.search_text as st_module
-                st_module._NLP_ES_WITH_PARSER = None
-                st_module._NLP_CONFIG = st_module._load_nlp_config()
-            except Exception as e:
-                print(f"⚠️ No se pudo invalidar cache NLP: {e}")
-
             flash('Configuración NLP guardada exitosamente', 'success')
             return jsonify({'success': True})
         else:

@@ -20,7 +20,6 @@ def deprecated_endpoint(path):
 
     Este endpoint fue deprecado el 19 de noviembre de 2025.
     Utiliza los endpoints principales de búsqueda en su lugar:
-    - /api/search/text
     - /api/search/gpt4v-unified
     """
     return jsonify({
@@ -28,7 +27,6 @@ def deprecated_endpoint(path):
         'message': 'Este endpoint ha sido eliminado permanentemente.',
         'deprecated_date': '2025-11-19',
         'alternatives': [
-            '/api/search/text',
             '/api/search/gpt4v-unified'
         ]
     }), 410

@@ -989,7 +989,7 @@ def visual_search():
     deprec = jsonify({
         "success": False,
         "error": "DEPRECATED_ENDPOINT",
-        "message": "Este endpoint /api/search (visual) está deprecado. Usa /api/search/gpt4v-unified o /api/search/text."
+        "message": "Este endpoint /api/search (visual) está deprecado. Usa /api/search/gpt4v-unified."
     })
     try:
         deprec.headers['Access-Control-Allow-Origin'] = '*'
@@ -1008,31 +1008,6 @@ def visual_search():
             db.session.rollback()
         except:
             pass
-
-        # Soportar tambiÃ©n bÃºsqueda textual vÃ­a JSON en el mismo endpoint
-        # Si el Content-Type es application/json y no hay archivo de imagen, delegar a text_search()
-        if request.method == 'POST' and (request.is_json or (request.content_type and 'application/json' in request.content_type)) and not request.files:
-            # Delegar al handler de bÃºsqueda textual existente
-            resp = text_search()
-
-            # Asegurar headers CORS consistentes con el endpoint unificado
-            if isinstance(resp, tuple):
-                resp_obj, status_code = resp
-                try:
-                    resp_obj.headers['Access-Control-Allow-Origin'] = '*'
-                    resp_obj.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-                    resp_obj.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
-                except Exception:
-                    pass
-                return resp_obj, status_code
-            else:
-                try:
-                    resp.headers['Access-Control-Allow-Origin'] = '*'
-                    resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-                    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-API-Key'
-                except Exception:
-                    pass
-                return resp
 
         # Validar request
         client, image_file, error_response, status_code = _validate_visual_search_request()
@@ -1513,16 +1488,6 @@ def visual_search():
             "message": f"Error interno: {str(e)}",
             "processing_time": round(processing_time, 3)
         }), 500
-
-
-def text_search():
-    """DEPRECATED: Endpoint removido. Usar /api/search/text del blueprint search_text."""
-    return jsonify({
-        "success": False,
-        "error": "deprecated_endpoint",
-        "message": "Este endpoint está deprecado. Use /api/search/text del nuevo blueprint search_text.",
-        "migration_url": "/api/search/text"
-    }), 410
 
 
 # ============================================================================

@@ -98,10 +98,10 @@ register_client_module("{slug}", module_{slug})
 
 ## 🚀 Uso en Runtime
 
-El sistema detecta automáticamente si existe módulo personalizado:
+El sistema detecta automáticamente si existe módulo personalizado en el flujo visual GPT-4V:
 
 ```python
-# En search_text.py
+# En api.py
 if has_custom_module(client_slug):
     # Usar módulo personalizado
     module = get_client_module(client_slug)
@@ -120,12 +120,11 @@ Para validar un módulo:
 cd clip_admin_backend
 python app.py
 
-# 2. Probar búsqueda (terminal separada)
-$body = @{ query = 'short verde'; limit = 20 } | ConvertTo-Json
-Invoke-RestMethod -Uri http://127.0.0.1:5000/api/search/text `
-  -Method POST `
-  -Headers @{ 'X-API-Key' = 'clip_xxx'; 'Content-Type' = 'application/json' } `
-  -Body $body | ConvertTo-Json -Depth 8
+# 2. Probar búsqueda visual unificada (terminal separada)
+Invoke-RestMethod -Uri http://127.0.0.1:5000/api/search/gpt4v-unified `
+    -Method POST `
+    -Headers @{ 'X-API-Key' = 'clip_xxx' } `
+    -Form @{ image = Get-Item .\test-image.jpg } | ConvertTo-Json -Depth 8
 ```
 
 Verificar en la respuesta:
