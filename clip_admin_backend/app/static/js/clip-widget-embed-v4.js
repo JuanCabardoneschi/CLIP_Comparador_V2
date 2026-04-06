@@ -1022,11 +1022,17 @@
 
         const resultsDiv = widgetContainer.querySelector('#clip-results');
 
-        // Ordenar categorías: primero las que tienen productos, luego las vacías
-        const sortedCategories = Object.entries(resultsByCategory).sort(([, dataA], [, dataB]) => {
-            const hasProductsA = dataA.products.length > 0 ? 1 : 0;
-            const hasProductsB = dataB.products.length > 0 ? 1 : 0;
-            return hasProductsB - hasProductsA; // Descendente: con productos primero
+        // Orden comercial: categorías con mayor inventario total primero.
+        const sortedCategories = Object.entries(resultsByCategory).sort(([nameA, dataA], [nameB, dataB]) => {
+            const totalA = Number(dataA.total_in_category || 0);
+            const totalB = Number(dataB.total_in_category || 0);
+            if (totalB !== totalA) return totalB - totalA;
+
+            const returnedA = Number(dataA.results_returned || 0);
+            const returnedB = Number(dataB.results_returned || 0);
+            if (returnedB !== returnedA) return returnedB - returnedA;
+
+            return String(nameA).localeCompare(String(nameB));
         });
 
         const html = sortedCategories.map(([categoryName, categoryData]) => {

@@ -2837,6 +2837,19 @@ def gpt4v_unified_search():
                 name for name, data in results_by_category.items() if data['results_returned'] > 0
             ]
 
+        # Orden comercial: categorías con mayor inventario total primero.
+        # Empates: más resultados devueltos, luego nombre para orden estable.
+        results_by_category = dict(
+            sorted(
+                results_by_category.items(),
+                key=lambda item: (
+                    -int(item[1].get('total_in_category', 0) or 0),
+                    -int(item[1].get('results_returned', 0) or 0),
+                    str(item[0]).lower(),
+                ),
+            )
+        )
+
         # ===================================================================
         # PASO 3: Preparar respuesta final
         # ===================================================================
