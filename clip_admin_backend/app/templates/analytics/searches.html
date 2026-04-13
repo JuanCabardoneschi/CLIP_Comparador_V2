@@ -1,6 +1,6 @@
 {% extends "layouts/base.html" %}
 
-{% block title %}Análisis de Búsquedas - Analytics{% endblock %}
+{% block title %}Análisis de Búsquedas Visuales - Analytics{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
@@ -8,8 +8,8 @@
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <h2 class="mb-0">📊 Análisis de Búsquedas</h2>
-                    <p class="text-muted mb-0">Métricas agregadas y tendencias de uso</p>
+                    <h2 class="mb-0">📊 Análisis de Búsquedas Visuales</h2>
+                    <p class="text-muted mb-0">Métricas agregadas y tendencias de uso visual</p>
                 </div>
                 <div class="d-flex gap-2">
                     <select class="form-select" id="periodSelector" style="width: auto;">
@@ -134,105 +134,24 @@
             </div>
         </div>
 
-        <!-- Distribución por Tipo -->
         <div class="col-lg-4">
             <div class="card h-100">
                 <div class="card-header bg-white">
-                    <h5 class="mb-0">🎯 Tipo de Búsqueda</h5>
+                    <h5 class="mb-0">🖼️ Modalidad de Búsqueda</h5>
                 </div>
-                <div class="card-body">
-                    {% if search_types %}
-                    {% for type in search_types %}
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between mb-1">
-                            <span>
-                                {% if type.search_type == 'text_nlp' %}
-                                <span class="badge bg-primary">Texto</span>
-                                {% elif type.search_type == 'gpt4v_visual' %}
-                                <span class="badge bg-info">Visual</span>
-                                {% else %}
-                                <span class="badge bg-secondary">{{ type.search_type }}</span>
-                                {% endif %}
-                            </span>
-                            <strong>{{ type.count }}</strong>
-                        </div>
-                        <div class="progress">
-                            <div class="progress-bar
-                                {% if type.search_type == 'text_nlp' %}bg-primary
-                                {% elif type.search_type == 'gpt4v_visual' %}bg-info
-                                {% else %}bg-secondary{% endif %}"
-                                 style="width: {{ (type.count / total_searches * 100)|round }}%">
-                                {{ "%.0f"|format((type.count / total_searches * 100)) }}%
-                            </div>
-                        </div>
+                <div class="card-body d-flex align-items-center justify-content-center">
+                    <div class="text-center">
+                        <span class="badge bg-info fs-6 px-3 py-2">Visual</span>
+                        <p class="text-muted mb-0 mt-3">El sistema opera exclusivamente con búsqueda visual.</p>
                     </div>
-                    {% endfor %}
-                    {% else %}
-                    <div class="text-center py-5 text-muted">
-                        <div class="fs-1">📭</div>
-                        <p class="mb-0">Sin datos</p>
-                    </div>
-                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 
     <div class="row">
-        <!-- Top 20 Búsquedas Más Frecuentes -->
-        <div class="col-lg-6 mb-4">
-            <div class="card">
-                <div class="card-header bg-white">
-                    <h5 class="mb-0">🔥 Top 20 Búsquedas Más Frecuentes</h5>
-                </div>
-                <div class="card-body p-0">
-                    {% if top_queries %}
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>#</th>
-                                    <th>Consulta</th>
-                                    <th class="text-center">Veces</th>
-                                    <th class="text-center">Prom. Resultados</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for query in top_queries %}
-                                <tr>
-                                    <td>{{ loop.index }}</td>
-                                    <td>
-                                        <div class="text-truncate" style="max-width: 300px;" title="{{ query.query_text }}">
-                                            {{ query.query_text }}
-                                        </div>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-primary rounded-pill">{{ query.count }}</span>
-                                    </td>
-                                    <td class="text-center">
-                                        {% if query.avg_results > 0 %}
-                                        <span class="badge bg-success">{{ "%.1f"|format(query.avg_results) }}</span>
-                                        {% else %}
-                                        <span class="badge bg-warning text-dark">0</span>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <div class="text-center py-5 text-muted">
-                        <div class="fs-1">📭</div>
-                        <p class="mb-0">No hay consultas registradas</p>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
         <!-- Categorías Más Detectadas -->
-        <div class="col-lg-6 mb-4">
+        <div class="col-lg-12 mb-4">
             <div class="card">
                 <div class="card-header bg-white">
                     <h5 class="mb-0">🏷️ Top 15 Categorías Detectadas</h5>
@@ -286,8 +205,8 @@
     <!-- Nota informativa -->
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i>
-        <strong>Nota:</strong> Este dashboard muestra métricas agregadas optimizadas para alto volumen.
-        Para análisis detallado de búsquedas específicas, usa la sección de "Gap Detection".
+        <strong>Nota:</strong> Este dashboard muestra métricas agregadas de búsqueda visual optimizadas para alto volumen.
+        Para análisis de oportunidades de catálogo, usa la sección de "Gap Detection".
     </div>
 </div>
 

@@ -1,13 +1,13 @@
 {% extends "layouts/base.html" %}
 
-{% block title %}Analytics - Dashboard{% endblock %}
+{% block title %}Analytics Visual - Dashboard{% endblock %}
 
 {% block content %}
 <div class="container-fluid mt-4">
     <div class="row">
         <div class="col-12">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h1><i class="fas fa-chart-line"></i> Analytics Dashboard</h1>
+                <h1><i class="fas fa-chart-line"></i> Analytics Visual Dashboard</h1>
             </div>
         </div>
     </div>
@@ -86,12 +86,12 @@
         <div class="col-md-6 mb-4">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-search"></i> Análisis de Búsquedas</h5>
+                    <h5 class="mb-0"><i class="fas fa-search"></i> Análisis de Búsquedas Visuales</h5>
                 </div>
                 <div class="card-body">
-                    <p class="text-muted">Analiza patrones de búsqueda, términos populares y rendimiento.</p>
+                    <p class="text-muted">Analiza patrones de búsqueda visual y rendimiento.</p>
                     <a href="{{ url_for('analytics.searches') }}" class="btn btn-primary">
-                        <i class="fas fa-chart-bar"></i> Ver Búsquedas
+                        <i class="fas fa-chart-bar"></i> Ver Búsquedas Visuales
                     </a>
                 </div>
             </div>

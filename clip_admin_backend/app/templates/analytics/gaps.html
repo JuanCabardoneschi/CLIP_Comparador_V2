@@ -21,8 +21,8 @@
 
     <div class="alert alert-info">
         <i class="fas fa-info-circle"></i>
-        <strong>¿Qué es Gap Detection?</strong> Analiza lo que tus clientes buscan pero no encuentran en tu catálogo.
-        Identifica nuevas oportunidades de productos, categorías y atributos para expandir tu inventario.
+        <strong>¿Qué es Gap Detection?</strong> Analiza categorías detectadas visualmente que no están en tu catálogo.
+        Identifica oportunidades para expandir tu inventario con base en comportamiento real de búsqueda visual.
     </div>
 
     <!-- Categorías Faltantes -->
@@ -65,96 +65,6 @@
                     {% else %}
                     <p class="text-muted mb-0">
                         <i class="fas fa-check-circle"></i> ¡Excelente! No hay categorías faltantes detectadas.
-                    </p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Términos/Atributos No Matcheados -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card border-warning">
-                <div class="card-header bg-warning text-dark">
-                    <h5 class="mb-0"><i class="fas fa-tags"></i> Atributos/Términos Más Buscados (Sin Match)</h5>
-                </div>
-                <div class="card-body">
-                    {% if unmatched_terms %}
-                    <div class="alert alert-warning">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        Estos términos son buscados frecuentemente pero no coinciden con los atributos de tus productos.
-                        Considera agregar estos atributos a tu configuración.
-                    </div>
-                    <div class="row">
-                        {% for row in unmatched_terms %}
-                        <div class="col-md-4 mb-3">
-                            <div class="card bg-light">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div>
-                                            <h6 class="mb-0">{{ row[0] }}</h6>
-                                            <small class="text-muted">{{ row[1] }} búsquedas</small>
-                                        </div>
-                                        <button class="btn btn-sm btn-outline-success" onclick="addAttribute('{{ row[0] }}')">
-                                            <i class="fas fa-plus"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                    {% else %}
-                    <p class="text-muted mb-0">
-                        <i class="fas fa-check-circle"></i> Todos los términos buscados tienen match con tus productos.
-                    </p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Búsquedas sin Resultados -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card border-secondary">
-                <div class="card-header bg-secondary text-white">
-                    <h5 class="mb-0"><i class="fas fa-search-minus"></i> Búsquedas Sin Resultados (0 productos)</h5>
-                </div>
-                <div class="card-body">
-                    {% if zero_results %}
-                    <div class="table-responsive">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Query</th>
-                                    <th>Categorías Detectadas</th>
-                                    <th>Frecuencia</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for row in zero_results %}
-                                <tr>
-                                    <td><code>{{ row.query_text }}</code></td>
-                                    <td>
-                                        {% if row.categories_detected %}
-                                            {% for cat in row.categories_detected %}
-                                                <span class="badge bg-secondary">{{ cat }}</span>
-                                            {% endfor %}
-                                        {% else %}
-                                            <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
-                                    <td><span class="badge bg-dark">{{ row.count }}</span></td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <p class="text-muted mb-0">
-                        <i class="fas fa-check-circle"></i> Todas las búsquedas han retornado al menos 1 resultado.
                     </p>
                     {% endif %}
                 </div>
@@ -234,12 +144,6 @@ function changePeriod() {
 function addCategory(name) {
     if (confirm(`¿Crear categoría "${name}"?`)) {
         alert('Funcionalidad próximamente. Puedes crear la categoría manualmente desde el panel de Categorías.');
-    }
-}
-
-function addAttribute(name) {
-    if (confirm(`¿Agregar atributo "${name}"?`)) {
-        alert('Funcionalidad próximamente. Puedes configurar atributos desde el panel de Productos.');
     }
 }
 </script>

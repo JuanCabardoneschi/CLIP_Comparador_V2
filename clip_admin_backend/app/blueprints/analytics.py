@@ -78,7 +78,7 @@ def clients():
 @bp.route("/searches")
 @login_required
 def searches():
-    """Dashboard analítico de búsquedas - Agregaciones y métricas."""
+    """Dashboard analítico de búsquedas visuales - Agregaciones y métricas."""
     period = request.args.get("period", 30, type=int)
     start_date = datetime.utcnow() - timedelta(days=period)
 
@@ -118,29 +118,7 @@ def searches():
         daily_stats = daily_stats.filter_by(**client_filter)
     daily_stats = daily_stats.group_by(func.date(SearchLog.created_at)).order_by('date').all()
 
-    # 3️⃣ TOP QUERIES (las más frecuentes)
-    top_queries = db.session.query(
-        SearchLog.query_text,
-        func.count(SearchLog.id).label('count'),
-        func.avg(SearchLog.results_count).label('avg_results')
-    ).filter(
-        SearchLog.query_text.isnot(None),
-        SearchLog.created_at >= start_date
-    )
-    if client_filter:
-        top_queries = top_queries.filter_by(**client_filter)
-    top_queries = top_queries.group_by(SearchLog.query_text).order_by(desc('count')).limit(20).all()
-
-    # 4️⃣ DISTRIBUCIÓN POR TIPO
-    search_types = db.session.query(
-        SearchLog.search_type,
-        func.count(SearchLog.id).label('count')
-    ).filter(SearchLog.created_at >= start_date)
-    if client_filter:
-        search_types = search_types.filter_by(**client_filter)
-    search_types = search_types.group_by(SearchLog.search_type).all()
-
-    # 5️⃣ CATEGORÍAS MÁS DETECTADAS (usando unnest de ARRAY)
+    # 3️⃣ CATEGORÍAS MÁS DETECTADAS (usando unnest de ARRAY)
     categories_detected = db.session.execute(text("""
         SELECT
             unnest(categories_detected) as category,
@@ -163,8 +141,6 @@ def searches():
                            avg_results=avg_results,
                            avg_time_ms=avg_time_ms,
                            daily_stats=daily_stats,
-                           top_queries=top_queries,
-                           search_types=search_types,
                            categories_detected=categories_detected)
 
 
@@ -234,43 +210,7 @@ def gaps():
         params
     ).fetchall()
 
-    # 2. Términos/atributos más buscados que NO matchean
-    unmatched_terms = db.session.execute(
-        text(f"""
-            SELECT
-                unnest(terms_unmatched) as term,
-                COUNT(*) as search_count
-            FROM search_logs
-            WHERE created_at >= :start_date
-              {client_filter}
-              AND terms_unmatched IS NOT NULL
-              AND array_length(terms_unmatched, 1) > 0
-            GROUP BY term
-            ORDER BY search_count DESC
-            LIMIT 30
-        """),
-        params
-    ).fetchall()
-
-    # 3. Búsquedas sin resultados (0 products found)
-    zero_results_query = db.session.query(
-        SearchLog.query_text,
-        SearchLog.categories_detected,
-        func.count(SearchLog.id).label("count")
-    ).filter(
-        SearchLog.created_at >= start_date,
-        SearchLog.results_count == 0,
-        SearchLog.query_text.isnot(None)
-    )
-    if current_user.role == 'STORE_ADMIN':
-        zero_results_query = zero_results_query.filter_by(client_id=current_user.client_id)
-
-    zero_results = zero_results_query.group_by(
-        SearchLog.query_text,
-        SearchLog.categories_detected
-    ).order_by(desc("count")).limit(20).all()
-
-    # 4. Categorías detectadas vs matcheadas (eficiencia)
+    # 2. Categorías detectadas vs matcheadas (eficiencia)
     category_efficiency = db.session.execute(
         text(f"""
             WITH unnested AS (
@@ -297,8 +237,6 @@ def gaps():
 
     return render_template("analytics/gaps.html",
                            missing_categories=missing_categories,
-                           unmatched_terms=unmatched_terms,
-                           zero_results=zero_results,
                            category_efficiency=category_efficiency,
                            days=days)
 
@@ -448,27 +386,8 @@ def api_gaps():
         params
     ).fetchall()
 
-    # Términos no matcheados
-    unmatched = db.session.execute(
-        text(f"""
-            SELECT
-                unnest(terms_unmatched) as term,
-                COUNT(*) as count
-            FROM search_logs
-            WHERE created_at >= :start_date
-              {client_filter}
-              AND terms_unmatched IS NOT NULL
-              AND array_length(terms_unmatched, 1) > 0
-            GROUP BY term
-            ORDER BY count DESC
-            LIMIT 15
-        """),
-        params
-    ).fetchall()
-
     return jsonify({
         "missing_categories": [{"name": row[0], "count": row[1]} for row in missing_cats],
-        "unmatched_terms": [{"term": row[0], "count": row[1]} for row in unmatched],
         "period_days": days
     })
 
