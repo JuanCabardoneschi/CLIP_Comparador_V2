@@ -5,12 +5,13 @@ Panel principal de administración
 
 from flask import Blueprint, render_template
 from flask_login import login_required, current_user
+from datetime import datetime
 from app import db
 from app.models.client import Client
 from app.models.user import User
 from app.models.image import Image
 from app.models.product import Product
-# from app.models.search_log import SearchLog  # TODO: Implementar cuando se cree la tabla
+from app.models.search_log import SearchLog
 from app.utils.permissions import requires_role, filter_by_client_scope
 
 bp = Blueprint("dashboard", __name__)
@@ -56,8 +57,14 @@ def index():
         my_total_products = products_query.count()
         my_active_products = products_query.filter_by(is_active=True).count()
 
-        # TODO: Búsquedas cuando se implemente la tabla search_logs
-        my_searches_today = 0  # Placeholder hasta implementar search_logs
+        # Búsquedas reales del día (UTC) para el cliente actual
+        try:
+            my_searches_today = SearchLog.query.filter(
+                SearchLog.client_id == current_user.client_id,
+                db.func.date(SearchLog.created_at) == datetime.utcnow().date()
+            ).count()
+        except Exception:
+            my_searches_today = 0
 
         context = {
             'role': 'store_admin',
