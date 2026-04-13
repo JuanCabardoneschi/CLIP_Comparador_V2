@@ -148,24 +148,51 @@ def searches():
 @login_required
 def performance():
     """Analytics de rendimiento"""
+    is_store_admin = current_user.role == 'STORE_ADMIN'
+
     # Tiempo promedio de respuesta
-    avg_response_time = db.session.query(
+    avg_response_time_query = db.session.query(
         func.avg(SearchLog.response_time_ms)
-    ).scalar() or 0
+    ).filter(SearchLog.response_time_ms.isnot(None))
+
+    if is_store_admin:
+        avg_response_time_query = avg_response_time_query.filter(
+            SearchLog.client_id == current_user.client_id
+        )
+
+    avg_response_time = avg_response_time_query.scalar() or 0
 
     # Distribución de tiempos de respuesta
-    response_times = db.session.query(
+    response_times_query = db.session.query(
         SearchLog.response_time_ms,
         SearchLog.results_count,
         SearchLog.created_at
     ).filter(
         SearchLog.response_time_ms.isnot(None)
-    ).order_by(desc(SearchLog.created_at)).limit(100).all()
+    )
+
+    if is_store_admin:
+        response_times_query = response_times_query.filter(
+            SearchLog.client_id == current_user.client_id
+        )
+
+    response_times = response_times_query.order_by(desc(SearchLog.created_at)).limit(100).all()
+
+    total_embeddings_query = Image.query.filter(Image.clip_embedding.isnot(None))
+    images_without_embeddings_query = Image.query.filter(Image.clip_embedding.is_(None))
+
+    if is_store_admin:
+        total_embeddings_query = total_embeddings_query.join(Product).join(Category).filter(
+            Category.client_id == current_user.client_id
+        )
+        images_without_embeddings_query = images_without_embeddings_query.join(Product).join(Category).filter(
+            Category.client_id == current_user.client_id
+        )
 
     # Estadísticas de embeddings
     embedding_stats = {
-        "total_embeddings": Image.query.filter(Image.clip_embedding.isnot(None)).count(),
-        "images_without_embeddings": Image.query.filter(Image.clip_embedding.is_(None)).count(),
+        "total_embeddings": total_embeddings_query.count(),
+        "images_without_embeddings": images_without_embeddings_query.count(),
         "avg_confidence": 1.0  # Placeholder ya que no tenemos campo confidence_score
     }
 
