@@ -2890,7 +2890,38 @@ def gpt4v_unified_search():
             # Extraer categorías detectadas y matcheadas
             cats_detected = categories_detected if categories_detected else []
             cats_matched = [name for name, data in results_by_category.items() if data.get('results_returned', 0) > 0]
+
+            # Oportunidades de gap:
+            # 1) categorías detectadas que no retornaron resultados
             cats_missing = [c for c in cats_detected if c not in cats_matched]
+
+            # 2) prendas detectadas por Vision sin categoría sugerida mapeada
+            #    (ej.: "buzo con capucha" cuando no existe en catálogo)
+            catalog_category_names = {str(name).strip().lower() for name in categories_list if name}
+            missing_from_prendas = []
+
+            for prenda in prendas or []:
+                categoria_sugerida = (prenda.get('categoria_sugerida') or '').strip()
+                tipo_prenda = (prenda.get('tipo') or '').strip()
+                descripcion_prenda = (prenda.get('descripcion') or '').strip()
+
+                is_mapped = bool(categoria_sugerida) and categoria_sugerida.lower() in catalog_category_names
+                if is_mapped:
+                    continue
+
+                label = tipo_prenda or descripcion_prenda
+                if not label:
+                    continue
+
+                # Evitar ruido y valores redundantes
+                if label.lower() in ('n/a', 'none', 'null'):
+                    continue
+
+                if label not in missing_from_prendas:
+                    missing_from_prendas.append(label)
+
+            if missing_from_prendas:
+                cats_missing = list(dict.fromkeys(cats_missing + missing_from_prendas))
 
             SearchLog.log_search(
                 client_id=client.id,
