@@ -330,7 +330,7 @@ def global_search():
         "id": image.id,
         "product_name": image.product.name,
         "alt_text": image.alt_text,
-        "url": image.optimized_url,  # Usar base64 cacheado (evita descargas de Cloudinary)
+        "url": image.display_url,
         "type": "image"
     } for image in images]
 
@@ -1204,8 +1204,10 @@ def visual_search():
                             db.session.rollback()
                             primary_image = product.images[0] if product.images else None
 
-                        # Usar base64 guardado en BD
-                        image_base64 = primary_image.base64_data if primary_image and primary_image.base64_data else None
+                        # Usar URL directa para reducir egress del backend:
+                        # - Tiendanube/WooCommerce: source_url de tienda
+                        # - Standalone: Cloudinary
+                        image_url = primary_image.display_url if primary_image else None
 
                         # Filtrado de atributos por configuración (case-insensitive)
                         try:
@@ -1227,7 +1229,7 @@ def visual_search():
                             "price": float(product.price) if product.price else None,
                             "stock": product.stock,
                             "category": category.name,
-                            "image_url": image_base64,  # âœ… BASE64 desde BD
+                            "image_url": image_url,
                             "similarity": float(score),
                             "attributes": prod_attrs,
                             "product_url": product.attributes.get('url_producto') if product.attributes else None,
@@ -2390,7 +2392,8 @@ def gpt4v_unified_search():
                     if not primary_image:
                         primary_image = img
 
-                    image_url = primary_image.optimized_url if primary_image else None  # Base64 cacheado
+                    # Usar URL directa para respuestas al cliente (sin base64)
+                    image_url = primary_image.display_url if primary_image else None
 
                     # Preparar atributos filtrados y extraer product_url
                     product_attrs = {}
