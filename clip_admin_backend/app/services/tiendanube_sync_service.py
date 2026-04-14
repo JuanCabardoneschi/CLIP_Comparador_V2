@@ -904,6 +904,10 @@ class TiendanubeSyncService:
                 ).first()
 
                 if existing_image:
+                    # Mantener metadata alineada con el orden actual de Tiendanube
+                    existing_image.display_order = idx
+                    existing_image.source_url = source_url
+
                     has_valid_base64 = bool(
                         existing_image.base64_data
                         and str(existing_image.base64_data).startswith('data:image')
@@ -962,9 +966,35 @@ class TiendanubeSyncService:
 
                 self.stats['images_processed'] += 1
 
+            # Garantizar integridad: exactamente una imagen primaria por producto.
+            self._ensure_single_primary_image(product.id)
+
         except Exception as e:
             logger.error(f"Error sincronizando imágenes del producto {product.id}: {str(e)}")
             self.stats['errors'].append(f"Imágenes producto {product.id}: {str(e)}")
+
+    def _ensure_single_primary_image(self, product_id: str):
+        """Deja una sola imagen primaria por producto.
+
+        Regla: elegir la imagen más reciente dentro del menor display_order
+        (normalmente display_order = 0).
+        """
+        try:
+            best_image = Image.query.filter_by(product_id=product_id).order_by(
+                Image.display_order.asc(),
+                Image.updated_at.desc(),
+                Image.created_at.desc()
+            ).first()
+
+            if not best_image:
+                return
+
+            Image.query.filter_by(product_id=product_id).update({'is_primary': False})
+            best_image.is_primary = True
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error normalizando imagen primaria de producto {product_id}: {e}")
 
     def _download_and_convert_image(self, url: str, thumb_size: Tuple[int, int] = (300, 300)) -> Tuple[Optional[str], Optional[str], str, int, int, int]:
         """
